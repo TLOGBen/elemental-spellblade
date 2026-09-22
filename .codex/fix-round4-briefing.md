@@ -1,0 +1,28 @@
+Goal and acceptance:
+Fourth fix round (balance knobs + one init race) for the Skyrim SE 1.5.97 mod at D:\Game\Other\SKSE\.codex\elemental-spellblade. Report in Traditional Chinese (code, identifiers, paths verbatim).
+
+Work items (user-approved):
+  1. DoT coefficients become tunable and are raised. Reference point (read from Phenderix Elements.esp): its form procs are a flat 10 per hit (blood/astral 15) and its poison proc is 10 per second for 30 s, so at tree level 1 our poison is ~40x weaker and half our elements are below 10. Targets at tree level 1, no nodes: poison = 2.0 damage per layer per second (layer life stays 6 s), bleed = 1.2 per layer per second (5 s). Today the coefficients are literals in scripts (e.g. src/ESSBStatus.psc `5.0 * 0.05 * poison`, the bleed per-layer formula in ESSBElem2.BleedPerLayer / ESSBStatus / ESSBReactions.EndBlood remaining-bleed). Every place that uses either coefficient (and any hard-coded B_max literal such as that `5.0`) must read one single source so they cannot drift: new float GLOBs (appended IDs) `ESSB_PoisonDotK`, `ESSB_BleedDotK`, defaults from settings.json keys `poison_dot_k`, `bleed_dot_k`, chosen so the targets above hold with the new B_max values of item 1b. The blood "放血" current-health-percent term is NOT a k_dot term and stays as is.
+  1b. Base proc ranges B (design 2.1 table) are raised so no element starts clearly below Phenderix's flat 10; move them into settings.json (`element_damage`: element -> [min, max]) if they are not already data-driven, and make every B_max consumer (reactions, burst, DoT, node effects) read the same table rather than literals. New values: Fire 10-12, Frost 8-10, Lightning 1-25 (user's explicit choice: widest spread is its identity; B_max 25 is intended, so its reactions/burst become the highest), Earth 8-10, Wind 8-9, Blood 8-10, Divine 8-10, Poison 8-9, Water 5-7 (still the lowest), Darkness 8-10, Astral 8-10. List every literal you replaced. Record this as a user-approved deviation from the design table; do not edit the design doc.
+  2. Global base damage multiplier for characters that start the mod at a high level: new float GLOB `ESSB_BaseDamageMult` (settings.json `base_damage_mult`, default 1.0), multiplied once into every elemental damage the mod deals that derives from B / B_max (hit procs, DoT, reactions 開印/終焉, 融斷 burst, domains, node effects) — find the narrowest choke point(s) (ApplyDamage / ApplyDamageRaw and the DoT path) and prove no path gets it twice or never. True damage (無元素樹) is excluded by design 2.7. Do NOT add a settings MessageBox button for it: an MCM page (next round) will expose it; this round only creates the GLOB, binds it as a script property, and applies it.
+  3. Init race seen in game: on first init `ESSBController.OnInit -> ScheduleTick -> ArmUpdate` logged 8x "Cannot access an element of a None array" at the `LiftActor[index] && LiftDue[index]` loop even though ArmUpdate calls InitFixState() first. Find the real cause (alias OnInit firing twice and interleaving, a guard that tests one array while a sibling array is still None, or arrays created under a different guard) and make initialisation safe; explain the cause in the report.
+  4. Log every change in 實作紀錄.md as "fix round 4（平衡旋鈕）" with a FIXED / NOT FIXED table, the list of call sites touched for items 1 and 2, and a short "how to tune" note.
+
+Passing = `python build_v03.py` exits 0 with every existing check line ok (READBACK masters ['Skyrim.esm'], records == manifest, CSF 13/13, DELIVERY ok, LAYOUT ok, PLAN COVERAGE 0 unmapped, FX ok, 17 scripts 0 errors); no existing FormID changes versus .codex/pre-fix4-snapshot/v03-formids.json (ESSB_DebugLevel 0x000811; new GLOBs appended only); offline proof (grep-level table is enough) that each damage path applies base_damage_mult exactly once. You run the build yourself.
+
+Permission boundary:
+  - Read scope: everything under D:\Game\Other\SKSE\.codex\elemental-spellblade; read-only D:\Game\Other\SKSE\SkyrimSE\Data\*.esm and D:\Game\Other\SKSE\MO2\mods\** as build_v03.py needs; executing the PapyrusCompiler.exe that build_v03.py invokes is allowed.
+  - Write set (exact): src/*.psc, build_v03.py, settings.json, plan_coverage.py (only if a coverage row text must follow the new coefficient), 實作紀錄.md (append only), build/** and package/Elements Spellblade/** (generated), .codex/impl-fix-round4.html (progress ledger; create first, update per item).
+  - MUST NOT: write anything under D:\Game\Other\SKSE\MO2 or D:\Game\Other\SKSE\SkyrimSE; edit 元素魔戰士規劃-v0.3.md, review-*.md, fx_extract.py, .strategic-advance/**; add masters; renumber records; introduce Utility.Wait loops, non-single RegisterForUpdate, Spell.Cast for damage, DamageActorValue on enemy health, or per-hit GetFormFromFile lookups (bind the new GLOBs as script properties); access the network.
+  - MUST: keep file encodings and line endings as they are.
+
+Background (MAY):
+  - Rounds 1-3 landed today (review fixes; log-noise guards + tree layout + ShowMenu default 0; FX aura/mark rebinding with settings.json maps). Do not undo them.
+  - The design doc still says k_dot 0.08 / 0.05; the user changed the numbers verbally — record it as a documented deviation, do not edit the design doc.
+
+You may change tools, commands, and technical approaches at will,
+within the granted permissions and write set.
+A single tool or approach being unavailable means only that this
+strategy failed — switch approaches and retry. Report blocked only
+when the acceptance goal is genuinely unreachable, or when you need
+permissions or scope beyond what was granted.

@@ -1,0 +1,1356 @@
+{
+  "schemaVersion": 6,
+  "missionId": "essb-standalone-build",
+  "updatedAt": "2026-09-20T22:38:00+08:00",
+  "strategicObjective": {
+    "revision": 1,
+    "approvedAt": "2026-09-16T07:36:05+08:00",
+    "purpose": "把《元素魔戰士規劃 v0.3》整份實作成可安裝的 Skyrim SE 1.5.97 模組：自製形態層、印記與開印終焉引擎、13 棵 CSF 技能樹、11 元素機制、借用特效，並安裝進使用者的 MO2 profile 供實戰驗證。",
+    "desiredEndState": [
+      "package/Elements Spellblade 內的 ESP 只以 Skyrim.esm 為 master，可被獨立讀取器完整解析",
+      "所有 Papyrus 腳本以本機編譯器編譯為 0 錯誤",
+      "13 棵樹的 CSF JSON 有效，所有節點的 perk 參照都能在 ESP 中解析",
+      "規劃 v0.3 第 5 節的每個節點與第 1、2 節的每個共通機制都有對應的實作記錄",
+      "模組已安裝進 MO2 並在 normal profile 啟用，且三個 profile 檔一致",
+      "使用者在遊戲內確認：Z 開關形態、命中附傷、技能樹可開啟"
+    ],
+    "worldDimensions": [
+      "toolchainState",
+      "packageState",
+      "csfConfigState",
+      "planCoverage",
+      "installState",
+      "smokeState"
+    ],
+    "protectedAssets": [
+      {
+        "id": "mo2-profile",
+        "displayText": "MO2 normal profile 的 modlist.txt、plugins.txt、loadorder.txt 必須保持一致且可回復"
+      },
+      {
+        "id": "other-mods",
+        "displayText": "其他模組資料夾與 SkyrimSE/Data 一個位元組都不能被改動，Phenderix Elements 與各法術包只能被讀取"
+      },
+      {
+        "id": "plan-document",
+        "displayText": "元素魔戰士規劃-v0.3.md 是設計真相，實作只能引用與補記實作備註，不能改設計"
+      },
+      {
+        "id": "evidence-integrity",
+        "displayText": "編譯器或讀取器故障不得被記成模組本身的事實"
+      }
+    ],
+    "victoryCriteria": [
+      {
+        "id": "compile-clean",
+        "displayText": "全部腳本編譯 0 錯誤",
+        "predicate": "PACKAGE_COMPILE_ERRORS == 0",
+        "status": "UNKNOWN",
+        "evidenceClaimIds": [
+          "claim-victory-compile-clean"
+        ]
+      },
+      {
+        "id": "esp-valid",
+        "displayText": "ESP 可獨立解析且 master 只有 Skyrim.esm",
+        "predicate": "ESP_INDEPENDENT_READ_VALID == true",
+        "status": "UNKNOWN",
+        "evidenceClaimIds": [
+          "claim-victory-esp-valid"
+        ]
+      },
+      {
+        "id": "csf-valid",
+        "displayText": "13 棵樹的 CSF 設定有效且 perk 參照全部解析",
+        "predicate": "CSF_CONFIG_VALID == true",
+        "status": "UNKNOWN",
+        "evidenceClaimIds": [
+          "claim-victory-csf-valid"
+        ]
+      },
+      {
+        "id": "plan-covered",
+        "displayText": "規劃的節點與共通機制全部有實作記錄",
+        "predicate": "PLAN_COVERAGE_COMPLETE == true",
+        "status": "UNKNOWN",
+        "evidenceClaimIds": [
+          "claim-victory-plan-covered"
+        ]
+      },
+      {
+        "id": "installed",
+        "displayText": "模組已安裝並在 profile 啟用",
+        "predicate": "MOD_INSTALLED_ENABLED == true",
+        "status": "PASS",
+        "evidenceClaimIds": [
+          "claim-victory-installed"
+        ]
+      },
+      {
+        "id": "smoke-pass",
+        "displayText": "使用者遊戲內冒煙測試通過",
+        "predicate": "INGAME_SMOKE_PASS == true",
+        "status": "UNKNOWN",
+        "evidenceClaimIds": [
+          "claim-victory-smoke-pass"
+        ]
+      }
+    ],
+    "victoryEvidence": [
+      "build/compile-results.json 全部 exit 0",
+      "tes.read_plugin 讀回記錄數等於產生器清單且 masters == [Skyrim.esm]",
+      "CSF JSON 經 schema 檢查與 perk 參照解析腳本通過",
+      "build/plan-coverage.json 中無 MISSING 項目",
+      "MO2/mods/Elements Spellblade 存在，三個 profile 檔各含對應行",
+      "使用者回報遊戲內三項測試"
+    ],
+    "constraints": [
+      "只寫入 .codex/elemental-spellblade 工作區、MO2/mods/Elements Spellblade、以及 normal profile 的三個清單檔",
+      "不修改任何其他模組的檔案，不寫入 SkyrimSE/Data",
+      "ESP master 只有 Skyrim.esm；借用的特效記錄以複製方式進入本模組",
+      "不使用 build_scripts.py；狹義入口是新的 build_v03.py",
+      "設計以 元素魔戰士規劃-v0.3.md 為準，實作偏離時記錄在該文件的實作備註而不是改設計",
+      "安裝前先備份三個 profile 檔，安裝動作結果未知時先回讀不重做"
+    ],
+    "unacceptableOutcomes": [
+      "任何其他模組或 SkyrimSE/Data 的檔案被修改",
+      "profile 三個清單檔出現不一致（有 mod 行沒有 plugin 行或反之）",
+      "把編譯器或讀取器的故障記成模組故障"
+    ]
+  },
+  "plainBriefing": {
+    "context": "第 16 輪之後改走重設計：舊的每擊 Papyrus 路徑造成延遲與跨目標狀態污染，設計前線把 v0.3 重寫成 v0.3_alter（設計真相）＋ design-latency-2026-09-20.md（實作計畫）。主攻在 2026-09-20 22:25 交棒給第 18 輪實作。",
+    "currentSituation": "兩份設計文件親測無待核准項（5 行命中字串全是收尾標題、已定案註記、已刪待定清單與一個實作開關）；v0.3 原件 mtime 仍是 2026-09-16T07:31:36，未被動過。第 18 輪派遣書 5794 位元組存在，.codex/pre-fix18-snapshot 於 22:26:15 建立、24 檔（20 支 psc＋build_v03.py＋settings.json＋v03-formids.json）齊全且與現場全等。schema lock 仍為 6。Astra 22:25:51 出發，22:37 時只有 src/ESSBState.psc 的 mtime 動過、sha256 未變，進度頁已從 1191 長到 2693 位元組。",
+    "reasoning": "設計出口與實作入口都由本輪親測支持，所以交棒成立；但第 18 輪產物一個位元組都還沒改，實作出口維持 UNKNOWN。四項套件類勝利證據的在冊探測腳本硬寫了 3878 筆而現場是 3941 筆，重放 exit 1，因此一律降回 UNKNOWN 而不是沿用舊 PASS。",
+    "nextMove": "唯一主攻 impl-round18：等 Astra 跑完 build_v03.py 驗收，再以快照對照確認 FormID 與 schema 6→7。",
+    "userRole": "使用者本輪不需進遊戲；第 16 輪安裝版依其裁示保持不遊玩，等重設計版本替換。"
+  },
+  "currentTruth": {
+    "worldState": {
+      "toolchainState": "PROVEN",
+      "packageState": "FX_BOUND",
+      "csfConfigState": "VALID",
+      "planCoverage": "COMPLETE",
+      "installState": "INSTALLED_ENABLED",
+      "smokeState": "ROUND16_INSTALLED_UNPLAYED"
+    },
+    "evidenceClaims": [
+      {
+        "id": "claim-victory-compile-clean",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:python -B \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-08-probe.py\"@2026-09-20T22:36:33+08:00",
+        "observedAt": "2026-09-20T22:36:33+08:00",
+        "validUntil": "2026-09-21T01:36:33+08:00",
+        "authorityRank": 1,
+        "predicate": "PACKAGE_COMPILE_ERRORS == 0",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-victory-esp-valid",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:python -B \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-08-probe.py\"@2026-09-20T22:36:33+08:00",
+        "observedAt": "2026-09-20T22:36:33+08:00",
+        "validUntil": "2026-09-21T01:36:33+08:00",
+        "authorityRank": 1,
+        "predicate": "ESP_INDEPENDENT_READ_VALID == true",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-victory-csf-valid",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:python -B \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-08-probe.py\"@2026-09-20T22:36:33+08:00",
+        "observedAt": "2026-09-20T22:36:33+08:00",
+        "validUntil": "2026-09-21T01:36:33+08:00",
+        "authorityRank": 1,
+        "predicate": "CSF_CONFIG_VALID == true",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-victory-plan-covered",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:python -B \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-08-probe.py\"@2026-09-20T22:36:33+08:00",
+        "observedAt": "2026-09-20T22:36:33+08:00",
+        "validUntil": "2026-09-21T01:36:33+08:00",
+        "authorityRank": 1,
+        "predicate": "PLAN_COVERAGE_COMPLETE == true",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-victory-installed",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:python -B \"D:\\Game\\Other\\SKSE\\.codex\\elemental-spellblade\\.strategic-advance\\essb-standalone-build\\artifacts\\consolidation-10b-probe.py\"@2026-09-20T22:36:34+08:00",
+        "observedAt": "2026-09-20T22:36:34+08:00",
+        "validUntil": "2026-09-21T01:36:34+08:00",
+        "authorityRank": 1,
+        "predicate": "MOD_INSTALLED_ENABLED == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-victory-smoke-pass",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:python -B \"D:\\Game\\Other\\SKSE\\.codex\\elemental-spellblade\\.strategic-advance\\essb-standalone-build\\artifacts\\consolidation-10b-probe.py\"@2026-09-20T22:36:34+08:00",
+        "observedAt": "2026-09-20T22:36:34+08:00",
+        "validUntil": "2026-09-21T01:36:34+08:00",
+        "authorityRank": 1,
+        "predicate": "INGAME_SMOKE_PASS == true",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-front-form-layer-core-entry",
+        "sourceType": "STATIC",
+        "sourceRef": "scribe-probe:ls \"D:/Game/Other/SKSE/MO2/mods/动作共存-Nemesis Unlimited Behavior Engine-动作刷新/Nemesis_Engine/Papyrus Compiler/PapyrusCompiler.exe\" \"D:/Game/Other/SKSE/SkyrimSE/Data/Skyrim.esm\"@2026-09-16T19:44:49+08:00",
+        "observedAt": "2026-09-16T19:44:49+08:00",
+        "validUntil": "2026-09-16T22:44:49+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"form-layer-core\"].ENTRY[\"CAMPAIGN_SEEDED\"] == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-front-form-layer-core-exit",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:cd \"D:/Game/Other/SKSE/.codex/elemental-spellblade\" && python -c \"import json;from tes import read_plugin;from pathlib import Path;rr,meta=read_plugin(Path('package/Elements Spellblade/Elements Spellblade.esp'));m=json.load(open('build/v03-formids.json',encoding='utf-8'));print(len(rr),m.get('record_count'),meta['masters'],hex(meta['flags']))\"@2026-09-16T20:12:15+08:00",
+        "observedAt": "2026-09-16T20:12:15+08:00",
+        "validUntil": "2026-09-16T23:12:15+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"form-layer-core\"].EXIT[\"CORE_PACKAGE_BUILT\"] == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-front-form-layer-core-pivot",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:ls \"D:/Game/Other/SKSE/MO2/mods/动作共存-Nemesis Unlimited Behavior Engine-动作刷新/Nemesis_Engine/Papyrus Compiler/PapyrusCompiler.exe\" \"D:/Game/Other/SKSE/.codex/elemental-spellblade/vendor/imports/PO3_Events_Alias.psc\"@2026-09-16T19:44:49+08:00",
+        "observedAt": "2026-09-16T19:44:49+08:00",
+        "validUntil": "2026-09-16T22:44:49+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"form-layer-core\"].PIVOT_TRIGGERED == true",
+        "status": "FAIL"
+      },
+      {
+        "id": "claim-front-reaction-engine-entry",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:cd \"D:/Game/Other/SKSE/.codex/elemental-spellblade\" && python -c \"import json;from tes import read_plugin;from pathlib import Path;rr,meta=read_plugin(Path('package/Elements Spellblade/Elements Spellblade.esp'));m=json.load(open('build/v03-formids.json',encoding='utf-8'));print(len(rr),m.get('record_count'),meta['masters'],hex(meta['flags']))\"@2026-09-16T20:12:15+08:00",
+        "observedAt": "2026-09-16T20:12:15+08:00",
+        "validUntil": "2026-09-16T23:12:15+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"reaction-engine\"].ENTRY[\"CORE_PACKAGE_BUILT\"] == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-front-reaction-engine-exit",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:cd \"D:/Game/Other/SKSE/.codex/elemental-spellblade\" && python -c \"import json;from tes import read_plugin;from pathlib import Path;rr,meta=read_plugin(Path('package/Elements Spellblade/Elements Spellblade.esp'));m=json.load(open('build/v03-formids.json',encoding='utf-8'));print(len(rr),m.get('record_count'),meta['masters'],hex(meta['flags']))\"@2026-09-16T20:12:15+08:00",
+        "observedAt": "2026-09-16T20:13:19+08:00",
+        "validUntil": "2026-09-16T23:13:19+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"reaction-engine\"].EXIT[\"ENGINE_BUILT\"] == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-front-reaction-engine-pivot",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:cd \"D:/Game/Other/SKSE/.codex/elemental-spellblade\" && python -c \"import json;from tes import read_plugin;from pathlib import Path;rr,meta=read_plugin(Path('package/Elements Spellblade/Elements Spellblade.esp'));m=json.load(open('build/v03-formids.json',encoding='utf-8'));print(len(rr),m.get('record_count'),meta['masters'],hex(meta['flags']))\"@2026-09-16T20:12:15+08:00",
+        "observedAt": "2026-09-16T20:12:15+08:00",
+        "validUntil": "2026-09-16T23:12:15+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"reaction-engine\"].PIVOT_TRIGGERED == true",
+        "status": "FAIL"
+      },
+      {
+        "id": "claim-front-skill-trees-entry",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:cd \"D:/Game/Other/SKSE/.codex/elemental-spellblade\" && python -c \"import json;from tes import read_plugin;from pathlib import Path;rr,meta=read_plugin(Path('package/Elements Spellblade/Elements Spellblade.esp'));m=json.load(open('build/v03-formids.json',encoding='utf-8'));print(len(rr),m.get('record_count'),meta['masters'],hex(meta['flags']))\"@2026-09-16T20:12:15+08:00",
+        "observedAt": "2026-09-16T20:13:19+08:00",
+        "validUntil": "2026-09-16T23:13:19+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"skill-trees\"].ENTRY[\"ENGINE_BUILT\"] == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-front-skill-trees-exit",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:cd \"D:/Game/Other/SKSE/.codex/elemental-spellblade\" && python -c \"import json;from tes import read_plugin;from pathlib import Path;rr,meta=read_plugin(Path('package/Elements Spellblade/Elements Spellblade.esp'));m=json.load(open('build/v03-formids.json',encoding='utf-8'));print(len(rr),m.get('record_count'),meta['masters'],hex(meta['flags']),len(rr)-len({r.key for r in rr}))\"@2026-09-16T20:44:38+08:00",
+        "observedAt": "2026-09-16T20:46:54+08:00",
+        "validUntil": "2026-09-16T23:46:54+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"skill-trees\"].EXIT[\"TREES_BUILT\"] == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-front-skill-trees-pivot",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:cd \"D:/Game/Other/SKSE/.codex/elemental-spellblade\" && python -c \"import json;from tes import read_plugin;from pathlib import Path;rr,meta=read_plugin(Path('package/Elements Spellblade/Elements Spellblade.esp'));m=json.load(open('build/v03-formids.json',encoding='utf-8'));print(len(rr),m.get('record_count'),meta['masters'],hex(meta['flags']),len(rr)-len({r.key for r in rr}))\"@2026-09-16T20:44:38+08:00",
+        "observedAt": "2026-09-16T20:44:38+08:00",
+        "validUntil": "2026-09-16T23:44:38+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"skill-trees\"].PIVOT_TRIGGERED == true",
+        "status": "FAIL"
+      },
+      {
+        "id": "claim-front-element-mechanics-entry",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:cd \"D:/Game/Other/SKSE/.codex/elemental-spellblade\" && python -c \"import json;from tes import read_plugin;from pathlib import Path;rr,meta=read_plugin(Path('package/Elements Spellblade/Elements Spellblade.esp'));m=json.load(open('build/v03-formids.json',encoding='utf-8'));print(len(rr),m.get('record_count'),meta['masters'],hex(meta['flags']),len(rr)-len({r.key for r in rr}))\"@2026-09-17T20:09:14+08:00",
+        "observedAt": "2026-09-17T20:09:14+08:00",
+        "validUntil": "2026-09-17T23:09:14+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"element-mechanics\"].ENTRY[\"TREES_BUILT\"] == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-front-element-mechanics-exit",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:cd \"D:/Game/Other/SKSE/.codex/elemental-spellblade\" && python -c \"import json;from tes import read_plugin;from pathlib import Path;rr,meta=read_plugin(Path('package/Elements Spellblade/Elements Spellblade.esp'));m=json.load(open('build/v03-formids.json',encoding='utf-8'));print(len(rr),m.get('record_count'),meta['masters'],hex(meta['flags']),len(rr)-len({r.key for r in rr}))\"@2026-09-17T20:57:39+08:00",
+        "observedAt": "2026-09-17T20:59:12+08:00",
+        "validUntil": "2026-09-17T23:59:12+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"element-mechanics\"].EXIT[\"MECHANICS_BUILT\"] == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-front-element-mechanics-pivot",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:cd \"D:/Game/Other/SKSE/.codex/elemental-spellblade\" && python -c \"import json;from tes import read_plugin;from pathlib import Path;rr,meta=read_plugin(Path('package/Elements Spellblade/Elements Spellblade.esp'));m=json.load(open('build/v03-formids.json',encoding='utf-8'));print(len(rr),m.get('record_count'),meta['masters'],hex(meta['flags']),len(rr)-len({r.key for r in rr}))\"@2026-09-17T20:09:14+08:00",
+        "observedAt": "2026-09-17T20:09:14+08:00",
+        "validUntil": "2026-09-17T23:09:14+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"element-mechanics\"].PIVOT_TRIGGERED == true",
+        "status": "FAIL"
+      },
+      {
+        "id": "claim-front-fx-assets-entry",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:cd \"D:/Game/Other/SKSE/.codex/elemental-spellblade\" && python -c \"import json;from tes import read_plugin;from pathlib import Path;rr,meta=read_plugin(Path('package/Elements Spellblade/Elements Spellblade.esp'));m=json.load(open('build/v03-formids.json',encoding='utf-8'));print(len(rr),m.get('record_count'),meta['masters'],hex(meta['flags']),len(rr)-len({r.key for r in rr}))\"@2026-09-17T20:57:39+08:00",
+        "observedAt": "2026-09-17T20:59:12+08:00",
+        "validUntil": "2026-09-17T23:59:12+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"fx-assets\"].ENTRY[\"MECHANICS_BUILT\"] == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-front-fx-assets-exit",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:python -B \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-08-probe.py\"@2026-09-17T22:30:13+08:00",
+        "observedAt": "2026-09-17T22:32:15+08:00",
+        "validUntil": "2026-09-18T01:32:15+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"fx-assets\"].EXIT[\"FX_BOUND\"] == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-front-fx-assets-pivot",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:cd \"D:/Game/Other/SKSE/.codex/elemental-spellblade\" && python -c \"import json;from tes import read_plugin;from pathlib import Path;rr,meta=read_plugin(Path('package/Elements Spellblade/Elements Spellblade.esp'));m=json.load(open('build/v03-formids.json',encoding='utf-8'));print(len(rr),m.get('record_count'),meta['masters'],hex(meta['flags']),len(rr)-len({r.key for r in rr}))\"@2026-09-17T20:57:39+08:00",
+        "observedAt": "2026-09-17T20:57:39+08:00",
+        "validUntil": "2026-09-17T23:57:39+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"fx-assets\"].PIVOT_TRIGGERED == true",
+        "status": "FAIL"
+      },
+      {
+        "id": "claim-front-install-enable-entry",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:python -B \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-08-probe.py\"@2026-09-17T22:30:13+08:00",
+        "observedAt": "2026-09-17T22:32:15+08:00",
+        "validUntil": "2026-09-18T01:32:15+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"install-enable\"].ENTRY[\"FX_BOUND\"] == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-front-install-enable-exit",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:python -B \"D:\\Game\\Other\\SKSE\\.codex\\elemental-spellblade\\.strategic-advance\\essb-standalone-build/artifacts/consolidation-09-probe.py\"@2026-09-17T22:30:13+08:00",
+        "observedAt": "2026-09-17T22:32:15+08:00",
+        "validUntil": "2026-09-18T01:32:15+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"install-enable\"].EXIT[\"INSTALLED_ENABLED\"] == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-front-install-enable-pivot",
+        "sourceType": "DB",
+        "sourceRef": "seeded: pending probe",
+        "observedAt": "2026-09-16T07:36:05+08:00",
+        "validUntil": "2026-09-16T10:36:05+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"install-enable\"].PIVOT_TRIGGERED == true",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-front-install-enable-recovery",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:python -B \"D:\\Game\\Other\\SKSE\\.codex\\elemental-spellblade\\.strategic-advance\\essb-standalone-build/artifacts/consolidation-09-probe.py\"@2026-09-17T22:30:13+08:00",
+        "observedAt": "2026-09-17T22:32:15+08:00",
+        "validUntil": "2026-09-18T01:32:15+08:00",
+        "authorityRank": 1,
+        "predicate": "PROFILE_BACKUP_TRIPLE_EXISTS == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-front-ingame-smoke-entry",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:python -B \"D:\\Game\\Other\\SKSE\\.codex\\elemental-spellblade\\.strategic-advance\\essb-standalone-build\\artifacts\\consolidation-10b-probe.py\"@2026-09-20T22:36:34+08:00",
+        "observedAt": "2026-09-20T22:36:34+08:00",
+        "validUntil": "2026-09-21T01:36:34+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"ingame-smoke\"].ENTRY[\"INSTALLED_ENABLED\"] == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-front-ingame-smoke-exit",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:python -B \"D:\\Game\\Other\\SKSE\\.codex\\elemental-spellblade\\.strategic-advance\\essb-standalone-build\\artifacts\\consolidation-10b-probe.py\"@2026-09-20T22:36:34+08:00",
+        "observedAt": "2026-09-20T22:36:34+08:00",
+        "validUntil": "2026-09-21T01:36:34+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"ingame-smoke\"].EXIT[\"SMOKE_VERIFIED\"] == true",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-front-ingame-smoke-pivot",
+        "sourceType": "DB",
+        "sourceRef": "seeded: pending probe",
+        "observedAt": "2026-09-16T07:36:05+08:00",
+        "validUntil": "2026-09-16T10:36:05+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"ingame-smoke\"].PIVOT_TRIGGERED == true",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-risk-profile-inconsistency-controlled",
+        "sourceType": "STATIC",
+        "sourceRef": "seeded: pending probe",
+        "observedAt": "2026-09-16T07:36:05+08:00",
+        "validUntil": "2026-09-16T10:36:05+08:00",
+        "authorityRank": 1,
+        "predicate": "RISK[\"profile-inconsistency\"]@FRONT[\"install-enable\"].STATUS == \"CONTROLLED\"",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-risk-profile-inconsistency-accepted",
+        "sourceType": "STATIC",
+        "sourceRef": "seeded: pending probe",
+        "observedAt": "2026-09-16T07:36:05+08:00",
+        "validUntil": "2026-09-16T10:36:05+08:00",
+        "authorityRank": 1,
+        "predicate": "RISK[\"profile-inconsistency\"]@FRONT[\"install-enable\"].STATUS == \"ACCEPTED\"",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-risk-profile-inconsistency-closed",
+        "sourceType": "STATIC",
+        "sourceRef": "seeded: pending probe",
+        "observedAt": "2026-09-16T07:36:05+08:00",
+        "validUntil": "2026-09-16T10:36:05+08:00",
+        "authorityRank": 1,
+        "predicate": "RISK[\"profile-inconsistency\"]@FRONT[\"install-enable\"].STATUS == \"CLOSED\"",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-risk-foreign-write-controlled",
+        "sourceType": "STATIC",
+        "sourceRef": "seeded: pending probe",
+        "observedAt": "2026-09-16T07:36:05+08:00",
+        "validUntil": "2026-09-16T10:36:05+08:00",
+        "authorityRank": 1,
+        "predicate": "RISK[\"foreign-write\"]@FRONT[\"fx-assets\"].STATUS == \"CONTROLLED\"",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-risk-foreign-write-accepted",
+        "sourceType": "STATIC",
+        "sourceRef": "seeded: pending probe",
+        "observedAt": "2026-09-16T07:36:05+08:00",
+        "validUntil": "2026-09-16T10:36:05+08:00",
+        "authorityRank": 1,
+        "predicate": "RISK[\"foreign-write\"]@FRONT[\"fx-assets\"].STATUS == \"ACCEPTED\"",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-risk-foreign-write-closed",
+        "sourceType": "STATIC",
+        "sourceRef": "seeded: pending probe",
+        "observedAt": "2026-09-16T07:36:05+08:00",
+        "validUntil": "2026-09-16T10:36:05+08:00",
+        "authorityRank": 1,
+        "predicate": "RISK[\"foreign-write\"]@FRONT[\"fx-assets\"].STATUS == \"CLOSED\"",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-route-manual-install-closed",
+        "sourceType": "STATIC",
+        "sourceRef": "seeded: pending probe",
+        "observedAt": "2026-09-16T07:36:05+08:00",
+        "validUntil": "2026-09-16T10:36:05+08:00",
+        "authorityRank": 1,
+        "predicate": "ROUTE[\"manual-install\"].STATUS == \"CLOSED\"",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-route-manual-install-unsafe",
+        "sourceType": "STATIC",
+        "sourceRef": "seeded: pending probe",
+        "observedAt": "2026-09-16T07:36:05+08:00",
+        "validUntil": "2026-09-16T10:36:05+08:00",
+        "authorityRank": 1,
+        "predicate": "ROUTE[\"manual-install\"].STATUS == \"UNSAFE\"",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-route-manual-install-requires-authority",
+        "sourceType": "STATIC",
+        "sourceRef": "seeded: pending probe",
+        "observedAt": "2026-09-16T07:36:05+08:00",
+        "validUntil": "2026-09-16T10:36:05+08:00",
+        "authorityRank": 1,
+        "predicate": "ROUTE[\"manual-install\"].STATUS == \"REQUIRES_AUTHORITY\"",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-loss-outcome-1",
+        "sourceType": "LOG",
+        "sourceRef": "scribe-probe:rg -n MUTATION_INSTALL \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/run-ledger.jsonl\"@2026-09-17T22:34:08+08:00",
+        "observedAt": "2026-09-17T22:34:08+08:00",
+        "validUntil": "2026-09-18T01:34:08+08:00",
+        "authorityRank": 1,
+        "predicate": "UNACCEPTABLE_OUTCOME[\"任何其他模組或 SkyrimSE/Data 的檔案被修改\"].ABSENT == true",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-loss-outcome-2",
+        "sourceType": "LOG",
+        "sourceRef": "scribe-probe:python -B \"D:\\Game\\Other\\SKSE\\.codex\\elemental-spellblade\\.strategic-advance\\essb-standalone-build/artifacts/consolidation-09-probe.py\"@2026-09-17T22:30:13+08:00",
+        "observedAt": "2026-09-17T22:30:13+08:00",
+        "validUntil": "2026-09-18T01:30:13+08:00",
+        "authorityRank": 1,
+        "predicate": "UNACCEPTABLE_OUTCOME[\"profile 三個清單檔出現不一致（有 mod 行沒有 plugin 行或反之）\"].ABSENT == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-loss-outcome-3",
+        "sourceType": "LOG",
+        "sourceRef": "seeded: pending probe",
+        "observedAt": "2026-09-16T07:36:05+08:00",
+        "validUntil": "2026-09-16T10:36:05+08:00",
+        "authorityRank": 1,
+        "predicate": "UNACCEPTABLE_OUTCOME[\"把編譯器或讀取器的故障記成模組故障\"].ABSENT == true",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-loss-residual-foreign-files-modified",
+        "sourceType": "DB",
+        "sourceRef": "scribe-probe:rg -n MUTATION_INSTALL \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/run-ledger.jsonl\"@2026-09-17T22:34:08+08:00",
+        "observedAt": "2026-09-17T22:34:09+08:00",
+        "validUntil": "2026-09-18T01:34:09+08:00",
+        "authorityRank": 1,
+        "predicate": "OTHER_MOD_FILES_MODIFIED_COUNT == 0",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-loss-victory-unattainable",
+        "sourceType": "DB",
+        "sourceRef": "seeded: pending probe",
+        "observedAt": "2026-09-16T07:36:05+08:00",
+        "validUntil": "2026-09-16T10:36:05+08:00",
+        "authorityRank": 1,
+        "predicate": "STRATEGIC_VICTORY_UNATTAINABLE_UNDER_CURRENT_CONSTRAINTS == true",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-toolchain-prototype-compiles",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:cat \"D:/Game/Other/SKSE/.codex/elemental-spellblade/build/melee-compiler-results.json\"@2026-09-17T20:09:14+08:00",
+        "observedAt": "2026-09-17T20:09:14+08:00",
+        "validUntil": "2026-09-17T23:09:14+08:00",
+        "authorityRank": 2,
+        "predicate": "PROTOTYPE_COMPILE_ERRORS == 0",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-world-package-state-before-02",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:grep -n \"\\\"packageState\\\": \\\"PROTOTYPE_STALE\\\"\" \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-02-state-before.json\"@2026-09-16T07:59:53+0800",
+        "observedAt": "2026-09-16T07:41:00+08:00",
+        "validUntil": "2026-09-16T10:41:00+08:00",
+        "authorityRank": 1,
+        "predicate": "WORLD[\"elements-spellblade-package\"].DIMENSION[\"packageState\"] == \"PROTOTYPE_STALE\"",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-world-package-state-after-02",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:cd \"D:/Game/Other/SKSE/.codex/elemental-spellblade\" && python -c \"import json;from tes import read_plugin;from pathlib import Path;rr,meta=read_plugin(Path('package/Elements Spellblade/Elements Spellblade.esp'));m=json.load(open('build/v03-formids.json',encoding='utf-8'));print(len(rr),m.get('record_count'),meta['masters'],hex(meta['flags']))\"@2026-09-16T07:57:41+0800",
+        "observedAt": "2026-09-16T07:57:41+08:00",
+        "validUntil": "2026-09-16T10:57:41+08:00",
+        "authorityRank": 1,
+        "predicate": "WORLD[\"elements-spellblade-package\"].DIMENSION[\"packageState\"] == \"CORE_PACKAGE_BUILT\"",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-world-package-state-before-04",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:grep -n \"\\\"packageState\\\": \\\"CORE_PACKAGE_BUILT\\\"\" \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-04-state-before.json\"@2026-09-16T20:13:19+08:00",
+        "observedAt": "2026-09-16T07:57:41+08:00",
+        "validUntil": "2026-09-16T10:57:41+08:00",
+        "authorityRank": 1,
+        "predicate": "WORLD[\"elements-spellblade-package\"].DIMENSION[\"packageState\"] == \"CORE_PACKAGE_BUILT\"",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-world-package-state-after-04",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:cd \"D:/Game/Other/SKSE/.codex/elemental-spellblade\" && python -c \"import json;from tes import read_plugin;from pathlib import Path;rr,meta=read_plugin(Path('package/Elements Spellblade/Elements Spellblade.esp'));m=json.load(open('build/v03-formids.json',encoding='utf-8'));print(len(rr),m.get('record_count'),meta['masters'],hex(meta['flags']))\"@2026-09-16T20:12:15+08:00",
+        "observedAt": "2026-09-16T20:12:15+08:00",
+        "validUntil": "2026-09-16T23:12:15+08:00",
+        "authorityRank": 1,
+        "predicate": "WORLD[\"elements-spellblade-package\"].DIMENSION[\"packageState\"] == \"ENGINE_BUILT\"",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-world-package-state-before-05",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:grep -n \"\\\"packageState\\\": \\\"ENGINE_BUILT\\\"\" \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-05-state-before.json\"@2026-09-16T20:46:54+08:00",
+        "observedAt": "2026-09-16T20:12:15+08:00",
+        "validUntil": "2026-09-16T23:12:15+08:00",
+        "authorityRank": 1,
+        "predicate": "WORLD[\"elements-spellblade-package\"].DIMENSION[\"packageState\"] == \"ENGINE_BUILT\"",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-world-package-state-after-05",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:cd \"D:/Game/Other/SKSE/.codex/elemental-spellblade\" && python -c \"import json;from tes import read_plugin;from pathlib import Path;rr,meta=read_plugin(Path('package/Elements Spellblade/Elements Spellblade.esp'));m=json.load(open('build/v03-formids.json',encoding='utf-8'));print(len(rr),m.get('record_count'),meta['masters'],hex(meta['flags']),len(rr)-len({r.key for r in rr}))\"@2026-09-16T20:44:38+08:00",
+        "observedAt": "2026-09-16T20:44:38+08:00",
+        "validUntil": "2026-09-16T23:44:38+08:00",
+        "authorityRank": 1,
+        "predicate": "WORLD[\"elements-spellblade-package\"].DIMENSION[\"packageState\"] == \"TREES_BUILT\"",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-world-csf-state-before-05",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:grep -n \"\\\"csfConfigState\\\": \\\"ABSENT\\\"\" \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-05-state-before.json\"@2026-09-16T20:46:54+08:00",
+        "observedAt": "2026-09-16T07:36:05+08:00",
+        "validUntil": "2026-09-16T10:36:05+08:00",
+        "authorityRank": 1,
+        "predicate": "WORLD[\"elements-spellblade-package\"].DIMENSION[\"csfConfigState\"] == \"ABSENT\"",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-world-csf-state-after-05",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:grep -n -E \"\\\"(files|valid|nodes)\\\": |\\\"perk_refs_resolved\\\": \" \"D:/Game/Other/SKSE/.codex/elemental-spellblade/build/csf-validate.json\"@2026-09-16T20:46:54+08:00",
+        "observedAt": "2026-09-16T20:46:54+08:00",
+        "validUntil": "2026-09-16T23:46:54+08:00",
+        "authorityRank": 1,
+        "predicate": "WORLD[\"elements-spellblade-package\"].DIMENSION[\"csfConfigState\"] == \"VALID\"",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-world-package-state-before-07",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:grep -n \"packageState.: .TREES_BUILT\" \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-07-state-before.json\"@2026-09-17T21:00:11+08:00",
+        "observedAt": "2026-09-16T20:44:38+08:00",
+        "validUntil": "2026-09-16T23:44:38+08:00",
+        "authorityRank": 1,
+        "predicate": "WORLD[\"elements-spellblade-package\"].DIMENSION[\"packageState\"] == \"TREES_BUILT\"",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-world-package-state-after-07",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:cd \"D:/Game/Other/SKSE/.codex/elemental-spellblade\" && python -c \"import json;from tes import read_plugin;from pathlib import Path;rr,meta=read_plugin(Path('package/Elements Spellblade/Elements Spellblade.esp'));m=json.load(open('build/v03-formids.json',encoding='utf-8'));print(len(rr),m.get('record_count'),meta['masters'],hex(meta['flags']),len(rr)-len({r.key for r in rr}))\"@2026-09-17T20:57:39+08:00",
+        "observedAt": "2026-09-17T20:57:39+08:00",
+        "validUntil": "2026-09-17T23:57:39+08:00",
+        "authorityRank": 1,
+        "predicate": "WORLD[\"elements-spellblade-package\"].DIMENSION[\"packageState\"] == \"MECHANICS_BUILT\"",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-world-plan-coverage-before-07",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:grep -n \"planCoverage.: .NONE\" \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-07-state-before.json\"@2026-09-17T21:00:11+08:00",
+        "observedAt": "2026-09-16T07:36:05+08:00",
+        "validUntil": "2026-09-16T10:36:05+08:00",
+        "authorityRank": 1,
+        "predicate": "WORLD[\"elements-spellblade-package\"].DIMENSION[\"planCoverage\"] == \"NONE\"",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-world-plan-coverage-after-07",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:grep -n -A 12 totals \"D:/Game/Other/SKSE/.codex/elemental-spellblade/build/plan-coverage.json\"@2026-09-17T20:58:35+08:00",
+        "observedAt": "2026-09-17T20:58:35+08:00",
+        "validUntil": "2026-09-17T23:58:35+08:00",
+        "authorityRank": 1,
+        "predicate": "WORLD[\"elements-spellblade-package\"].DIMENSION[\"planCoverage\"] == \"COMPLETE\"",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-world-package-state-after-08",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:python -B \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-08-probe.py\"@2026-09-17T22:25:05+08:00",
+        "observedAt": "2026-09-17T22:25:05+08:00",
+        "validUntil": "2026-09-18T01:25:05+08:00",
+        "authorityRank": 1,
+        "predicate": "WORLD[\"elements-spellblade-package\"].DIMENSION[\"packageState\"] == \"FX_BOUND\"",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-world-package-state-before-08",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:rg -n packageState \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-08-state-before.json\"@2026-09-17T22:25:05+08:00",
+        "observedAt": "2026-09-17T22:25:05+08:00",
+        "validUntil": "2026-09-18T01:25:05+08:00",
+        "authorityRank": 1,
+        "predicate": "WORLD[\"elements-spellblade-package\"].DIMENSION[\"packageState\"] == \"MECHANICS_BUILT\"",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-installed-inventory-10b",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:python -B \"D:\\Game\\Other\\SKSE\\.codex\\elemental-spellblade\\.strategic-advance\\essb-standalone-build\\artifacts\\consolidation-10b-probe.py\"@2026-09-20T22:36:34+08:00",
+        "observedAt": "2026-09-20T22:36:34+08:00",
+        "validUntil": "2026-09-21T01:36:34+08:00",
+        "authorityRank": 1,
+        "predicate": "INSTALLED_FILES == 54 AND PEX_FILES == 19 AND CSF_JSON_FILES == 13 AND MCM_EXISTS == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-smoke-round1-log-10b",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:python -B \"D:\\Game\\Other\\SKSE\\.codex\\elemental-spellblade\\.strategic-advance\\essb-standalone-build\\artifacts\\consolidation-10b-probe.py\"@2026-09-20T22:36:34+08:00",
+        "observedAt": "2026-09-20T22:36:34+08:00",
+        "validUntil": "2026-09-21T01:36:34+08:00",
+        "authorityRank": 1,
+        "predicate": "ROUND1_SMOKE_LOG_HAS_CORE_EVENTS == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-installed-backup-10b",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:python -B \"D:\\Game\\Other\\SKSE\\.codex\\elemental-spellblade\\.strategic-advance\\essb-standalone-build\\artifacts\\consolidation-10b-probe.py\"@2026-09-20T22:36:34+08:00",
+        "observedAt": "2026-09-20T22:36:34+08:00",
+        "validUntil": "2026-09-21T01:36:34+08:00",
+        "authorityRank": 1,
+        "predicate": "PREVIOUS_INSTALLED_BACKUP_FILES == 49",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-front-design-redesign-exit",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:python -B \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-11-probe.py\"@2026-09-20T22:36:40+08:00",
+        "observedAt": "2026-09-20T22:36:40+08:00",
+        "validUntil": "2026-09-21T01:36:40+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"design-redesign\"].EXIT[\"DESIGN_FINALIZED\"] == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-design-open-items-zero",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:python -B \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-11-probe.py\"@2026-09-20T22:36:40+08:00",
+        "observedAt": "2026-09-20T22:36:40+08:00",
+        "validUntil": "2026-09-21T01:36:40+08:00",
+        "authorityRank": 1,
+        "predicate": "DESIGN_DOC_OPEN_APPROVAL_ITEMS == 0",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-design-plan-v03-untouched",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:python -B \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-11-probe.py\"@2026-09-20T22:36:40+08:00",
+        "observedAt": "2026-09-20T22:36:40+08:00",
+        "validUntil": "2026-09-21T01:36:40+08:00",
+        "authorityRank": 1,
+        "predicate": "PROTECTED_ASSET[\"plan-document\"].MTIME_UNCHANGED == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-front-impl-round18-entry",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:python -B \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-11-probe.py\"@2026-09-20T22:36:40+08:00",
+        "observedAt": "2026-09-20T22:36:40+08:00",
+        "validUntil": "2026-09-21T01:36:40+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"impl-round18\"].ENTRY[\"DESIGN_FINALIZED\"] == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-front-impl-round18-exit",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:python -B \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-11-probe.py\"@2026-09-20T22:36:40+08:00",
+        "observedAt": "2026-09-20T22:36:40+08:00",
+        "validUntil": "2026-09-21T01:36:40+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"impl-round18\"].EXIT[\"ROUND18_BUILT\"] == true",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-front-impl-round18-pivot",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:python -B \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-11-probe.py\"@2026-09-20T22:36:40+08:00",
+        "observedAt": "2026-09-20T22:36:40+08:00",
+        "validUntil": "2026-09-21T01:36:40+08:00",
+        "authorityRank": 1,
+        "predicate": "BATTLEFIELD[\"impl-round18\"].PIVOT_TRIGGERED == true",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-front-impl-round18-recovery",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:python -B \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-11-recovery-probe.py\"@2026-09-20T22:37:45+08:00",
+        "observedAt": "2026-09-20T22:37:45+08:00",
+        "validUntil": "2026-09-21T01:37:45+08:00",
+        "authorityRank": 1,
+        "predicate": "PRE_FIX18_SNAPSHOT_RESTORABLE == true",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-impl-round18-schema-entry",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:python -B \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-11-probe.py\"@2026-09-20T22:36:40+08:00",
+        "observedAt": "2026-09-20T22:36:40+08:00",
+        "validUntil": "2026-09-21T01:36:40+08:00",
+        "authorityRank": 1,
+        "predicate": "STATE_SCHEMA_LOCK_VERSION == 6",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-impl-round18-no-product-mutation-yet",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:python -B \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-11-recovery-probe.py\"@2026-09-20T22:37:45+08:00",
+        "observedAt": "2026-09-20T22:37:45+08:00",
+        "validUntil": "2026-09-21T01:37:45+08:00",
+        "authorityRank": 1,
+        "predicate": "ROUND18_PRODUCT_FILES_CHANGED_COUNT == 0",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-risk-design-truth-controlled",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:python -B \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-11-probe.py\"@2026-09-20T22:36:40+08:00",
+        "observedAt": "2026-09-20T22:36:40+08:00",
+        "validUntil": "2026-09-21T01:36:40+08:00",
+        "authorityRank": 1,
+        "predicate": "RISK[\"design-truth-overwritten\"]@FRONT[\"impl-round18\"].STATUS == \"CONTROLLED\"",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-risk-design-truth-accepted",
+        "sourceType": "STATIC",
+        "sourceRef": "未探測：本輪無證據支持把設計真相風險降為 ACCEPTED",
+        "observedAt": "2026-09-20T22:36:40+08:00",
+        "validUntil": "2026-09-21T01:36:40+08:00",
+        "authorityRank": 1,
+        "predicate": "RISK[\"design-truth-overwritten\"]@FRONT[\"impl-round18\"].STATUS == \"ACCEPTED\"",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-risk-design-truth-closed",
+        "sourceType": "STATIC",
+        "sourceRef": "未探測：第 18 輪仍在進行，風險不可能已關閉",
+        "observedAt": "2026-09-20T22:36:40+08:00",
+        "validUntil": "2026-09-21T01:36:40+08:00",
+        "authorityRank": 1,
+        "predicate": "RISK[\"design-truth-overwritten\"]@FRONT[\"impl-round18\"].STATUS == \"CLOSED\"",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-risk-organ-collision-controlled",
+        "sourceType": "FILE",
+        "sourceRef": "scribe-probe:python -B \"D:/Game/Other/SKSE/.codex/elemental-spellblade/.strategic-advance/essb-standalone-build/artifacts/consolidation-11-recovery-probe.py\"@2026-09-20T22:37:45+08:00",
+        "observedAt": "2026-09-20T22:37:45+08:00",
+        "validUntil": "2026-09-21T01:37:45+08:00",
+        "authorityRank": 1,
+        "predicate": "RISK[\"concurrent-organ-write-collision\"]@FRONT[\"impl-round18\"].STATUS == \"CONTROLLED\"",
+        "status": "PASS"
+      },
+      {
+        "id": "claim-risk-organ-collision-accepted",
+        "sourceType": "STATIC",
+        "sourceRef": "未探測：本輪無證據支持把雙器官寫入衝突風險降為 ACCEPTED",
+        "observedAt": "2026-09-20T22:37:45+08:00",
+        "validUntil": "2026-09-21T01:37:45+08:00",
+        "authorityRank": 1,
+        "predicate": "RISK[\"concurrent-organ-write-collision\"]@FRONT[\"impl-round18\"].STATUS == \"ACCEPTED\"",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-risk-organ-collision-closed",
+        "sourceType": "STATIC",
+        "sourceRef": "未探測：兩個器官仍在執行中，風險不可能已關閉",
+        "observedAt": "2026-09-20T22:37:45+08:00",
+        "validUntil": "2026-09-21T01:37:45+08:00",
+        "authorityRank": 1,
+        "predicate": "RISK[\"concurrent-organ-write-collision\"]@FRONT[\"impl-round18\"].STATUS == \"CLOSED\"",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-cleanup-record-drift",
+        "sourceType": "LOG",
+        "sourceRef": "未探測：第 9–17 輪是否已在正式板上有對應戰場，要等一次完整重建才能判定",
+        "observedAt": "2026-09-20T22:37:45+08:00",
+        "validUntil": "2026-09-21T01:37:45+08:00",
+        "authorityRank": 1,
+        "predicate": "LEDGER_ROUNDS_9_TO_17_REPRESENTED_IN_STATE == true",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-cleanup-round16-superseded",
+        "sourceType": "FILE",
+        "sourceRef": "未探測：重設計版本尚未建置完成，無從判定安裝副本是否已被取代",
+        "observedAt": "2026-09-20T22:37:45+08:00",
+        "validUntil": "2026-09-21T01:37:45+08:00",
+        "authorityRank": 1,
+        "predicate": "INSTALLED_BUILD_SUPERSEDED_BY_REDESIGN == true",
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "claim-cleanup-water-flow-doc",
+        "sourceType": "FILE",
+        "sourceRef": "未探測：Fable 22:36 才派出，22:36:40 的探測所見 alter 檔 mtime 仍是 22:31:32，水系魔力回復條目尚未落檔",
+        "observedAt": "2026-09-20T22:37:45+08:00",
+        "validUntil": "2026-09-21T01:37:45+08:00",
+        "authorityRank": 1,
+        "predicate": "DESIGN_WATER_FLOW_MAGICKA_DOCUMENTED == true",
+        "status": "UNKNOWN"
+      }
+    ],
+    "observerHealth": [],
+    "cleanupDebt": [
+      {
+        "id": "record-drift-rounds-9-17",
+        "residue": "state.json 自 2026-09-18 06:54 起未再收束：第 9–17 輪修正、CACO/CCOR 停用、以及整個設計重做前線都只存在於 run-ledger.jsonl，正式板上沒有對應戰場，第 11 次收束是在兩天份的落差上重建棋盤。",
+        "owner": "scribe",
+        "cleanupAction": "第 18 輪收線時做一次完整重建（full reconstruction），把第 9–17 輪的世界變化補成可追溯的戰場與宣稱，而不是只補輕量收束。",
+        "verificationPredicate": "LEDGER_ROUNDS_9_TO_17_REPRESENTED_IN_STATE == true",
+        "severity": "NON_BLOCKING",
+        "blocksVictory": false,
+        "status": "OPEN",
+        "evidenceClaimIds": [
+          "claim-cleanup-record-drift"
+        ]
+      },
+      {
+        "id": "round16-defect-build-installed",
+        "residue": "MO2 normal profile 上安裝的仍是第 16 輪版本，帶毒／星界跨目標狀態污染缺陷。使用者裁示不回退到第 14 輪（「沒差 我可以等 反正會重開黨」），該版本保持已安裝但不遊玩，曝險因此是延後而不是現在發生。",
+        "owner": "user",
+        "cleanupAction": "重設計版本（第 18 輪起）通過驗收後重建並覆蓋安裝副本；在覆蓋前不得請使用者以第 16 輪版本實機驗收。",
+        "verificationPredicate": "INSTALLED_BUILD_SUPERSEDED_BY_REDESIGN == true",
+        "severity": "NON_BLOCKING",
+        "blocksVictory": false,
+        "status": "OPEN",
+        "evidenceClaimIds": [
+          "claim-cleanup-round16-superseded"
+        ]
+      },
+      {
+        "id": "design-water-flow-magicka-trailing",
+        "residue": "設計前線收線後才追加的文件變更：水系「長流」須另回復每秒 0.8% 最大魔力（刻意低於 1.0%/s 的形態維持費），且水樹「回流」與共通樹「回流」名稱衝突待解。22:36 已派 Fable 以純文件方式處理，禁止碰 src/ 與 build_v03.py。",
+        "owner": "fable",
+        "cleanupAction": "Fable 只改 元素魔戰士規劃-v0.3_alter.md 與 design-latency-2026-09-20.md；完成後書記官重探兩檔，並以新時間戳換掉 design-redesign 的出口證據。",
+        "verificationPredicate": "DESIGN_WATER_FLOW_MAGICKA_DOCUMENTED == true",
+        "severity": "NON_BLOCKING",
+        "blocksVictory": false,
+        "status": "OPEN",
+        "evidenceClaimIds": [
+          "claim-cleanup-water-flow-doc"
+        ]
+      }
+    ]
+  },
+  "riskRegister": [
+    {
+      "id": "design-truth-overwritten",
+      "affectedFrontId": "impl-round18",
+      "protectedAssetId": "plan-document",
+      "threat": "第 18 輪執行體對整個 campaign root 有寫入能力；三份設計文件（元素魔戰士規劃-v0.3.md、同名 _alter、design-latency-2026-09-20.md）若被改寫，設計真相即遺失。使用者硬性約束：v0.3 一個位元組都不能動。",
+      "status": "CONTROLLED",
+      "probability": 2,
+      "impact": 5,
+      "score": 10,
+      "unacceptableThreshold": 15,
+      "guard": "派遣書 MUST NOT 明列禁止編輯三份設計文件；書記官每次收束重探 元素魔戰士規劃-v0.3.md 的 mtime 是否仍為 2026-09-16T07:31:36+08:00。",
+      "stopCondition": "任一設計文件的 mtime 或內容與收束紀錄不符",
+      "recoveryAction": "以 .codex/pre-fix18-snapshot 與更早的設計文件備份回復，停止該輪派遣並等指揮官裁決",
+      "statusChecks": {
+        "CONTROLLED": {
+          "evidenceClaimIds": [
+            "claim-risk-design-truth-controlled"
+          ]
+        },
+        "ACCEPTED": {
+          "evidenceClaimIds": [
+            "claim-risk-design-truth-accepted"
+          ]
+        },
+        "CLOSED": {
+          "evidenceClaimIds": [
+            "claim-risk-design-truth-closed"
+          ]
+        }
+      }
+    },
+    {
+      "id": "concurrent-organ-write-collision",
+      "affectedFrontId": "impl-round18",
+      "protectedAssetId": "evidence-integrity",
+      "threat": "Fable（文件）與 Astra（程式碼）同時在同一個 campaign root 作業；若 Fable 的水系設計追加越界寫入 src/ 或 build_v03.py，兩個器官的產物會混在一起，事後無法分辨哪個器官造成哪個結果。",
+      "status": "CONTROLLED",
+      "probability": 2,
+      "impact": 3,
+      "score": 6,
+      "unacceptableThreshold": 12,
+      "guard": "派遣時明文切開寫入集：Fable 僅限兩份設計 .md，禁止 src/ 與 build_v03.py；Astra 的寫入集不含設計 .md。書記官以 .codex/pre-fix18-snapshot 對照全部 24 檔 sha256 分辨誰動了什麼。",
+      "stopCondition": "快照對照顯示 src/ 或 build_v03.py 出現非 Astra 可解釋的變更",
+      "recoveryAction": "以快照回復受影響檔案，並要求兩個器官各自重報其寫入清單",
+      "statusChecks": {
+        "CONTROLLED": {
+          "evidenceClaimIds": [
+            "claim-risk-organ-collision-controlled"
+          ]
+        },
+        "ACCEPTED": {
+          "evidenceClaimIds": [
+            "claim-risk-organ-collision-accepted"
+          ]
+        },
+        "CLOSED": {
+          "evidenceClaimIds": [
+            "claim-risk-organ-collision-closed"
+          ]
+        }
+      }
+    }
+  ],
+  "blockers": [],
+  "battlefields": [
+    {
+      "id": "impl-round18",
+      "operationType": "DECISIVE",
+      "effort": "MAIN",
+      "status": "ACTIVE",
+      "objective": "第 18 輪（重設計第 1 期）：把附傷與形態／切換層搬到引擎 perk entry points，加上熱鍵、視覺與便宜修法，state_schema_version 6→7，狀態層一律不動；驗收為 python build_v03.py exit 0、既有檢查全 ok、新增 HITPROC ok，且每擊呼叫數不高於第 17 輪的 165。",
+      "entryState": "DESIGN_FINALIZED",
+      "terminalState": "ROUND18_BUILT",
+      "entryClaimId": "claim-front-impl-round18-entry",
+      "exitClaimId": "claim-front-impl-round18-exit",
+      "evidenceClaimIds": [
+        "claim-front-impl-round18-entry",
+        "claim-front-impl-round18-exit",
+        "claim-impl-round18-schema-entry",
+        "claim-impl-round18-no-product-mutation-yet"
+      ],
+      "mutationScope": [
+        "src/*.psc",
+        "build_v03.py",
+        "settings.json",
+        "state-schema.lock.json",
+        "build/**",
+        "package/Elements Spellblade/**",
+        ".codex/impl-fix-round18.html",
+        "實作紀錄.md（僅追加）"
+      ],
+      "recovery": {
+        "status": "READY",
+        "action": "以 .codex/pre-fix18-snapshot 回復第 18 輪動過的產物檔，回到第 17 輪的已知良好狀態",
+        "steps": [
+          "停止 Astra 派遣，確認執行體不再寫入",
+          "以 .codex/pre-fix18-snapshot/src/*.psc（20 檔）覆蓋 src/",
+          "以 .codex/pre-fix18-snapshot/build_v03.py 與 settings.json 覆蓋同名檔",
+          "重跑 python build_v03.py，並與 .codex/pre-fix18-snapshot/v03-formids.json 對照確認 FormID 0 變動",
+          "state-schema.lock.json 由建置重生，確認回到 state_schema_version 6 與簽章 c142dbae…"
+        ],
+        "readinessPredicate": "PRE_FIX18_SNAPSHOT_RESTORABLE == true",
+        "successPredicate": "SRC_AND_BUILD_MATCH_PRE_FIX18_SNAPSHOT_SHA256",
+        "stopCondition": "快照缺檔、或快照內容已與第 17 輪基線不符",
+        "evidenceClaimIds": [
+          "claim-front-impl-round18-recovery"
+        ]
+      },
+      "allowedNextStatuses": [
+        "ACTIVE",
+        "BLOCKED",
+        "COMPLETE"
+      ],
+      "deferReason": "",
+      "owner": "astra",
+      "timeBudgetMinutes": 90
+    },
+    {
+      "id": "ingame-smoke",
+      "operationType": "DECISIVE",
+      "effort": "SUPPORT",
+      "status": "DEFERRED",
+      "objective": "使用者進遊戲驗證安裝版本的 MCM、技能樹版面、印記光、光環、毒手感與不再自動跳樹，並回報修正需求。",
+      "entryState": "INSTALLED_ENABLED",
+      "terminalState": "SMOKE_VERIFIED",
+      "entryClaimId": "claim-front-ingame-smoke-entry",
+      "exitClaimId": "claim-front-ingame-smoke-exit",
+      "evidenceClaimIds": [
+        "claim-front-ingame-smoke-entry",
+        "claim-front-ingame-smoke-exit"
+      ],
+      "mutationScope": [],
+      "recovery": {
+        "status": "NOT_REQUIRED",
+        "action": "結果未知時先回讀權威狀態，不重送同一動作",
+        "steps": [],
+        "readinessPredicate": "NO_MUTATION_RECOVERY_REQUIRED == true",
+        "successPredicate": "OUTCOME_CLASSIFIED_AS_PASS_FAIL_OR_UNKNOWN",
+        "stopCondition": "任何來源顯示 mutation 已送出",
+        "evidenceClaimIds": []
+      },
+      "allowedNextStatuses": [
+        "ACTIVE",
+        "PENDING",
+        "DEFERRED",
+        "COMPLETE"
+      ],
+      "deferReason": "使用者裁示（2026-09-20 晚間）：不把 MO2 從第 16 輪回退到第 14 輪，帶缺陷的第 16 輪版本保持已安裝但不遊玩，等重設計版本替換後再驗收。實機驗證因此延後到第 18 輪之後，現在不是主攻。",
+      "owner": "user",
+      "timeBudgetMinutes": 60
+    }
+  ],
+  "decision": {
+    "activeFrontId": "impl-round18",
+    "chosenTactic": "主攻自設計／重設計前線交棒到 impl-round18：Astra 依 .codex/fix-round18-briefing.md 實作重設計第 1 期。",
+    "nextAction": "唯一主攻 impl-round18：等 Astra 跑完 build_v03.py 驗收，再以快照對照確認 FormID 與 schema 6→7；ingame-smoke 延後到重設計版本替換安裝副本之後。",
+    "contribution": "DIRECT_ADVANCE",
+    "rationale": "兩份設計文件已無待核准項且 v0.3 原件未被動過，設計前線出口成立；第 18 輪派遣書、pre-fix18 快照與 schema 6 入口狀態都已親測，實作前線入口成立、出口尚未成立。",
+    "pivotCondition": "執行體回報第 1 期改動會逼著改狀態層、或每擊呼叫數高於第 17 輪的 165、或 build_v03.py 任一既有檢查行失敗、或既有 FormID 出現 schema bump 定義以外的變動",
+    "pivotClaimId": "claim-front-impl-round18-pivot",
+    "candidates": [
+      {
+        "frontId": "impl-round18",
+        "eligible": true,
+        "expectedVictoryCriterionIds": [
+          "compile-clean",
+          "esp-valid",
+          "csf-valid",
+          "plan-covered"
+        ],
+        "unmetVictoryCriteria": 1,
+        "remainingTransitions": 1,
+        "riskScore": 10,
+        "costMinutes": 90,
+        "blockingRiskIds": [],
+        "totalScore": 250,
+        "ineligibilityReason": ""
+      },
+      {
+        "frontId": "ingame-smoke",
+        "eligible": false,
+        "expectedVictoryCriterionIds": [
+          "smoke-pass"
+        ],
+        "unmetVictoryCriteria": 4,
+        "remainingTransitions": 1,
+        "riskScore": 0,
+        "costMinutes": 45,
+        "blockingRiskIds": [],
+        "totalScore": 455,
+        "ineligibilityReason": "DEFERRED：使用者裁示帶缺陷的第 16 輪安裝版保持不遊玩，實機驗收等重設計版本替換後再開。"
+      }
+    ]
+  },
+  "strategicClarity": {
+    "status": "UNCLEAR",
+    "candidateMainEffortIds": [
+      "impl-round18"
+    ],
+    "unresolvedDecisions": [],
+    "unclearCauses": [
+      "PIVOT_UNPROBED"
+    ],
+    "route": "OPERATOR_RESOLVE",
+    "wayfinderMapPath": ".claude/wayfinder/essb-standalone-build.md"
+  },
+  "progress": {
+    "lastWorldStateChangeAt": "2026-09-20T22:26:15+08:00",
+    "activeFrontStartedAt": "2026-09-20T22:25:51+08:00",
+    "sameFailureFingerprintCount": 0,
+    "alternateReady": false,
+    "culminationPolicy": {
+      "reanalysisMinutes": 30,
+      "highRiskMinutes": 90,
+      "repeatFailureLimit": 2
+    },
+    "culminationRisk": "LOW"
+  },
+  "executionAssessment": {
+    "mode": "AUTONOMOUS",
+    "automationActuatorStatus": "UNKNOWN",
+    "outcomeStatus": "NOT_ATTEMPTED",
+    "targetIdentity": "UNKNOWN",
+    "actorIdentity": "UNKNOWN",
+    "actionContract": "UNKNOWN",
+    "mutationObserved": false,
+    "worldStateChanged": false,
+    "attemptCount": 0,
+    "sameFailureFingerprintCount": 0,
+    "deadlineSeconds": 300,
+    "deadlineExceeded": false,
+    "failureFingerprint": ""
+  },
+  "intervention": {
+    "status": "NOT_REQUIRED",
+    "mode": "NONE",
+    "phase": "NONE",
+    "requestedAction": "",
+    "reason": "",
+    "returnOfControl": ""
+  },
+  "lossMinimizationAssessment": {
+    "victoryUnattainable": {
+      "predicate": "STRATEGIC_VICTORY_UNATTAINABLE_UNDER_CURRENT_CONSTRAINTS == true",
+      "evidenceClaimIds": [
+        "claim-loss-victory-unattainable"
+      ]
+    },
+    "unacceptableOutcomeChecks": [
+      {
+        "outcome": "任何其他模組或 SkyrimSE/Data 的檔案被修改",
+        "predicate": "UNACCEPTABLE_OUTCOME[\"任何其他模組或 SkyrimSE/Data 的檔案被修改\"].ABSENT == true",
+        "evidenceClaimIds": [
+          "claim-loss-outcome-1"
+        ]
+      },
+      {
+        "outcome": "profile 三個清單檔出現不一致（有 mod 行沒有 plugin 行或反之）",
+        "predicate": "UNACCEPTABLE_OUTCOME[\"profile 三個清單檔出現不一致（有 mod 行沒有 plugin 行或反之）\"].ABSENT == true",
+        "evidenceClaimIds": [
+          "claim-loss-outcome-2"
+        ]
+      },
+      {
+        "outcome": "把編譯器或讀取器的故障記成模組故障",
+        "predicate": "UNACCEPTABLE_OUTCOME[\"把編譯器或讀取器的故障記成模組故障\"].ABSENT == true",
+        "evidenceClaimIds": [
+          "claim-loss-outcome-3"
+        ]
+      }
+    ],
+    "residualLossMeasurements": [
+      {
+        "id": "foreign-files-modified",
+        "metric": "OTHER_MOD_FILES_MODIFIED_COUNT",
+        "displayText": "其他模組與遊戲 Data 沒有任何檔案被改動",
+        "predicate": "OTHER_MOD_FILES_MODIFIED_COUNT == 0",
+        "evidenceClaimIds": [
+          "claim-loss-residual-foreign-files-modified"
+        ]
+      }
+    ],
+    "preservedGains": []
+  },
+  "terminalAssessment": {
+    "status": "IN_PROGRESS",
+    "requiredAuthority": "",
+    "alternativeRoutes": [
+      {
+        "id": "manual-install",
+        "status": "OPEN",
+        "reason": "自動安裝若被證明不可用，使用者可在 MO2 介面手動安裝 package 資料夾並啟用",
+        "statusChecks": {
+          "CLOSED": {
+            "predicate": "ROUTE[\"manual-install\"].STATUS == \"CLOSED\"",
+            "evidenceClaimIds": [
+              "claim-route-manual-install-closed"
+            ]
+          },
+          "UNSAFE": {
+            "predicate": "ROUTE[\"manual-install\"].STATUS == \"UNSAFE\"",
+            "evidenceClaimIds": [
+              "claim-route-manual-install-unsafe"
+            ]
+          },
+          "REQUIRES_AUTHORITY": {
+            "predicate": "ROUTE[\"manual-install\"].STATUS == \"REQUIRES_AUTHORITY\"",
+            "evidenceClaimIds": [
+              "claim-route-manual-install-requires-authority"
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "scopeDeclarations": {
+    "campaignRoot": "D:/Game/Other/SKSE/.codex/elemental-spellblade",
+    "carrierRoots": [
+      "D:/Game/Other/SKSE/MO2/mods/Elements Spellblade",
+      "D:/Game/Other/SKSE/MO2/profiles/normal"
+    ],
+    "來源": "第九次派遣明定範圍；工具 carrierRoots 驗證只接受斜線起首，Windows 根目錄保留於此。"
+  },
+  "archivedBattlefields": [
+    {
+      "id": "form-layer-core",
+      "status": "COMPLETE",
+      "terminalState": "CORE_PACKAGE_BUILT",
+      "exitClaimId": "claim-front-form-layer-core-exit",
+      "archiveRef": "artifacts/consolidation-09-front-form-layer-core.json"
+    },
+    {
+      "id": "reaction-engine",
+      "status": "COMPLETE",
+      "terminalState": "ENGINE_BUILT",
+      "exitClaimId": "claim-front-reaction-engine-exit",
+      "archiveRef": "artifacts/consolidation-09-front-reaction-engine.json"
+    },
+    {
+      "id": "skill-trees",
+      "status": "COMPLETE",
+      "terminalState": "TREES_BUILT",
+      "exitClaimId": "claim-front-skill-trees-exit",
+      "archiveRef": "artifacts/consolidation-09-front-skill-trees.json"
+    },
+    {
+      "id": "element-mechanics",
+      "status": "COMPLETE",
+      "terminalState": "MECHANICS_BUILT",
+      "exitClaimId": "claim-front-element-mechanics-exit",
+      "archiveRef": "artifacts/consolidation-09-front-element-mechanics.json"
+    },
+    {
+      "id": "fx-assets",
+      "status": "COMPLETE",
+      "terminalState": "FX_BOUND",
+      "exitClaimId": "claim-front-fx-assets-exit",
+      "archiveRef": "artifacts/consolidation-09-front-fx-assets.json"
+    },
+    {
+      "id": "install-enable",
+      "status": "COMPLETE",
+      "terminalState": "INSTALLED_ENABLED",
+      "exitClaimId": "claim-front-install-enable-exit",
+      "archiveRef": "artifacts/consolidation-09-front-install-enable.json"
+    },
+    {
+      "id": "design-redesign",
+      "status": "COMPLETE",
+      "terminalState": "DESIGN_FINALIZED",
+      "exitClaimId": "claim-front-design-redesign-exit",
+      "archiveRef": "artifacts/consolidation-11-front-design-redesign.json"
+    }
+  ],
+  "archivedRiskRegisterRef": "artifacts/consolidation-09-archived-risks.json",
+  "consolidation11": {
+    "證據": "artifacts/consolidation-11-probe.json、artifacts/consolidation-11-recovery-probe.json、artifacts/reprobe-11/",
+    "範圍": "輕量，但涵蓋主攻交棒：只重探交棒所需的宣稱，外加兩項自選抽查（ESSBController.PayBloodCost 位置、火源三期數字），其餘紀錄維持原樣。",
+    "設計出口": "兩檔 待核准|備選|待定|兩種讀法|視情況 共命中 5 行（alter 13／38／940、latency 4／193），全部是收尾標題、已定案註記、已刪待定清單或實作開關，無開放核准項。",
+    "保護資產": "元素魔戰士規劃-v0.3.md mtime 2026-09-16T07:31:36+08:00、84454 位元組，未被動過。",
+    "實作入口": "fix-round18-briefing.md 5794 位元組（22:25:29）；state-schema.lock.json state_schema_version 6、簽章 c142dbae…；.codex/pre-fix18-snapshot 目錄 mtime 22:26:15，24 檔齊全。",
+    "抽查": "PayBloodCost 定義在 ESSBController.psc:3246（情報稱 3246-3266），ESSBFormRules.psc OnUpdate 在 76 行、100 行呼叫之；火源 4.65／20.2 在 alter 580-581 行的三期表中，109 亦在檔內。",
+    "未知項": "第 18 輪出口與 pivot 未探測；四項套件類勝利證據因在冊探測腳本硬寫 3878 筆而重放 exit 1，降回 UNKNOWN。",
+    "態勢刻度": "全套（full rig）：兩個器官同時在跑（Fable 改文件、Astra 改程式碼），寫入集互斥，快照對照 24 檔 0 分歧。刻度只做回報，不由書記官改變。"
+  },
+  "consolidation10b": {
+    "證據": "artifacts/consolidation-10b-probe.json",
+    "範圍": "輕量；未讀 build 或 package，既有未涉及紀錄保留。",
+    "安裝輪次": "第 1–5 輪；部署輪次由指揮官紀錄提供，54 檔與 MCM 等安裝特徵已親測。",
+    "首輪結果": "局部實機證據；不代表目前版本通過。",
+    "第六輪": "進度頁顯示進行中；安裝 ESP 無 ESSB_NodeScale。未觀測執行中程序。",
+    "未知項": "目前安裝版本的遊戲行為未直接觀測，勝利冒煙與前線出口維持 UNKNOWN。"
+  }
+}

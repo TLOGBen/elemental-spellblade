@@ -1,0 +1,4849 @@
+{
+  "source": "元素魔戰士規劃-v0.3.md",
+  "plan_section": "5.1–5.13",
+  "tier_names": [
+    "新手",
+    "熟練",
+    "專精",
+    "大師",
+    "傳奇"
+  ],
+  "tier_levels": [
+    10,
+    25,
+    50,
+    75,
+    100
+  ],
+  "main_max_rank": 15,
+  "branch_cost": 5,
+  "max_branch_slots": 4,
+  "totals": {
+    "trees": 13,
+    "routes": 39,
+    "tiers": 195,
+    "main_nodes": 195,
+    "main_rank_perks": 2925,
+    "branch_nodes": 300,
+    "asserted": "13 trees x 3 routes x 5 tiers"
+  },
+  "trees": [
+    {
+      "id": "fire",
+      "section": "5.3",
+      "title": "火焰",
+      "routes": [
+        {
+          "index": 0,
+          "name": "持續（烈焰）",
+          "kind": "持續",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "熱度每層火附傷 +0.6%／點（8% → 17%）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "添薪",
+                  "description": "添薪：熱度上限 10 → 15，自燃改在 15 層",
+                  "cost": 5,
+                  "description_original": "添薪：熱度上限 10 → 15，自燃改在 15 層"
+                }
+              ],
+              "main_original": "熱度每層火附傷 +0.2%／點（8% → 11%）",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "火附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "烙印",
+                  "description": "烙印：重擊熱度 +2 → +4",
+                  "cost": 5,
+                  "description_original": "烙印：重擊熱度 +2 → +4"
+                },
+                {
+                  "index": 1,
+                  "name": "溫血",
+                  "description": "溫血：火形態耐力回復 +20%",
+                  "cost": 5,
+                  "description_original": "溫血：火形態耐力回復 +20%"
+                }
+              ],
+              "main_original": "火附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "帶熱度目標火抗 -1%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "熔心",
+                  "description": "熔心：自燃後熱度保留一半",
+                  "cost": 5,
+                  "description_original": "熔心：自燃後熱度保留一半"
+                },
+                {
+                  "index": 1,
+                  "name": "熔身",
+                  "description": "熔身：過熱滿了不再對自己爆，改為進入 10 秒「熔身」：火附傷 +100%、受傷 -20%、每秒回耐力 5，期間過熱不累積；結束後過熱歸零。熔身中按 Z 融斷仍可洩壓，以熔身剩餘秒數 ×2 計為過熱點數",
+                  "cost": 5,
+                  "description_original": "熔身：過熱滿了不再對自己爆，改為進入 10 秒「熔身」：火附傷 +100%、受傷 -20%、每秒回耐力 5，期間過熱不累積；結束後過熱歸零。熔身中按 Z 融斷仍可洩壓，以熔身剩餘秒數 ×2 計為過熱點數"
+                }
+              ],
+              "main_original": "帶熱度目標火抗 -1%／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "減抗／削甲"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "同調每段火附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "灼身",
+                  "description": "灼身：被近戰命中時攻擊者熱度 +1 並受一次火傷，每 3 秒一次",
+                  "cost": 5,
+                  "description_original": "灼身：被近戰命中時攻擊者熱度 +1 並受一次火傷，每 3 秒一次"
+                },
+                {
+                  "index": 1,
+                  "name": "火浴",
+                  "description": "火浴：自燃時你回血 B_max ×2",
+                  "cost": 5,
+                  "description_original": "火浴：自燃時你回血 B_max ×2"
+                }
+              ],
+              "main_original": "同調每段火附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "業火：同調三段時自燃倍率 +0.1／點（×2 → ×3.5）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "浴火",
+                  "description": "浴火：同調三段時帶熱度目標對你的傷害 -30%",
+                  "cost": 5,
+                  "description_original": "浴火：同調三段時帶熱度目標對你的傷害 -30%"
+                },
+                {
+                  "index": 1,
+                  "name": "熔爐",
+                  "description": "熔爐：過熱上限 10 → 20，過熱中火附傷 +50% → +80%",
+                  "cost": 5,
+                  "description_original": "熔爐：過熱上限 10 → 20，過熱中火附傷 +50% → +80%"
+                }
+              ],
+              "main_original": "業火：同調三段時自燃倍率 +0.1／點（×2 → ×3.5）",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "name": "開啟（焰起）",
+          "kind": "開啟",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "開印熱度 +1／每 5 點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "引火",
+                  "description": "引火：開印熱度 +2 → +5",
+                  "cost": 5,
+                  "description_original": "引火：開印熱度 +2 → +5"
+                }
+              ],
+              "main_original": "開印熱度 +1／每 5 點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "開印後 5 秒內火附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "烈火點燃",
+                  "description": "烈火點燃：開印那一擊附傷 ×1.5",
+                  "cost": 5,
+                  "description_original": "烈火點燃：開印那一擊附傷 ×1.5"
+                },
+                {
+                  "index": 1,
+                  "name": "餘熱",
+                  "description": "餘熱：開印時回復 15 耐力",
+                  "cost": 5,
+                  "description_original": "餘熱：開印時回復 15 耐力"
+                }
+              ],
+              "main_original": "開印後 5 秒內火附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "火印記持續 +0.2 秒／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "焰起強化",
+                  "description": "焰起強化：焰起額外對範圍內敵人造成一次火附傷",
+                  "cost": 5,
+                  "description_original": "焰起強化：焰起額外對範圍內敵人造成一次火附傷"
+                }
+              ],
+              "main_original": "火印記持續 +0.2 秒／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "火臨：開火形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "烈火之始",
+                  "description": "烈火之始：開印若目標生命高於 80%，熱度直接 8",
+                  "cost": 5,
+                  "description_original": "烈火之始：開印若目標生命高於 80%，熱度直接 8"
+                },
+                {
+                  "index": 1,
+                  "name": "火種",
+                  "description": "火種：熱度不因未命中歸零，直到被切掉或自燃",
+                  "cost": 5,
+                  "description_original": "火種：熱度不因未命中歸零，直到被切掉或自燃"
+                }
+              ],
+              "main_original": "火臨：開火形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "開印效果 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "先燃",
+                  "description": "先燃：同調三段時開印立即一次 ×0.5 爆燃",
+                  "cost": 5,
+                  "description_original": "先燃：同調三段時開印立即一次 ×0.5 爆燃"
+                }
+              ],
+              "main_original": "開印效果 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "fix8 使用者核准：開印效果整體套用 ESSB_NodeScale"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "name": "關閉（爆燃）",
+          "kind": "關閉",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "終焉 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "猛爆",
+                  "description": "猛爆：爆燃不消耗熱度",
+                  "cost": 5,
+                  "description_original": "猛爆：爆燃不消耗熱度"
+                },
+                {
+                  "index": 1,
+                  "name": "洩壓",
+                  "description": "洩壓：融斷時把過熱轉為額外爆燃傷害，每點過熱 +10%",
+                  "cost": 5,
+                  "description_original": "洩壓：融斷時把過熱轉為額外爆燃傷害，每點過熱 +10%"
+                }
+              ],
+              "main_original": "終焉 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "火印記的融斷 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "熾焰",
+                  "description": "熾焰：爆燃結算時若熱度 ≥8 則 ×1.5",
+                  "cost": 5,
+                  "description_original": "熾焰：爆燃結算時若熱度 ≥8 則 ×1.5"
+                },
+                {
+                  "index": 1,
+                  "name": "熔斷",
+                  "description": "熔斷：融斷後目標熱度保留",
+                  "cost": 5,
+                  "description_original": "熔斷：融斷後目標熱度保留"
+                }
+              ],
+              "main_original": "火印記的融斷 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "爆燃每層熱度倍率 +0.01／點（0.2 → 0.35）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "餘燼",
+                  "description": "餘燼：火終焉後接管元素的開印 ×1.5",
+                  "cost": 5,
+                  "description_original": "餘燼：火終焉後接管元素的開印 ×1.5"
+                }
+              ],
+              "main_original": "爆燃每層熱度倍率 +0.01／點（0.2 → 0.35）",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "火印記的融斷再 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "焚天",
+                  "description": "焚天：火終焉觸發時，範圍內所有帶熱度目標一起爆燃（各自吃自己的熱度）",
+                  "cost": 5,
+                  "description_original": "焚天：火終焉觸發時，範圍內所有帶熱度目標一起爆燃（各自吃自己的熱度）"
+                },
+                {
+                  "index": 1,
+                  "name": "火葬",
+                  "description": "火葬：爆燃擊殺的目標對附近敵人再爆一次 ×0.5",
+                  "cost": 5,
+                  "description_original": "火葬：爆燃擊殺的目標對附近敵人再爆一次 ×0.5"
+                }
+              ],
+              "main_original": "火印記的融斷再 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "爆燃 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "火域",
+                  "description": "火域：火印記融斷後留下 5 秒火域，內部敵人受火傷 +20%、你的熱度累積 ×2",
+                  "cost": 5,
+                  "description_original": "火域：火印記融斷後留下 5 秒火域，內部敵人受火傷 +20%、你的熱度累積 ×2"
+                }
+              ],
+              "main_original": "爆燃 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            }
+          ]
+        }
+      ],
+      "index": 0
+    },
+    {
+      "id": "frost",
+      "section": "5.4",
+      "title": "冰霜",
+      "routes": [
+        {
+          "index": 0,
+          "name": "持續（凍結）",
+          "kind": "持續",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "每次命中凍結累積 +5%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "寒蝕",
+                  "description": "寒蝕：重擊凍結 +2",
+                  "cost": 5,
+                  "description_original": "寒蝕：重擊凍結 +2"
+                }
+              ],
+              "main_original": "每次命中凍結累積 +5%／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "移動／控制／防禦／門檻"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "冰附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "深寒",
+                  "description": "深寒：冰封中目標耐力不回復，攻擊 -20%",
+                  "cost": 5,
+                  "description_original": "深寒：冰封中目標耐力不回復，攻擊 -20%"
+                },
+                {
+                  "index": 1,
+                  "name": "霜膚",
+                  "description": "霜膚：冰形態受傷 -5%",
+                  "cost": 5,
+                  "description_original": "霜膚：冰形態受傷 -5%"
+                }
+              ],
+              "main_original": "冰附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "冰封目標受冰附傷 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "永凍",
+                  "description": "永凍：冰封 +2 秒，結束後凍結保留一半",
+                  "cost": 5,
+                  "description_original": "永凍：冰封 +2 秒，結束後凍結保留一半"
+                },
+                {
+                  "index": 1,
+                  "name": "連鎖冰封",
+                  "description": "連鎖冰封：冰封目標死亡時附近敵人凍結 +3 並減速 30% 3 秒",
+                  "cost": 5,
+                  "description_original": "連鎖冰封：冰封目標死亡時附近敵人凍結 +3 並減速 30% 3 秒"
+                }
+              ],
+              "main_original": "冰封目標受冰附傷 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "同調每段冰附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "冰盾",
+                  "description": "冰盾：每命中 +1 層（最多 5），被打消耗一層抵消該次 30% 傷害",
+                  "cost": 5,
+                  "description_original": "冰盾：每命中 +1 層（最多 5），被打消耗一層抵消該次 30% 傷害"
+                },
+                {
+                  "index": 1,
+                  "name": "寒反",
+                  "description": "寒反：攻擊你的敵人被減速",
+                  "cost": 5,
+                  "description_original": "寒反：攻擊你的敵人被減速"
+                }
+              ],
+              "main_original": "同調每段冰附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "絕對零度：同調三段時冰封減速再 -2%／點（自有強減速，非麻痺），可影響首領",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "冰心",
+                  "description": "冰心：生命低於 30% 時自動冰封附近所有帶寒意的敵人，每 30 秒一次",
+                  "cost": 5,
+                  "description_original": "冰心：生命低於 30% 時自動冰封附近所有帶寒意的敵人，每 30 秒一次"
+                }
+              ],
+              "main_original": "絕對零度：同調三段時冰封減速再 -2%／點（自有強減速，非麻痺），可影響首領",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "移動／控制／防禦／門檻"
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "name": "開啟（冰臨）",
+          "kind": "開啟",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "開印凍結 +1／每 3 點（霜結基礎減速 25%，持續 3 秒；總減速上限 70%）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "寒潮",
+                  "description": "寒潮：開印時附近 1 人凍結 +2",
+                  "cost": 5,
+                  "description_original": "寒潮：開印時附近 1 人凍結 +2"
+                }
+              ],
+              "main_original": "開印凍結 +1／每 3 點",
+              "balance_class": "SPECIFIC",
+              "balance_reason": "第 2／2b 項指定數值"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "開印後 5 秒內冰附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "深霜結",
+                  "description": "深霜結：開印那一擊附傷 ×1.5",
+                  "cost": 5,
+                  "description_original": "深霜結：開印那一擊附傷 ×1.5"
+                },
+                {
+                  "index": 1,
+                  "name": "冰甲",
+                  "description": "冰甲：開印時獲得 1 層冰盾",
+                  "cost": 5,
+                  "description_original": "冰甲：開印時獲得 1 層冰盾"
+                }
+              ],
+              "main_original": "開印後 5 秒內冰附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "冰印記持續 +0.2 秒／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "冰臨強化",
+                  "description": "冰臨強化：冰臨附帶減速 30% 3 秒",
+                  "cost": 5,
+                  "description_original": "冰臨強化：冰臨附帶減速 30% 3 秒"
+                }
+              ],
+              "main_original": "冰印記持續 +0.2 秒／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "冰臨：開冰形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "霜鎖",
+                  "description": "霜鎖：開印目標 3 秒內移速 -30%",
+                  "cost": 5,
+                  "description_original": "霜鎖：開印目標 3 秒內移速 -30%"
+                },
+                {
+                  "index": 1,
+                  "name": "冰晶",
+                  "description": "冰晶：開印時你受傷 -10% 3 秒",
+                  "cost": 5,
+                  "description_original": "冰晶：開印時你受傷 -10% 3 秒"
+                }
+              ],
+              "main_original": "冰臨：開冰形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "開印效果 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "絕霜",
+                  "description": "絕霜：同調三段時開印直接冰封",
+                  "cost": 5,
+                  "description_original": "絕霜：同調三段時開印直接冰封"
+                }
+              ],
+              "main_original": "開印效果 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "fix8 使用者核准：開印效果整體套用 ESSB_NodeScale"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "name": "關閉（碎冰）",
+          "kind": "關閉",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "終焉 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "銳碎",
+                  "description": "銳碎：處決門檻 20% → 30%",
+                  "cost": 5,
+                  "description_original": "銳碎：處決門檻 20% → 30%"
+                }
+              ],
+              "main_original": "終焉 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "冰印記的融斷 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "冰崩",
+                  "description": "冰崩：碎冰改為 3 公尺範圍，命中所有冰封目標",
+                  "cost": 5,
+                  "description_original": "冰崩：碎冰改為 3 公尺範圍，命中所有冰封目標"
+                },
+                {
+                  "index": 1,
+                  "name": "冰封融斷",
+                  "description": "冰封融斷：冰印記融斷時目標若冰封，視同碎冰，含處決判定",
+                  "cost": 5,
+                  "description_original": "冰封融斷：冰印記融斷時目標若冰封，視同碎冰，含處決判定"
+                }
+              ],
+              "main_original": "冰印記的融斷 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "終焉後 5 秒內接管元素附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "寒留",
+                  "description": "寒留：冰終焉後接管元素的印記持續 +4 秒",
+                  "cost": 5,
+                  "description_original": "寒留：冰終焉後接管元素的印記持續 +4 秒"
+                }
+              ],
+              "main_original": "終焉後 5 秒內接管元素附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "冰印記的融斷再 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "冰河",
+                  "description": "冰河：冰終焉時目標若冰封，範圍內所有冰封目標一起碎冰，各自獨立判定處決",
+                  "cost": 5,
+                  "description_original": "冰河：冰終焉時目標若冰封，範圍內所有冰封目標一起碎冰，各自獨立判定處決"
+                },
+                {
+                  "index": 1,
+                  "name": "碎甲加深",
+                  "description": "碎甲加深：碎冰的碎甲 10% → 20%",
+                  "cost": 5,
+                  "description_original": "碎甲加深：碎冰的碎甲 10% → 20%"
+                }
+              ],
+              "main_original": "冰印記的融斷再 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "碎冰 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "冰棺",
+                  "description": "冰棺：碎冰未處決的目標再冰封 2 秒",
+                  "cost": 5,
+                  "description_original": "冰棺：碎冰未處決的目標再冰封 2 秒"
+                },
+                {
+                  "index": 1,
+                  "name": "冰原",
+                  "description": "冰原：冰印記融斷後留下 5 秒冰原，內部敵人減速 50%、凍結累積 ×2，你在其中免疫減速",
+                  "cost": 5,
+                  "description_original": "冰原：冰印記融斷後留下 5 秒冰原，內部敵人減速 50%、凍結累積 ×2，你在其中免疫減速"
+                }
+              ],
+              "main_original": "碎冰 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            }
+          ]
+        }
+      ],
+      "index": 1
+    },
+    {
+      "id": "lightning",
+      "section": "5.5",
+      "title": "雷電",
+      "routes": [
+        {
+          "index": 0,
+          "name": "持續（充能）",
+          "kind": "持續",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "放電每格電荷傷害 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "感應",
+                  "description": "感應：雷形態魔力回復 +20%",
+                  "cost": 5,
+                  "description_original": "感應：雷形態魔力回復 +20%"
+                }
+              ],
+              "main_original": "放電每格電荷傷害 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "雷附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "電弧",
+                  "description": "電弧：放電時向附近 2 人跳躍 40%",
+                  "cost": 5,
+                  "description_original": "電弧：放電時向附近 2 人跳躍 40%"
+                },
+                {
+                  "index": 1,
+                  "name": "靜電",
+                  "description": "靜電：被近戰命中時攻擊者感電",
+                  "cost": 5,
+                  "description_original": "靜電：被近戰命中時攻擊者感電"
+                }
+              ],
+              "main_original": "雷附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "電荷上限 +1／每 3 點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "雷暴",
+                  "description": "雷暴：電荷滿時普攻也有 30% 機率放電",
+                  "cost": 5,
+                  "description_original": "雷暴：電荷滿時普攻也有 30% 機率放電"
+                }
+              ],
+              "main_original": "電荷上限 +1／每 3 點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "同調每段雷附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "電盾",
+                  "description": "電盾：電荷 ≥5 時受傷 -15%",
+                  "cost": 5,
+                  "description_original": "電盾：電荷 ≥5 時受傷 -15%"
+                },
+                {
+                  "index": 1,
+                  "name": "疾電",
+                  "description": "疾電：放電後 3 秒受傷 -15%",
+                  "cost": 5,
+                  "description_original": "疾電：放電後 3 秒受傷 -15%"
+                }
+              ],
+              "main_original": "同調每段雷附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "天雷：同調三段時放電改為對範圍內所有感電目標，範圍 2 公尺 +0.2 公尺／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "雷神",
+                  "description": "雷神：同調三段時電荷滿層自動放電並回復魔力",
+                  "cost": 5,
+                  "description_original": "雷神：同調三段時電荷滿層自動放電並回復魔力"
+                }
+              ],
+              "main_original": "天雷：同調三段時放電改為對範圍內所有感電目標，範圍 2 公尺 +0.2 公尺／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "name": "開啟（雷臨）",
+          "kind": "開啟",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "開印電荷 +1／每 5 點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "傳導",
+                  "description": "傳導：開印時附近 1 人也感電",
+                  "cost": 5,
+                  "description_original": "傳導：開印時附近 1 人也感電"
+                }
+              ],
+              "main_original": "開印電荷 +1／每 5 點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "開印後 5 秒內雷附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "強感電",
+                  "description": "強感電：開印那一擊附傷 ×1.5",
+                  "cost": 5,
+                  "description_original": "強感電：開印那一擊附傷 ×1.5"
+                },
+                {
+                  "index": 1,
+                  "name": "充能開印",
+                  "description": "充能開印：開印時回復 B_max 魔力",
+                  "cost": 5,
+                  "description_original": "充能開印：開印時回復 B_max 魔力"
+                }
+              ],
+              "main_original": "開印後 5 秒內雷附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "雷印記持續 +0.2 秒／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "雷臨強化",
+                  "description": "雷臨強化：雷臨時立即獲得 5 電荷",
+                  "cost": 5,
+                  "description_original": "雷臨強化：雷臨時立即獲得 5 電荷"
+                }
+              ],
+              "main_original": "雷印記持續 +0.2 秒／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "雷臨：開雷形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "感電削弱",
+                  "description": "感電削弱：感電目標魔抗 -10%",
+                  "cost": 5,
+                  "description_original": "感電削弱：感電目標魔抗 -10%"
+                },
+                {
+                  "index": 1,
+                  "name": "雷閃",
+                  "description": "雷閃：開印後 2 秒移速 +15%",
+                  "cost": 5,
+                  "description_original": "雷閃：開印後 2 秒移速 +15%"
+                },
+                {
+                  "index": 2,
+                  "name": "電蝕",
+                  "description": "電蝕：削減的目標魔力 50% → 100%，目標魔力為 0 時你的雷附傷 +25%",
+                  "cost": 5,
+                  "description_original": "電蝕：削減的目標魔力 50% → 100%，目標魔力為 0 時你的雷附傷 +25%"
+                }
+              ],
+              "main_original": "雷臨：開雷形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "開印效果 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "先雷",
+                  "description": "先雷：同調三段時開印立即放電一次，不消耗電荷",
+                  "cost": 5,
+                  "description_original": "先雷：同調三段時開印立即放電一次，不消耗電荷"
+                }
+              ],
+              "main_original": "開印效果 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "fix8 使用者核准：開印效果整體套用 ESSB_NodeScale"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "name": "關閉（放電）",
+          "kind": "關閉",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "終焉 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "連鎖",
+                  "description": "連鎖：放電跳躍 2 → 5 人",
+                  "cost": 5,
+                  "description_original": "連鎖：放電跳躍 2 → 5 人"
+                }
+              ],
+              "main_original": "終焉 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "雷印記的融斷 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "蓄餘",
+                  "description": "蓄餘：雷終焉不消耗電荷",
+                  "cost": 5,
+                  "description_original": "蓄餘：雷終焉不消耗電荷"
+                },
+                {
+                  "index": 1,
+                  "name": "雷斷",
+                  "description": "雷斷：雷印記融斷時附加你全部電荷的放電加成",
+                  "cost": 5,
+                  "description_original": "雷斷：雷印記融斷時附加你全部電荷的放電加成"
+                }
+              ],
+              "main_original": "雷印記的融斷 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "終焉後 5 秒內接管元素附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "餘電",
+                  "description": "餘電：雷終焉後接管元素的開印附帶一次 ×0.5 放電",
+                  "cost": 5,
+                  "description_original": "餘電：雷終焉後接管元素的開印附帶一次 ×0.5 放電"
+                }
+              ],
+              "main_original": "終焉後 5 秒內接管元素附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "雷印記的融斷再 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "雷殛",
+                  "description": "雷殛：雷終焉對範圍內所有感電目標各一次全額放電",
+                  "cost": 5,
+                  "description_original": "雷殛：雷終焉對範圍內所有感電目標各一次全額放電"
+                },
+                {
+                  "index": 1,
+                  "name": "過載終焉",
+                  "description": "過載終焉：終焉時電荷 ≥8 則傷害 ×2",
+                  "cost": 5,
+                  "description_original": "過載終焉：終焉時電荷 ≥8 則傷害 ×2"
+                }
+              ],
+              "main_original": "雷印記的融斷再 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "放電 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "雷霆",
+                  "description": "雷霆：雷印記融斷後 5 秒內你每次命中都放電 ×0.3",
+                  "cost": 5,
+                  "description_original": "雷霆：雷印記融斷後 5 秒內你每次命中都放電 ×0.3"
+                }
+              ],
+              "main_original": "放電 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            }
+          ]
+        }
+      ],
+      "index": 2
+    },
+    {
+      "id": "earth",
+      "section": "5.6",
+      "title": "大地",
+      "routes": [
+        {
+          "index": 0,
+          "name": "持續（裂甲）",
+          "kind": "持續",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "裂痕護甲削減 +2／點（-30 → -60）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "磐石",
+                  "description": "磐石：岩甲每層護甲 +15 → +25",
+                  "cost": 5,
+                  "description_original": "磐石：岩甲每層護甲 +15 → +25"
+                }
+              ],
+              "main_original": "裂痕護甲削減 +2／點（-30 → -60）",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "減抗／削甲"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "土附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "震擊",
+                  "description": "震擊：重擊消耗滿層裂痕，1.5× 爆傷並削減 50 耐力",
+                  "cost": 5,
+                  "description_original": "震擊：重擊消耗滿層裂痕，1.5× 爆傷並削減 50 耐力"
+                },
+                {
+                  "index": 1,
+                  "name": "厚土",
+                  "description": "厚土：岩甲上限 5 → 10",
+                  "cost": 5,
+                  "description_original": "厚土：岩甲上限 5 → 10"
+                }
+              ],
+              "main_original": "土附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "命中削減目標耐力 +0.5／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "汲力",
+                  "description": "汲力：命中削減的耐力一半轉為你的耐力",
+                  "cost": 5,
+                  "description_original": "汲力：命中削減的耐力一半轉為你的耐力"
+                }
+              ],
+              "main_original": "命中削減目標耐力 +0.5／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "同調每段土附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "不動",
+                  "description": "不動：岩甲 ≥5 時免疫擊退（自有）",
+                  "cost": 5,
+                  "description_original": "不動：岩甲 ≥5 時免疫擊退（自有）"
+                },
+                {
+                  "index": 1,
+                  "name": "反震",
+                  "description": "反震：岩甲滿層時被近戰命中反震一次土傷並使攻擊者跌倒，每 10 秒一次，清空岩甲",
+                  "cost": 5,
+                  "description_original": "反震：岩甲滿層時被近戰命中反震一次土傷並使攻擊者跌倒，每 10 秒一次，清空岩甲"
+                }
+              ],
+              "main_original": "同調每段土附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "地動：同調三段時重擊對耐力低於 30% 的目標跌倒，機率 5%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "山岳",
+                  "description": "山岳：同調三段時岩甲不因被打減少，物理減傷每層 +1% → +3%",
+                  "cost": 5,
+                  "description_original": "山岳：同調三段時岩甲不因被打減少，物理減傷每層 +1% → +3%"
+                }
+              ],
+              "main_original": "地動：同調三段時重擊對耐力低於 30% 的目標跌倒，機率 5%／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "機率"
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "name": "開啟（地臨）",
+          "kind": "開啟",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "開印岩甲 +1／每 5 點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "震波",
+                  "description": "震波：開印時附近 1 人也裂痕",
+                  "cost": 5,
+                  "description_original": "震波：開印時附近 1 人也裂痕"
+                }
+              ],
+              "main_original": "開印岩甲 +1／每 5 點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "開印後 5 秒內土附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "深裂痕",
+                  "description": "深裂痕：開印那一擊附傷 ×1.5",
+                  "cost": 5,
+                  "description_original": "深裂痕：開印那一擊附傷 ×1.5"
+                },
+                {
+                  "index": 1,
+                  "name": "岩膚",
+                  "description": "岩膚：開印時你 +2 → +4 岩甲",
+                  "cost": 5,
+                  "description_original": "岩膚：開印時你 +2 → +4 岩甲"
+                }
+              ],
+              "main_original": "開印後 5 秒內土附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "土印記持續 +0.2 秒／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "地臨強化",
+                  "description": "地臨強化：地臨時岩甲滿層，範圍內敵人減速 30% 3 秒",
+                  "cost": 5,
+                  "description_original": "地臨強化：地臨時岩甲滿層，範圍內敵人減速 30% 3 秒"
+                }
+              ],
+              "main_original": "土印記持續 +0.2 秒／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "地臨：開土形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "地基",
+                  "description": "地基：開印目標 3 秒內移速 -30%",
+                  "cost": 5,
+                  "description_original": "地基：開印目標 3 秒內移速 -30%"
+                },
+                {
+                  "index": 1,
+                  "name": "裂地",
+                  "description": "裂地：開印在目標腳下留 3 秒減速地帶",
+                  "cost": 5,
+                  "description_original": "裂地：開印在目標腳下留 3 秒減速地帶"
+                }
+              ],
+              "main_original": "地臨：開土形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "開印效果 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "先震",
+                  "description": "先震：同調三段時開印立即一次 ×0.5 地震，不含跌倒",
+                  "cost": 5,
+                  "description_original": "先震：同調三段時開印立即一次 ×0.5 地震，不含跌倒"
+                }
+              ],
+              "main_original": "開印效果 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "fix8 使用者核准：開印效果整體套用 ESSB_NodeScale"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "name": "關閉（地震）",
+          "kind": "關閉",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "終焉 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "崩裂",
+                  "description": "崩裂：地震 ×1.5 → ×2.0",
+                  "cost": 5,
+                  "description_original": "崩裂：地震 ×1.5 → ×2.0"
+                }
+              ],
+              "main_original": "終焉 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "土印記的融斷 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "廣震",
+                  "description": "廣震：地震範圍 3 → 5 公尺",
+                  "cost": 5,
+                  "description_original": "廣震：地震範圍 3 → 5 公尺"
+                },
+                {
+                  "index": 1,
+                  "name": "固土",
+                  "description": "固土：土終焉後你岩甲滿層",
+                  "cost": 5,
+                  "description_original": "固土：土終焉後你岩甲滿層"
+                }
+              ],
+              "main_original": "土印記的融斷 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "地震耐力削減 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "地斷",
+                  "description": "地斷：土印記融斷附帶 3 秒泥沼，內部減速 40%",
+                  "cost": 5,
+                  "description_original": "地斷：土印記融斷附帶 3 秒泥沼，內部減速 40%"
+                }
+              ],
+              "main_original": "地震耐力削減 +3%／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "fix8 使用者核准：削耐保持 +3%／點；交由 ESSB_MultDrain"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "土印記的融斷再 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "山崩",
+                  "description": "山崩：土終焉對範圍內所有帶裂痕的目標各一次地震",
+                  "cost": 5,
+                  "description_original": "山崩：土終焉對範圍內所有帶裂痕的目標各一次地震"
+                },
+                {
+                  "index": 1,
+                  "name": "塵暴",
+                  "description": "塵暴：地震使範圍內敵人攻擊 -20% 3 秒",
+                  "cost": 5,
+                  "description_original": "塵暴：地震使範圍內敵人攻擊 -20% 3 秒"
+                }
+              ],
+              "main_original": "土印記的融斷再 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "地震 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "地裂",
+                  "description": "地裂：土印記融斷後留下 5 秒地裂帶，內部敵人減速 50%、耐力不回復",
+                  "cost": 5,
+                  "description_original": "地裂：土印記融斷後留下 5 秒地裂帶，內部敵人減速 50%、耐力不回復"
+                }
+              ],
+              "main_original": "地震 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            }
+          ]
+        }
+      ],
+      "index": 3
+    },
+    {
+      "id": "wind",
+      "section": "5.7",
+      "title": "風",
+      "routes": [
+        {
+          "index": 0,
+          "name": "持續（連斬）",
+          "kind": "持續",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "風刃傷害 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "迴旋",
+                  "description": "迴旋：風刃改為對附近 2 人各一段",
+                  "cost": 5,
+                  "description_original": "迴旋：風刃改為對附近 2 人各一段"
+                }
+              ],
+              "main_original": "風刃傷害 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "風附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "亂舞",
+                  "description": "亂舞：風勢門檻 4 → 3",
+                  "cost": 5,
+                  "description_original": "亂舞：風勢門檻 4 → 3"
+                },
+                {
+                  "index": 1,
+                  "name": "順風",
+                  "description": "順風：命中回復耐力 5",
+                  "cost": 5,
+                  "description_original": "順風：命中回復耐力 5"
+                }
+              ],
+              "main_original": "風附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "風形態移速再 +0.5%／點（+10% → +17.5%）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "追風",
+                  "description": "追風：風刃命中回復耐力 3，並讓目標失衡",
+                  "cost": 5,
+                  "description_original": "追風：風刃命中回復耐力 3，並讓目標失衡"
+                },
+                {
+                  "index": 1,
+                  "name": "無聲",
+                  "description": "無聲：潛行中風形態完全無聲（Muffle 1.0），潛行移速 +20%",
+                  "cost": 5,
+                  "description_original": "無聲：潛行中風形態完全無聲（Muffle 1.0），潛行移速 +20%"
+                }
+              ],
+              "main_original": "風形態移速再 +0.5%／點（+10% → +17.5%）",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "移動／控制／防禦／門檻"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "同調每段風附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "殘影",
+                  "description": "殘影：風勢滿時被近戰命中 30% 機率無效化，消耗風勢",
+                  "cost": 5,
+                  "description_original": "殘影：風勢滿時被近戰命中 30% 機率無效化，消耗風勢"
+                },
+                {
+                  "index": 1,
+                  "name": "疾風",
+                  "description": "疾風：移速再 +10%，衝刺耐力消耗 -50%",
+                  "cost": 5,
+                  "description_original": "疾風：移速再 +10%，衝刺耐力消耗 -50%"
+                },
+                {
+                  "index": 2,
+                  "name": "暗風",
+                  "description": "暗風：潛行攻擊的風附傷 ×3 → ×5，潛行攻擊送出的風刃 ×2",
+                  "cost": 5,
+                  "description_original": "暗風：潛行攻擊的風附傷 ×3 → ×5，潛行攻擊送出的風刃 ×2"
+                }
+              ],
+              "main_original": "同調每段風附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "千刃：同調三段時每次命中附帶風刃，機率 5%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "御風",
+                  "description": "御風：同調三段時免疫減速（自有），且失衡目標受你所有傷害 +30%",
+                  "cost": 5,
+                  "description_original": "御風：同調三段時免疫減速（自有），且失衡目標受你所有傷害 +30%"
+                }
+              ],
+              "main_original": "千刃：同調三段時每次命中附帶風刃，機率 5%／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "機率"
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "name": "開啟（風臨）",
+          "kind": "開啟",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "開印風勢 +1／每 5 點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "風襲",
+                  "description": "風襲：開印時附近 1 人也風痕",
+                  "cost": 5,
+                  "description_original": "風襲：開印時附近 1 人也風痕"
+                }
+              ],
+              "main_original": "開印風勢 +1／每 5 點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "開印拉近距離 +0.1 公尺／點（1.5 → 3 公尺）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "疾風痕",
+                  "description": "疾風痕：開印風勢直接滿",
+                  "cost": 5,
+                  "description_original": "疾風痕：開印風勢直接滿"
+                },
+                {
+                  "index": 1,
+                  "name": "輕躍",
+                  "description": "輕躍：開印後 3 秒移速 +10%",
+                  "cost": 5,
+                  "description_original": "輕躍：開印後 3 秒移速 +10%"
+                }
+              ],
+              "main_original": "開印拉近距離 +0.1 公尺／點（1.5 → 3 公尺）",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "風印記持續 +0.2 秒／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "氣旋",
+                  "description": "氣旋：風臨時把範圍內敵人拉到你面前 2 公尺",
+                  "cost": 5,
+                  "description_original": "氣旋：風臨時把範圍內敵人拉到你面前 2 公尺"
+                },
+                {
+                  "index": 1,
+                  "name": "奇襲",
+                  "description": "奇襲：潛行攻擊的開印同時觸發終焉（一刀開印兼吹飛），且不拉近",
+                  "cost": 5,
+                  "description_original": "奇襲：潛行攻擊的開印同時觸發終焉（一刀開印兼吹飛），且不拉近"
+                }
+              ],
+              "main_original": "風印記持續 +0.2 秒／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "風臨：開風形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "牽引",
+                  "description": "牽引：拉近的目標 2 秒內無法後退（自有減速 80%）",
+                  "cost": 5,
+                  "description_original": "牽引：拉近的目標 2 秒內無法後退（自有減速 80%）"
+                },
+                {
+                  "index": 1,
+                  "name": "氣流",
+                  "description": "氣流：開印時回復 10 耐力",
+                  "cost": 5,
+                  "description_original": "氣流：開印時回復 10 耐力"
+                }
+              ],
+              "main_original": "風臨：開風形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "開印效果 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "先風",
+                  "description": "先風：同調三段時開印附帶一段風刃",
+                  "cost": 5,
+                  "description_original": "先風：同調三段時開印附帶一段風刃"
+                }
+              ],
+              "main_original": "開印效果 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "fix8 使用者核准：開印效果整體套用 ESSB_NodeScale"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "name": "關閉（吹飛）",
+          "kind": "關閉",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "終焉 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "亂流",
+                  "description": "亂流：風刃附近目標 2 → 5 人",
+                  "cost": 5,
+                  "description_original": "亂流：風刃附近目標 2 → 5 人"
+                }
+              ],
+              "main_original": "終焉 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "風印記的融斷 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "上天",
+                  "description": "上天：終焉的吹飛改為吹上天，落地時受 B_max ×1.0 風傷",
+                  "cost": 5,
+                  "description_original": "上天：終焉的吹飛改為吹上天，落地時受 B_max ×1.0 風傷"
+                },
+                {
+                  "index": 1,
+                  "name": "風斷",
+                  "description": "風斷：風印記融斷時每個目標各兩段風刃",
+                  "cost": 5,
+                  "description_original": "風斷：風印記融斷時每個目標各兩段風刃"
+                }
+              ],
+              "main_original": "風印記的融斷 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "吹飛距離 +0.2 公尺／點（3 → 6 公尺）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "風渦",
+                  "description": "風渦：終焉時 5 公尺內敵人被拉向目標聚攏（物理推力，需實測）",
+                  "cost": 5,
+                  "description_original": "風渦：終焉時 5 公尺內敵人被拉向目標聚攏（物理推力，需實測）"
+                }
+              ],
+              "main_original": "吹飛距離 +0.2 公尺／點（3 → 6 公尺）",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "風印記的融斷再 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "颶風",
+                  "description": "颶風：融斷的吹上天改為對範圍內所有敵人，不限帶風印記",
+                  "cost": 5,
+                  "description_original": "颶風：融斷的吹上天改為對範圍內所有敵人，不限帶風印記"
+                },
+                {
+                  "index": 1,
+                  "name": "順勢",
+                  "description": "順勢：風終焉後 5 秒內接管元素的命中皆附帶一段風刃",
+                  "cost": 5,
+                  "description_original": "順勢：風終焉後 5 秒內接管元素的命中皆附帶一段風刃"
+                }
+              ],
+              "main_original": "風印記的融斷再 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "落地傷害 +15%／點（×0.5 → ×2.75）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "空中追擊",
+                  "description": "空中追擊：被吹飛或吹上天的敵人落地前受你的所有傷害 ×1.5，風刃命中空中目標再推高 1 公尺並延長滯空",
+                  "cost": 5,
+                  "description_original": "空中追擊：被吹飛或吹上天的敵人落地前受你的所有傷害 ×1.5，風刃命中空中目標再推高 1 公尺並延長滯空"
+                },
+                {
+                  "index": 1,
+                  "name": "連殺",
+                  "description": "連殺：潛行攻擊擊殺後 5 秒內不解除潛行，下一次潛行攻擊附傷 ×2 並重置奇襲",
+                  "cost": 5,
+                  "description_original": "連殺：潛行攻擊擊殺後 5 秒內不解除潛行，下一次潛行攻擊附傷 ×2 並重置奇襲"
+                }
+              ],
+              "main_original": "落地傷害 +5%／點（×0.5 → ×1.25）",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            }
+          ]
+        }
+      ],
+      "index": 4
+    },
+    {
+      "id": "blood",
+      "section": "5.8",
+      "title": "鮮血",
+      "routes": [
+        {
+          "index": 0,
+          "name": "持續（血位）",
+          "kind": "持續",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "流血每層傷害 +6%／點，放血係數 +0.01%／點（0.3% → 0.45%）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "血氣",
+                  "description": "血氣：維持扣血與重擊扣血減半",
+                  "cost": 5,
+                  "description_original": "血氣：維持扣血與重擊扣血減半"
+                },
+                {
+                  "index": 1,
+                  "name": "深創",
+                  "description": "深創：血痕上限 8 → 12",
+                  "cost": 5,
+                  "description_original": "深創：血痕上限 8 → 12"
+                }
+              ],
+              "main_original": "流血每層傷害 +2%／點，放血係數 +0.01%／點（0.3% → 0.45%）",
+              "balance_class": "SCALED",
+              "balance_reason": "fix8 使用者核准：只縮放流血每層傷害，放血係數保持原值"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "血附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "飲血",
+                  "description": "飲血：擊殺流血目標時回血 20%，並獲得 10 秒「嗜血」：命中效果 +20%、吸血 +10%，不受血位影響",
+                  "cost": 5,
+                  "description_original": "飲血：擊殺流血目標時回血 20%，並獲得 10 秒「嗜血」：命中效果 +20%、吸血 +10%，不受血位影響"
+                },
+                {
+                  "index": 1,
+                  "name": "血盾",
+                  "description": "血盾：吸血溢出轉為臨時護盾，上限 20% 生命",
+                  "cost": 5,
+                  "description_original": "血盾：吸血溢出轉為臨時護盾，上限 20% 生命"
+                }
+              ],
+              "main_original": "血附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "吸血比例各血位 +1%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "逆流",
+                  "description": "逆流：反轉血位曲線，低血位命中強、高血位吸血強，損血曲線不變",
+                  "cost": 5,
+                  "description_original": "逆流：反轉血位曲線，低血位命中強、高血位吸血強，損血曲線不變"
+                },
+                {
+                  "index": 1,
+                  "name": "血承",
+                  "description": "血承：擊殺流血目標時吸收其屬性 15 秒：其火、冰、雷、毒、魔抗各 50%、護甲 20%、最大生命 10%；只保留最近一個",
+                  "cost": 5,
+                  "description_original": "血承：擊殺流血目標時吸收其屬性 15 秒：其火、冰、雷、毒、魔抗各 50%、護甲 20%、最大生命 10%；只保留最近一個"
+                }
+              ],
+              "main_original": "吸血比例各血位 +1%／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "治療／回復"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "同調每段血附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "止血",
+                  "description": "止血：低血位（30% 以下）時流血目標的流血傷害 ×1.5",
+                  "cost": 5,
+                  "description_original": "止血：低血位（30% 以下）時流血目標的流血傷害 ×1.5"
+                },
+                {
+                  "index": 1,
+                  "name": "血怒",
+                  "description": "血怒：中血位（30～70%）時命中效果與吸血同時 +15%",
+                  "cost": 5,
+                  "description_original": "血怒：中血位（30～70%）時命中效果與吸血同時 +15%"
+                }
+              ],
+              "main_original": "同調每段血附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "血海：同調三段時血潮改為範圍，範圍 1 公尺 +0.2 公尺／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "不死",
+                  "description": "不死：同調三段時維持扣血歸零，流血目標死亡時你回滿耐力",
+                  "cost": 5,
+                  "description_original": "不死：同調三段時維持扣血歸零，流血目標死亡時你回滿耐力"
+                }
+              ],
+              "main_original": "血海：同調三段時血潮改為範圍，範圍 1 公尺 +0.2 公尺／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "name": "開啟（血臨）",
+          "kind": "開啟",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "開印流血 +1 層／每 5 點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "血濺",
+                  "description": "血濺：開印時附近 1 人流血 1 層",
+                  "cost": 5,
+                  "description_original": "血濺：開印時附近 1 人流血 1 層"
+                }
+              ],
+              "main_original": "開印流血 +1 層／每 5 點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "開印後 5 秒內血附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "深血痕",
+                  "description": "深血痕：開印那一擊附傷 ×1.5",
+                  "cost": 5,
+                  "description_original": "深血痕：開印那一擊附傷 ×1.5"
+                },
+                {
+                  "index": 1,
+                  "name": "開印回血",
+                  "description": "開印回血：開印時你回血 B_max ×0.5，低血位 ×2",
+                  "cost": 5,
+                  "description_original": "開印回血：開印時你回血 B_max ×0.5，低血位 ×2"
+                }
+              ],
+              "main_original": "開印後 5 秒內血附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "血印記持續 +0.2 秒／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "血臨強化",
+                  "description": "血臨強化：血臨後 10 秒不扣血",
+                  "cost": 5,
+                  "description_original": "血臨強化：血臨後 10 秒不扣血"
+                }
+              ],
+              "main_original": "血印記持續 +0.2 秒／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "血臨：開血形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "血咒",
+                  "description": "血咒：開印目標 5 秒內受治療 -50%",
+                  "cost": 5,
+                  "description_original": "血咒：開印目標 5 秒內受治療 -50%"
+                },
+                {
+                  "index": 1,
+                  "name": "血脈",
+                  "description": "血脈：開印時 +2 同調",
+                  "cost": 5,
+                  "description_original": "血脈：開印時 +2 同調"
+                }
+              ],
+              "main_original": "血臨：開血形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "開印效果 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "血祭之始",
+                  "description": "血祭之始：同調三段時開印立即結算一次 ×0.5 血潮",
+                  "cost": 5,
+                  "description_original": "血祭之始：同調三段時開印立即結算一次 ×0.5 血潮"
+                }
+              ],
+              "main_original": "開印效果 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "fix8 使用者核准：開印效果整體套用 ESSB_NodeScale"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "name": "關閉（血潮）",
+          "kind": "關閉",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "終焉 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "飽飲",
+                  "description": "飽飲：血潮結算的流血傷害 ×1.5",
+                  "cost": 5,
+                  "description_original": "飽飲：血潮結算的流血傷害 ×1.5"
+                }
+              ],
+              "main_original": "終焉 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "血印記的融斷 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "血漫",
+                  "description": "血漫：血潮結算時附近流血目標一起血潮",
+                  "cost": 5,
+                  "description_original": "血漫：血潮結算時附近流血目標一起血潮"
+                },
+                {
+                  "index": 1,
+                  "name": "血斷",
+                  "description": "血斷：血印記融斷治療你該傷害的 50%",
+                  "cost": 5,
+                  "description_original": "血斷：血印記融斷治療你該傷害的 50%"
+                }
+              ],
+              "main_original": "血印記的融斷 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "血潮治療倍率 ×2 → 每點 +0.1",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "血約",
+                  "description": "血約：血終焉後 8 秒不扣血",
+                  "cost": 5,
+                  "description_original": "血約：血終焉後 8 秒不扣血"
+                }
+              ],
+              "main_original": "血潮治療倍率 ×2 → 每點 +0.1",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "治療／回復"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "血印記的融斷再 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "血契",
+                  "description": "血契：高血位（70% 以上）時血終焉損失 10% 生命，血潮 ×2",
+                  "cost": 5,
+                  "description_original": "血契：高血位（70% 以上）時血終焉損失 10% 生命，血潮 ×2"
+                },
+                {
+                  "index": 1,
+                  "name": "放血終焉",
+                  "description": "放血終焉：血潮的當前生命項 10% → 20%（首領 3% → 6%）",
+                  "cost": 5,
+                  "description_original": "放血終焉：血潮的當前生命項 10% → 20%（首領 3% → 6%）"
+                },
+                {
+                  "index": 2,
+                  "name": "血引",
+                  "description": "血引：血終焉後接管元素的開印附帶流血 2 層",
+                  "cost": 5,
+                  "description_original": "血引：血終焉後接管元素的開印附帶流血 2 層"
+                }
+              ],
+              "main_original": "血印記的融斷再 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "血潮 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "血池",
+                  "description": "血池：血印記融斷後留下 5 秒血池，你在其中每秒回血",
+                  "cost": 5,
+                  "description_original": "血池：血印記融斷後留下 5 秒血池，你在其中每秒回血"
+                }
+              ],
+              "main_original": "血潮 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            }
+          ]
+        }
+      ],
+      "index": 5
+    },
+    {
+      "id": "divine",
+      "section": "5.9",
+      "title": "神聖",
+      "routes": [
+        {
+          "index": 0,
+          "name": "持續（審判）",
+          "kind": "持續",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "聖印每層目標受聖傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "護持",
+                  "description": "護持：命中獲得 10% 魔抗 3 秒",
+                  "cost": 5,
+                  "description_original": "護持：命中獲得 10% 魔抗 3 秒"
+                },
+                {
+                  "index": 1,
+                  "name": "驅魔",
+                  "description": "驅魔：對死靈施法者傷害 +50%",
+                  "cost": 5,
+                  "description_original": "驅魔：對死靈施法者傷害 +50%"
+                }
+              ],
+              "main_original": "聖印每層目標受聖傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "聖附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "神罰",
+                  "description": "神罰：聖印滿層時每次命中額外一次 50% 聖光",
+                  "cost": 5,
+                  "description_original": "神罰：聖印滿層時每次命中額外一次 50% 聖光"
+                },
+                {
+                  "index": 1,
+                  "name": "聖盾",
+                  "description": "聖盾：每命中 +1 層（最多 5），抵消魔法傷害",
+                  "cost": 5,
+                  "description_original": "聖盾：每命中 +1 層（最多 5），抵消魔法傷害"
+                }
+              ],
+              "main_original": "聖附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "命中回血 +2%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "光耀",
+                  "description": "光耀：裁決後附近亡靈魔族減速",
+                  "cost": 5,
+                  "description_original": "光耀：裁決後附近亡靈魔族減速"
+                },
+                {
+                  "index": 1,
+                  "name": "聖灰",
+                  "description": "聖灰：敵人化為灰燼時你回復魔力 B_max ×2",
+                  "cost": 5,
+                  "description_original": "聖灰：敵人化為灰燼時你回復魔力 B_max ×2"
+                }
+              ],
+              "main_original": "命中回血 +2%／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "治療／回復"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "同調每段聖附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "祝福",
+                  "description": "祝福：命中時小範圍治療同伴",
+                  "cost": 5,
+                  "description_original": "祝福：命中時小範圍治療同伴"
+                },
+                {
+                  "index": 1,
+                  "name": "庇護",
+                  "description": "庇護：生命低於 30% 時自動聖盾滿層，每 30 秒一次",
+                  "cost": 5,
+                  "description_original": "庇護：生命低於 30% 時自動聖盾滿層，每 30 秒一次"
+                }
+              ],
+              "main_original": "同調每段聖附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "天啟：同調三段時裁決改為範圍，範圍 1 公尺 +0.2 公尺／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "神佑",
+                  "description": "神佑：同調三段時致命傷改為留 1 血並清除所有負面，每場戰鬥一次",
+                  "cost": 5,
+                  "description_original": "神佑：同調三段時致命傷改為留 1 血並清除所有負面，每場戰鬥一次"
+                },
+                {
+                  "index": 1,
+                  "name": "淨土",
+                  "description": "淨土：同調三段時你在神聖形態中擊殺的所有敵人都化灰，不限致命一擊是否神聖",
+                  "cost": 5,
+                  "description_original": "淨土：同調三段時你在神聖形態中擊殺的所有敵人都化灰，不限致命一擊是否神聖"
+                }
+              ],
+              "main_original": "天啟：同調三段時裁決改為範圍，範圍 1 公尺 +0.2 公尺／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "name": "開啟（聖臨）",
+          "kind": "開啟",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "開印回血 +5%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "聖輝",
+                  "description": "聖輝：開印時附近 1 人也聖印",
+                  "cost": 5,
+                  "description_original": "聖輝：開印時附近 1 人也聖印"
+                }
+              ],
+              "main_original": "開印回血 +5%／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "治療／回復"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "開印後 5 秒內聖附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "慈光",
+                  "description": "慈光：開印那一擊附傷 ×1.5",
+                  "cost": 5,
+                  "description_original": "慈光：開印那一擊附傷 ×1.5"
+                },
+                {
+                  "index": 1,
+                  "name": "聖護",
+                  "description": "聖護：開印時獲得 10% 魔抗 3 秒",
+                  "cost": 5,
+                  "description_original": "聖護：開印時獲得 10% 魔抗 3 秒"
+                }
+              ],
+              "main_original": "開印後 5 秒內聖附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "聖印記持續 +0.2 秒／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "聖臨強化",
+                  "description": "聖臨強化：聖臨時你與附近同伴回血 B_max ×2",
+                  "cost": 5,
+                  "description_original": "聖臨強化：聖臨時你與附近同伴回血 B_max ×2"
+                }
+              ],
+              "main_original": "聖印記持續 +0.2 秒／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "聖臨：開聖形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "聖痕",
+                  "description": "聖痕：開印目標對亡靈魔族判定，非亡靈也受 +10% 聖傷",
+                  "cost": 5,
+                  "description_original": "聖痕：開印目標對亡靈魔族判定，非亡靈也受 +10% 聖傷"
+                },
+                {
+                  "index": 1,
+                  "name": "聖光",
+                  "description": "聖光：開印時附近同伴回血 B_max",
+                  "cost": 5,
+                  "description_original": "聖光：開印時附近同伴回血 B_max"
+                }
+              ],
+              "main_original": "聖臨：開聖形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "開印效果 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "聖啟",
+                  "description": "聖啟：同調三段時開印對亡靈魔族立即一次 ×0.5 裁決",
+                  "cost": 5,
+                  "description_original": "聖啟：同調三段時開印對亡靈魔族立即一次 ×0.5 裁決"
+                }
+              ],
+              "main_original": "開印效果 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "fix8 使用者核准：開印效果整體套用 ESSB_NodeScale"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "name": "關閉（裁決）",
+          "kind": "關閉",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "終焉 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "重裁",
+                  "description": "重裁：裁決 ×2.0 → ×3.0",
+                  "cost": 5,
+                  "description_original": "重裁：裁決 ×2.0 → ×3.0"
+                }
+              ],
+              "main_original": "終焉 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "聖印記的融斷 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "廣裁",
+                  "description": "廣裁：裁決改為 3 公尺範圍",
+                  "cost": 5,
+                  "description_original": "廣裁：裁決改為 3 公尺範圍"
+                },
+                {
+                  "index": 1,
+                  "name": "聖斷",
+                  "description": "聖斷：聖印記融斷每個目標治療你 B_max ×1.0",
+                  "cost": 5,
+                  "description_original": "聖斷：聖印記融斷每個目標治療你 B_max ×1.0"
+                }
+              ],
+              "main_original": "聖印記的融斷 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "終焉後 5 秒內接管元素附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "聖域",
+                  "description": "聖域：聖終焉後留下聖域 5 秒，其中敵人傷害 -20%，你持續回復",
+                  "cost": 5,
+                  "description_original": "聖域：聖終焉後留下聖域 5 秒，其中敵人傷害 -20%，你持續回復"
+                },
+                {
+                  "index": 1,
+                  "name": "淨灰",
+                  "description": "淨灰：裁決擊殺的亡靈化灰時爆出聖光，附近亡靈受 B_max ×1.0 聖傷",
+                  "cost": 5,
+                  "description_original": "淨灰：裁決擊殺的亡靈化灰時爆出聖光，附近亡靈受 B_max ×1.0 聖傷"
+                }
+              ],
+              "main_original": "終焉後 5 秒內接管元素附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "聖印記的融斷再 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "處決",
+                  "description": "處決：裁決處決範圍內低於 20% 生命的亡靈魔族",
+                  "cost": 5,
+                  "description_original": "處決：裁決處決範圍內低於 20% 生命的亡靈魔族"
+                },
+                {
+                  "index": 1,
+                  "name": "聖引",
+                  "description": "聖引：聖終焉後接管元素的開印治療你 B_max",
+                  "cost": 5,
+                  "description_original": "聖引：聖終焉後接管元素的開印治療你 B_max"
+                }
+              ],
+              "main_original": "聖印記的融斷再 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "裁決 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "神聖領域",
+                  "description": "神聖領域：聖印記融斷後留下 8 秒聖域",
+                  "cost": 5,
+                  "description_original": "神聖領域：聖印記融斷後留下 8 秒聖域"
+                }
+              ],
+              "main_original": "裁決 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            }
+          ]
+        }
+      ],
+      "index": 6
+    },
+    {
+      "id": "poison",
+      "section": "5.10",
+      "title": "毒素",
+      "routes": [
+        {
+          "index": 0,
+          "name": "持續（疫毒）",
+          "kind": "持續",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "毒層每層傷害 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "免疫",
+                  "description": "免疫：毒形態毒抗 +50%",
+                  "cost": 5,
+                  "description_original": "免疫：毒形態毒抗 +50%"
+                }
+              ],
+              "main_original": "毒層每層傷害 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "毒附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "衰弱",
+                  "description": "衰弱：毒層 ≥5 時目標攻擊 -15%",
+                  "cost": 5,
+                  "description_original": "衰弱：毒層 ≥5 時目標攻擊 -15%"
+                },
+                {
+                  "index": 1,
+                  "name": "毒皮",
+                  "description": "毒皮：被近戰命中時攻擊者 +2 毒層",
+                  "cost": 5,
+                  "description_original": "毒皮：被近戰命中時攻擊者 +2 毒層"
+                }
+              ],
+              "main_original": "毒附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "基礎擴散間隔 -0.1 秒／點（2 → 0.5 秒）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "侵蝕",
+                  "description": "侵蝕：毒層 ≥10 時目標毒抗 -20%",
+                  "cost": 5,
+                  "description_original": "侵蝕：毒層 ≥10 時目標毒抗 -20%"
+                },
+                {
+                  "index": 1,
+                  "name": "傳染門檻",
+                  "description": "傳染門檻：基礎擴散門檻 5 層 → 1 層",
+                  "cost": 5,
+                  "description_original": "傳染門檻：基礎擴散門檻 5 層 → 1 層"
+                }
+              ],
+              "main_original": "基礎擴散間隔 -0.1 秒／點（2 → 0.5 秒）",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "同調每段毒附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "蔓延",
+                  "description": "蔓延：中毒目標死亡時毒層傳給附近敵人",
+                  "cost": 5,
+                  "description_original": "蔓延：中毒目標死亡時毒層傳給附近敵人"
+                },
+                {
+                  "index": 1,
+                  "name": "以毒攻毒",
+                  "description": "以毒攻毒：你中毒時生命回復 +20%",
+                  "cost": 5,
+                  "description_original": "以毒攻毒：你中毒時生命回復 +20%"
+                }
+              ],
+              "main_original": "同調每段毒附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "瘟疫：同調三段時毒層每秒自動擴散到附近敵人，機率 5%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "百毒不侵",
+                  "description": "百毒不侵：同調三段時免疫中毒與疾病，附近中毒敵人每秒替你回血",
+                  "cost": 5,
+                  "description_original": "百毒不侵：同調三段時免疫中毒與疾病，附近中毒敵人每秒替你回血"
+                }
+              ],
+              "main_original": "瘟疫：同調三段時毒層每秒自動擴散到附近敵人，機率 5%／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "機率"
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "name": "開啟（毒臨）",
+          "kind": "開啟",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "開印毒層 +1／每 3 點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "毒濺",
+                  "description": "毒濺：開印時附近 1 人 +2 毒層",
+                  "cost": 5,
+                  "description_original": "毒濺：開印時附近 1 人 +2 毒層"
+                }
+              ],
+              "main_original": "開印毒層 +1／每 3 點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "開印後 5 秒內毒附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "濃毒",
+                  "description": "濃毒：開印那一擊附傷 ×1.5",
+                  "cost": 5,
+                  "description_original": "濃毒：開印那一擊附傷 ×1.5"
+                },
+                {
+                  "index": 1,
+                  "name": "毒膜",
+                  "description": "毒膜：開印時毒抗 +50% 5 秒",
+                  "cost": 5,
+                  "description_original": "毒膜：開印時毒抗 +50% 5 秒"
+                }
+              ],
+              "main_original": "開印後 5 秒內毒附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "毒印記持續 +0.2 秒／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "毒臨強化",
+                  "description": "毒臨強化：毒臨時範圍內敵人 +3 毒層",
+                  "cost": 5,
+                  "description_original": "毒臨強化：毒臨時範圍內敵人 +3 毒層"
+                }
+              ],
+              "main_original": "毒印記持續 +0.2 秒／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "毒臨：開毒形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "腐蝕開印",
+                  "description": "腐蝕開印：開印目標毒抗 -10%",
+                  "cost": 5,
+                  "description_original": "腐蝕開印：開印目標毒抗 -10%"
+                },
+                {
+                  "index": 1,
+                  "name": "毒血",
+                  "description": "毒血：開印時你回血 B_max ×0.5",
+                  "cost": 5,
+                  "description_original": "毒血：開印時你回血 B_max ×0.5"
+                }
+              ],
+              "main_original": "毒臨：開毒形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "開印效果 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "劇毒之始",
+                  "description": "劇毒之始：同調三段時開印毒層 ×2",
+                  "cost": 5,
+                  "description_original": "劇毒之始：同調三段時開印毒層 ×2"
+                }
+              ],
+              "main_original": "開印效果 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "fix8 使用者核准：開印效果整體套用 ESSB_NodeScale"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "name": "關閉（催毒）",
+          "kind": "關閉",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "終焉 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "潰爛",
+                  "description": "潰爛：催毒期間改為每秒跳三次",
+                  "cost": 5,
+                  "description_original": "潰爛：催毒期間改為每秒跳三次"
+                }
+              ],
+              "main_original": "終焉 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "毒印記的融斷 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "延毒",
+                  "description": "延毒：催毒 8 → 12 秒",
+                  "cost": 5,
+                  "description_original": "延毒：催毒 8 → 12 秒"
+                },
+                {
+                  "index": 1,
+                  "name": "瘴氣",
+                  "description": "瘴氣：毒終焉時毒層以原層數複製到 6 公尺內敵人",
+                  "cost": 5,
+                  "description_original": "瘴氣：毒終焉時毒層以原層數複製到 6 公尺內敵人"
+                }
+              ],
+              "main_original": "毒印記的融斷 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "終焉後 5 秒內接管元素附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "毒斷",
+                  "description": "毒斷：融斷的催毒持續 ×2",
+                  "cost": 5,
+                  "description_original": "毒斷：融斷的催毒持續 ×2"
+                }
+              ],
+              "main_original": "終焉後 5 秒內接管元素附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "毒印記的融斷再 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "劇毒",
+                  "description": "劇毒：催毒期間目標毒抗視為 0",
+                  "cost": 5,
+                  "description_original": "劇毒：催毒期間目標毒抗視為 0"
+                },
+                {
+                  "index": 1,
+                  "name": "腐蝕終焉",
+                  "description": "腐蝕終焉：毒終焉後目標魔抗 -20% 8 秒",
+                  "cost": 5,
+                  "description_original": "腐蝕終焉：毒終焉後目標魔抗 -20% 8 秒"
+                }
+              ],
+              "main_original": "毒印記的融斷再 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "催毒期間毒層傷害 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "毒霧",
+                  "description": "毒霧：毒印記融斷後留下 5 秒毒霧，內部每秒 +1 毒層",
+                  "cost": 5,
+                  "description_original": "毒霧：毒印記融斷後留下 5 秒毒霧，內部每秒 +1 毒層"
+                }
+              ],
+              "main_original": "催毒期間毒層傷害 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            }
+          ]
+        }
+      ],
+      "index": 7
+    },
+    {
+      "id": "water",
+      "section": "5.11",
+      "title": "水",
+      "routes": [
+        {
+          "index": 0,
+          "name": "持續（潮汐）",
+          "kind": "持續",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "浸濕持續 +0.3 秒／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "清流",
+                  "description": "清流：命中回復耐力 30",
+                  "cost": 5,
+                  "description_original": "清流：命中回復耐力 5"
+                }
+              ],
+              "main_original": "浸濕持續 +0.3 秒／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "長流每秒回復 +0.2%／點（2.0% → 5.0%）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "水壓",
+                  "description": "水壓：命中浸濕目標 +1 水壓，每層水附傷 +10%",
+                  "cost": 5,
+                  "description_original": "水壓：命中浸濕目標 +1 水壓，每層水附傷 +10%"
+                },
+                {
+                  "index": 1,
+                  "name": "水膜",
+                  "description": "水膜：浸濕目標對你的傷害 -10%",
+                  "cost": 5,
+                  "description_original": "水膜：浸濕目標對你的傷害 -10%"
+                }
+              ],
+              "main_original": "長流每秒回復 +0.02%／點（0.3% → 0.6%）",
+              "balance_class": "SPECIFIC",
+              "balance_reason": "第 2／2b 項指定數值"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "水壓每層水附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "洗淨",
+                  "description": "洗淨：命中時清除自身一個負面效果（中毒、疾病、元素持續傷、減速），每 3 秒一次",
+                  "cost": 5,
+                  "description_original": "洗淨：命中時清除自身一個負面效果（中毒、疾病、元素持續傷、減速），每 3 秒一次"
+                }
+              ],
+              "main_original": "水壓每層水附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "同調每段長流回復 +0.05%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "水鏡",
+                  "description": "水鏡：每命中 +1 層（最多 3），被打消耗一層抵消該次 30% 傷害",
+                  "cost": 5,
+                  "description_original": "水鏡：每命中 +1 層（最多 3），被打消耗一層抵消該次 30% 傷害"
+                },
+                {
+                  "index": 1,
+                  "name": "淨化",
+                  "description": "淨化：洗淨改為清除全部負面效果",
+                  "cost": 5,
+                  "description_original": "淨化：洗淨改為清除全部負面效果"
+                }
+              ],
+              "main_original": "同調每段長流回復 +0.05%／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "治療／回復"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "長河：同調三段時長流再 +0.05%／點，且長流同時作用於附近同伴",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "水體",
+                  "description": "水體：同調三段時受傷 -15%，火傷減半",
+                  "cost": 5,
+                  "description_original": "水體：同調三段時受傷 -15%，火傷減半"
+                }
+              ],
+              "main_original": "長河：同調三段時長流再 +0.05%／點，且長流同時作用於附近同伴",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "治療／回復"
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "name": "開啟（水臨）",
+          "kind": "開啟",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "浸濕減速 +1%／點（15% → 30%；本模組總減速上限 70%）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "廣佈",
+                  "description": "廣佈：開印時浸濕擴散到附近 1 人",
+                  "cost": 5,
+                  "description_original": "廣佈：開印時浸濕擴散到附近 1 人"
+                }
+              ],
+              "main_original": "浸濕減速 +1%／點",
+              "balance_class": "SPECIFIC",
+              "balance_reason": "第 2／2b 項指定數值"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "開印後 5 秒內水附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "深濕",
+                  "description": "深濕：開印那一擊附傷 ×1.5",
+                  "cost": 5,
+                  "description_original": "深濕：開印那一擊附傷 ×1.5"
+                },
+                {
+                  "index": 1,
+                  "name": "回流",
+                  "description": "回流：開印時回復耐力 80",
+                  "cost": 5,
+                  "description_original": "回流：開印時回復耐力 15"
+                }
+              ],
+              "main_original": "開印後 5 秒內水附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "水印記持續 +0.2 秒／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "水臨強化",
+                  "description": "水臨強化：水臨時範圍內敵人浸濕並減速 20%，你立即清除全部負面效果",
+                  "cost": 5,
+                  "description_original": "水臨強化：水臨時範圍內敵人浸濕並減速 20%，你立即清除全部負面效果"
+                }
+              ],
+              "main_original": "水印記持續 +0.2 秒／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "水臨：開水形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "沖刷",
+                  "description": "沖刷：開印驅散目標一個有時限的增益（護甲術、披風、隱身等法術），每目標每 10 秒一次",
+                  "cost": 5,
+                  "description_original": "沖刷：開印驅散目標一個有時限的增益（護甲術、披風、隱身等法術），每目標每 10 秒一次"
+                },
+                {
+                  "index": 1,
+                  "name": "水牢",
+                  "description": "水牢：浸濕目標移速 -20%",
+                  "cost": 5,
+                  "description_original": "水牢：浸濕目標移速 -20%"
+                }
+              ],
+              "main_original": "水臨：開水形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "開印效果 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "汪洋之始",
+                  "description": "汪洋之始：同調三段時開印的浸濕不會過期，直到被切掉",
+                  "cost": 5,
+                  "description_original": "汪洋之始：同調三段時開印的浸濕不會過期，直到被切掉"
+                }
+              ],
+              "main_original": "開印效果 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "fix8 使用者核准：開印效果整體套用 ESSB_NodeScale"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "name": "關閉（導引）",
+          "kind": "關閉",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "終焉 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "強引",
+                  "description": "強引：導引 ×1.5 → ×2.0",
+                  "cost": 5,
+                  "description_original": "強引：導引 ×1.5 → ×2.0"
+                }
+              ],
+              "main_original": "終焉 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "水印記的融斷 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "潮引",
+                  "description": "潮引：水終焉時接管元素 +5 → +10 同調",
+                  "cost": 5,
+                  "description_original": "潮引：水終焉時接管元素 +5 → +10 同調"
+                },
+                {
+                  "index": 1,
+                  "name": "水斷",
+                  "description": "水斷：水印記融斷改為治療你並回復耐力",
+                  "cost": 5,
+                  "description_original": "水斷：水印記融斷改為治療你並回復耐力"
+                }
+              ],
+              "main_original": "水印記的融斷 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "終焉後 5 秒內接管元素附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "汪洋",
+                  "description": "汪洋：水終焉不移除浸濕，保留為副印記 10 秒，融斷時再結算",
+                  "cost": 5,
+                  "description_original": "汪洋：水終焉不移除浸濕，保留為副印記 10 秒，融斷時再結算"
+                }
+              ],
+              "main_original": "終焉後 5 秒內接管元素附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "水印記的融斷再 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "大潮",
+                  "description": "大潮：水終焉時範圍內所有浸濕目標都給接管元素導引",
+                  "cost": 5,
+                  "description_original": "大潮：水終焉時範圍內所有浸濕目標都給接管元素導引"
+                },
+                {
+                  "index": 1,
+                  "name": "洗滌",
+                  "description": "洗滌：水終焉清除你所有負面效果，並驅散目標一個有時限的增益",
+                  "cost": 5,
+                  "description_original": "洗滌：水終焉清除你所有負面效果，並驅散目標一個有時限的增益"
+                }
+              ],
+              "main_original": "水印記的融斷再 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "導引 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "潮池",
+                  "description": "潮池：水印記融斷後留下 5 秒水域，內部敵人減速 30%、你回血回耐力",
+                  "cost": 5,
+                  "description_original": "潮池：水印記融斷後留下 5 秒水域，內部敵人減速 30%、你回血回耐力"
+                }
+              ],
+              "main_original": "導引 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            }
+          ]
+        }
+      ],
+      "index": 8
+    },
+    {
+      "id": "darkness",
+      "section": "5.12",
+      "title": "黑暗",
+      "routes": [
+        {
+          "index": 0,
+          "name": "持續（侵蝕）",
+          "kind": "持續",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "詛咒每層抗性侵蝕 -0.2%／點（-2% → -5%）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "蝕魔",
+                  "description": "蝕魔：命中吸魔 ×2",
+                  "cost": 5,
+                  "description_original": "蝕魔：命中吸魔 ×2"
+                }
+              ],
+              "main_original": "詛咒每層抗性侵蝕 -0.2%／點（-2% → -5%）",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "減抗／削甲"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "暗附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "衰弱",
+                  "description": "衰弱：詛咒目標攻擊 -10%",
+                  "cost": 5,
+                  "description_original": "衰弱：詛咒目標攻擊 -10%"
+                },
+                {
+                  "index": 1,
+                  "name": "影甲",
+                  "description": "影甲：詛咒目標對你的傷害 -10%",
+                  "cost": 5,
+                  "description_original": "影甲：詛咒目標對你的傷害 -10%"
+                }
+              ],
+              "main_original": "暗附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "詛咒滿層目標受所有傷害 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "腐朽",
+                  "description": "腐朽：詛咒目標受治療 -50%",
+                  "cost": 5,
+                  "description_original": "腐朽：詛咒目標受治療 -50%"
+                }
+              ],
+              "main_original": "詛咒滿層目標受所有傷害 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "同調每段暗附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "虛空",
+                  "description": "虛空：對魔力低於 25% 的施法者傷害 ×1.5",
+                  "cost": 5,
+                  "description_original": "虛空：對魔力低於 25% 的施法者傷害 ×1.5"
+                },
+                {
+                  "index": 1,
+                  "name": "收割",
+                  "description": "收割：詛咒目標死亡回魔",
+                  "cost": 5,
+                  "description_original": "收割：詛咒目標死亡回魔"
+                }
+              ],
+              "main_original": "同調每段暗附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "深淵：同調三段時詛咒層上限 +1／每 3 點，滿層目標抗性可侵蝕到負值",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "影身",
+                  "description": "影身：同調三段時被近戰命中 30% 機率無效並回魔",
+                  "cost": 5,
+                  "description_original": "影身：同調三段時被近戰命中 30% 機率無效並回魔"
+                }
+              ],
+              "main_original": "深淵：同調三段時詛咒層上限 +1／每 3 點，滿層目標抗性可侵蝕到負值",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "name": "開啟（咒縛）",
+          "kind": "開啟",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "開印詛咒 +1 層／每 5 點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "夢魘",
+                  "description": "夢魘：開印施加恐懼 1.5 秒",
+                  "cost": 5,
+                  "description_original": "夢魘：開印施加恐懼 1.5 秒"
+                }
+              ],
+              "main_original": "開印詛咒 +1 層／每 5 點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "開印後 5 秒內暗附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "瘋狂",
+                  "description": "瘋狂：開印使目標 3 秒內攻擊最近的任何人",
+                  "cost": 5,
+                  "description_original": "瘋狂：開印使目標 3 秒內攻擊最近的任何人"
+                },
+                {
+                  "index": 1,
+                  "name": "幻影",
+                  "description": "幻影：開印後 3 秒目標對你的命中率 -30%",
+                  "cost": 5,
+                  "description_original": "幻影：開印後 3 秒目標對你的命中率 -30%"
+                }
+              ],
+              "main_original": "開印後 5 秒內暗附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "暗印記持續 +0.2 秒／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "暗臨強化",
+                  "description": "暗臨強化：暗臨時範圍內敵人恐懼 2 秒",
+                  "cost": 5,
+                  "description_original": "暗臨強化：暗臨時範圍內敵人恐懼 2 秒"
+                }
+              ],
+              "main_original": "暗印記持續 +0.2 秒／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "暗臨：開暗形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "迷亂",
+                  "description": "迷亂：開印目標 3 秒內無法施法（同沉默實作）",
+                  "cost": 5,
+                  "description_original": "迷亂：開印目標 3 秒內無法施法（同沉默實作）"
+                },
+                {
+                  "index": 1,
+                  "name": "暗染",
+                  "description": "暗染：開印時附近 1 人也詛咒",
+                  "cost": 5,
+                  "description_original": "暗染：開印時附近 1 人也詛咒"
+                }
+              ],
+              "main_original": "暗臨：開暗形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "開印效果 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "群魔",
+                  "description": "群魔：同調三段時開印的瘋狂改為範圍，範圍內敵人互相攻擊 3 秒",
+                  "cost": 5,
+                  "description_original": "群魔：同調三段時開印的瘋狂改為範圍，範圍內敵人互相攻擊 3 秒"
+                }
+              ],
+              "main_original": "開印效果 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "fix8 使用者核准：開印效果整體套用 ESSB_NodeScale"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "name": "關閉（死咒）",
+          "kind": "關閉",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "終焉 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "饕餮",
+                  "description": "饕餮：死咒結算時吸血吸魔各 B_max ×1.0",
+                  "cost": 5,
+                  "description_original": "饕餮：死咒結算時吸血吸魔各 B_max ×1.0"
+                },
+                {
+                  "index": 1,
+                  "name": "亡者歸來",
+                  "description": "亡者歸來：因黑暗傷害死亡的敵人 25% 機率立即復生為你的僕從，階級與持續依目標等級（見下），不超過你的召喚上限",
+                  "cost": 5,
+                  "description_original": "亡者歸來：因黑暗傷害死亡的敵人 25% 機率立即復生為你的僕從，階級與持續依目標等級（見下），不超過你的召喚上限"
+                }
+              ],
+              "main_original": "終焉 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "暗印記的融斷 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "不治",
+                  "description": "不治：死咒的無法治療延長到 6 秒",
+                  "cost": 5,
+                  "description_original": "不治：死咒的無法治療延長到 6 秒"
+                },
+                {
+                  "index": 1,
+                  "name": "蝕魔終焉",
+                  "description": "蝕魔終焉：暗終焉後接管元素的下一次終焉附帶吸魔",
+                  "cost": 5,
+                  "description_original": "蝕魔終焉：暗終焉後接管元素的下一次終焉附帶吸魔"
+                }
+              ],
+              "main_original": "暗印記的融斷 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "死咒的「已損失生命」係數 +1.5%／點（15% → 37.5%）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "亡魂",
+                  "description": "亡魂：死咒殺死目標時，附近敵人恐懼 2 秒",
+                  "cost": 5,
+                  "description_original": "亡魂：死咒殺死目標時，附近敵人恐懼 2 秒"
+                },
+                {
+                  "index": 1,
+                  "name": "亡者強化",
+                  "description": "亡者強化：復生的僕從繼承死前的詛咒層數作為攻擊加成，每層 +10%，持續 ×2",
+                  "cost": 5,
+                  "description_original": "亡者強化：復生的僕從繼承死前的詛咒層數作為攻擊加成，每層 +10%，持續 ×2"
+                }
+              ],
+              "main_original": "死咒的「已損失生命」係數 +0.5%／點（15% → 22.5%）",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "暗印記的融斷再 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "處刑",
+                  "description": "處刑：死咒結算時目標生命低於 15% 則直接死亡，首領與必要角色改為 ×3",
+                  "cost": 5,
+                  "description_original": "處刑：死咒結算時目標生命低於 15% 則直接死亡，首領與必要角色改為 ×3"
+                },
+                {
+                  "index": 1,
+                  "name": "深淵回響",
+                  "description": "深淵回響：暗終焉回滿你的魔力",
+                  "cost": 5,
+                  "description_original": "深淵回響：暗終焉回滿你的魔力"
+                }
+              ],
+              "main_original": "暗印記的融斷再 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "死咒 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "死域",
+                  "description": "死域：暗印記融斷後留下 5 秒死域，內部敵人無法被治療、每秒受 B_max ×0.5 暗傷",
+                  "cost": 5,
+                  "description_original": "死域：暗印記融斷後留下 5 秒死域，內部敵人無法被治療、每秒受 B_max ×0.5 暗傷"
+                },
+                {
+                  "index": 1,
+                  "name": "死靈主",
+                  "description": "死靈主：同調三段時亡者歸來機率改為 100%，且任何等級的僕從可改為永久（六階，永久上限 1 名）",
+                  "cost": 5,
+                  "description_original": "死靈主：同調三段時亡者歸來機率改為 100%，且任何等級的僕從可改為永久（六階，永久上限 1 名）"
+                }
+              ],
+              "main_original": "死咒 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            }
+          ]
+        }
+      ],
+      "index": 9
+    },
+    {
+      "id": "astral",
+      "section": "5.13",
+      "title": "星界",
+      "routes": [
+        {
+          "index": 0,
+          "name": "持續（星落）",
+          "kind": "持續",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "星痕延遲傷害 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "星輝",
+                  "description": "星輝：星形態魔力回復 +20%",
+                  "cost": 5,
+                  "description_original": "星輝：星形態魔力回復 +20%"
+                }
+              ],
+              "main_original": "星痕延遲傷害 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "星附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "追擊",
+                  "description": "追擊：每第 3 次命中額外 35% 星傷",
+                  "cost": 5,
+                  "description_original": "追擊：每第 3 次命中額外 35% 星傷"
+                },
+                {
+                  "index": 1,
+                  "name": "星軌",
+                  "description": "星軌：命中回復魔力",
+                  "cost": 5,
+                  "description_original": "星軌：命中回復魔力"
+                }
+              ],
+              "main_original": "星附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "星痕層數上限 +1／每 5 點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "星痕弱點",
+                  "description": "星痕弱點：重擊時每層星痕 +8%",
+                  "cost": 5,
+                  "description_original": "星痕弱點：重擊時每層星痕 +8%"
+                }
+              ],
+              "main_original": "星痕層數上限 +1／每 5 點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "同調每段星附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "預知",
+                  "description": "預知：星痕引爆前 1 秒你受傷 -20%",
+                  "cost": 5,
+                  "description_original": "預知：星痕引爆前 1 秒你受傷 -20%"
+                },
+                {
+                  "index": 1,
+                  "name": "星盾",
+                  "description": "星盾：星痕引爆時你獲得小護盾",
+                  "cost": 5,
+                  "description_original": "星盾：星痕引爆時你獲得小護盾"
+                }
+              ],
+              "main_original": "同調每段星附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "群星：同調三段時星落連鎖附近星痕目標，範圍 1 公尺 +1 公尺／點（滿點 16 公尺）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "星體",
+                  "description": "星體：同調三段時魔法傷害 -30%，星痕引爆治療你",
+                  "cost": 5,
+                  "description_original": "星體：同調三段時魔法傷害 -30%，星痕引爆治療你"
+                }
+              ],
+              "main_original": "群星：同調三段時星落連鎖附近星痕目標，範圍 1 公尺 +1 公尺／點（滿點 16 公尺）",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "name": "開啟（星臨）",
+          "kind": "開啟",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "星痕延遲 -0.1 秒／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "星散",
+                  "description": "星散：開印時附近 1 人也星痕，搜尋範圍隨星臨主線成長",
+                  "cost": 5,
+                  "description_original": "星散：開印時附近 1 人也星痕，搜尋範圍隨星臨主線成長"
+                }
+              ],
+              "main_original": "星痕延遲 -0.1 秒／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "開印後 5 秒內星附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "明星",
+                  "description": "明星：開印那一擊附傷 ×1.5",
+                  "cost": 5,
+                  "description_original": "明星：開印那一擊附傷 ×1.5"
+                },
+                {
+                  "index": 1,
+                  "name": "星引力",
+                  "description": "星引力：開印時回復魔力",
+                  "cost": 5,
+                  "description_original": "星引力：開印時回復魔力"
+                }
+              ],
+              "main_original": "開印後 5 秒內星附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "星印記持續 +0.2 秒／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "星臨強化",
+                  "description": "星臨強化：星臨時範圍內敵人星痕 2 層",
+                  "cost": 5,
+                  "description_original": "星臨強化：星臨時範圍內敵人星痕 2 層"
+                }
+              ],
+              "main_original": "星印記持續 +0.2 秒／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "星臨：開星形態時對範圍內敵人各開印一次，範圍 2 公尺 +1 公尺／點（滿點 17 公尺）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "星鎖",
+                  "description": "星鎖：開印目標 3 秒內受所有元素傷 +10%",
+                  "cost": 5,
+                  "description_original": "星鎖：開印目標 3 秒內受所有元素傷 +10%"
+                },
+                {
+                  "index": 1,
+                  "name": "星光",
+                  "description": "星光：開印時你受傷 -10% 3 秒",
+                  "cost": 5,
+                  "description_original": "星光：開印時你受傷 -10% 3 秒"
+                }
+              ],
+              "main_original": "星臨：開星形態時對範圍內敵人各開印一次，範圍 2 公尺 +1 公尺／點（滿點 17 公尺）",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "開印效果 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "星耀",
+                  "description": "星耀：同調三段時開印的延遲星傷改為立即並 ×2",
+                  "cost": 5,
+                  "description_original": "星耀：同調三段時開印的延遲星傷改為立即並 ×2"
+                }
+              ],
+              "main_original": "開印效果 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "fix8 使用者核准：開印效果整體套用 ESSB_NodeScale"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "name": "關閉（星落）",
+          "kind": "關閉",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "終焉 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "隕星",
+                  "description": "隕星：星落 ×2.0 → ×3.0",
+                  "cost": 5,
+                  "description_original": "隕星：星落 ×2.0 → ×3.0"
+                }
+              ],
+              "main_original": "終焉 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "星印記的融斷 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "流星雨",
+                  "description": "流星雨：星落改為範圍（基礎 3 公尺，隨關閉專精主線成長）",
+                  "cost": 5,
+                  "description_original": "流星雨：星落改為範圍（基礎 3 公尺，隨關閉專精主線成長）"
+                },
+                {
+                  "index": 1,
+                  "name": "星斷",
+                  "description": "星斷：星印記融斷改為真實傷害，倍率 ×0.6",
+                  "cost": 5,
+                  "description_original": "星斷：星印記融斷改為真實傷害，倍率 ×0.6"
+                }
+              ],
+              "main_original": "星印記的融斷 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "星落與星域的範圍 +0.8 公尺／點（3 → 15 公尺；星落需「流星雨」才有範圍）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "星引",
+                  "description": "星引：星終焉後接管元素 +10 同調",
+                  "cost": 5,
+                  "description_original": "星引：星終焉後接管元素 +10 同調"
+                }
+              ],
+              "main_original": "星落與星域的範圍 +0.8 公尺／點（3 → 15 公尺；星落需「流星雨」才有範圍）",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "星印記的融斷再 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "星界之門",
+                  "description": "星界之門：星終焉後接管元素直接視為同調一段",
+                  "cost": 5,
+                  "description_original": "星界之門：星終焉後接管元素直接視為同調一段"
+                },
+                {
+                  "index": 1,
+                  "name": "星軌終焉",
+                  "description": "星軌終焉：星終焉後接管元素的開印 ×1.5",
+                  "cost": 5,
+                  "description_original": "星軌終焉：星終焉後接管元素的開印 ×1.5"
+                }
+              ],
+              "main_original": "星印記的融斷再 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "星落 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "星域",
+                  "description": "星域：星印記融斷後留下 5 秒星域，範圍同星落，內部敵人受所有元素傷 +20%",
+                  "cost": 5,
+                  "description_original": "星域：星印記融斷後留下 5 秒星域，範圍同星落，內部敵人受所有元素傷 +20%"
+                }
+              ],
+              "main_original": "星落 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            }
+          ]
+        }
+      ],
+      "index": 10
+    },
+    {
+      "id": "noform",
+      "section": "5.1",
+      "title": "無元素（未開形態時的所有武器）",
+      "routes": [
+        {
+          "index": 0,
+          "name": "純武藝",
+          "kind": "純武藝",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "無形態時武器傷害 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "穩步",
+                  "description": "穩步：格擋耐力消耗 -20%",
+                  "cost": 5,
+                  "description_original": "穩步：格擋耐力消耗 -20%"
+                }
+              ],
+              "main_original": "無形態時武器傷害 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "重擊碎甲：自有減防 1%／點，5 秒",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "反擊",
+                  "description": "反擊：格擋成功後 3 秒內下一次命中傷害 +30%",
+                  "cost": 5,
+                  "description_original": "反擊：格擋成功後 3 秒內下一次命中傷害 +30%"
+                },
+                {
+                  "index": 1,
+                  "name": "疾攻",
+                  "description": "疾攻：連續命中每次重擊耐力消耗 -10%，最多 -50%",
+                  "cost": 5,
+                  "description_original": "疾攻：連續命中每次重擊耐力消耗 -10%，最多 -50%"
+                }
+              ],
+              "main_original": "重擊碎甲：自有減防 1%／點，5 秒",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "減抗／削甲"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "無形態時暴擊率 +1%／點（自有判定）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "節奏",
+                  "description": "節奏：4 秒內連續命中 3 次，回復耐力並 +1 戰意（最多 5）",
+                  "cost": 5,
+                  "description_original": "節奏：4 秒內連續命中 3 次，回復耐力並 +1 戰意（最多 5）"
+                }
+              ],
+              "main_original": "無形態時暴擊率 +1%／點（自有判定）",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "機率"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "戰意：每層武器傷害 +1.5%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "破勢",
+                  "description": "破勢：碎甲持續改為 8 秒",
+                  "cost": 5,
+                  "description_original": "破勢：碎甲持續改為 8 秒"
+                },
+                {
+                  "index": 1,
+                  "name": "不屈",
+                  "description": "不屈：戰意 ≥3 時受傷 -10%",
+                  "cost": 5,
+                  "description_original": "不屈：戰意 ≥3 時受傷 -10%"
+                }
+              ],
+              "main_original": "戰意：每層武器傷害 +0.5%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "終結：戰意滿層重擊無視護甲 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "處決",
+                  "description": "處決：戰意滿層時重擊對低於 25% 生命的目標傷害 ×3，消耗全部戰意",
+                  "cost": 5,
+                  "description_original": "處決：戰意滿層時重擊對低於 25% 生命的目標傷害 ×3，消耗全部戰意"
+                }
+              ],
+              "main_original": "終結：戰意滿層重擊無視護甲 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "fix8 使用者核准：終結真傷係數套用 ESSB_NodeScale"
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "name": "破魔",
+          "kind": "破魔",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "破魔：命中削減目標魔力（20 + 4／點）× G(L_無元素)，回復你實際削減的等量魔力，造成實際削減量 ×0.5 的真實傷害（此路徑不重複乘 G），並施加「破魔印」8 秒",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "蝕魔",
+                  "description": "蝕魔：削魔量改為「固定值」與「目標最大魔力 10%」取高者",
+                  "cost": 5,
+                  "description_original": "蝕魔：削魔量改為「固定值」與「目標最大魔力 2%」取高者"
+                }
+              ],
+              "main_original": "破魔：命中削減目標魔力 5（+1／點），回復你等量魔力，造成削減量 ×0.5 的真實傷害（無視護甲與所有抗性），並施加「破魔印」8 秒",
+              "balance_class": "SPECIFIC",
+              "balance_reason": "第 2／2b 項指定數值"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "真實傷害比例 +3%／點（0.5 → 0.95）",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "斷咒",
+                  "description": "斷咒：命中施法中的敵人打斷其施法，每 5 秒一次",
+                  "cost": 5,
+                  "description_original": "斷咒：命中施法中的敵人打斷其施法，每 5 秒一次"
+                },
+                {
+                  "index": 1,
+                  "name": "反噬",
+                  "description": "反噬：受到法術傷害時回復魔力",
+                  "cost": 5,
+                  "description_original": "反噬：受到法術傷害時回復魔力"
+                },
+                {
+                  "index": 2,
+                  "name": "反咒",
+                  "description": "反咒：帶破魔印的敵人施法時，受其該次施法消耗魔力 100% 的真實傷害；每無元素樹等級 +2%，100 級為 300%",
+                  "cost": 5,
+                  "description_original": "反咒：帶破魔印的敵人施法時，受其該次施法消耗魔力 100% 的真實傷害；每無元素樹等級 +2%，100 級為 300%"
+                }
+              ],
+              "main_original": "真實傷害比例 +3%／點（0.5 → 0.95）",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "第 2 項明定比例／對施法者 +5% 不變"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "沉默：目標魔力被削至 0 時施加沉默 1 秒（+0.2 秒／點，最長 4 秒）；沉默中無法施法、不回復魔力",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "枯竭",
+                  "description": "枯竭：目標魔力已為 0 時，真實傷害改以你當前魔力的 20% 計",
+                  "cost": 5,
+                  "description_original": "枯竭：目標魔力已為 0 時，真實傷害改以你當前魔力的 5% 計"
+                },
+                {
+                  "index": 1,
+                  "name": "靜寂",
+                  "description": "靜寂：沉默中的目標受真實傷害 ×1.5",
+                  "cost": 5,
+                  "description_original": "靜寂：沉默中的目標受真實傷害 ×1.5"
+                }
+              ],
+              "main_original": "沉默：目標魔力被削至 0 時施加沉默 1 秒（+0.2 秒／點，最長 4 秒）；沉默中無法施法、不回復魔力",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "治療／回復"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "對施法者與帶魔法護盾、元素披風的敵人削魔量 +5%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "破護",
+                  "description": "破護：不受元素披風反傷",
+                  "cost": 5,
+                  "description_original": "破護：不受元素披風反傷"
+                },
+                {
+                  "index": 1,
+                  "name": "抗咒",
+                  "description": "抗咒：無形態時魔抗 +15%",
+                  "cost": 5,
+                  "description_original": "抗咒：無形態時魔抗 +15%"
+                }
+              ],
+              "main_original": "對施法者與帶魔法護盾、元素披風的敵人削魔量 +5%／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "第 2 項明定比例／對施法者 +5% 不變"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "目標魔力低於 25% 時命中傷害 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "無魔",
+                  "description": "無魔：擊殺施法者回滿耐力與魔力",
+                  "cost": 5,
+                  "description_original": "無魔：擊殺施法者回滿耐力與魔力"
+                },
+                {
+                  "index": 1,
+                  "name": "逆流",
+                  "description": "逆流：真實傷害的 50% 轉為你的生命",
+                  "cost": 5,
+                  "description_original": "逆流：真實傷害的 50% 轉為你的生命"
+                },
+                {
+                  "index": 2,
+                  "name": "封印",
+                  "description": "封印：沉默改為 3 公尺範圍",
+                  "cost": 5,
+                  "description_original": "封印：沉默改為 3 公尺範圍"
+                }
+              ],
+              "main_original": "目標魔力低於 25% 時命中傷害 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "name": "融斷",
+          "kind": "融斷",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "融斷 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "免門檻",
+                  "description": "免門檻：融斷後下一次開形態不需魔力",
+                  "cost": 5,
+                  "description_original": "免門檻：融斷後下一次開形態不需魔力"
+                }
+              ],
+              "main_original": "融斷 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "餘燼：關閉形態後 10 秒內無形態命中附帶前一元素附傷 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "收束",
+                  "description": "收束：融斷範圍 15 → 20 公尺",
+                  "cost": 5,
+                  "description_original": "收束：融斷範圍 15 → 20 公尺"
+                },
+                {
+                  "index": 1,
+                  "name": "餘燼延續",
+                  "description": "餘燼延續：餘燼改為 20 秒",
+                  "cost": 5,
+                  "description_original": "餘燼延續：餘燼改為 20 秒"
+                }
+              ],
+              "main_original": "餘燼：關閉形態後 10 秒內無形態命中附帶前一元素附傷 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "融斷範圍 +0.3 公尺／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "連斷",
+                  "description": "連斷：融斷後 5 秒內重開任一形態，保留一半同調",
+                  "cost": 5,
+                  "description_original": "連斷：融斷後 5 秒內重開任一形態，保留一半同調"
+                }
+              ],
+              "main_original": "融斷範圍 +0.3 公尺／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "淬火：融斷後 10 秒內武器傷害 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "斷界",
+                  "description": "斷界：融斷後對範圍內敵人施加所有被結清元素的弱化 3 秒",
+                  "cost": 5,
+                  "description_original": "斷界：融斷後對範圍內敵人施加所有被結清元素的弱化 3 秒"
+                },
+                {
+                  "index": 1,
+                  "name": "回流",
+                  "description": "回流：融斷回復你魔力，每個印記 B_max ×0.5",
+                  "cost": 5,
+                  "description_original": "回流：融斷回復你魔力，每個印記 B_max ×0.5"
+                }
+              ],
+              "main_original": "淬火：融斷後 10 秒內武器傷害 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "融斷再 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "雙斷",
+                  "description": "雙斷：融斷後 3 秒內再次按 Z 開任一形態，會對範圍內敵人立即開印一次",
+                  "cost": 5,
+                  "description_original": "雙斷：融斷後 3 秒內再次按 Z 開任一形態，會對範圍內敵人立即開印一次"
+                }
+              ],
+              "main_original": "融斷再 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            }
+          ]
+        }
+      ],
+      "index": 11
+    },
+    {
+      "id": "common",
+      "section": "5.2",
+      "title": "全元素通用（任一形態啟用時，與當前元素樹一起生效）",
+      "routes": [
+        {
+          "index": 0,
+          "name": "持續",
+          "kind": "持續",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "同調門檻 -2%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "承接",
+                  "description": "承接：切換時保留前一形態三分之一同調",
+                  "cost": 5,
+                  "description_original": "承接：切換時保留前一形態三分之一同調"
+                }
+              ],
+              "main_original": "同調門檻 -2%／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "移動／控制／防禦／門檻"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "同調二段時附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "不移",
+                  "description": "不移：被打斷或擊倒不失去同調",
+                  "cost": 5,
+                  "description_original": "不移：被打斷或擊倒不失去同調"
+                },
+                {
+                  "index": 1,
+                  "name": "專一",
+                  "description": "專一：同一形態持續超過 60 秒後同調門檻再降一半",
+                  "cost": 5,
+                  "description_original": "專一：同一形態持續超過 60 秒後同調門檻再降一半"
+                }
+              ],
+              "main_original": "同調二段時附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "同調三段時受傷 -0.5%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "定神",
+                  "description": "定神：同調三段時免疫減速（自有）",
+                  "cost": 5,
+                  "description_original": "定神：同調三段時免疫減速（自有）"
+                }
+              ],
+              "main_original": "同調三段時受傷 -0.5%／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "移動／控制／防禦／門檻"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "同調三段時重擊附傷 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "極致",
+                  "description": "極致：同調三段時每 10 次命中額外一次全額附傷",
+                  "cost": 5,
+                  "description_original": "極致：同調三段時每 10 次命中額外一次全額附傷"
+                },
+                {
+                  "index": 1,
+                  "name": "回饋",
+                  "description": "回饋：同調升段時回復生命與魔力各 B_max ×2",
+                  "cost": 5,
+                  "description_original": "回饋：同調升段時回復生命與魔力各 B_max ×2"
+                }
+              ],
+              "main_original": "同調三段時重擊附傷 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "化身：同調三段時每 30 秒自動觸發一次當前元素的持續傳奇效果，冷卻 -1 秒／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "永續",
+                  "description": "永續：Z 關閉時若同調三段，融斷後保留一段同調到下一次開形態",
+                  "cost": 5,
+                  "description_original": "永續：Z 關閉時若同調三段，融斷後保留一段同調到下一次開形態"
+                }
+              ],
+              "main_original": "化身：同調三段時每 30 秒自動觸發一次當前元素的持續傳奇效果，冷卻 -1 秒／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "name": "開啟",
+          "kind": "開啟",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "所有元素附傷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "廣印",
+                  "description": "廣印：開印時擴散到附近 1 人",
+                  "cost": 5,
+                  "description_original": "廣印：開印時擴散到附近 1 人"
+                }
+              ],
+              "main_original": "所有元素附傷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "印記持續 +0.2 秒／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "順轉",
+                  "description": "順轉：開形態免魔力門檻，切換後 1 秒受傷 -50%",
+                  "cost": 5,
+                  "description_original": "順轉：開形態免魔力門檻，切換後 1 秒受傷 -50%"
+                },
+                {
+                  "index": 1,
+                  "name": "先制",
+                  "description": "先制：開印時 +2 同調",
+                  "cost": 5,
+                  "description_original": "先制：開印時 +2 同調"
+                }
+              ],
+              "main_original": "印記持續 +0.2 秒／點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "開印時 +1 同調／每 5 點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "雙印",
+                  "description": "雙印：目標可同時帶兩種元素印記，被切掉時只結算較舊的那個",
+                  "cost": 5,
+                  "description_original": "雙印：目標可同時帶兩種元素印記，被切掉時只結算較舊的那個"
+                }
+              ],
+              "main_original": "開印時 +1 同調／每 5 點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "所有元素附傷再 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "深印",
+                  "description": "深印：開印那一擊附傷 ×1.5",
+                  "cost": 5,
+                  "description_original": "深印：開印那一擊附傷 ×1.5"
+                },
+                {
+                  "index": 1,
+                  "name": "臨界",
+                  "description": "臨界：開形態那一刻附近敵人減速 30% 2 秒",
+                  "cost": 5,
+                  "description_original": "臨界：開形態那一刻附近敵人減速 30% 2 秒"
+                }
+              ],
+              "main_original": "所有元素附傷再 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "每種元素狀態上限 +1 層／每 5 點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "萬象",
+                  "description": "萬象：所有元素狀態的層數效果 +25%",
+                  "cost": 5,
+                  "description_original": "萬象：所有元素狀態的層數效果 +25%"
+                }
+              ],
+              "main_original": "每種元素狀態上限 +1 層／每 5 點",
+              "balance_class": "UNCHANGED",
+              "balance_reason": "非本輪百分比增傷（距離／時長／上限／冷卻／固定值／非百分比係數）"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "name": "關閉",
+          "kind": "關閉",
+          "tiers": [
+            {
+              "index": 0,
+              "name": "新手",
+              "level": 10,
+              "main": "終焉 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "餘響",
+                  "description": "餘響：切換後首次命中附帶前一元素 50% 附傷",
+                  "cost": 5,
+                  "description_original": "餘響：切換後首次命中附帶前一元素 50% 附傷"
+                }
+              ],
+              "main_original": "終焉 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 1,
+              "name": "熟練",
+              "level": 25,
+              "main": "融斷 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "反哺",
+                  "description": "反哺：每次終焉回復你 B_max 魔力",
+                  "cost": 5,
+                  "description_original": "反哺：每次終焉回復你 B_max 魔力"
+                },
+                {
+                  "index": 1,
+                  "name": "疊印",
+                  "description": "疊印：終焉後舊印記保留 4 秒為副印記，Z 融斷時可再結算一次",
+                  "cost": 5,
+                  "description_original": "疊印：終焉後舊印記保留 4 秒為副印記，Z 融斷時可再結算一次"
+                }
+              ],
+              "main_original": "融斷 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 2,
+              "name": "專精",
+              "level": 50,
+              "main": "切換後首次命中附帶前一元素附傷 +9%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "連鎖終焉",
+                  "description": "連鎖終焉：終焉時附近帶同一印記的目標也終焉 ×0.5",
+                  "cost": 5,
+                  "description_original": "連鎖終焉：終焉時附近帶同一印記的目標也終焉 ×0.5"
+                },
+                {
+                  "index": 1,
+                  "name": "三重奏",
+                  "description": "三重奏：10 秒內觸發三種不同元素的終焉，第三次 ×3，且下一次融斷後保留全部同調",
+                  "cost": 5,
+                  "description_original": "三重奏：10 秒內觸發三種不同元素的終焉，第三次 ×3，且下一次融斷後保留全部同調"
+                }
+              ],
+              "main_original": "切換後首次命中附帶前一元素附傷 +3%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 3,
+              "name": "大師",
+              "level": 75,
+              "main": "終焉再 +3%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "協奏",
+                  "description": "協奏：切換後首次終焉傷害 ×1.5",
+                  "cost": 5,
+                  "description_original": "協奏：切換後首次終焉傷害 ×1.5"
+                },
+                {
+                  "index": 1,
+                  "name": "安全閥",
+                  "description": "安全閥：融斷時你受傷 -50% 持續 2 秒",
+                  "cost": 5,
+                  "description_original": "安全閥：融斷時你受傷 -50% 持續 2 秒"
+                }
+              ],
+              "main_original": "終焉再 +1%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            },
+            {
+              "index": 4,
+              "name": "傳奇",
+              "level": 100,
+              "main": "融斷再 +6%／點",
+              "main_max_rank": 15,
+              "branches": [
+                {
+                  "index": 0,
+                  "name": "大協奏",
+                  "description": "大協奏：切換後首次終焉讓範圍內帶舊印記的敵人各觸發一次該印記的終焉",
+                  "cost": 5,
+                  "description_original": "大協奏：切換後首次終焉讓範圍內帶舊印記的敵人各觸發一次該印記的終焉"
+                },
+                {
+                  "index": 1,
+                  "name": "雙生",
+                  "description": "雙生：雙持時左手武器攜帶你前一個形態的元素 30 秒，左右交替命中即交替開印終焉",
+                  "cost": 5,
+                  "description_original": "雙生：雙持時左手武器攜帶你前一個形態的元素 30 秒，左右交替命中即交替開印終焉"
+                }
+              ],
+              "main_original": "融斷再 +2%／點",
+              "balance_class": "SCALED",
+              "balance_reason": "純百分比傷害／傷害係數"
+            }
+          ]
+        }
+      ],
+      "index": 12
+    }
+  ]
+}

@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <meta http-equiv="refresh" content="15">
+  <title>戰略推進沙盤｜essb-standalone-build</title>
+  <style>
+    :root{--void:#04070b;--panel:#0a121b;--line:#16293c;--edge:#25455c;--ink:#d8e7ec;--dim:#6d8a99;
+      --pri:#2bffb5;--cyan:#43c6ff;--amber:#ffb043;--red:#ff4d6a;
+      --mono:"Cascadia Code",Consolas,ui-monospace,"Courier New",monospace;
+      --zh:"Microsoft JhengHei","Noto Sans TC",system-ui,sans-serif}
+    *{box-sizing:border-box}
+    body{margin:0;color:var(--ink);font:15px/1.65 var(--zh);
+      background:radial-gradient(1100px 520px at 72% -12%,rgba(43,255,181,.05),transparent 60%),
+      radial-gradient(900px 460px at 8% 112%,rgba(67,198,255,.045),transparent 60%),var(--void)}
+    body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+      background:repeating-linear-gradient(0deg,transparent 0 39px,rgba(110,190,255,.028) 39px 40px),
+      repeating-linear-gradient(90deg,transparent 0 39px,rgba(110,190,255,.028) 39px 40px)}
+    main{position:relative;z-index:1;max-width:1240px;margin:auto;padding:26px 28px 48px}
+    .mono{font-family:var(--mono)} .dim{color:var(--dim)} :focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+    h1{margin:2px 0 0;font-size:27px;font-weight:900;letter-spacing:.3em}
+    .sub{color:var(--dim);font-size:13px;margin-top:7px;letter-spacing:.06em}
+    h2{display:flex;align-items:baseline;gap:10px;margin:0 0 14px;font-size:17px;letter-spacing:.14em}
+    h2::before{content:"◢";color:var(--pri);font-size:11px}
+    h2 .en{font:700 11px var(--mono);letter-spacing:.3em;color:var(--dim)}
+    h3{font-size:14px;margin:0 0 6px;color:#c2d7df;letter-spacing:.08em}
+    .eyebrow{font:700 10px var(--mono);letter-spacing:.34em;color:var(--dim)}
+    .hud{position:relative;display:flex;justify-content:space-between;align-items:flex-start;gap:18px;
+      border:1px solid var(--line);background:linear-gradient(180deg,#0c1624,#08101a);padding:18px 22px;margin-bottom:14px}
+    .hud-right{text-align:right}
+    .hud-meta{font:12px/1.8 var(--mono);color:var(--dim)}
+    .lamp{display:inline-flex;align-items:center;gap:8px;font:700 12px var(--mono);letter-spacing:.14em;border:1px solid var(--line);padding:6px 12px;margin-bottom:10px}
+    .lamp i{width:9px;height:9px;border-radius:50%}
+    .risk-low i{background:var(--pri);box-shadow:0 0 8px var(--pri)}
+    .risk-medium i{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+    .risk-high i{background:var(--red);box-shadow:0 0 8px var(--red)}
+    .hud::before,.hud::after,.card::before,.card::after{content:"";position:absolute;width:14px;height:14px;pointer-events:none}
+    .hud::before,.card::before{top:-1px;left:-1px;border-top:2px solid var(--edge);border-left:2px solid var(--edge)}
+    .hud::after,.card::after{bottom:-1px;right:-1px;border-bottom:2px solid var(--edge);border-right:2px solid var(--edge)}
+    .grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px;min-width:0}
+    .card{position:relative;grid-column:span 6;min-width:0;border:1px solid var(--line);padding:20px;
+      background:linear-gradient(180deg,rgba(13,24,38,.92),rgba(8,16,26,.96))}
+    .wide{grid-column:span 12}
+    .hero{border-color:#2b4a41} .hero::before,.hero::after{border-color:#2f6a55}
+    .purpose{font-size:21px;font-weight:800;margin:2px 0 12px;letter-spacing:.03em}
+    ul.check{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px}
+    ul.check li{padding-left:26px;position:relative}
+    ul.check li::before{content:"▢";position:absolute;left:2px;color:var(--pri);font-family:var(--mono)}
+    .intervene{position:relative;display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;border:1px solid var(--line);background:#0a141f;padding:12px 18px;margin-bottom:14px;font-size:14px}
+    .intervene .dot{width:8px;height:8px;border-radius:50%;background:#3a4d5a;align-self:center}
+    .intervene.standby .dot{background:var(--cyan);box-shadow:0 0 7px var(--cyan)}
+    .intervene.working{border-color:#6b4c17} .intervene.working .dot{background:var(--amber);box-shadow:0 0 7px var(--amber)}
+    .intervene.requested{display:block;border-color:var(--red);background:linear-gradient(180deg,#2a0d16,#170810);padding:20px 22px}
+    .intervene-kicker{font:700 11px var(--mono);letter-spacing:.3em;color:var(--red)}
+    .intervene-title{font-size:24px;font-weight:900;letter-spacing:.22em;color:#ffd7de;margin:8px 0 6px}
+    .intervene-action{font-size:16px;margin:2px 0 6px}
+    .intervene-reason{font-size:13px;color:var(--dim)}
+    .intervene-return{margin-top:14px;padding:10px 12px;border-left:3px solid var(--amber);background:#160c08}
+    .intervene-return b{color:var(--amber);margin-right:10px}
+    .takeover-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
+    .takeover-grid>div{border:1px solid #59202d;background:#12080d;padding:12px 14px}
+    .takeover-grid b{color:#ffd7de} .takeover-grid p{margin:5px 0} .takeover-grid ul{margin-top:5px}
+    body.victory-achieved{background:
+      radial-gradient(900px 520px at 50% -8%,rgba(255,211,110,.12),transparent 64%),
+      radial-gradient(1200px 620px at 78% 8%,rgba(43,255,181,.11),transparent 65%),var(--void)}
+    .victory-achieved .hud{border-color:#355f4b;background:linear-gradient(180deg,#0d201b,#08140f)}
+    .victory-achieved .hud::before,.victory-achieved .hud::after{border-color:#6fffc4}
+    .victory-achieved .hero{border-color:#496a3f;box-shadow:inset 0 1px 0 rgba(255,211,110,.12)}
+    .victory-banner{position:relative;isolation:isolate;overflow:hidden;border:1px solid #78e8b5;
+      background:linear-gradient(122deg,rgba(8,42,31,.98),rgba(12,30,27,.96) 58%,rgba(49,38,9,.96));
+      box-shadow:0 0 0 1px rgba(255,211,110,.12),0 20px 65px rgba(0,0,0,.42),0 0 42px rgba(43,255,181,.12);
+      padding:28px 30px;margin-bottom:14px}
+    .victory-banner::before{content:"";position:absolute;z-index:-1;inset:-45% auto -45% -35%;width:36%;
+      background:linear-gradient(90deg,transparent,rgba(171,255,218,.18),transparent);transform:skewX(-18deg)}
+    .victory-banner::after{content:"";position:absolute;z-index:-2;inset:0;opacity:.38;
+      background:repeating-linear-gradient(0deg,transparent 0 7px,rgba(106,255,193,.035) 7px 8px)}
+    .victory-electric{position:absolute;z-index:2;inset:0;overflow:hidden;pointer-events:none}
+    .victory-electric::before,.victory-electric::after{content:"";position:absolute;width:32%;height:2px;opacity:0;
+      background:linear-gradient(90deg,transparent,#dffff3 34%,#58ffc1 52%,#9ddcff 68%,transparent);
+      box-shadow:0 0 4px #ecfff8,0 0 11px #2bffb5,0 0 22px rgba(67,198,255,.8)}
+    .victory-electric::before{top:0;left:-34%}
+    .victory-electric::after{right:-34%;bottom:0;transform:rotate(180deg)}
+    .victory-grid{display:grid;grid-template-columns:minmax(0,1fr) 154px;align-items:center;gap:30px}
+    .victory-kicker{font:800 11px var(--mono);letter-spacing:.29em;color:#ffd36e}
+    .victory-title{font-size:clamp(38px,6vw,68px);line-height:1.05;font-weight:950;letter-spacing:.16em;
+      color:#edfff7;text-shadow:0 0 24px rgba(43,255,181,.28);margin:10px 0 12px}
+    .victory-summary{max-width:760px;margin:0;color:#b9d8ce;font-size:16px}
+    .victory-metrics{display:flex;flex-wrap:wrap;gap:9px;margin-top:18px}
+    .victory-metrics span{display:inline-flex;align-items:baseline;gap:8px;border:1px solid #315c4b;
+      background:rgba(4,14,12,.55);padding:7px 11px;color:#88aa9e;font:700 11px var(--mono);letter-spacing:.08em}
+    .victory-metrics b{color:#7fffc8;font-size:18px}
+    .victory-seal{position:relative;width:146px;height:146px;border:1px solid #ffd36e;border-radius:50%;
+      display:grid;place-content:center;text-align:center;color:#ffd36e;box-shadow:0 0 0 8px rgba(255,211,110,.045),inset 0 0 28px rgba(255,211,110,.08)}
+    .victory-seal::before,.victory-seal::after{content:"";position:absolute;inset:13px;border:1px solid rgba(111,255,196,.36);border-radius:50%}
+    .victory-seal::after{inset:-11px;border-color:rgba(111,255,196,.2);clip-path:polygon(0 43%,100% 43%,100% 57%,0 57%)}
+    .victory-seal span{font:900 42px/1 var(--mono);color:#79ffc7;text-shadow:0 0 18px rgba(43,255,181,.5)}
+    .victory-seal strong{display:block;width:100px;margin:9px auto 0;font:800 10px/1.45 var(--mono);letter-spacing:.22em}
+    @media (prefers-reduced-motion:no-preference){
+      .intervene.requested{animation:alarm 1.6s ease-in-out infinite}
+      .victory-banner{animation:victory-enter .7s cubic-bezier(.2,.8,.2,1) both}
+      .victory-banner::before{animation:victory-sweep 1.15s ease-out .12s 1 both}
+      .victory-seal{animation:victory-seal .82s cubic-bezier(.2,.9,.2,1) .12s both}
+      .victory-seal::after{animation:electric-ring .9s steps(5,end) .28s 1 both}
+      .victory-title{animation:electric-title .9s steps(5,end) .2s 1 both}
+      .victory-electric::before{animation:electric-top 1.05s steps(7,end) .18s 1 both}
+      .victory-electric::after{animation:electric-bottom 1.05s steps(7,end) .32s 1 both}
+      @keyframes alarm{0%,100%{box-shadow:0 0 0 0 rgba(255,77,106,0)}50%{box-shadow:0 0 26px 0 rgba(255,77,106,.35)}}
+      @keyframes victory-enter{from{opacity:0;transform:translateY(-9px);filter:saturate(.55)}to{opacity:1;transform:none;filter:saturate(1)}}
+      @keyframes victory-sweep{from{transform:translateX(-25%) skewX(-18deg);opacity:0}35%{opacity:1}to{transform:translateX(460%) skewX(-18deg);opacity:0}}
+      @keyframes victory-seal{from{opacity:0;transform:scale(.72) rotate(-8deg)}to{opacity:1;transform:scale(1) rotate(0)}}
+      @keyframes electric-top{0%{left:-34%;opacity:0}10%,28%,48%,72%{opacity:1}18%,38%,60%{opacity:.25}100%{left:102%;opacity:0}}
+      @keyframes electric-bottom{0%{right:-34%;opacity:0}12%,32%,56%,78%{opacity:1}22%,44%,68%{opacity:.2}100%{right:102%;opacity:0}}
+      @keyframes electric-ring{0%{box-shadow:none;opacity:.1}28%{box-shadow:0 0 10px #dffff3,0 0 26px #2bffb5;opacity:1}44%{box-shadow:none;opacity:.25}68%{box-shadow:0 0 8px #9ddcff,0 0 20px #2bffb5;opacity:.9}100%{box-shadow:none;opacity:1}}
+      @keyframes electric-title{0%,100%{text-shadow:0 0 24px rgba(43,255,181,.28)}24%,56%{text-shadow:0 0 5px #f0fff9,0 0 18px #2bffb5,0 0 34px rgba(67,198,255,.7)}36%,72%{text-shadow:0 0 11px rgba(43,255,181,.4)}}
+    }
+    ol.steps{list-style:none;margin:0;padding:0}
+    .steps li{display:grid;grid-template-columns:46px 1fr;gap:14px;padding:12px 0 14px}
+    .steps li+li{border-top:1px dashed #142433}
+    .steps .num{font:800 15px var(--mono);color:#41586a;padding-top:2px}
+    .steps li.next .num,.steps li.next h3{color:var(--pri)}
+    .steps li.user .num,.steps li.user h3{color:var(--amber)}
+    .steps p{margin:0}
+    .gates{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+    .gate{position:relative;border:1px solid var(--line);background:#08131e;padding:16px}
+    .gate.pass{border-color:#1d5c46} .gate.fail{border-color:#6b2331} .gate.unknown{border-color:#6b4c17}
+    .gate-status{position:absolute;right:12px;top:12px;font:700 10px var(--mono);letter-spacing:.12em}
+    .gate.pass .gate-status{color:var(--pri)} .gate.fail .gate-status{color:var(--red)} .gate.unknown .gate-status{color:var(--amber)}
+    .gate h3{font-size:17px;margin-right:70px} .gate p{color:var(--dim);margin:0 0 8px}
+    .gate-sub{font:700 11px var(--mono);color:var(--cyan);letter-spacing:.12em;margin-top:9px}
+    .note{margin:0 0 12px;font-size:13px}
+    .map-wrap{border:1px solid var(--line);background:#05090f;overflow:auto}
+    .map-wrap svg{display:block;width:100%;height:auto;min-width:860px}
+    details.history{margin-top:12px;border:1px solid var(--line);background:#07101a}
+    details.history>summary{cursor:pointer;padding:11px 14px;color:var(--cyan);font:700 12px var(--mono);letter-spacing:.12em}
+    details.history[open]>summary{border-bottom:1px solid var(--line)}
+    .full-history{border:0;max-height:72vh}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th{font:700 11px var(--mono);letter-spacing:.18em;color:var(--dim);text-align:left;padding:8px 10px;border-bottom:1px solid var(--edge)}
+    td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
+    tbody tr:hover{background:rgba(67,198,255,.05)}
+    .table-scroll{display:block;width:100%;max-width:100%;min-width:0;overflow-x:auto;border:1px solid var(--line)}
+    .table-scroll table{border-collapse:collapse}
+    .front-contract-table{width:1180px;max-width:none;table-layout:fixed}
+    .front-contract-table th,.front-contract-table td{overflow-wrap:anywhere;word-break:break-word}
+    .front-contract-table code{overflow-wrap:break-word;word-break:normal}
+    .front-contract-table th:nth-child(1){width:17%}
+    .front-contract-table th:nth-child(2){width:8%}
+    .front-contract-table th:nth-child(3){width:8%}
+    .front-contract-table th:nth-child(4){width:9%}
+    .front-contract-table th:nth-child(5){width:21%}
+    .front-contract-table th:nth-child(6){width:15%}
+    .front-contract-table th:nth-child(7){width:22%}
+    .health,.pill{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;font:700 11px var(--mono);letter-spacing:.12em;border:1px solid;background:#0a141f;white-space:nowrap}
+    .health::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+    .active,.healthy,.complete,.low,.main{color:var(--pri);border-color:#1d5c46}
+    .pending,.deferred,.unknown,.support{color:#8fa9b8;border-color:#2c4356}
+    .degraded,.medium{color:var(--amber);border-color:#6b4c17}
+    .failed,.blocked,.high{color:var(--red);border-color:#6b2331}
+    .tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+    .tile{border:1px solid var(--line);background:#0a1420;padding:12px 14px}
+    .tile-v{font:800 22px/1.3 var(--mono);color:var(--ink)}
+    .tile-v span{font-size:11px;color:var(--dim);margin-left:5px;letter-spacing:.15em}
+    .tile-l{font-size:12px;color:var(--dim);margin-top:3px}
+    .tile-v.good{color:var(--pri)} .tile-v.warn{color:var(--amber)} .tile-v.bad{color:var(--red)}
+    .kv{display:grid;grid-template-columns:150px 1fr;gap:7px 14px} .kv b{color:var(--dim);font-weight:600}
+    code{font-family:var(--mono);color:#9fdcff;font-size:13px}
+    pre{white-space:pre-wrap;word-break:break-word;background:#060d15;border:1px solid var(--line);padding:12px;color:#cfe4f4;font:13px/1.6 var(--mono)}
+    ul{margin:8px 0 0;padding-left:20px}
+    details.technical{padding:0}
+    details.technical>summary{cursor:pointer;padding:18px 20px;font:700 13px var(--mono);letter-spacing:.22em;color:var(--cyan);list-style:none}
+    details.technical>summary::-webkit-details-marker{display:none}
+    details.technical>summary::before{content:"▸ "} details.technical[open]>summary::before{content:"▾ "}
+    details.technical[open]>summary{border-bottom:1px solid var(--line)}
+    .technical-body{min-width:0;padding:20px}
+    .technical-body>h3{margin:18px 0 10px}
+    .tech-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .tech-block{background:#0a1420;border:1px solid var(--line);padding:14px;overflow:auto}
+    @media(max-width:820px){.card{grid-column:span 12}.hud{display:block}.hud-right{text-align:left;margin-top:12px}
+      .victory-banner{padding:22px 20px}.victory-grid{grid-template-columns:1fr;gap:20px}.victory-seal{width:118px;height:118px;justify-self:start}
+      .victory-title{letter-spacing:.08em}.hud>div,.technical-body,.tech-grid,.tech-block{min-width:0}
+      .card>table,.technical-body>table{table-layout:fixed}th,td{overflow-wrap:anywhere;word-break:break-word}
+      .kv{grid-template-columns:1fr}.tech-grid,.tiles,.gates,.takeover-grid{grid-template-columns:1fr}.steps li{grid-template-columns:34px 1fr}}
+  </style>
+</head>
+<body><main>
+  <header class="hud">
+    <div>
+      <div class="eyebrow">STRATEGIC ADVANCE // LIVE SAND TABLE</div>
+      <h1>戰略推進沙盤</h1>
+      <div class="sub">目前戰局的共同畫面：看這一頁就知道現在在哪、下一步要改變什麼</div>
+    </div>
+    <div class="hud-right">
+      <div class="lamp risk-low"><i></i>頂點風險：低</div>
+      <div class="lamp risk-high"><i></i>戰局不明朗 / 指揮官就地處置</div>
+      <div class="hud-meta">MISSION://essb-standalone-build<br>UPDATED 2026-09-20T22:38:00+08:00<br>TERMINAL IN_PROGRESS<br>AUTO-REFRESH 15S</div>
+    </div>
+  </header>
+  <section class="intervene idle"><span class="dot"></span><strong>介入狀態：不需要</strong><span>使用者本輪不需進遊戲；第 16 輪安裝版依其裁示保持不遊玩，等重設計版本替換。</span><span class="dim"></span></section>
+  <div class="grid">
+    <section class="card wide hero"><h2><span class="en">OBJECTIVE</span>戰略目標</h2>
+      <p class="purpose">把《元素魔戰士規劃 v0.3》整份實作成可安裝的 Skyrim SE 1.5.97 模組：自製形態層、印記與開印終焉引擎、13 棵 CSF 技能樹、11 元素機制、借用特效，並安裝進使用者的 MO2 profile 供實戰驗證。</p>
+      <div class="dim">完成的樣子</div><ul class="check"><li>package/Elements Spellblade 內的 ESP 只以 Skyrim.esm 為 master，可被獨立讀取器完整解析</li><li>所有 Papyrus 腳本以本機編譯器編譯為 0 錯誤</li><li>13 棵樹的 CSF JSON 有效，所有節點的 perk 參照都能在 ESP 中解析</li><li>規劃 v0.3 第 5 節的每個節點與第 1、2 節的每個共通機制都有對應的實作記錄</li><li>模組已安裝進 MO2 並在 normal profile 啟用，且三個 profile 檔一致</li><li>使用者在遊戲內確認：Z 開關形態、命中附傷、技能樹可開啟</li></ul>
+      <h3>什麼時候才算完成</h3><table><thead><tr><th>完成條件</th><th>目前狀態</th></tr></thead><tbody><tr><td>全部腳本編譯 0 錯誤</td><td><span class='health unknown'>尚未確認</span></td></tr><tr><td>ESP 可獨立解析且 master 只有 Skyrim.esm</td><td><span class='health unknown'>尚未確認</span></td></tr><tr><td>13 棵樹的 CSF 設定有效且 perk 參照全部解析</td><td><span class='health unknown'>尚未確認</span></td></tr><tr><td>規劃的節點與共通機制全部有實作記錄</td><td><span class='health unknown'>尚未確認</span></td></tr><tr><td>模組已安裝並在 profile 啟用</td><td><span class='health pass'>通過</span></td></tr><tr><td>使用者遊戲內冒煙測試通過</td><td><span class='health unknown'>尚未確認</span></td></tr></tbody></table></section>
+    <section class="card wide"><h2><span class="en">SITREP</span>白話戰情簡報</h2><ol class="steps">
+      <li><span class="num">01</span><div><h3>先說背景</h3><p>第 16 輪之後改走重設計：舊的每擊 Papyrus 路徑造成延遲與跨目標狀態污染，設計前線把 v0.3 重寫成 v0.3_alter（設計真相）＋ design-latency-2026-09-20.md（實作計畫）。主攻在 2026-09-20 22:25 交棒給第 18 輪實作。</p></div></li>
+      <li><span class="num">02</span><div><h3>現在在哪</h3><p>兩份設計文件親測無待核准項（5 行命中字串全是收尾標題、已定案註記、已刪待定清單與一個實作開關）；v0.3 原件 mtime 仍是 2026-09-16T07:31:36，未被動過。第 18 輪派遣書 5794 位元組存在，.codex/pre-fix18-snapshot 於 22:26:15 建立、24 檔（20 支 psc＋build_v03.py＋settings.json＋v03-formids.json）齊全且與現場全等。schema lock 仍為 6。Astra 22:25:51 出發，22:37 時只有 src/ESSBState.psc 的 mtime 動過、sha256 未變，進度頁已從 1191 長到 2693 位元組。</p></div></li>
+      <li><span class="num">03</span><div><h3>為什麼這樣判斷</h3><p>設計出口與實作入口都由本輪親測支持，所以交棒成立；但第 18 輪產物一個位元組都還沒改，實作出口維持 UNKNOWN。四項套件類勝利證據的在冊探測腳本硬寫了 3878 筆而現場是 3941 筆，重放 exit 1，因此一律降回 UNKNOWN 而不是沿用舊 PASS。</p></div></li>
+      <li class="next"><span class="num">04</span><div><h3>下一動要改變什麼</h3><p>唯一主攻 impl-round18：等 Astra 跑完 build_v03.py 驗收，再以快照對照確認 FormID 與 schema 6→7。</p></div></li>
+      <li class="user"><span class="num">05</span><div><h3>你現在要做什麼</h3><p>使用者本輪不需進遊戲；第 16 輪安裝版依其裁示保持不遊玩，等重設計版本替換。</p></div></li>
+    </ol></section>
+    <section class="card wide"><h2><span class="en">TACMAP</span>戰局圖</h2>
+      <div class="map-wrap"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1480 500" role="img" aria-labelledby="battle-map-title battle-map-desc">
+  <title id="battle-map-title">戰局圖</title>
+  <desc id="battle-map-desc">精簡戰局圖聚焦目前狀態、下一動與戰略終局；獨立戰場只列在側欄，不虛構因果連線。</desc>
+  <defs>
+    <pattern id="tac-grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 H 0 V 40" fill="none" stroke="#0b1a28" stroke-width="1"/></pattern>
+    <marker id="arrow-main" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2bffb5"/></marker>
+    <clipPath id="clip-current-title"><rect x="299" y="221" width="302" height="52"/></clipPath>
+    <clipPath id="clip-next-title"><rect x="714" y="221" width="322" height="52"/></clipPath>
+    <clipPath id="clip-goal-title"><rect x="1149" y="221" width="287" height="52"/></clipPath>
+  </defs>
+  <style>
+    text{font-family:"Microsoft JhengHei","Noto Sans TC",system-ui,sans-serif}
+    .frame{stroke-width:1.7} .node-current .frame{fill:#0a1723;stroke:#43c6ff}
+    .node-next .frame{fill:#07231c;stroke:#2bffb5;stroke-width:2.2}
+    .node-goal .frame{fill:#231806;stroke:#ffb043;stroke-width:2}
+    .node-kicker{font:700 12px "Cascadia Code",Consolas,monospace;fill:#7898aa;letter-spacing:.18em}
+    .node-next .node-kicker{fill:#2bffb5} .node-goal .node-kicker{fill:#ffb043}
+    .node-title{font-size:15px;fill:#eaf6f4;font-weight:700} .node-status{font-size:11px;fill:#8fa9b8}
+    .tick{fill:none;stroke:#2bffb5;stroke-width:2} .edge-main{fill:none;stroke:#2bffb5;stroke-width:3.5;stroke-dasharray:13 8}
+    .edge-label{font-size:12px;fill:#2bffb5;font-weight:700} .rail-title{font:700 12px "Cascadia Code",Consolas,monospace;fill:#5d7f93;letter-spacing:.15em}
+    .rail-rule{stroke:#20384b} .node-side rect{fill:#08131e;stroke:#25455c} .side-kicker{font-size:10px;fill:#638398}
+    .side-title{font-size:13px;fill:#c9dbe2} .empty,.more,.note{font-size:12px;fill:#587586}
+    .completed-chip rect{fill:#0a1f17;stroke:#37d495} .completed-chip text{font-size:12px;fill:#79dfba}
+    .takeover-chip rect{fill:#231806;stroke:#ffb043} .takeover-chip text{font-size:12px;fill:#ffcc7f;font-weight:700}
+    .victory-map .node-current .frame{stroke:#86d9ff}
+    .victory-map .node-next .frame{fill:#08281d;stroke:#6fffc4;filter:drop-shadow(0 0 8px rgba(43,255,181,.42))}
+    .victory-map .node-goal .frame{fill:#2a2108;stroke:#ffd36e;filter:drop-shadow(0 0 10px rgba(255,176,67,.48))}
+    .victory-map .edge-main{stroke:#74fbc4;stroke-dasharray:none}
+  </style>
+  <rect width="1480" height="500" fill="#05090f"/><rect width="1480" height="500" fill="url(#tac-grid)"/>
+  <text x="28" y="54" class="rail-title">獨立／支援戰場</text><line x1="28" y1="68" x2="238" y2="68" class="rail-rule"/>
+  <g class="node-side"><rect x="28" y="90" width="210" height="70" rx="3"/><text x="41" y="113" class="side-kicker">決勝戰場 · 暫緩</text><text x="41" y="138" class="side-title"><tspan x="41" dy="0">使用者進遊戲驗證安裝版本…</tspan></text></g>
+  <line x1="260" y1="60" x2="260" y2="450" class="rail-rule"/>
+  
+  <path d="M 615 250 H 682" class="edge-main" marker-end="url(#arrow-main)"/>
+  <text x="631" y="236" class="edge-label">推進</text>
+  <path d="M 1050 250 H 1117" class="edge-main" marker-end="url(#arrow-main)"/>
+  <text x="1060" y="236" class="edge-label">驗證戰果</text>
+  <g class="node-current"><path class="frame" d="M 285 175 H 601 L 615 189 V 325 H 299 L 285 311 Z"/><text x="302" y="206" class="node-kicker">目前狀態</text><g clip-path="url(#clip-current-title)"><text x="302" y="240" class="node-title"><tspan x="302" dy="0">兩份設計文件親測無待核准項（5</tspan><tspan x="302" dy="22">行命中字串全是收尾標題、已定案註記…</tspan></text></g><text x="302" y="308" class="node-status">正在推進</text></g><g class="node-next"><path class="frame" d="M 700 175 H 1036 L 1050 189 V 325 H 714 L 700 311 Z"/><path class="tick" d="M 700 185 V 175 H 710"/><path class="tick" d="M 1040 325 H 1050 V 315"/><text x="717" y="206" class="node-kicker">下一動</text><g clip-path="url(#clip-next-title)"><text x="717" y="240" class="node-title"><tspan x="717" dy="0">唯一主攻 impl-round18：等 Astra 跑完</tspan><tspan x="717" dy="22">build_v03.py 驗收，再以快照對照確…</tspan></text></g><text x="717" y="308" class="node-status">唯一主攻</text></g><g class="node-goal"><path class="frame" d="M 1135 175 H 1436 L 1450 189 V 325 H 1149 L 1135 311 Z"/><text x="1152" y="206" class="node-kicker">戰略終局</text><g clip-path="url(#clip-goal-title)"><text x="1152" y="240" class="node-title"><tspan x="1152" dy="0">package/Elements Spellblade</tspan><tspan x="1152" dy="22">內的 ESP 只以 Skyrim.esm …</tspan></text></g><text x="1152" y="308" class="node-status">戰役進行中</text></g>
+</svg></div>
+      <details class="history"><summary>展開完整歷史</summary><div class="map-wrap full-history"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 448" role="img" aria-labelledby="full-history-title full-history-desc">
+  <title id="full-history-title">完整戰局歷史</title><desc id="full-history-desc">顯示所有戰場；只有明確指定或唯一完全吻合的狀態轉換才畫箭頭。</desc>
+  <defs><marker id="arrow-causal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#43c6ff"/></marker></defs>
+  <style>
+    text{font-family:"Microsoft JhengHei","Noto Sans TC",system-ui,sans-serif} .history-node rect{fill:#08131e;stroke:#2a4c63}
+    .history-node.status-complete rect{fill:#0a1f17;stroke:#37d495} .history-node.status-active rect{fill:#07231c;stroke:#2bffb5;stroke-width:2}
+    .history-node.status-blocked rect{fill:#200c13;stroke:#ff4d6a} .history-kicker{font-size:10px;fill:#7090a1;letter-spacing:.08em}
+    .history-title{font-size:15px;fill:#e5f0f3;font-weight:700} .state-token{font:11px "Cascadia Code",Consolas,monospace;fill:#7893a1}
+    .causal{fill:none;stroke:#43c6ff;stroke-width:2} .title{font-size:18px;fill:#dcecef;font-weight:800} .note{font-size:12px;fill:#688595}
+  </style>
+  <rect width="1120" height="448" fill="#05090f"/><text x="28" y="42" class="title">完整戰局歷史</text><text x="28" y="66" class="note">沒有連線，表示尚無可證明的因果關係。</text>
+  <g class="history-node status-active"><rect x="330" y="92" width="470" height="100" rx="3"/><text x="346" y="117" class="history-kicker">決勝戰場 · 唯一主攻 · 正在推進</text><text x="346" y="145" class="history-title"><tspan x="346" dy="0">第 18 輪（重設計第 1 期）：把附傷與形態／切換層搬到引擎 perk entry</tspan><tspan x="346" dy="22">points，加上熱鍵、視覺與便宜修法，state_schema_version</tspan><tspan x="346" dy="22">6→7，狀態層一律不動；驗收為 python build_v03.py exit 0、既有檢查…</tspan></text><text x="828" y="140" class="state-token">DESIGN_FINALIZED → ROUND18_BUILT</text></g><g class="history-node status-deferred"><rect x="330" y="234" width="470" height="100" rx="3"/><text x="346" y="259" class="history-kicker">決勝戰場 · 支援 · 暫緩</text><text x="346" y="287" class="history-title"><tspan x="346" dy="0">使用者進遊戲驗證安裝版本的</tspan><tspan x="346" dy="22">MCM、技能樹版面、印記光、光環、毒手感與不再自動跳樹，並回報修正需求。</tspan></text><text x="828" y="282" class="state-token">INSTALLED_ENABLED → SMOKE_VERIFIED</text></g>
+</svg></div></details></section>
+    <section class="card wide"><h2><span class="en">FRONTS</span>戰場分割</h2>
+      <table><thead><tr><th>要解決什麼</th><th>在戰局中的角色</th><th>目前狀態</th><th>對主攻的作用</th></tr></thead><tbody><tr><td><strong>第 18 輪（重設計第 1 期）：把附傷與形態／切換層搬到引擎 perk entry points，加上熱鍵、視覺與便宜修法，state_schema_version 6→7，狀態層一律不動；驗收為 python build_v03.py exit 0、既有檢查全 ok、新增 HITPROC ok，且每擊呼叫數不高於第 17 輪的 165。</strong></td><td>唯一主攻 / 決勝戰場</td><td><span class='health active'>正在推進</span></td><td>直接推進戰略目標</td></tr><tr><td><strong>使用者進遊戲驗證安裝版本的 MCM、技能樹版面、印記光、光環、毒手感與不再自動跳樹，並回報修正需求。</strong></td><td>支援 / 決勝戰場</td><td><span class='health deferred'>暫緩</span></td><td>支援主攻</td></tr></tbody></table></section>
+    <section class="card"><h2><span class="en">LAST ADVANCE</span>最近推進</h2>尚無已驗證推進</section>
+    <section class="card"><h2><span class="en">TELEMETRY</span>作戰節奏</h2><div class="tiles"><div class="tile"><div class="tile-v" id="active-front-elapsed" data-at="2026-09-20T22:25:51+08:00">—</div><div class="tile-l">主攻已投入時間<br>起算：2026-09-20T22:25:51+08:00</div></div><div class="tile"><div class="tile-v" id="since-change" data-at="2026-09-20T22:26:15+08:00">—</div><div class="tile-l">距上次世界狀態變化<br>基準：2026-09-20T22:26:15+08:00</div></div><div class="tile"><div class="tile-v good">0</div><div class="tile-l">同類失敗指紋次數（滿 2 次斷路）</div></div><div class="tile"><div class="tile-v good">低</div><div class="tile-l">作戰頂點風險</div></div></div></section>
+    <details class="card wide technical" open><summary>TECHNICAL // 技術細節（預設展開）</summary><div class="technical-body">
+      <div class="tech-grid">
+        <section class="tech-block"><h3>原始世界狀態</h3><pre>{
+  &quot;toolchainState&quot;: &quot;PROVEN&quot;,
+  &quot;packageState&quot;: &quot;FX_BOUND&quot;,
+  &quot;csfConfigState&quot;: &quot;VALID&quot;,
+  &quot;planCoverage&quot;: &quot;COMPLETE&quot;,
+  &quot;installState&quot;: &quot;INSTALLED_ENABLED&quot;,
+  &quot;smokeState&quot;: &quot;ROUND16_INSTALLED_UNPLAYED&quot;
+}</pre><div class="kv"><b>有效 claims</b><span>14／78</span><b>Open cleanup</b><span>state.json 自 2026-09-18 06:54 起未再收束：第 9–17 輪修正、CACO/CCOR 停用、以及整個設計重做前線都只存在於 run-ledger.jsonl，正式板上沒有對應戰場，第 11 次收束是在兩天份的落差上重建棋盤。, MO2 normal profile 上安裝的仍是第 16 輪版本，帶毒／星界跨目標狀態污染缺陷。使用者裁示不回退到第 14 輪（「沒差 我可以等 反正會重開黨」），該版本保持已安裝但不遊玩，曝險因此是延後而不是現在發生。, 設計前線收線後才追加的文件變更：水系「長流」須另回復每秒 0.8% 最大魔力（刻意低於 1.0%/s 的形態維持費），且水樹「回流」與共通樹「回流」名稱衝突待解。22:36 已派 Fable 以純文件方式處理，禁止碰 src/ 與 build_v03.py。</span></div></section>
+        <section class="tech-block"><h3>決策契約</h3><div class="kv"><b>Mission ID</b><code>essb-standalone-build</code><b>Active front ID</b><code>impl-round18</code><b>清晰度</b><span>UNCLEAR／OPERATOR_RESOLVE</span><b>戰術</b><span>主攻自設計／重設計前線交棒到 impl-round18：Astra 依 .codex/fix-round18-briefing.md 實作重設計第 1 期。</span><b>Contribution</b><code>DIRECT_ADVANCE</code><b>Pivot</b><span>執行體回報第 1 期改動會逼著改狀態層、或每擊呼叫數高於第 17 輪的 165、或 build_v03.py 任一既有檢查行失敗、或既有 FormID 出現 schema bump 定義以外的變動</span><b>最近狀態轉換</b><code>尚無</code><b>終局</b><span>IN_PROGRESS</span><b>理由</b><span>兩份設計文件已無待核准項且 v0.3 原件未被動過，設計前線出口成立；第 18 輪派遣書、pre-fix18 快照與 schema 6 入口狀態都已親測，實作前線入口成立、出口尚未成立。</span></div></section>
+        <section class="tech-block"><h3>觀測器健康與證據</h3><table><thead><tr><th>Observer</th><th>狀態</th><th>證據</th></tr></thead><tbody></tbody></table></section>
+        <section class="tech-block"><h3>作戰承載</h3><div class="kv"><b>最後世界變化</b><span>2026-09-20T22:26:15+08:00</span><b>同類失敗次數</b><span>0</span><b>主攻起算</b><span>2026-09-20T22:25:51+08:00</span><b>頂點風險</b><span>LOW</span></div></section>
+        <section class="tech-block"><h3>執行器評估</h3><pre>{
+  &quot;mode&quot;: &quot;AUTONOMOUS&quot;,
+  &quot;automationActuatorStatus&quot;: &quot;UNKNOWN&quot;,
+  &quot;outcomeStatus&quot;: &quot;NOT_ATTEMPTED&quot;,
+  &quot;targetIdentity&quot;: &quot;UNKNOWN&quot;,
+  &quot;actorIdentity&quot;: &quot;UNKNOWN&quot;,
+  &quot;actionContract&quot;: &quot;UNKNOWN&quot;,
+  &quot;mutationObserved&quot;: false,
+  &quot;worldStateChanged&quot;: false,
+  &quot;attemptCount&quot;: 0,
+  &quot;sameFailureFingerprintCount&quot;: 0,
+  &quot;deadlineSeconds&quot;: 300,
+  &quot;deadlineExceeded&quot;: false,
+  &quot;failureFingerprint&quot;: &quot;&quot;
+}</pre></section>
+      </div>
+      
+      <h3>勝利條件機器判斷式</h3><table><thead><tr><th>ID</th><th>Predicate</th><th>狀態</th></tr></thead><tbody><tr><td><code>compile-clean</code></td><td>PACKAGE_COMPILE_ERRORS == 0</td><td><span class='health unknown'>尚未確認</span></td></tr><tr><td><code>esp-valid</code></td><td>ESP_INDEPENDENT_READ_VALID == true</td><td><span class='health unknown'>尚未確認</span></td></tr><tr><td><code>csf-valid</code></td><td>CSF_CONFIG_VALID == true</td><td><span class='health unknown'>尚未確認</span></td></tr><tr><td><code>plan-covered</code></td><td>PLAN_COVERAGE_COMPLETE == true</td><td><span class='health unknown'>尚未確認</span></td></tr><tr><td><code>installed</code></td><td>MOD_INSTALLED_ENABLED == true</td><td><span class='health pass'>通過</span></td></tr><tr><td><code>smoke-pass</code></td><td>INGAME_SMOKE_PASS == true</td><td><span class='health unknown'>尚未確認</span></td></tr></tbody></table>
+      <h3>戰場技術契約</h3><div class="table-scroll"><table class="front-contract-table"><thead><tr><th>ID</th><th>類型</th><th>Effort</th><th>狀態</th><th>狀態轉換</th><th>Mutation</th><th>Recovery</th></tr></thead><tbody><tr><td><code>impl-round18</code></td><td>DECISIVE</td><td>MAIN</td><td>ACTIVE</td><td>DESIGN_FINALIZED → ROUND18_BUILT</td><td>src/*.psc, build_v03.py, settings.json, state-schema.lock.json, build/**, package/Elements Spellblade/**, .codex/impl-fix-round18.html, 實作紀錄.md（僅追加）</td><td>以 .codex/pre-fix18-snapshot 回復第 18 輪動過的產物檔，回到第 17 輪的已知良好狀態</td></tr><tr><td><code>ingame-smoke</code></td><td>DECISIVE</td><td>SUPPORT</td><td>DEFERRED</td><td>INSTALLED_ENABLED → SMOKE_VERIFIED</td><td>無</td><td>結果未知時先回讀權威狀態，不重送同一動作</td></tr></tbody></table></div>
+      <h3>候選主攻的固定評分</h3><table><thead><tr><th>Front</th><th>Eligibility</th><th>Total score</th><th>未滿足勝利條件</th></tr></thead><tbody><tr><td><code>impl-round18</code></td><td>可選</td><td>250</td><td>1</td></tr><tr><td><code>ingame-smoke</code></td><td>DEFERRED：使用者裁示帶缺陷的第 16 輪安裝版保持不遊玩，實機驗收等重設計版本替換後再開。</td><td>455</td><td>4</td></tr></tbody></table>
+      <div class="tech-grid"><section class="tech-block"><h3>勝利證據</h3><ul><li>build/compile-results.json 全部 exit 0</li><li>tes.read_plugin 讀回記錄數等於產生器清單且 masters == [Skyrim.esm]</li><li>CSF JSON 經 schema 檢查與 perk 參照解析腳本通過</li><li>build/plan-coverage.json 中無 MISSING 項目</li><li>MO2/mods/Elements Spellblade 存在，三個 profile 檔各含對應行</li><li>使用者回報遊戲內三項測試</li></ul></section><section class="tech-block"><h3>硬限制／不可接受結果</h3><ul><li>只寫入 .codex/elemental-spellblade 工作區、MO2/mods/Elements Spellblade、以及 normal profile 的三個清單檔</li><li>不修改任何其他模組的檔案，不寫入 SkyrimSE/Data</li><li>ESP master 只有 Skyrim.esm；借用的特效記錄以複製方式進入本模組</li><li>不使用 build_scripts.py；狹義入口是新的 build_v03.py</li><li>設計以 元素魔戰士規劃-v0.3.md 為準，實作偏離時記錄在該文件的實作備註而不是改設計</li><li>安裝前先備份三個 profile 檔，安裝動作結果未知時先回讀不重做</li><li>任何其他模組或 SkyrimSE/Data 的檔案被修改</li><li>profile 三個清單檔出現不一致（有 mod 行沒有 plugin 行或反之）</li><li>把編譯器或讀取器的故障記成模組故障</li></ul></section></div>
+    </div></details>
+  </div>
+</main>
+<script>
+(function(){
+  var historyDetails = document.querySelector("details.history");
+  try {
+    var historyKey = "strategic-advance:full-history:" + window.location.pathname;
+    if (historyDetails && window.localStorage.getItem(historyKey) === "open") historyDetails.open = true;
+    if (historyDetails) historyDetails.addEventListener("toggle", function() {
+      window.localStorage.setItem(historyKey, historyDetails.open ? "open" : "closed");
+    });
+  } catch (error) { /* file URLs or privacy settings may disable localStorage. */ }
+  function renderElapsed(element, suffix) {
+    if (!element) return;
+    var at = Date.parse(element.getAttribute("data-at") || "");
+    if (isNaN(at)) { element.textContent = "未知"; return; }
+    var minutes = Math.max(0, Math.floor((Date.now() - at) / 60000));
+    element.innerHTML = minutes + "<span>MIN" + suffix + "</span>";
+  }
+  function updateElapsed() {
+    renderElapsed(document.getElementById("active-front-elapsed"), "");
+    renderElapsed(document.getElementById("since-change"), " 前");
+  }
+  updateElapsed();
+  window.setInterval(updateElapsed, 60000);
+})();
+</script>
+</body></html>

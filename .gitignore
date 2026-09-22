@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.pyc
+
+# Third-party material (SKSE distribution and script sources, xEdit definitions): not redistributable here
+vendor/
+
+# Generated release package (contains records copied from other mods)
+package/
+
+# Build outputs: keep helper scripts, reports and the files the generator reads back
+build/*
+!build/*.py
+!build/*.md
+!build/v03-formids.json
+!build/plan-tree-nodes.json
+
+# Delegation scratch: keep briefings; keep only the FormID registry from each snapshot
+.codex/*
+!.codex/*.md
+!.codex/pre-fix*-snapshot/
+.codex/pre-fix*-snapshot/*
+!.codex/pre-fix*-snapshot/v03-formids.json
+.astra-probe/
+
+# Campaign raw evidence
+.strategic-advance/*/artifacts/
+
+# Native plugin build trees and dependency caches
+native/build/
+native/out/
+native/vcpkg_installed/
+native/.vcpkg/
+native/deps/
+native/_deps/
+
+*.log

@@ -1,0 +1,119 @@
+{
+  "version": 4,
+  "state_schema_version": 7,
+  "kill_attribution_seconds": 3.0,
+  "normal_damage": 8.0,
+  "power_damage": 12.0,
+  "melee_enabled": true,
+  "debug_logging": false,
+  "comment": "fix round 4：element_damage 是 B/B_max 唯一資料源；poison_dot_k、bleed_dot_k 以樹等級 1、M_mod=1、base_damage_mult=1 校準。血位倍率仍保留。normal_damage/power_damage 是歷史鍵，v0.3 不再使用。fx_aura/fx_mark 維持第三輪設定。",
+  "enabled": true,
+  "debug_level": 0,
+  "school_xp_mult": 0.1,
+  "xp_per_hit": 1.0,
+  "csf_use_mult": 1.0,
+  "csf_use_offset": 0.0,
+  "csf_improve_mult": 0.05,
+  "csf_improve_offset": 2.0,
+  "fx_aura": {
+    "Fire": "Phenderix Elements.esp|ZZShader_FireForm",
+    "Frost": "Phenderix Elements.esp|ZZShader_FrostForm",
+    "Lightning": "Phenderix Elements.esp|ZZShader_LightningForm",
+    "Earth": "Phenderix Elements.esp|ZZShader_EarthForm",
+    "Wind": "Phenderix Elements.esp|ZZShader_WindForm",
+    "Blood": "Phenderix Elements.esp|ZZShader_BloodForm",
+    "Divine": "Phenderix Elements.esp|ZZShader_DivineForm",
+    "Poison": "Phenderix Elements.esp|ZZShader_PoisonForm",
+    "Water": "Phenderix Elements.esp|ZZShader_WaterForm",
+    "Darkness": "Phenderix Elements.esp|ZZShader_DarknessForm",
+    "Astral": "Phenderix Elements.esp|ZZShader_AstralForm"
+  },
+  "fx_mark": {
+    "Fire": "Elements Spellblade.esp|ESSBFX_Mark_Fire",
+    "Frost": "Elements Spellblade.esp|ESSBFX_Mark_Frost",
+    "Lightning": "Elements Spellblade.esp|ESSBFX_Mark_Lightning",
+    "Earth": "Elements Spellblade.esp|ESSBFX_Mark_Earth",
+    "Wind": "Elements Spellblade.esp|ESSBFX_Mark_Wind",
+    "Blood": "Elements Spellblade.esp|ESSBFX_Mark_Blood",
+    "Divine": "Elements Spellblade.esp|ESSBFX_Mark_Divine",
+    "Poison": "Elements Spellblade.esp|ESSBFX_Mark_Poison",
+    "Water": "Elements Spellblade.esp|ESSBFX_Mark_Water",
+    "Darkness": "Elements Spellblade.esp|ESSBFX_Mark_Darkness",
+    "Astral": "Elements Spellblade.esp|ESSBFX_Mark_Astral"
+  },
+  "poison_dot_k": 0.21164021164021163,
+  "bleed_dot_k": 0.11428571428571428,
+  "base_damage_mult": 1.0,
+  "element_damage": {
+    "Fire": [
+      10,
+      12
+    ],
+    "Frost": [
+      8,
+      10
+    ],
+    "Lightning": [
+      1,
+      25
+    ],
+    "Earth": [
+      8,
+      10
+    ],
+    "Wind": [
+      8,
+      9
+    ],
+    "Blood": [
+      8,
+      10
+    ],
+    "Divine": [
+      8,
+      10
+    ],
+    "Poison": [
+      8,
+      9
+    ],
+    "Water": [
+      5,
+      7
+    ],
+    "Darkness": [
+      8,
+      10
+    ],
+    "Astral": [
+      8,
+      10
+    ]
+  },
+  "node_percent_scale": 3.0,
+  "manabreak_base": 20.0,
+  "manabreak_per_rank": 4.0,
+  "manabreak_maxmag_pct": 10.0,
+  "manabreak_dry_pct": 20.0,
+  "water_flow_base_pct": 2.0,
+  "water_flow_per_rank_pct": 0.2,
+  "water_wet_slow_pct": 15.0,
+  "frost_open_slow_pct": 25.0,
+  "slow_cap_pct": 70.0,
+  "water_clear_stamina": 30.0,
+  "water_open_stamina": 80.0,
+  "mult_dot": 1.0,
+  "mult_cooldown": 1.0,
+  "mult_recovery": 1.0,
+  "mult_drain": 1.0,
+  "mult_duration": 1.0,
+  "mult_upkeep": 1.0,
+  "upkeep_base_pct": 1.0,
+  "upkeep_dark_pct": 2.0,
+  "upkeep_level_relief": 0.7,
+  "noform_base_true": 5.0,
+  "lightning_roll_mode": "chain",
+  "form_notify": true,
+  "form_sound": true,
+  "hotkeys_enabled": true
+}

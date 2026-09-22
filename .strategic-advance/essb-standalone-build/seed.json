@@ -1,0 +1,311 @@
+{
+  "missionId": "essb-standalone-build",
+  "wayfinderMapPath": ".claude/wayfinder/essb-standalone-build.md",
+  "objective": {
+    "purpose": "把《元素魔戰士規劃 v0.3》整份實作成可安裝的 Skyrim SE 1.5.97 模組：自製形態層、印記與開印終焉引擎、13 棵 CSF 技能樹、11 元素機制、借用特效，並安裝進使用者的 MO2 profile 供實戰驗證。",
+    "desiredEndState": [
+      "package/Elements Spellblade 內的 ESP 只以 Skyrim.esm 為 master，可被獨立讀取器完整解析",
+      "所有 Papyrus 腳本以本機編譯器編譯為 0 錯誤",
+      "13 棵樹的 CSF JSON 有效，所有節點的 perk 參照都能在 ESP 中解析",
+      "規劃 v0.3 第 5 節的每個節點與第 1、2 節的每個共通機制都有對應的實作記錄",
+      "模組已安裝進 MO2 並在 normal profile 啟用，且三個 profile 檔一致",
+      "使用者在遊戲內確認：Z 開關形態、命中附傷、技能樹可開啟"
+    ],
+    "worldDimensions": [
+      "toolchainState",
+      "packageState",
+      "csfConfigState",
+      "planCoverage",
+      "installState",
+      "smokeState"
+    ],
+    "protectedAssets": [
+      {
+        "id": "mo2-profile",
+        "displayText": "MO2 normal profile 的 modlist.txt、plugins.txt、loadorder.txt 必須保持一致且可回復"
+      },
+      {
+        "id": "other-mods",
+        "displayText": "其他模組資料夾與 SkyrimSE/Data 一個位元組都不能被改動，Phenderix Elements 與各法術包只能被讀取"
+      },
+      {
+        "id": "plan-document",
+        "displayText": "元素魔戰士規劃-v0.3.md 是設計真相，實作只能引用與補記實作備註，不能改設計"
+      },
+      {
+        "id": "evidence-integrity",
+        "displayText": "編譯器或讀取器故障不得被記成模組本身的事實"
+      }
+    ],
+    "victoryCriteria": [
+      {
+        "id": "compile-clean",
+        "displayText": "全部腳本編譯 0 錯誤",
+        "predicate": "PACKAGE_COMPILE_ERRORS == 0"
+      },
+      {
+        "id": "esp-valid",
+        "displayText": "ESP 可獨立解析且 master 只有 Skyrim.esm",
+        "predicate": "ESP_INDEPENDENT_READ_VALID == true"
+      },
+      {
+        "id": "csf-valid",
+        "displayText": "13 棵樹的 CSF 設定有效且 perk 參照全部解析",
+        "predicate": "CSF_CONFIG_VALID == true"
+      },
+      {
+        "id": "plan-covered",
+        "displayText": "規劃的節點與共通機制全部有實作記錄",
+        "predicate": "PLAN_COVERAGE_COMPLETE == true"
+      },
+      {
+        "id": "installed",
+        "displayText": "模組已安裝並在 profile 啟用",
+        "predicate": "MOD_INSTALLED_ENABLED == true"
+      },
+      {
+        "id": "smoke-pass",
+        "displayText": "使用者遊戲內冒煙測試通過",
+        "predicate": "INGAME_SMOKE_PASS == true"
+      }
+    ],
+    "victoryEvidence": [
+      "build/compile-results.json 全部 exit 0",
+      "tes.read_plugin 讀回記錄數等於產生器清單且 masters == [Skyrim.esm]",
+      "CSF JSON 經 schema 檢查與 perk 參照解析腳本通過",
+      "build/plan-coverage.json 中無 MISSING 項目",
+      "MO2/mods/Elements Spellblade 存在，三個 profile 檔各含對應行",
+      "使用者回報遊戲內三項測試"
+    ],
+    "constraints": [
+      "只寫入 .codex/elemental-spellblade 工作區、MO2/mods/Elements Spellblade、以及 normal profile 的三個清單檔",
+      "不修改任何其他模組的檔案，不寫入 SkyrimSE/Data",
+      "ESP master 只有 Skyrim.esm；借用的特效記錄以複製方式進入本模組",
+      "不使用 build_scripts.py；狹義入口是新的 build_v03.py",
+      "設計以 元素魔戰士規劃-v0.3.md 為準，實作偏離時記錄在該文件的實作備註而不是改設計",
+      "安裝前先備份三個 profile 檔，安裝動作結果未知時先回讀不重做"
+    ],
+    "unacceptableOutcomes": [
+      "任何其他模組或 SkyrimSE/Data 的檔案被修改",
+      "profile 三個清單檔出現不一致（有 mod 行沒有 plugin 行或反之）",
+      "把編譯器或讀取器的故障記成模組故障"
+    ]
+  },
+  "worldState": {
+    "toolchainState": "UNPROVEN",
+    "packageState": "PROTOTYPE_STALE",
+    "csfConfigState": "ABSENT",
+    "planCoverage": "NONE",
+    "installState": "NOT_INSTALLED",
+    "smokeState": "UNTESTED"
+  },
+  "plainBriefing": {
+    "context": "設計文件 v0.3 已完成並經使用者逐項確認；原型只做了近戰附傷核心且依賴 Phenderix。現在要以自製形態層重做整個模組。",
+    "currentSituation": "戰役剛以種子建構。編譯器、PO3、CSF 3.1、UIExtensions 都在本機確認存在；原型的產生器與編譯流程尚未在本次重新跑過。",
+    "reasoning": "先用一次最小重建證明工具鏈，再依「形態層 → 引擎 → 技能樹 → 元素機制 → 特效 → 安裝 → 冒煙」的因果鏈推進；每一步都有可離線驗證的終止狀態。",
+    "nextMove": "先以 build_melee.py 重建原型證明工具鏈（編譯 0 錯誤、ESP 可讀回），接著寫 build_v03.py 與形態層腳本。",
+    "userRole": "自動推進到安裝完成為止；只有遊戲內冒煙測試需要你親自進遊戲確認。"
+  },
+  "battlefields": [
+    {
+      "id": "form-layer-core",
+      "objective": "第一步：重跑原型建置證明工具鏈（state recipe，不另開戰場）。之後新產生器 build_v03.py：11 個形態力量、形態能力與全域變數、每元素普攻／重擊附傷法術（perk 進入點套用）、設定能力、玩家別名任務；腳本編譯 0 錯誤；master 只有 Skyrim.esm",
+      "entryState": "CAMPAIGN_SEEDED",
+      "terminalState": "CORE_PACKAGE_BUILT",
+      "operationType": "DECISIVE",
+      "mutationScope": [],
+      "owner": "delegate-builder",
+      "timeBudgetMinutes": 200,
+      "remainingTransitions": 1,
+      "costMinutes": 130,
+      "expectedVictoryCriterionIds": [
+        "compile-clean",
+        "esp-valid"
+      ],
+      "mainEffort": true,
+      "entryObservation": {
+        "sourceType": "STATIC",
+        "sourceRef": "scribe-probe:ls \"D:/Game/Other/SKSE/MO2/mods/动作共存-Nemesis Unlimited Behavior Engine-动作刷新/Nemesis_Engine/Papyrus Compiler/PapyrusCompiler.exe\" \"D:/Game/Other/SKSE/SkyrimSE/Data/Skyrim.esm\"@2026-09-16T07:36:05+08:00",
+        "observedAt": "2026-09-16T07:36:05+08:00"
+      }
+    },
+    {
+      "id": "reaction-engine",
+      "objective": "印記、元素狀態、同調、開印、終焉、融斷、環境加成、除錯紀錄框架：MGEF／SPEL 記錄與腳本，編譯 0 錯誤",
+      "entryState": "CORE_PACKAGE_BUILT",
+      "terminalState": "ENGINE_BUILT",
+      "operationType": "DECISIVE",
+      "mutationScope": [],
+      "owner": "delegate-builder",
+      "timeBudgetMinutes": 240,
+      "remainingTransitions": 1,
+      "costMinutes": 150,
+      "expectedVictoryCriterionIds": [
+        "compile-clean",
+        "esp-valid"
+      ],
+      "causalPredecessorIds": [
+        "form-layer-core"
+      ],
+      "deferReason": "形態層尚未建成，引擎沒有可掛的形態事件"
+    },
+    {
+      "id": "skill-trees",
+      "objective": "13 棵樹：每樹 level／ratio／perkPoints 全域變數、主線多階 perk 與分支 perk 記錄、CSF JSON 設定、經驗與升級加點腳本、洗點；JSON 參照全部解析",
+      "entryState": "ENGINE_BUILT",
+      "terminalState": "TREES_BUILT",
+      "operationType": "DECISIVE",
+      "mutationScope": [],
+      "owner": "delegate-builder",
+      "timeBudgetMinutes": 300,
+      "remainingTransitions": 1,
+      "costMinutes": 180,
+      "expectedVictoryCriterionIds": [
+        "csf-valid"
+      ],
+      "causalPredecessorIds": [
+        "reaction-engine"
+      ],
+      "deferReason": "引擎未建成，樹的經驗與效果沒有掛點"
+    },
+    {
+      "id": "element-mechanics",
+      "objective": "11 元素、無元素、通用樹的每個主線與分支效果，加上真實傷害、化灰、復生、跌倒、沉默、反咒、血位、催毒、浮空等專屬機制；產生 plan-coverage.json 且無 MISSING",
+      "entryState": "TREES_BUILT",
+      "terminalState": "MECHANICS_BUILT",
+      "operationType": "DECISIVE",
+      "mutationScope": [],
+      "owner": "delegate-builder",
+      "timeBudgetMinutes": 480,
+      "remainingTransitions": 1,
+      "costMinutes": 300,
+      "expectedVictoryCriterionIds": [
+        "plan-covered",
+        "compile-clean",
+        "esp-valid"
+      ],
+      "causalPredecessorIds": [
+        "skill-trees"
+      ],
+      "deferReason": "樹未建成，元素效果沒有 perk 可綁"
+    },
+    {
+      "id": "fx-assets",
+      "objective": "依 2.11／2.12 從法術包複製 EFSH、ARTO、IPDS、SNDR、EXPL 記錄進本模組並綁定到各效果，ESP 仍只以 Skyrim.esm 為 master",
+      "entryState": "MECHANICS_BUILT",
+      "terminalState": "FX_BOUND",
+      "operationType": "SUSTAINING",
+      "mutationScope": [],
+      "owner": "delegate-builder",
+      "timeBudgetMinutes": 120,
+      "remainingTransitions": 1,
+      "costMinutes": 60,
+      "expectedVictoryCriterionIds": [
+        "esp-valid"
+      ],
+      "causalPredecessorIds": [
+        "element-mechanics"
+      ],
+      "deferReason": "機制未建成，沒有效果可綁特效"
+    },
+    {
+      "id": "install-enable",
+      "objective": "備份三個 profile 檔，把 package 複製到 MO2/mods/Elements Spellblade，在 modlist、plugins、loadorder 加入對應行",
+      "entryState": "FX_BOUND",
+      "terminalState": "INSTALLED_ENABLED",
+      "operationType": "DECISIVE",
+      "mutationScope": [
+        "MO2ProfileEdit",
+        "MO2ModFolderCreate"
+      ],
+      "owner": "commander",
+      "timeBudgetMinutes": 30,
+      "remainingTransitions": 1,
+      "costMinutes": 15,
+      "expectedVictoryCriterionIds": [
+        "installed"
+      ],
+      "causalPredecessorIds": [
+        "fx-assets"
+      ],
+      "recovery": {
+        "action": "以安裝前備份還原三個 profile 檔，並移除 MO2/mods/Elements Spellblade",
+        "steps": [
+          "停止任何安裝動作",
+          "比對 profile 三檔與備份的差異",
+          "還原備份並刪除本模組資料夾",
+          "回讀三檔確認無 Spellblade 行"
+        ],
+        "readinessPredicate": "PROFILE_BACKUP_TRIPLE_EXISTS == true",
+        "successPredicate": "PROFILE_FILES_MATCH_BACKUP == true",
+        "stopCondition": "任何 profile 檔在備份之外被其他程序改動"
+      },
+      "deferReason": "套件未完成，安裝沒有意義"
+    },
+    {
+      "id": "ingame-smoke",
+      "objective": "使用者進遊戲確認 Z 開關形態、命中附傷、技能樹可開啟，回報結果",
+      "entryState": "INSTALLED_ENABLED",
+      "terminalState": "SMOKE_VERIFIED",
+      "operationType": "DECISIVE",
+      "mutationScope": [],
+      "owner": "user",
+      "timeBudgetMinutes": 60,
+      "remainingTransitions": 1,
+      "costMinutes": 45,
+      "expectedVictoryCriterionIds": [
+        "smoke-pass"
+      ],
+      "causalPredecessorIds": [
+        "install-enable"
+      ],
+      "deferReason": "尚未安裝"
+    }
+  ],
+  "risks": [
+    {
+      "id": "profile-inconsistency",
+      "affectedFrontId": "install-enable",
+      "protectedAssetId": "mo2-profile",
+      "threat": "三個清單檔只改到一部分，MO2 啟動時清單不一致或插件失蹤",
+      "probability": 2,
+      "impact": 4,
+      "unacceptableThreshold": 12,
+      "guard": "先備份三檔，三檔在同一步驟內寫入，寫入後回讀比對",
+      "stopCondition": "任一檔寫入失敗或回讀不含預期行",
+      "recoveryAction": "以備份還原三檔並移除模組資料夾"
+    },
+    {
+      "id": "foreign-write",
+      "affectedFrontId": "fx-assets",
+      "protectedAssetId": "other-mods",
+      "threat": "複製特效記錄時誤寫回來源模組的 ESP",
+      "probability": 1,
+      "impact": 5,
+      "unacceptableThreshold": 12,
+      "guard": "來源 ESP 只以唯讀方式開啟；產生器輸出路徑固定在 package/",
+      "stopCondition": "任何寫入路徑不在工作區 package/ 之下",
+      "recoveryAction": "以來源模組的 sha256 清單比對，異動則由使用者從備份或重新安裝來源模組"
+    }
+  ],
+  "decision": {
+    "chosenTactic": "形態層核心為主攻；工具鏈證明是它的第一個 state recipe",
+    "nextAction": "執行 build_melee.py 證明工具鏈，然後建立 build_v03.py 產生自製形態層",
+    "rationale": "唯一合格候選：其餘戰場因果上都在它之後，已延後；無 mutation、無風險",
+    "pivotCondition": "Papyrus 編譯器可執行檔或 vendored imports 目錄不存在"
+  },
+  "alternativeRoutes": [
+    {
+      "id": "manual-install",
+      "reason": "自動安裝若被證明不可用，使用者可在 MO2 介面手動安裝 package 資料夾並啟用"
+    }
+  ],
+  "residualLossMeasurements": [
+    {
+      "id": "foreign-files-modified",
+      "metric": "OTHER_MOD_FILES_MODIFIED_COUNT",
+      "displayText": "其他模組與遊戲 Data 沒有任何檔案被改動",
+      "predicate": "OTHER_MOD_FILES_MODIFIED_COUNT == 0"
+    }
+  ]
+}

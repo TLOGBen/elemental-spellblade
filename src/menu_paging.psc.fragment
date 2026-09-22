@@ -1,0 +1,109 @@
+function UnlockSpellMenu2(String magicSkillType, String elementTypeString, FormList noviceList, FormList apprenticeList, FormList adeptList, FormList expertList, FormList masterList, GlobalVariable pointsVar)
+    Bool chooseTier = True
+    While chooseTier
+        UIListMenu tierMenu = UIExtensions.GetMenu("UIListMenu", True) as UIListMenu
+        tierMenu.AddEntryItem("返回", -1, -1, False)
+        tierMenu.AddEntryItem("新手", -1, -1, False)
+        tierMenu.AddEntryItem("學徒（技能 25）", -1, -1, False)
+        tierMenu.AddEntryItem("熟練（技能 50）", -1, -1, False)
+        tierMenu.AddEntryItem("專家（技能 75）", -1, -1, False)
+        tierMenu.AddEntryItem("大師（技能 100）", -1, -1, False)
+        tierMenu.OpenMenu(None, None)
+        Int tier = tierMenu.GetResultInt() - 1
+        If tier < 0 || tier > 4
+            Return
+        EndIf
+        If player.GetActorValue(magicSkillType) < tier * 25
+            Debug.MessageBox("目前技能等級不足，請選擇較低階級。")
+        Else
+            FormList sourceList = noviceList
+            Int price = ZZPointsRequiredNovice.GetValueInt()
+            If tier == 1
+                sourceList = apprenticeList
+                price = ZZPointsRequiredApprentice.GetValueInt()
+            ElseIf tier == 2
+                sourceList = adeptList
+                price = ZZPointsRequiredAdept.GetValueInt()
+            ElseIf tier == 3
+                sourceList = expertList
+                price = ZZPointsRequiredExpert.GetValueInt()
+            ElseIf tier == 4
+                sourceList = masterList
+                price = ZZPointsRequiredMaster.GetValueInt()
+            EndIf
+            ESSBShowSpellPages(sourceList, pointsVar, price)
+        EndIf
+    EndWhile
+endFunction
+
+Function ESSBShowSpellPages(FormList sourceList, GlobalVariable pointsVar, Int price)
+    If !sourceList || price < 0
+        Return
+    EndIf
+    Int page = 0
+    Bool browsing = True
+    While browsing
+        Spell[] pageSpells = new Spell[40]
+        Int eligible = 0
+        Int shown = 0
+        Int position = 0
+        Int listSize = sourceList.GetSize()
+        UIListMenu listMenu = UIExtensions.GetMenu("UIListMenu", True) as UIListMenu
+        listMenu.AddEntryItem("返回階級選單", -1, -1, False)
+        listMenu.AddEntryItem("上一頁", -1, -1, False)
+        listMenu.AddEntryItem("下一頁", -1, -1, False)
+        listMenu.AddEntryItem("第 " + (page + 1) + " 頁｜可用點數 " + pointsVar.GetValueInt() + "｜每個法術 " + price + " 點", -1, -1, False)
+        While position < listSize
+            Spell candidate = sourceList.GetAt(position) as Spell
+            If candidate && !player.HasSpell(candidate)
+                If eligible >= page * 40 && shown < 40
+                    pageSpells[shown] = candidate
+                    listMenu.AddEntryItem(candidate.GetName(), -1, -1, False)
+                    shown += 1
+                EndIf
+                eligible += 1
+            EndIf
+            position += 1
+        EndWhile
+        If eligible == 0
+            Debug.MessageBox("此元素與階級目前沒有尚未學會的法術。")
+            Return
+        ElseIf shown == 0 && page > 0
+            page -= 1
+        Else
+            listMenu.OpenMenu(None, None)
+            Int result = listMenu.GetResultInt()
+            If result <= 0
+                Return
+            ElseIf result == 1
+                If page > 0
+                    page -= 1
+                EndIf
+            ElseIf result == 2
+                If (page + 1) * 40 < eligible
+                    page += 1
+                EndIf
+            ElseIf result >= 4 && result < shown + 4
+                Spell chosen = pageSpells[result - 4]
+                UIListMenu actions = UIExtensions.GetMenu("UIListMenu", True) as UIListMenu
+                actions.AddEntryItem("學習：" + chosen.GetName() + "（" + price + " 點）", -1, -1, False)
+                actions.AddEntryItem("檢視法術效果", -1, -1, False)
+                actions.AddEntryItem("返回", -1, -1, False)
+                actions.OpenMenu(None, None)
+                Int action = actions.GetResultInt()
+                If action == 0
+                    If !player.HasSpell(chosen) && pointsVar.GetValue() >= price
+                        If player.AddSpell(chosen, True)
+                            pointsVar.Mod(-price)
+                            ZZSound_SpellLearn.Play(player)
+                        EndIf
+                    ElseIf pointsVar.GetValue() < price
+                        Debug.MessageBox("元素點數不足，還需要 " + (price - pointsVar.GetValueInt()) + " 點。")
+                    EndIf
+                ElseIf action == 1
+                    GenerateViewStats(chosen)
+                EndIf
+            EndIf
+        EndIf
+    EndWhile
+EndFunction
