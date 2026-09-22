@@ -59,7 +59,7 @@
 | 印記 | 同一 PERK 的兩段／元素：目標沒有 `ESSB_Mark_X` → 套「開印版」；有 → 套「刷新版」。印記帶 `ESSB_MarkAny` 並驅散同關鍵字 → 新元素自動切掉舊元素 | `ESSBMark` 在 `OnEffectStart`（開印版）觸發開印反應、`OnEffectFinish` 分辨被切掉／過期／融斷並觸發終焉 |
 | 目標階梯（凍結、血痕、水壓、詛咒、星痕）與中毒單一效果 | 每階一顆 MGEF；升階／刷新／頂階各一段進入點，條件是「有第 k 階」與「第 k 階的成熟計時還在不在」；DoT 由引擎逐秒扣；引信到期由引擎結束效果 | 頂階事件與引信到期的**效果**（自燃傷害、死咒傷害、星痕傷害、擴散）由該效果自己的腳本在 `OnEffectStart`／`OnEffectFinish` 呼叫控制器；擴散是中毒 II 以上效果自己的 `OnUpdate`（無狀態，只找一個鄰居） |
 | 單階標記（裂痕、失衡、浸濕、破魔印、星鎖、浮空、已交戰、聖印、黑暗印記） | 引擎（已交戰直接嵌進附傷法術） | 浮空到期的落地傷害由效果腳本觸發 |
-| 中毒〔決定 1、2、5〕 | 一顆 DoT，引擎逐秒扣；No Death Dispel 不加（死亡時 `OnEffectFinish` 就是擴散時機） | 命中時腳本讀它的 `GetMagnitude/GetDuration/GetTimeElapsed`、算新值、以同一顆重套（無狀態）；效果自己的腳本每 2 秒傳一劑、死亡時全場分發 |
+| 中毒〔決定 1、2、5；N3 起由 DLL〕 | 一顆 DoT，引擎逐秒扣；≥5 劑時另掛「瘴氣」披風（原型 35，3 公尺，關聯法術每秒對鄰居套 0.5 劑），引擎自己傳 | DLL 在命中時讀效果的 magnitude／剩餘秒、算新值、以 magnitude 覆寫重套；死亡分發在 N5 的死亡事件；N3 之前的 Papyrus 版見第 8 節 |
 | 碎冰〔決定 3、6〕 | 冰封 T3 是引擎效果 | 命中冰封目標的第一擊：腳本 `ApplyTrueDamage(最大生命 × 20%／10%)` 並驅散冰封（永凍→套凍結） |
 | 聖佑〔決定 8〕 | 三顆自身階效果；0x23／0x1D 段讀 `HasMagicEffect(聖佑 T{k})` 給武器與聖傷加成 | 命中帶神聖印記目標時升階；每階到期由該階的小腳本套低一階 |
 | 雷 best-of-N〔決定 7〕 | 五檔法術 × 電荷階 × 攻擊變體的機率條件段 | 無 |
@@ -103,7 +103,7 @@
 | 雷 電荷（你，6／10） | 自身階梯 3（+超載）：12 s、成熟 2 s | 腳本 `HasMagicEffect`；PERK 電盾讀 T3 | 雷神：T3 且無 Cool3 的下一擊 → 腳本放電 | 引擎 | 電荷有「等一下才會升」的節奏；放電四檔 |
 | 土 岩甲（你，5／10） | 自身階梯 3（+山岩）：不過期、成熟 2 s；每階是原版石膚型護甲效果 | 腳本；PERK 不動／減傷讀 T{k} | 反震：T3 時被打 | Guard 受擊套低一階（山岳不降） | 石膚→鐵膚→黑檀膚看得見 |
 | 風 風勢（你，門檻 4） | 自身單階「起風」5 s、成熟 2 s | 腳本 | 「有起風且無 Cool」的命中 → 風刃 + 驅散 | 引擎 | 每 2～3 秒一段風刃，攻速不影響 |
-| 血 血痕 8／12 層，10 s | DoT 階梯 3（+失血）：等價 2／5／8／12 層，10 s、成熟 2 s | 0x1D 不需要；血潮讀 `GetMagnitude×剩餘秒` | — | 引擎 | 放血以套用當下生命換算 |
+| 血 血痕 8／12 層，10 s | 〔2026-09-22 還原 v0.3〕層數放血痕效果的 magnitude：開印 2 層、命中 +1，上限 8（深創 12、萬象 15），每層 10 s、命中刷新全部 | 0x1D 不需要；血潮讀 `GetMagnitude×剩餘秒` | — | 引擎 | 放血依 A1b：有每秒執行點就用目標當下生命，否則命中時以當時生命換算 |
 | 聖 聖印 5 層〔決定 8〕 | 目標側只剩單階印記（+20% 受聖傷）；玩家側聖佑三階（8 s、成熟 2 s，只有命中帶印記目標才升／刷新） | 0x23 ×3 與 0x1D ×3 段讀自身 `HasMagicEffect(聖佑 T{k})`；升階在 `OnWeaponHit`：`target.HasMagicEffectWithKeyword(ESSB_Mark_Divine)` 為真才套 `Promote` | III 的每擊聖光爆：0x33 段條件「自身有聖佑 III 且目標有神聖印記」→ 套 `ESSB_DivineBurst`（零腳本） | 每階到期時該階 MGEF 的小腳本（`ESSBTierDecay`，`OnEffectFinish` 且未被更高階取代）套低一階 | 打帶印記的目標越久越痛，停手一階一階退 |
 | 毒 毒層無上限〔決定 1、2、5〕 | 一顆 DoT，強度與時長隨命中成長（alter 2.7 的公式），催毒 = 同一顆重套 ×2 | 命中時腳本：`PO3_SKSEFunctions.GetActiveMagicEffects(target, ESSB_PoisonEffect)` → `[0].GetMagnitude()/GetDuration()/GetTimeElapsed()` → `SetNthEffectMagnitude/Duration` → `DoCombatSpellApply`（約 6 次原生呼叫，只在毒形態，且在附傷之後、不在關鍵路徑） | 擴散與死亡擴散都在 `ESSBPoison` 腳本（掛在 DoT MGEF 上）：`OnUpdate(2 s)` 傳一劑；`OnEffectFinish` 且 `Holder.IsDead()` → 15 m 掃描全部合格敵人各分一份；無任何成員狀態（份額從自己的 magnitude／duration 算） | 引擎 | 越養越痛、死了全場中毒 |
 | 水 浸濕、水壓 5 | 浸濕單階 10 s；水壓階梯 3（8 s、成熟 2 s，只在持有分支且目標浸濕時升階） | 0x1D：水壓 T{k} → ×1.1／×1.3／×1.5 | — | 引擎 | — |
@@ -111,7 +111,7 @@
 | 星 星痕 3／6／9 | 引信階梯 3：各 2 s，命中即升階重計時 | 0x1D（重擊時）：T{k} → +8/16/24% | 到期 = `ESSBFuse.OnEffectFinish` 結算（有更高階存在則不結算） | 引擎 | 上限節點被取代 |
 | 戰意（你，5） | 自身階梯 3：5 s | 腳本 | 節奏：命中時「有連段視窗效果」→ 升階 | 引擎 | — |
 | 風終焉多段〔決定 9〕 | 無新狀態 | — | `ESSBMark`（風）的 finish 分類為「被切掉」時，取接管元素 e 與 N（讀風樹主線 rank），對目標：`DoCombatSpellApply(HitSpell[e])` N−1 次（第 2 次起先把 magnitude ×0.5 寫進一顆「回聲」副本法術 `ESSB_Hit_<X>_Echo`，避免改壞主法術）、`Promote(e 的階梯)` N−1 次（免等待）、雷則每次 `RandomInt(1,25)` 取 best-of-電荷階 寫進 Echo 再套；中毒 +N−1 劑；聖佑 +N−1 階 | 一次終焉 2N 次原生呼叫，不在命中關鍵路徑 | 切換那一刀像連打 N 下 |
-| 同調（你，計數 5／15／30） | 自身階梯 3：不過期，成熟 5／10／15 s | 腳本 `HasMagicEffect`；PERK 讀 `ESSB_Sync_T3`（現有 `ESSB_SyncStage` GLOB 仍由升階時寫入，既有 167 段條件不改） | 升段 = 命中時「有 T{k} 且無 Cool{k}」→ 套 `Promote{k+1}` | 切換／關閉時 `DispelSpell` | alter 第 1 條 |
+| 同調（你，計數 5／15／30） | 〔2026-09-22 還原 v0.3〕計數放同調效果的 magnitude：命中 +1，門檻 5／15／30 換段（現有 `ESSB_SyncStage` GLOB 仍由升階時寫入，既有 167 段條件不改） | 升段 = 命中時 magnitude 到門檻 → 套對應段效果 | 切換／關閉時 `DispelSpell`／清零 | alter 第 1 條 |
 | 冰盾／水鏡／聖盾（你，5／3／5） | 自身階梯 3：8 s、成熟 1 s | PERK 0x24／0x29 讀 T{k} | — | Guard 受擊套低一階 | — |
 | 裂痕、失衡、破魔印、星鎖、浮空、已交戰、最後一擊 | 單階標記（既有做法） | 214／699 | 浮空 = 引信 | 引擎 | — |
 
@@ -217,7 +217,7 @@
 | 第 2 期變簡單／變難 | 已寫好（4.10）；難在效果層條件的組合爆炸 | 重做整個附傷家族成 ENCH；拳腳沒有武器→沒附傷；雙持左手另一顆 | 變簡單：印記／升階／開印倍率不必塞成效果層條件；ESP 只剩法術與效果的定義 |
 | 開發與維護成本 | 零 | 中（新家族＋大量實機未知） | 高：C++ 專案、CommonLib 相依、建置鏈、遊戲版本變動要重建；程式量小（一個事件 sink、一張表） |
 | 出錯後果 | 最壞少一刀附傷 | 最壞附魔互吃或武器狀態異常 | **DLL 錯＝遊戲崩潰**；靠版本檢查＋自我停用封住（停用時無附傷，無第二條路） |
-| 對 1.5.97 綁定與升級 | 無 | 無 | 綁 SKSE 2.0.20（1.5.97）與 Address Library `version-1-5-97-0.bin`（本機已有：`MO2/mods/Address Library All in One/SKSE/Plugins/`）；升級遊戲要重建 |
+| 執行期 | 無 | 無 | 只支援 SE 1.5.97（使用者永遠不升級；SKSE 2.0.20、Address Library `version-1-5-97-0.bin` 本機已有）——不是代價 |
 
 **裁決（使用者 2026-09-22：「單純走丙；給網路」）**：只走 SKSE 原生插件，**不保留甲（entry 51）為退路**；實作代理可連網，限下載建置相依與查閱其文件／原始碼。乙不做。
 
@@ -245,7 +245,7 @@
 
 | 項目 | 要查什麼 | 去哪裡查 |
 |---|---|---|
-| CommonLibSSE 的分支 | CommonLibSSE-NG（多執行期）或 powerof3 的 CommonLibSSE；1.5.97 需要的 CMake preset 與 `SKSEPlugin_Query`／`SKSEPluginVersionData` 的正確組合 | 各自 GitHub README、範例插件 |
+| CommonLibSSE 的分支 | 單執行期即可（不必 NG 的多執行期）：powerof3 的 CommonLibSSE 或 NG 鎖 1.5.97；需要的 CMake preset 與 `SKSEPlugin_Query` 舊式匯出 | 各自 GitHub README、範例插件 |
 | 命中事件 | `RE::TESHitEvent` 的欄位名（target／cause／source／projectile／flags 的旗標值）與 `RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink` 的用法 | CommonLib 標頭 `RE/T/TESHitEvent.h`、`RE/S/ScriptEventSourceHolder.h` |
 | 即時施放 | `RE::Actor::GetMagicCaster(RE::MagicSystem::CastingSource::kInstant)` 與 `RE::MagicCaster::CastSpellImmediate(...)` 的參數順序——SKSE `DoCombatSpellApply` 的實作就是它，但本機 `vendor/skse64.zip` 沒有這支函式，簽名要查 | CommonLib `RE/M/MagicCaster.h`、SKSE64 `PapyrusActor.cpp` |
 | 目標效果查詢 | `RE::MagicTarget::HasMagicEffect(EffectSetting*)`、keyword 版本的實際名稱 | CommonLib `RE/M/MagicTarget.h`、`RE/A/Actor.h` |
@@ -285,7 +285,7 @@
 - 改名：水樹開啟熟練分支「回流」→「湧泉」；只改 PERK 的 FULL／DESC 與 CSF 文字，EDID `ESSB_P_water_1_1_B1` 不變（EDID 是對外契約）。無元素樹的「回流」不動。
 - 排程：第 2 期（能力層），round 18 不碰。
 
-### 4.5 雷的 best-of-N（決定 7）：五檔法術 × 機率條件段
+### 4.5 〔作廢，N2 起〕雷的 best-of-N 近似：DLL 在命中時精確擲「1～25、N 次取最大」並以 magnitude 覆寫套用；本節只留作 N1 期間的紀錄
 
 目標分布：擲 N 次 U{1..25} 取最大，N = 1 + 電荷階（0..3）。引擎法術強度固定，所以量化成五檔 R1..R5 = 3／8／13／18／23（各代表 1–5、6–10、11–15、16–20、21–25 的中點）。第 j 檔的目標機率 P_j(N) = (j/5)^N − ((j−1)/5)^N：
 
@@ -372,30 +372,36 @@
 - 可玩性：完整；DLL 缺席、版本不符或 MCM 關閉時**沒有元素附傷**（使用者已接受），回退＝還原 round 18 套件。
 - 風險：建置鏈；崩潰（4.11 的保險）；`CastSpellImmediate` 是否發 `OnSpellCast`（探針 N-5，沒有退路，失敗即回報）。
 
-### 第 2 期（round 19 後半）：目標狀態層整個換掉（alter 2.2、2.3、2.6、2.7）
-這一期是 A 換 B，不能半換：登記表同時是印記與宿主的黏合劑。印記與升階由 DLL 依目標效果選法術（2N 切片 2）；效果層條件（4.10）只是雙重保險。
-1. `build_v03.py`：第 5 節的印記 Open/Refresh、目標階梯、DoT、引信、催毒、0x1D／0x23 段；**印記與升階不再是獨立的 entry 51 段，而是每顆附傷法術裡帶效果層條件的效果（4.10）**；`ESSB_P_HitProc` 全部 entry 51 段的優先度依使用者對 4.10 取捨的裁決寫死（建議 0）；刪 `ESSB_StatusHost*`、獨立 `ESSB_Engaged*`；`LADDER ok` 驗證（每個階梯的 8 種存在狀態 {無, T1±Cool, T2±Cool, T3±Cool} 對每段進入點做真值表，恰好一段升階或刷新；驅散清單只含 `ESSB_Ladder_L`；Cool 不被任何法術驅散；DoT 階 magnitude 由 `settings.json` 的等價層數 × `k_dot` × B_max 生成；引信 duration；印記 Open/Refresh 互斥）。
-2. 新腳本：`ESSBFuse.psc`（星痕、死咒、浮空事件：`Int Property Kind`，`OnEffectStart` 存 `GetMagnitude()`，`OnEffectFinish` 依 `Kind` 呼叫 `Ctl.OnFuse(Kind, akTarget, amount, cancelled)`）；`ESSBPoison.psc`（掛在 `ESSB_PoisonEffect` 上：`OnEffectStart` 記 `Holder`、`MaxHealthAtStart = Holder.GetBaseActorValue("Health")`、`RegisterForSingleUpdate(擴散間隔)`；`OnUpdate` → 若 `GetMagnitude() ≥ 5 劑` → `Ctl.PoisonSpread(Holder, 1 劑)` → 再排一次；`OnEffectFinish` → 若 `Holder.HasMagicEffect(ESSB_PoisonEffect)` 則是被重套、忽略；否則若 `Holder.IsDead()` → `Ctl.PoisonDeathSpread(Holder, GetMagnitude() × (GetDuration() − GetTimeElapsed()), MaxHealthAtStart)`；成員只有這三個）；`ESSBTierDecay.psc`（永凍／熔心的退階與聖佑逐階退回：`OnEffectFinish` 且目標沒有更高階 → 套低一階）。
-2a. 水長流回魔：4.8（`WaterFormTick` 加一行、`UpkeepFor` 共用函式、湧泉改名）。
-2b. 碎冰：`OnWeaponHit` 在附傷之後判 `targetActor.HasMagicEffect(FrozenT3)` → `ApplyTrueDamage(targetActor.GetBaseActorValue("Health") × (0.2 或首領 0.1) × 銳碎, ...)` → `targetActor.DispelSpell(FrozenPromote3)`（永凍：再套 `Promote2`）。
-2d. **火的熱度自身階梯與白熱火源、聖佑自身階梯搬到本期**（分期斷裂修正：它們各自取代一個目標狀態——目標熱度、目標聖印——那兩個在本期隨狀態宿主消失，不能等到第 3 期）：熱度 T1～T4 + Cool + 白熱披風（4.7）、`ESSBFuse` 型過熱回呼、`VentHeat()`、`PayHealthCost`、0x1D 讀分頁 0 的熱度倍率段、`ESSBFormRules.OnUpdate` 的代價與 <10% 自動洩壓；聖佑 T1～T3 + Cool、`ESSBTierDecay` 逐階退回、0x23／0x1D 各三段、III 的聖光爆段。`OnWeaponHit` 裡用「存在測試 + `DoCombatSpellApply`」推進這兩條（自身階梯的推進方式，第 3 期其餘資源照同一套）。
-2c. 風多段觸發：`ESSBMark` 風的「被切掉」分支呼叫 `Ctl.WindEcho(akTarget, taker, N)`：對接管元素 e 做 N−1 次 `DoCombatSpellApply(HitEcho[e])`（Echo 副本法術的 magnitude = 主法術 × 0.5，雷每次自己 `RandomInt` best-of-電荷階）、N−1 次階梯 `Promote`（免等待）、中毒 `PoisonApply(+N−1 劑)`、聖佑 `Promote` N−1 次。
-3. `ESSBMark.psc` 重寫（4.9 的餘燼機制）：`Int Property Mode`（0 開印版、1 刷新版、2 火源版）；`OnEffectStart`：讀餘燼 → 被切掉（跑 X 的終焉、接管 = 自己）／刷新（只清餘燼）／純開印；`OnEffectFinish`：目標活著就 `Ctl.LeaveEmber(target, X)`，死亡只 `CaptureDeath`。新腳本 `ESSBEmber.psc`：`OnEffectFinish` 且目標活著且無 `ESSB_BurstDone` → 過期終焉。1 秒內部冷卻用效果自己的 `GetTimeElapsed()`。
-4. `ESSBController.psc`：刪除第 3 節列的全部成員與函式，加上擊殺歸屬整套（`LastDamageFor/LastDamageWasElement/NoteDamageElement/KillElementFor`、`RegLastDamage`、`DamageActor/DamageElement/SwapFloats`、`DeadElement/SettledElement`、`ArmKillProc/SettleKillProc` 改為看效果）；`OnKillEvent` 改為 `HasMagicEffectWithKeyword(ESSB_Mark_Divine)` → 化灰，否則 `ESSB_Mark_Darkness` → 亡者歸來，其餘死亡節點各看自己的效果；`settings.json` 刪 `kill_attribution_seconds`；`OnFormClosed` 的融斷改為 `PO3_SKSEFunctions.FindAllReferencesWithKeyword(player, ESSB_MarkAny, radius, false)` 逐一結算並 `DispelSpell`；`ApplyDamage/ApplyDamageRaw/ApplyTrueDamage` 保留，`ApplyTrackedDamage` 縮成「死亡早退 + `DoCombatSpellApply`」；新增 `PoisonApply(target, m, d)`（唯一寫 `ESSB_PoisonSpell` magnitude/duration 的地方）、`PoisonSpread`、`PoisonDeathSpread`（15 m、不設人數上限、目標資格照 2.9）；`HasElementMark` 改 `HasMagicEffectWithKeyword`；`IsWet` 改 `HasMagicEffect(浸濕)`；反應函式的參數從 slot 改為 `Actor`。
-5. `ESSBReactions.psc`／`ESSBElem*.psc`：所有 `GetStack(akTarget, kind)` → `TierOf(akTarget, L)`（回 0..4，實作是最多 4 次 `HasMagicEffect`）；所有 `AddStack/SetStack/AddStackTo` → `Promote(akTarget, L)`／`SetTier(akTarget, L, k)`（套對應 SPEL）；血潮／催毒讀 `GetActiveMagicEffects`。
-6. `ESSBState.psc` 生成：刪環狀桶常數，加 `ESSBState.TierEffect(L, k)` 之類的 `GetFormFromFile` 解析器（同 `GuardWindowSpell` 的做法，`src/ESSBState.psc:22-27`）。
-7. 不升 schema、不留 stub（存檔相容性已解除，見本節末「限制解除」）；`ESSBStatus` 連同它的 MGEF／SPEL 直接刪除。
-- 可玩性：完整；所有 alter 2.3 的敵方狀態生效；火的熱度與聖佑已是階梯；電荷、岩甲、起風、戰意、同調、冰盾／水鏡暫時仍是 `SelfCharge` 等整數計數（第 3 期換），它們的腳本路徑本期不刪，所以放電、岩甲護甲、風刃、戰意、同調段照今天運作；雷的五檔仍是 N=1（電荷階條件第 3 期補）。差額補丁在本期縮到只剩連殺 ×2。
-- 風險（高）：`OnEffectFinish` 的分類依賴「引擎先加新效果再送舊效果的 finish 事件」（medium）；`ESSBReactions.End` 的 26 個呼叫點與 `ESSBElem*` 的 44 個 `GetStack` 逐一改寫，量大但機械；驗證用 `fix15_verify.py` 同款 harness 重演「開印→刷新→切換→過期→融斷→死亡」六條路徑。
+### 分工原則（使用者核准 2026-09-22）：狀態放在引擎、判斷放在 DLL、介面留給 Papyrus
 
-### 第 3 期（round 20）：你身上的資源與同調換成階梯（alter 2.3 下表、2.4、5.x）
-1. `build_v03.py`：自身階梯記錄；既有讀 `ESSB_SyncStage`／`ESSB_Charge`／`ESSB_RockArmor`／`ESSB_IceShield`／`ESSB_HolyShield`／`ESSB_WaterMirror` 的 PERK 段改讀 `HasMagicEffect(T{k})`（或維持 GLOB 鏡射，升階時寫一次；兩者擇一，建議直接讀效果）；13 棵樹的 DESC 依 alter 5.x 重生（〔取代〕節點的邏輯落地）。
-2. `ESSBController.psc`：刪 `SelfCharge/SelfRock/SelfWind/Resolve/Sync 計數`（`SelfOverheat` 已在第 2 期併入熱度）；每一條資源的「刪計數」與「換階梯 + PERK 條件改讀效果」在同一期同一輪完成，不留任何一條只刪不換；雷的 80 段（電荷階條件）在此期補齊；`AddSelf/GetSelf/SetSelf/ClearSelf/AddSync/SyncStage/PushSelf/PushSyncStage` 改為階梯操作（存在測試 + 套用）；`OnWeaponHit` 的 `HitStacks`（2035）改成「推進自身階梯」；同調成熟時間由 `RefreshRuntimeValues` 依節點算好寫進 Cool 法術的 duration（`SetNthEffectDuration`，`vendor/imports/Spell.psc:62`）。
-3. `ESSBGuard.psc`：受擊降階（岩甲、冰盾、水鏡、聖盾）＝套低一階法術；殘影／影身消耗起風。
-4. 不升 schema。
-- 可玩性：完整；alter 全部生效；差額補丁縮成連殺一行。
+- **引擎持有一切需要存活過存檔的狀態**：印記、目標階梯、自身階梯、成熟計時、引信、DoT、防護視窗、火源披風——全是目標或玩家身上的魔法效果，時間就是效果的 duration；GLOB 存開關與鏡射；perk 存投點。DLL **不序列化任何東西**：它唯一的「記憶」是啟動時載入的不可變 manifest，和單次事件處理內的區域變數（例如「這次驅散是我自己做的」的重入旗標，事件結束即消失）。
+- **DLL 做每一個「命中那一幀要決定的事」**：讀目標與玩家身上有什麼、算數字、套哪幾顆法術、套幾次。
+- **Papyrus 留介面與低頻**：MCM、CSF 技能樹、洗點、形態提示、記錄定義、每秒維持費類、需要 Papyrus 專用 API 的（神佑延遲死亡、CSF 加經驗、復生的 AI 與召喚上限）。
+- **使用者永遠停在 1.5.97**：DLL 只支援 SE 1.5.97 單一執行期（SKSE 2.0.20、Address Library `version-1-5-97-0.bin`），用 CommonLibSSE 單執行期即可；「升級要重建」不再是代價，本檔其他地方的相關敘述一併作廢。
 
-**分期斷裂總檢（第 1～3 期）**：規則是「任何效果的腳本路徑只能在它的引擎表示上線的同一期被刪」。逐項：目標狀態的讀取（差額補丁）→ 第 2 期與 0x1D 段同期；目標狀態的寫入（`AddStack` 等）→ 第 2 期與階梯段同期；火熱度、聖佑 → 移到第 2 期（本次修正）；擊殺歸屬 → 第 2 期與原生印記同期（第 1 期以 `NoteDamageElement` 撐住）；電荷／岩甲／起風／戰意／同調／冰盾／水鏡 → 第 3 期，第 2 期不動其腳本；雷電荷階條件 → 第 3 期，第 2 期前雷固定 N=1；風多段觸發對聖佑的升階 → 第 2 期（聖佑已在第 2 期）、對電荷的 N 次擲骰 → 第 2 期用 N=1、第 3 期改讀電荷階；Guard 受擊降階 → 第 3 期，之前照今天的 `ConsumeRockArmor`／`ConsumeIceShield`／`ConsumeWaterMirror`。沒有其他跨期的刪／換。
+**對草案的審查（放錯邊／漏掉的）**
+1. 「DLL 不存狀態」在每個機制上都站得住，條件是**所有時間都是效果的 duration、所有計數都是效果的 magnitude**：同調計數＝效果的 magnitude（2026-09-22 還原 v0.3）、白熱引信＝T3 的 duration、退階＝到期時套低一階、毒的時長＝DoT duration、防護視窗＝round 16 的原生 MGEF。唯一需要「時序回呼」的是**到期事件**（過熱、星痕引爆、死咒、浮空落地、印記過期、退階）：DLL 若能接引擎的效果移除事件（`TESActiveEffectApplyRemoveEvent`，待查證），這些回呼全部進 DLL，`ESSBFuse`／`ESSBEmber`／`ESSBTierDecay` 與 4.9 的餘燼標記整個不需要——因為「被切掉」由 DLL 在命中內自己做（先跑舊印記終焉再套新印記，不靠事件順序），「過期／死亡」由移除事件告知。若該事件不可用或不同步，這幾支小 Papyrus 腳本保留（它們是實作選項，不是退路）。
+2. 漏掉的：**經驗**（`CustomSkills.AdvanceSkill` 是 Papyrus API）→ DLL 每擊送 ModEvent `ESSB_XP(element)`，Papyrus 晚一點加無妨；**連殺的潛行事實**→ DLL 在潛行命中時給目標掛 1 秒 `ESSB_LastHitSneak` 標記，死亡時讀它（不存變數）；**反應本體**（開印／終焉的推力、恐懼、復生、範圍掃描）→ 第二優先切片才搬，之前由 DLL 送 ModEvent 觸發現有 `ESSBReactions`（晚到與今天相同）；**毒的擴散計時**→ 不用 DLL 計時也不用 Papyrus `OnUpdate`：中毒 ≥5 劑時 DLL 另掛一顆「瘴氣披風」（原型 35，半徑 3 公尺，關聯法術＝對鄰居套 0.5 劑），引擎每秒自己傳（設計數字從「每 2 秒 1 劑」改「每秒 0.5 劑」，寫進 alter 5.10）；**熱鍵**→ 可留 `ESSBInput`（輕量實體），DLL 版輸入 sink 列為選配。
+3. 放錯邊的：草案把「附傷強度改由 DLL 命中時計算」放第二優先——它應該在第一優先的第一片之後立刻做，因為它刪掉的是第 1 期最大的風險（`RefreshProcMagnitudes` 的十幾個觸發點對照表）與 4.5 的雷五檔；用即時施放的 magnitude 覆寫參數（待查證）就不必再改共用法術的 magnitude，I7「共用法術只有一個寫入者」也自然成立。連帶**恢復兩個 v0.3 原設計**：每擊隨機 B（所有元素在區間內擲骰，不再固定平均值）與血位**線性**曲線（不再四段階梯）——alter 第 5、15 條改回。
+4. 每秒計時（維持費、火源代價、水回魔、環境）：同意最低優先且**留在 Papyrus**；沒有 hook 就沒有乾淨的 C++ 每秒點，`ESSBFormRules.OnUpdate` 每秒一次很便宜。
+5. 神佑延遲死亡：留 Papyrus（`StartDeferredKill` 的 C++ 對等未查證）。
+
+### DLL 切片（第 2N 期起，每片獨立驗證、有探針卡、可整包回退）
+
+| 片 | 內容（DLL） | 原計畫照做 | 改由 DLL 做 | 直接刪掉 | 崩潰面 | 回退 |
+|---|---|---|---|---|---|---|
+| **N1**（round 19，進行中） | 命中附傷：`TESHitEvent` sink、manifest、與 round 18 真值表逐格相同的選法術表、`ESSB_NativeHit`、log | 第 1 期一切 | entry 51 附傷段 | `ESSB_P_HitProc` 的 entry 51 段 | 一個事件 sink，處理玩家的武器命中 | 還原 round 18 套件 |
+| **N2** | 命中時算強度：DLL 讀 GLOB（`ESSB_Lvl_*`、`ESSB_BaseDamageMult`、MCM 倍率、`ESSB_SyncStage`）、玩家 perk（節點）、玩家血量%，算 `B（區間擲骰）× R × G × M_player`，用 magnitude 覆寫參數即時施放；雷在 C++ 擲「1～25、N 次取最大」（N＝電荷階，N4 前固定 1）；血位線性內插 | 狀態層、差額補丁（目標側倍率暫留 Papyrus） | `RefreshProcMagnitudes` 的全部觸發點；雷五檔；血四區間法術 | 4.5 整節、雷五檔 SPEL 與 20 段、血 B1～B3 法術、風潛行變體法術（改倍率）、第 1 期「變數→寫入點」對照表 | 純算術與 perk 讀取，仍只在命中 sink 內 | 還原 N1 套件 |
+| **N3** | 目標狀態層→引擎效果，由 DLL 掛：開印版／刷新版印記（切掉在命中內處理）、階梯升階／刷新／頂階（含冰封、碎冰真傷）、中毒讀取—疊加—重套（magnitude 覆寫，不改共用法術）、瘴氣披風、火熱度與聖佑自身階梯（因為它們取代目標狀態）、目標側倍率（讀目標效果，差額補丁廢除）、開印 ×1.5；過期／死亡回呼走效果移除事件（待查證，否則保留 `ESSBMark`＋餘燼、`ESSBFuse`、`ESSBTierDecay`）；反應本體暫以 ModEvent 觸發 `ESSBReactions` | 反應本體（Papyrus）、餘燼（視查證）、擊殺看印記的 Papyrus 判定 | `ESSBStatus`、登記表、pending、swap、差額補丁、擊殺歸屬、4.10 的效果層條件 | `ESSBStatus.psc`、`ESSBPoison.psc`、`ESSBSpread.psc`、4.10 的表、`ApplyProcBonus`、0x1D 段裡讀目標階的段（DLL 直接乘） | 命中 sink 內多套幾顆法術；效果移除事件 sink（新）；讀目標效果列表 | 還原 N2 套件 |
+| **N4** | 玩家受擊與自身資源：同一個 sink 處理目標＝玩家的命中：岩甲／冰盾／水鏡降階、反震、灼身、寒反、靜電、毒皮、殘影／影身、反擊／反噬／破護；電荷、岩甲、起風、戰意、同調、冰盾、水鏡階梯的升階；雷的 N＝電荷階；風的多段觸發 N 次迴圈；連殺的 `ESSB_LastHitSneak` | `ESSBGuard.OnActorKilled`（暫留） | `ESSBGuard.OnHitEx` 整段、`SelfCharge` 等計數、`AddSync/SyncStage`、`WindEcho` | `ESSBGuard.psc` 的受擊路徑、自身計數與其鏡射的寫入、`ESSBInput` 以外的每擊 Papyrus | 受擊時的推力若用原生 API（待查證）是新的崩潰面；先用 ModEvent 交 Papyrus 推 | 還原 N3 套件 |
+| **N5** | 融斷範圍掃描與結算、死亡處理（`TESDeathEvent` 待查證：看印記化灰／亡者歸來的**判定**、毒的死亡擴散、連殺）、反應本體中「套法術」的部分改表驅動；推力、恐懼、復生、召喚上限仍 ModEvent 交 Papyrus | 神佑、復生 AI、恐懼、推力（Papyrus） | `OnFormClosed` 的掃描、`OnKillEvent` 的判定、`ESSBReactions` 的傷害與狀態部分 | `ESSBGuard.psc` 全檔、`ESSBReactions` 裡純套法術的分支 | 範圍掃描（走引擎的 process lists）是最大的面；死亡事件 sink | 還原 N4 套件 |
+| **N6**（最低） | 每秒計時（維持費、火源代價、水回魔、環境）、熱鍵輸入 sink | 全部（Papyrus 每秒一次已夠便宜） | 只有在 N1～N5 後仍量到 Papyrus 每秒工作造成延遲時才做 | — | 若做：一個每幀或計時 hook，是全案最大的崩潰面，所以最後且可不做 | — |
+
+**妥協盤點與還原項**：alter 相對 v0.3 的每一項改動、哪些是被 Papyrus／entry 51 逼出來的、DLL 能不能還原，逐項在 `design-compromises-2026-09-22.md`（附勾選總表）。使用者勾選後，各還原項落在：N1／N2（A9 隨機 B 與血位線性已還原、A10 命中旗標）、N3（A1a 血痕層數、A2 凍結量表、A3 詛咒 13 階、A4 水壓與星痕階數、A8 開印／上限／萬象節點、A12 雙印、A13 去餘燼）、N4（A6 自身資源計數、A7 同調計數、A8 極致／追擊／疾攻／節奏）、N5（A1b 放血依當下生命——需每秒點、A15 火葬／亡魂事後判定）、N6（領域 Hazard，選配）。「層數放效果強度、階數＝上限」是還原的兩個技術，DLL 仍不存任何狀態；唯一需要每秒執行點的是放血。
+
+每片交付：`native/` 版本號 +1、`build/native-verification.md` 對應章節、探針卡（10.2）、`HITPROC ok` 擴充為該片的離線斷言（DLL 選擇表對真值表；N2 起加「同一輸入 1000 次擲骰的分布」）。每片的回退都是「還原上一片的完整套件」，沒有開關式退路。
+
+**分期斷裂總檢（DLL 版）**：任何效果的 Papyrus 路徑只能在它的 DLL／引擎表示上線的同一片被刪。N2 刪強度重寫時目標側倍率仍由差額補丁提供（到 N3）；N3 刪狀態容器時自身計數不動（到 N4）；N3 的印記反應以 ModEvent 觸發現有 Papyrus（到 N5）；N4 刪 `OnHitEx` 時 `OnActorKilled` 留到 N5；雷的 N 在 N4 前固定 1。
 
 ### 第 4 期：實機調參（alter 8 的清單，預設值已定）。
 
@@ -494,7 +500,7 @@
 - harness（沿 `build/fix15_verify.py`／`fix16_verify.py` 的作法，直接執行 source body、mock native 邊界）：
   - 第 1 期：`RefreshProcMagnitudes` 對六個狀態序列的寫入值 = 舊 `ApplyProc` 對同狀態的值（目標側乘數設 1）；重複呼叫零次 `SetNthEffectMagnitude`；雷五檔的鏈式機率 p_j 由生成器從 P_j(N) 反算並斷言還原誤差 < 0.5%；`SyncStage` 快取 200 樣本等值；Guard 無事可做時對 `Ctl` 零呼叫。
   - 第 2 期：`PayHealthCost` 對 150／300／500 血在 0.5% 與 10% 下的扣法與 1 點底線，且 harness 斷言它不呼叫任何法術套用；`ESSBMark.OnEffectFinish` 六條路徑（刷新、被切掉＋接管元素、融斷、過期、死亡、雙印）各得正確 `reason`；風被切掉時 `WindEcho` 對火／冰／毒／聖／雷各做出 alter 2.6 說的結果；`ESSBFuse` 到期／取消／升階被驅散三種；中毒成長公式（開印 3 劑 → 命中 ×5 → 上限 10 劑、時長夾 15 秒；催毒 ×2 不改剩餘秒；死亡份額 max(R, 0.3H)×0.5 對 3 個鄰居、鏈式第二跳 ×0.5、有限敵人下必終止）；碎冰對一般／首領 20%／10% 且一次冰封只結算一次；`OnKillEvent` 對「帶神聖印記」「帶黑暗印記」「兩者」「無印記」四種屍體的行為；血潮的剩餘量計算；**用 `180126` 的 log 值做反例**：任何合法操作序列都無法讓 `TierOf` 回大於 4 的值、`HasMagicEffect(浸濕鎖)` 只有 True/False。
-  - 第 3 期：同調升段時間表（5/10/15 秒 ± 節點）、電荷／岩甲升降、Guard 受擊降階。
+  - 第 3 期：同調升段命中門檻（5/15/30 ± 節點，2026-09-22 還原 v0.3 計數）、電荷／岩甲升降、Guard 受擊降階。
 - 靜態：`grep` 證明 `src/*.psc` 內不再出現 `PendingStacks|BackupInts|SwapHosts|ExportInts|ImportState|RegStatus|RingSum`；沒有任何 `Int[]`／`Float[]` 成員以 actor 為鍵。
 
 ### 10.2 探針卡（每期一張，使用者開臨時測試檔跑，測完即刪）
@@ -550,7 +556,7 @@
 | # | 步驟 | 通過 | 不通過 → 退路 |
 |---|---|---|---|
 | 3-1 | 雷形態連砍 12 秒，看附傷數字的分布 | 前幾刀有 3～8 的小數字，後段幾乎都 18／23 | 分布不變 → 電荷階條件段（分頁 0 `HasMagicEffect`）沒生效 |
-| 3-2 | 任一形態連砍 30 秒，看武器光 | 4 秒、12 秒、24 秒左右各亮一檔 | 不亮 → 同調 Cool 計時效果的 duration 沒寫入 |
+| 3-2 | 任一形態連砍到 5、15、30 刀，看武器光〔2026-09-22 還原 v0.3：同調用命中計數，不再是秒數〕 | 第 5、15、30 刀左右各亮一檔 | 不亮 → 同調 magnitude 計數沒寫入 |
 | 3-3 | 土形態砍 3 刀後挨一刀 | 護甲值（主控台 `GetAV DamageResist`）三段上升後掉一段 | — |
 | 3-4 | 若第 1 期 1-5 是「全部套用」：本期附一段對施法者套 Self 法術的 0x33 除錯段，砍一刀看自己身上有沒有效果 | 有 → 自身階梯可搬到引擎（第 4 期的清理項） | 沒有 → 維持腳本推進（預設） |
 
