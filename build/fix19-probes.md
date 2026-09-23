@@ -42,3 +42,16 @@
 每步 PASS／FAIL／未測；步驟 3 的 H0～H3 四個數字；共存兩項看到什麼。「元素附傷」通知只證明 DLL 呼叫了施放，**傷害是否真的套上**看步驟 3 的數字。抗性與外部倍率的精確量測沿用 round 18 meter，不以肉眼代替。
 
 雷電已知差異（沿用 round 19 決定）：舊 release 的 priority 為 R5→R1 遞減，依 smoke 驗證的最低 priority 規則會被 R1 蓋住；此版實作指定的 R5→R1 首成功鏈，每檔各 1/5。
+
+## 實測結果（2026-09-23，使用者，測試存檔）
+
+| 步驟 | 結果 | 證據 |
+|---|---|---|
+| 1 DLL 版本與狀態 | PASS：0.19.1、命中附傷運作 TRUE | 使用者截圖；`.codex/smoke11-round19b-ElementsSpellblade.log` 載入三行 |
+| 2 元素／重擊／切換 | PASS：火普通、火重擊、冰普通、冰重擊皆正確；切換後下一刀即新元素（DLL 早於 Papyrus 切換紀錄約 30 秒） | DLL log `[hit][L2]` |
+| 3 同法術 30 秒內兩刀 | PASS：10000 → 9984.85（15.15）→ 9961.43（23.42），攻擊倍率 0，扣血全為元素；1 點 bug 不存在 | 使用者截圖 |
+| 4 風站立／潛行 | PASS：`Wind_Normal`（sneak=0）→ `Wind_SneakNormal`（sneak=1） | DLL log |
+| 5 血位四檔 | PASS：滿血 `Blood_Normal`、65% `B1`、35% `B2`、15% `B3`；弓（7）弩（9）空手（0）亦有附傷 | DLL log |
+| 6 雷五檔 | PASS：12 刀 R1×3、R2×3（+重擊 R2×1）、R3×4、R4×1、R5×1 | DLL log |
+| 7 除錯等級 0 | PASS：改 0 後兩刀無通知、DLL 與 Papyrus 皆無紀錄 | 兩份 log 時間戳 |
+| 共存 For Honor／瓦希安 | 未測 | — |
