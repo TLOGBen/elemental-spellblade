@@ -1,34 +1,36 @@
-# CHECKPOINT ｜ 2026-09-22 23:00 +0800
+# CHECKPOINT ｜ 2026-09-24 凌晨
 
 ## 一句話
-附傷路徑定案為 SKSE 原生 DLL（只走丙、無 entry 51 退路）；第十九輪（DLL 第一片 N1）Astra 背景施工中；被引擎限制逼出的設計妥協已由使用者裁決全部還原成 v0.3；版控已上 GitHub。
+N1（DLL 命中附傷）已完成並通過實機探針；設計真相改為 `元素魔戰士規劃-v0.4.md`（本輪大幅玩法重設計已寫入）；DLL 能力查證完成（`build/native-verification-2.md`）。下一步：依查證結果開 N2。
 
 ## 真相來源
-- 設計：`元素魔戰士規劃-v0.3_alter.md`（v0.3 原檔永不改，mtime 2026-09-16 07:31）
-- 實作計畫：`design-latency-2026-09-20.md`（4.11 丙的架構；第 6 節 DLL 六片 N1～N6）
-- 妥協盤點與使用者勾選：`design-compromises-2026-09-22.md`
-- 相容性清查：`build/entry51-compat-audit.md`
-- repo：https://github.com/TLOGBen/elemental-spellblade（公開；main；vendor/、package/、大型建置暫存不進 repo；core.autocrlf false、`* -text`）
+- 設計：`元素魔戰士規劃-v0.4.md`（v0.3 原檔永不改；alter 版保留作變更歷史）
+- 本輪玩法變更清單（給使用者審）：`design-v0.4-changes-2026-09-23.md`
+- 觸發分類：`design-triggers-2026-09-23.md`；玩法審查：`design-fun-audit-2026-09-23.md`；妥協盤點：`design-compromises-2026-09-22.md`
+- 實作計畫：`design-latency-2026-09-20.md`（4.11 丙架構、第 6 節 N1～N6）
+- DLL 查證：`build/native-verification.md`（N1）、`build/native-verification-2.md`（10.3 十八項）
+- repo：https://github.com/TLOGBen/elemental-spellblade
 
-## 使用者定案（2026-09-22）
-- 只走 SKSE 原生插件，無 entry 51 退路；DLL 停用＝沒有元素附傷（已接受）。
-- 遊戲永遠停在 1.5.97，DLL 只做單一執行期。
-- 給 Astra 網路權限：只限下載 CommonLibSSE(-NG)、spdlog、fmt、binary_io 等建置相依與查其文件原始碼。
-- 分工原則：狀態放引擎（效果強度／時長、GLOB、perk）、判斷放 DLL、介面留 Papyrus；DLL 不存狀態、不序列化。
-- 妥協全部照建議：血痕回 v0.3 疊層（開印 2、+1、上限 8／12／15）、凍結 0～5、詛咒與水壓層數、電荷／岩甲／風勢／戰意計數、〔取代〕節點回原文、重擊潛行用命中旗標；**同調回砍刀計數 5／15／30**；**放血**若 DLL 能每秒執行就回「依目標當下生命每秒扣」，否則命中時重算。維持：毒單一成長效果、印記無上限、聖印單一。雷已還原為真擲 1～25 best-of-N、每刀隨機 B、血位線性。
-- 派工分級：設計判斷→Fable（**額度只剩約 3%，省著用**）；純寫檔→Sonnet；實作建置→Codex astra。
+## 使用者定案（2026-09-23～24，重點）
+- 派工：實作／審查改派 Opus 5.5（不派 Astra）；純寫檔 Sonnet；Fable 額度幾乎用完。Astra 評價：快、極度防禦性，但做一半、程式難看、硬湊驗收。
+- 設計原則：機制要有趣、數值看著辦、每個元素玩法不同，沒有純數值元素。
+- 雷：唯一會暴擊（5%＋每格電荷 2%）、重擊暴擊 ×2.5、形態內滿格重擊直接放電必暴、N＝1＋電荷數、滿格命中詠唱中敵人 30% 中斷。
+- 聖：聖佑三階加物理／魔法減傷（坦＋光傷）、成熟 2 秒；聖裁＝同一目標第三擊（III 階打最大生命 4%＋聖光爆）；懲戒；分支破邪斬（第三擊 50% 濺 4 公尺）。
+- 星：共鳴（擊中星痕目標時其他共鳴目標受 25%）、引爆依共鳴人數給共鳴層、10 層自動昇華闇星、闇宙每刀一次滿層引爆。
+- 無元素＝法殺：大師／滅法／冷寂三線；普攻吸魔＋小滅法（只燒對方，魔力 0 不觸發）；重擊滅法（花自己 15%＋燒對方，×倍率；無底線，燒光只能開血）；超載；法盾（比水強、需主動餵）；受法傷 30% 回魔；逼近＝敵人施法即給 2 秒加速（不判定方向）；冷寂疊「寂」。
+- 水：刻意平平無奇、最持久；基礎水幕（20% 傷害由魔力付）。
+- 防禦排序：物理 土＞冰＞聖、水 0；魔抗 聖＞冰、土＝水＝0；魔力分擔 無元素＞水。
+- 暗：幻覺＋死亡（詛咒 3 層恐懼、5 層瘋狂；死時層數決定僕從）。冰重擊才碎冰、土倒地＝每刀重擊、血越線觸發、十個「開印 ×1.5」全換專屬開場。
+- 血形態開啟不需魔力。
 
-## 探針結論（證據 .codex/smoke8、smoke9、smoke10 log）
-- entry 51：全部 perk 合計一刀只套一個法術；優先度數字最小者贏；同優先度時先加到角色身上的 perk 贏。
-- 0x1D Mod Spell Magnitude 對進入點法術有效。
-- 使用者環境對玩家法術傷害 ×0.95（量測以參考火傷校正）。
+## 查證關鍵結論（native-verification-2.md）
+- YES 5／NO 3／PARTIAL 10。每秒點可行：背景計時執行緒每 tick 排主執行緒 task（task 內自我重排會卡死，禁用）。
+- 生命／魔力／耐力當前值不可能超過上限 → 超載、臨時血量、臨時精力都要「抬高上限＋DLL 摺疊花掉的量」；HUD 看不出溢出；溢出期間拿掉 DLL 上限會永久多一截（需 SKSE 存檔附加資料＋讀檔核對＋MCM 清除）。
+- NO：多效果強度覆寫（改拆單效果法術）、神佑延遲死亡 C++ 版（留 Papyrus）、衝刺耐力消耗入口。
+- 尚有 13 個遊戲內探針（P1～P13）。
 
-## 進行中（下次接手第一件事）
-1. **Astra round 19（N1）**：briefing `.codex/fix-round19-briefing.md`；runner `scratchpad/astra-fix19`（2026-09-22 22:36 開工）。看 `runner-state.txt` 有沒有 EXIT、`codex-final.txt` 的回報；產物在 `native/`、`build/native-verification.md`、`build/fix19-probes.md`、`.codex/impl-fix-round19.html`。驗收：自己跑 `python build_v03.py`、比對正式包、確認 ESP 沒有我們的 entry 51 段、選擇表單元測試通過；遊戲關著時才部署 MO2。然後請使用者跑 fix19 探針卡。
-2. **Sonnet 文件同步**：把使用者勾選寫進 alter／latency／compromises；完成後提交推送（若本檔寫成時尚未完成，檢查三份文件的一致性再提交）。
-3. `build/native-verification.md` 出來後，把實際 API 併回 4.11 待查證表（小事可給 Sonnet；若有設計取捨才動用 Fable）。
-4. 之後依序派 N2～N5。
-
-## 已部署在 MO2
-- 正式包：round 18（entry 51 版，仍帶舊狀態層毒／星污染 bug）。探針包 `Elements Spellblade Round18 Probes` 仍在 mods，**使用者應取消勾選探針、勾回主模組**。
-- 備份：`.codex/mo2-installed-backup-20260921-202224`（round 16）。
+## 下一步
+1. 使用者看 `design-v0.4-changes-2026-09-23.md` 與查證摘要。
+2. 依查證結果更新 v0.4 的 10.3（YES 的移出、NO 的改用後備）→ 由 Sonnet 寫。
+3. 開 N2（DLL 命中時算強度、雷暴擊與真擲、隨機基礎傷害、血位線性、命中吸血、聖裁計數），先清兩項小整理（B 組測試參數寫死 1／24、清舊證據檔）。注意：CastSpellImmediate 的強度覆寫會套到法術每個效果。
+4. 使用者 Claude 每週額度接近上限（9/26 重置）。
