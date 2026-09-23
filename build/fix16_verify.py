@@ -217,7 +217,7 @@ def verify_records():
  assert all(state_schema.stable_identity(k,manifest.get(k),v) for k,v in old.items())
  changed={k:[v['id'],manifest[k]['id']] for k,v in old.items() if v!=manifest[k]}
  assert set(changed)==set(state_schema.QUESTS) and manifest['ESSB_DebugLevel']['id']=='000811'
- assert set(manifest)-set(old)==b.GUARD_WINDOW_EDIDS | b.hit18.new_edids(b) | {k for k in state_schema.stub_ids(b.STATE_SCHEMA_VERSION) if k not in state_schema.stub_ids(5)}
+ assert set(manifest)-set(old)==b.GUARD_WINDOW_EDIDS | (b.hit18.new_edids(b) | b.hit19.NEW_EDIDS) | {k for k in state_schema.stub_ids(b.STATE_SCHEMA_VERSION) if k not in state_schema.stub_ids(5)}
  records,meta=b.read_plugin(b.OUT/b.PLUGIN);by={r.edid:r for r in records}
  assert meta['masters']==['Skyrim.esm'] and len(records)==len(manifest)
  keys=[('common',1,1,0),('common',2,3,1),('frost',1,3,1),('wind',0,3,0),('divine',0,4,0),('noform',1,3,0),('darkness',0,4,0),('astral',0,3,0),('astral',1,3,1)]

@@ -4,8 +4,8 @@
     "Skyrim.esm"
   ],
   "esl_flagged": false,
-  "record_count": 4067,
-  "next_object_id": "00600C",
+  "record_count": 4071,
+  "next_object_id": "00600E",
   "allocation": [
     {
       "range": "0x000800-0x00080F",
@@ -1908,6 +1908,16 @@
     "ESSB_MultUpkeep": {
       "id": "00516D",
       "formid": "0100516D",
+      "type": "GLOB"
+    },
+    "ESSB_NativeHit": {
+      "id": "0052D1",
+      "formid": "010052D1",
+      "type": "GLOB"
+    },
+    "ESSB_NativeWanted": {
+      "id": "0052D2",
+      "formid": "010052D2",
       "type": "GLOB"
     },
     "ESSB_SyncT1": {
@@ -20786,8 +20796,8 @@
       "type": "PERK"
     },
     "ESSB_MainQuest": {
-      "id": "00600A",
-      "formid": "0100600A",
+      "id": "00600C",
+      "formid": "0100600C",
       "type": "QUST"
     },
     "ESSB_MainQuest_Schema1_Stub": {
@@ -20850,9 +20860,19 @@
       "formid": "01006009",
       "type": "QUST"
     },
-    "ESSB_MCMQuest": {
+    "ESSB_MainQuest_Schema7_Stub": {
+      "id": "00600A",
+      "formid": "0100600A",
+      "type": "QUST"
+    },
+    "ESSB_MCMQuest_Schema7_Stub": {
       "id": "00600B",
       "formid": "0100600B",
+      "type": "QUST"
+    },
+    "ESSB_MCMQuest": {
+      "id": "00600D",
+      "formid": "0100600D",
       "type": "QUST"
     }
   }

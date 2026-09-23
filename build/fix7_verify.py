@@ -20,7 +20,7 @@ def run():
     manifest=json.loads((ROOT/'build/v03-formids.json').read_text(encoding="utf-8"))['records']
     baseline=json.loads((ROOT/'.codex/pre-fix7-snapshot/v03-formids.json').read_text(encoding="utf-8"))['records']
     assert all(b.state_schema.stable_identity(k,manifest.get(k),v) for k,v in baseline.items())
-    added={k:v for k,v in manifest.items() if k not in baseline and k not in b.SCHEMA_STUBS and k not in b.GUARD_WINDOW_EDIDS and k not in b.hit18.new_edids(b)}
+    added={k:v for k,v in manifest.items() if k not in baseline and k not in b.SCHEMA_STUBS and k not in b.GUARD_WINDOW_EDIDS and k not in (b.hit18.new_edids(b) | b.hit19.NEW_EDIDS)}
     names=['Dot','Cooldown','Recovery','Drain','Duration']
     assert set(added)=={'ESSB_Mult'+n for n in names} | {'ESSB_MultUpkeep'}
     added={k:v for k,v in added.items() if k != 'ESSB_MultUpkeep'}

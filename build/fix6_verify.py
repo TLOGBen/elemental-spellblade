@@ -245,7 +245,7 @@ def run():
     records,meta=build_v03.read_plugin(build_v03.OUT/build_v03.PLUGIN);rec={r.edid:r for r in records}
     written=json.loads((ROOT/'build/v03-formids.json').read_text(encoding='utf-8'));baseline=json.loads((ROOT/'.codex/pre-fix6-snapshot/v03-formids.json').read_text(encoding='utf-8'))['records']
     assert all(build_v03.state_schema.stable_identity(k,written['records'].get(k),v) for k,v in baseline.items())
-    added={k:v for k,v in written['records'].items() if k not in baseline and k not in build_v03.SCHEMA_STUBS and k not in build_v03.GUARD_WINDOW_EDIDS and k not in build_v03.hit18.new_edids(build_v03) and not k.startswith('ESSB_Mult')}
+    added={k:v for k,v in written['records'].items() if k not in baseline and k not in build_v03.SCHEMA_STUBS and k not in build_v03.GUARD_WINDOW_EDIDS and k not in (build_v03.hit18.new_edids(build_v03) | build_v03.hit19.NEW_EDIDS) and not k.startswith('ESSB_Mult')}
     assert len(added)==12 and all(v['type']=='GLOB' if 'type' in v else v['sig']=='GLOB' for v in added.values())
     assert all(int(v['id'],16)>max(int(o['id'],16) for o in baseline.values()) for v in added.values())
     for (tree,r,t),n in by.items():

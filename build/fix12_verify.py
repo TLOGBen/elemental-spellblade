@@ -274,7 +274,7 @@ def run():
     assert set(changed)==set(state_schema.QUESTS)
     assert all(state_schema.stable_identity(k,ids.get(k),v) for k,v in oldids.items())
     assert ids['ESSB_DebugLevel']['id']=='000811'
-    assert set(ids)-set(oldids)==(set(state_schema.stub_ids(json.loads((ROOT/'settings.json').read_text(encoding='utf8'))['state_schema_version']))-set(state_schema.stub_ids(3))) | __import__('build_v03').GUARD_WINDOW_EDIDS | __import__('build_v03').hit18.new_edids(__import__('build_v03'))
+    assert set(ids)-set(oldids)==(set(state_schema.stub_ids(json.loads((ROOT/'settings.json').read_text(encoding='utf8'))['state_schema_version']))-set(state_schema.stub_ids(3))) | __import__('build_v03').GUARD_WINDOW_EDIDS | (__import__('build_v03').hit18.new_edids(__import__('build_v03')) | __import__('build_v03').hit19.NEW_EDIDS)
     config=json.loads((ROOT/'package/Elements Spellblade/MCM/Config/Elements Spellblade/config.json').read_text(encoding='utf8'))
     sliders=[r for p in config['pages'] for r in p['content'] if r.get('type')=='slider']
     assert len(sliders)==10 and all('預設' in r['text'] for r in sliders)

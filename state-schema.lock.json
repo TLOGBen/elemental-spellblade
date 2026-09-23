@@ -1,6 +1,6 @@
 {
-  "state_schema_version": 7,
-  "signature_sha256": "7627134a3e21b8a4b61c179db714936079fec35fb88c457124192dba4f7bd7d0",
+  "state_schema_version": 8,
+  "signature_sha256": "f752d5515638951f8d90dca4fde8f7e1a4aaa06a24b1b19aa3b454c32a52e00c",
   "signatures": {
     "ESSBStatus": {
       "parent": "activemagiceffect",
@@ -1586,6 +1586,16 @@
           "auto"
         ],
         [
+          "nativehit",
+          "globalvariable",
+          "auto"
+        ],
+        [
+          "nativewanted",
+          "globalvariable",
+          "auto"
+        ],
+        [
           "necroclass",
           "class",
           "auto"
@@ -2582,8 +2592,8 @@
     }
   },
   "quests": {
-    "ESSB_MainQuest": "00600A",
-    "ESSB_MCMQuest": "00600B"
+    "ESSB_MainQuest": "00600C",
+    "ESSB_MCMQuest": "00600D"
   },
   "history": [
     {
@@ -2633,6 +2643,14 @@
       "quests": {
         "ESSB_MainQuest": "006008",
         "ESSB_MCMQuest": "006009"
+      }
+    },
+    {
+      "state_schema_version": 7,
+      "signature_sha256": "7627134a3e21b8a4b61c179db714936079fec35fb88c457124192dba4f7bd7d0",
+      "quests": {
+        "ESSB_MainQuest": "00600A",
+        "ESSB_MCMQuest": "00600B"
       }
     }
   ]

@@ -48,7 +48,7 @@ VANILLA_ELEMENT_KEYWORD = {0: 0x1CEAD, 1: 0x1CEAE, 2: 0x1CEAF}
 SCRIPTS = ['ESSBLog', 'ESSBStatus', 'ESSBReactions', 'ESSBMark', 'ESSBTrees', 'ESSBNodes',
            'ESSBNoForm', 'ESSBElem', 'ESSBElem2', 'ESSBElem3', 'ESSBCounter', 'ESSBSilence',
            'ESSBController', 'ESSBGuard', 'ESSBFormPowerEffect', 'ESSBFormRules',
-           'ESSBSettingsEffect', 'ESSBState', 'ESSBMCM', 'ESSBInput']
+           'ESSBSettingsEffect', 'ESSBState', 'ESSBMCM', 'ESSBInput', 'ESSBNative']
 
 # ---------------------------------------------------------------- 技能樹前線（機制）
 # 樹的正式順序（與 plan_trees.TREE_ORDER 相同）：0–10 是 ELEMENTS，11 無元素，12 全元素通用。
@@ -1225,6 +1225,7 @@ def check_node_calls(plan):
 
 
 import fix18_records as hit18
+import fix19_native as hit19
 
 
 def build_esp(plan):
@@ -1261,13 +1262,13 @@ def build_esp(plan):
     manifest = {}
     used_ids = set()
 
-    def add(sig, fid, edid, ss):
+    def add(sig, fid, edid, ss, flags=0):
         if edid in manifest:
             raise ValueError(f'duplicate EDID {edid}')
         if fid in used_ids:
             raise ValueError(f'duplicate FormID {fid:06X} for {edid}')
         used_ids.add(fid)
-        rr.append((sig, record(sig, own(fid), [('EDID', Z(edid))] + ss)))
+        rr.append((sig, record(sig, own(fid), [('EDID', Z(edid))] + ss, flags)))
         manifest[edid] = {'id': f'{fid:06X}', 'formid': f'{own(fid):08X}', 'type': sig}
 
     def add_exported(entry):
@@ -1317,6 +1318,8 @@ def build_esp(plan):
     add('GLOB', ID_GLOB['ESSB_SchoolXPMult'], 'ESSB_SchoolXPMult', [('FNAM', b'f'), ('FLTV', F(school_xp_mult))])
     for name, (fid, key) in ID_BALANCE_GLOB.items():
         add('GLOB', fid, name, [('FNAM', b'f'), ('FLTV', F(settings[key]))])
+    add('GLOB', hit19.NATIVE_HIT, 'ESSB_NativeHit', [('FNAM', b's'), ('FLTV', F(0))], flags=0x40)
+    add('GLOB', hit19.NATIVE_WANTED, 'ESSB_NativeWanted', [('FNAM', b's'), ('FLTV', F(1))])
     # 引擎前線：同調三段門檻（規劃 2.4 草案 5／15／30）與環境旗標（規劃 2.10）。
     for name, default in [('ESSB_SyncT1', 5), ('ESSB_SyncT2', 15), ('ESSB_SyncT3', 30),
                           ('ESSB_EnvWet', 0), ('ESSB_EnvStormy', 0), ('ESSB_EnvNight', 0)]:
@@ -2080,6 +2083,7 @@ def build_esp(plan):
         'ProcSneaks': (13, [v['s'] for v in proc_rows]),
         'ProcBloodBands': (13, [v['band'] for v in proc_rows]),
         'HitBonusSpells': (11, [own(hit18.BONUS_SPELL+i) for i in range(11)]),
+        'NativeHit': (1, own(hit19.NATIVE_HIT)), 'NativeWanted': (1, own(hit19.NATIVE_WANTED)),
     })
     for ix, (name, _default) in enumerate(MECH_GLOBALS):
         # 屬性名 = 全域變數名去掉 ESSB_ 前綴再加 G（ESSB_Resolve → GResolve）。
@@ -2241,7 +2245,7 @@ def build_esp(plan):
          'record': e['edid']}
         for e in fx_records if e['sig'] == 'EFSH' and e['fid'] not in used_fx]
 
-    entry_count += len(hit18.entries(sys.modules[__name__], settings["lightning_roll_mode"]))
+    # Round 19: native delivery contributes no perk entries.
 
     # -------------------------------------------------------------- 組檔
     groups = collections.defaultdict(list)
@@ -3035,7 +3039,7 @@ def write_mcm(manifest):
         return {'id': edid, 'text': label, 'type': kind,
                 'valueOptions': {'sourceType': 'GlobalValue', 'sourceForm': ref(edid), **options}}
     general = [
-        control('ESSB_Enabled', '附傷開關', 'toggle', defaultValue=int(settings['enabled'])),
+        control('ESSB_Enabled', '元素魔戰士總開關', 'toggle', defaultValue=int(settings['enabled'])),
         control('ESSB_PoisonDotK', '毒層係數', 'slider', min=0.0, max=1.0, step=0.001,
                 formatString='{3}', defaultValue=settings['poison_dot_k']),
         control('ESSB_BleedDotK', '流血係數', 'slider', min=0.0, max=1.0, step=0.001,
@@ -3078,6 +3082,14 @@ def write_mcm(manifest):
         return {'id': name, 'type': 'text', 'text': label, 'help': help_text,
                 'action': {'type': 'CallFunction', 'form': ref('ESSB_MCMQuest'),
                            'scriptName': 'ESSBMCM', 'function': function}}
+    native_toggle = control('ESSB_NativeWanted', 'DLL 命中附傷', 'toggle', defaultValue=1)
+    native_toggle['help'] = '只控制 DLL 附傷；停用或 DLL 缺少時沒有命中附傷。總開關另控制整個模組。'
+    native_toggle['action'] = {'type': 'CallFunction', 'form': ref('ESSB_MCMQuest'),
+                               'scriptName': 'ESSBMCM', 'function': 'ApplyNativeSetting'}
+    general += [native_toggle,
+                control('ESSB_NativeHit', 'DLL 狀態（1=運作、0=未載入／停用／故障）', 'text', formatString='{0}'),
+                button('ESSB_NativeVersionInfo', '查看 DLL 版本與狀態', 'ShowNativeStatus',
+                       '顯示 native DLL 版本與是否處理命中；0 不會退回 entry 51。')]
     balance.append(button('ESSB_ReleaseDivineProtection', '解除神佑保護', 'ReleaseDivineProtection',
                           '確認後解除延遲死亡並停用模組，避免重新上鎖；卸載前請先解除並存檔。'))
     balance.append(button('ESSB_RestoreDefaults', '恢復預設設定', 'RestoreDefaults',
@@ -3122,7 +3134,7 @@ def validate_mcm(records, written):
     baseline = json.loads((WORK / '.codex/pre-fix5-snapshot/v03-formids.json').read_text(encoding='utf-8'))['records']
     assert all(state_schema.stable_identity(e, manifest.get(e), old) for e, old in baseline.items()), 'fix5 existing identities changed'
     added = {e: v for e, v in manifest.items() if e not in baseline and e not in SCHEMA_STUBS}
-    assert set(added) == hit18.new_edids(sys.modules[__name__]) | FIX5_NEW_EDIDS | GUARD_WINDOW_EDIDS | {e for e, (fid, _) in ID_BALANCE_GLOB.items() if fid >= 0x00515C}
+    assert set(added) == (hit18.new_edids(sys.modules[__name__]) | hit19.NEW_EDIDS) | FIX5_NEW_EDIDS | GUARD_WINDOW_EDIDS | {e for e, (fid, _) in ID_BALANCE_GLOB.items() if fid >= 0x00515C}
     assert all(int(v['id'], 16) > max(int(old['id'], 16) for old in baseline.values()) for v in added.values())
     assert manifest['ESSB_DebugLevel']['id'] == '000811'
     path = OUT / 'MCM/Config/Elements Spellblade/config.json'
@@ -3162,8 +3174,9 @@ def validate_mcm(records, written):
     expected_globals |= {f'ESSB_{prefix}_{tree}' for tree in TREES for prefix in ('Lvl', 'Pts')}
     expected_globals |= {'ESSB_Mult' + n for n in ('Dot', 'Cooldown', 'Recovery', 'Drain', 'Duration', 'Upkeep')}
     expected_globals |= {'ESSB_Hotkey_'+n for n in ELEMENTS} | {'ESSB_HotkeysEnabled','ESSB_FormNotify','ESSB_FormSound'}
-    assert glob_edids == expected_globals and len(glob_edids) == 52
-    assert functions == {'RespecCurrent', 'RespecAll', 'DumpRegistry', 'RestoreDefaults', 'ReleaseDivineProtection'}
+    expected_globals |= hit19.NEW_EDIDS
+    assert glob_edids == expected_globals and len(glob_edids) == 54
+    assert functions == {'RespecCurrent', 'RespecAll', 'DumpRegistry', 'RestoreDefaults', 'ReleaseDivineProtection', 'ApplyNativeSetting', 'ShowNativeStatus'}
     rows = config['pages'][2]['content']
     tree_rows = [r for r in rows if r.get('id') in expected_globals]
     assert len(tree_rows) == 26
@@ -3211,7 +3224,7 @@ def validate_mcm(records, written):
     assert 'Bool Property AllowTreeEditing = False AutoReadOnly' in bridge
     for name in functions:
         assert f'Function {name}()' in bridge
-    assert bridge.count('ShowMessage(') == 4 and 'trees.Respec(tree)' in bridge and 'trees.RespecAll()' in bridge
+    assert bridge.count('ShowMessage(') == 5 and 'trees.Respec(tree)' in bridge and 'trees.RespecAll()' in bridge
     assert 'ctl.DumpRegistry()' in bridge and 'OpenTree(' not in bridge
     assert bridge.index('Int tree = trees.CurrentTree()') < bridge.index('ctl.CloseForm()') < bridge.index('trees.Respec(tree)')
     assert 'If tree < 11 && !Game.GetPlayer().IsInCombat() && trees.RespecReady(tree)' in bridge
@@ -3230,7 +3243,7 @@ def validate_mcm(records, written):
         'read_only_trees': 13, 'actions': sorted(functions), 'translations': False, 'mod_settings': False,
         'runtime_tested': False,
     })
-    print(f'MCM ok: UTF-8 JSON; {len(refs)} refs resolved (52 GLOB + 5 QUST); 13 read-only trees; '
+    print(f'MCM ok: UTF-8 JSON; {len(refs)} refs resolved (54 GLOB + 7 QUST); 13 read-only trees; '
           f'{len(functions)} actions; existing non-quest IDs unchanged; baseline={len(baseline)}; appended QUST=0x{ID_MCM_QUEST:06X}; soft dependencies')
 
 
@@ -3268,6 +3281,7 @@ def apply_fix8_decisions(plan):
 
 
 def main():
+    hit19.require_fresh(sys.modules[__name__])  # fail before touching the release when native is missing/stale
     state_schema.preflight()
     write_state_helpers()
     validate_dot_state()
@@ -3284,6 +3298,7 @@ def main():
     csf = write_csf(plan, manifest)
     write_mcm(manifest)
     removed = compile_scripts()
+    hit19.package(sys.modules[__name__])
     dump(WORK / 'build/v03-package-hashes.json',
          {str(p.relative_to(OUT)).replace('\\', '/'): hashlib.sha256(p.read_bytes()).hexdigest()
           for p in sorted(OUT.rglob('*')) if p.is_file()})
@@ -3327,6 +3342,7 @@ def main():
     runpy.run_path(str(WORK / 'build/fix15_verify.py'))['run']()
     runpy.run_path(str(WORK / 'build/fix16_verify.py'))['run']()
     runpy.run_path(str(WORK / 'build/fix18_verify.py'))['run']()
+    hit19.verify(sys.modules[__name__])
     runpy.run_path(str(WORK / 'build/fix18_probes.py'))['run'](sys.modules[__name__])
     perks = sum(1 for r in check if r.sig == 'PERK')
     print(f'READBACK ok: masters={meta["masters"]} records={len(check)} manifest={written["record_count"]} '
@@ -3360,7 +3376,7 @@ def validate_fix4(records, written):
     current = written['records']
     assert all(state_schema.stable_identity(e, current.get(e), v) for e, v in baseline.items()), 'fix4 existing identities changed'
     added = {e: v for e, v in current.items() if e not in baseline and e not in SCHEMA_STUBS}
-    assert set(added) == set(ID_BALANCE_GLOB) | FIX5_NEW_EDIDS | GUARD_WINDOW_EDIDS | hit18.new_edids(sys.modules[__name__]), added
+    assert set(added) == set(ID_BALANCE_GLOB) | FIX5_NEW_EDIDS | GUARD_WINDOW_EDIDS | (hit18.new_edids(sys.modules[__name__]) | hit19.NEW_EDIDS), added
     highest = max(int(v['id'], 16) for v in baseline.values())
     by_edid = {r.edid: r for r in records}
     quest = by_edid['ESSB_MainQuest'].d['VMAD']
@@ -3394,7 +3410,7 @@ def validate_fix3(records, written, bindings):
     baseline = json.loads(snapshot.read_text(encoding='utf-8'))['records']
     current = written['records']
     assert all(state_schema.stable_identity(e, current.get(e), v) for e, v in baseline.items()), 'fix3 existing FormIDs changed'
-    new = {e: v for e, v in current.items() if e not in baseline and e not in SCHEMA_STUBS and e not in ID_BALANCE_GLOB and e not in FIX5_NEW_EDIDS and e not in GUARD_WINDOW_EDIDS and e not in hit18.new_edids(sys.modules[__name__])}
+    new = {e: v for e, v in current.items() if e not in baseline and e not in SCHEMA_STUBS and e not in ID_BALANCE_GLOB and e not in FIX5_NEW_EDIDS and e not in GUARD_WINDOW_EDIDS and e not in (hit18.new_edids(sys.modules[__name__]) | hit19.NEW_EDIDS)}
     highest = max(int(v['id'], 16) for v in baseline.values()
                   if ID_FX_BASE <= int(v['id'], 16) < ID_FX_LIMIT)
     assert all(highest < int(v['id'], 16) < ID_FX_LIMIT for v in new.values()), 'FX not appended'

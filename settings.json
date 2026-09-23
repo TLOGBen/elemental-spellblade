@@ -1,6 +1,6 @@
 {
   "version": 4,
-  "state_schema_version": 7,
+  "state_schema_version": 8,
   "kill_attribution_seconds": 3.0,
   "normal_damage": 8.0,
   "power_damage": 12.0,
@@ -113,6 +113,7 @@
   "upkeep_level_relief": 0.7,
   "noform_base_true": 5.0,
   "lightning_roll_mode": "chain",
+  "address_library_bin": "D:/Game/Other/SKSE/MO2/mods/Address Library All in One/SKSE/Plugins/version-1-5-97-0.bin",
   "form_notify": true,
   "form_sound": true,
   "hotkeys_enabled": true

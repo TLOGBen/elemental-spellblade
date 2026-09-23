@@ -86,6 +86,7 @@ def scenario(folder, debug=0, prepare_only=False):
     for vm in (c,t):
         for k,typ in vm.types.items():
             if typ=='GlobalVariable':vm.fields[k]=Glob()
+    if 'NativeHit' in c.fields:c.fields['NativeHit']=Glob(1)  # DLL running; ApplyProc reads this GLOB
     c.InitRegistry()
     c.fields.update(Ready=True,PlayerRef=player,Trees=t,Enabled=Glob(1),FormActive=Glob(1),CurrentElement=Glob(3),
                     Sync=Glob(0),SyncT1=Glob(5),SyncT2=Glob(15),SyncT3=Glob(30),NodeScale=Glob(3),BaseDamageMult=Glob(1),

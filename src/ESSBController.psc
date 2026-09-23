@@ -23,6 +23,11 @@ GlobalVariable Property CurrentElement Auto
 GlobalVariable Property FormActive Auto
 GlobalVariable Property Sync Auto
 GlobalVariable Property SchoolXPMult Auto
+; ESSB_NativeHit (DLL status, 1 = native base proc running). Read as a GLOB, never by calling into the DLL,
+; so a missing DLL cannot cause unbound-native errors on the hit path.
+GlobalVariable Property NativeHit Auto
+; ESSB_NativeWanted (MCM preference for the DLL). Read once per load for the not-running notice.
+GlobalVariable Property NativeWanted Auto
 ; fix round 4: bound once by QUST VMAD; no runtime form lookup.
 GlobalVariable Property PoisonDotK Auto
 GlobalVariable Property BleedDotK Auto
@@ -1265,6 +1270,11 @@ Function Setup()
 		FirstSetupDone = True
 	EndIf
 	RefreshRuntimeValues()
+	; A DLL that is missing or refuses to start (game/SKSE version, Address Library) cannot show anything
+	; itself, so the script says so once per load. A running DLL reports its own faults and the MCM switch.
+	If Enabled.GetValueInt() == 1 && NativeWanted.GetValueInt() == 1 && NativeHit.GetValueInt() != 1
+		Debug.Notification("元素魔戰士：DLL 命中附傷未運作（未安裝、遊戲／SKSE 版本或 Address Library 不符，或已故障）")
+	EndIf
 	RegisterForMenu("Journal Menu")
 	If !player.HasSpell(SettingsPower)
 		player.AddSpell(SettingsPower, False)
@@ -1822,6 +1832,10 @@ EndEvent
 ; magnitude 在套用前設定在自有法術上（規劃 2.7「G(L) 的實作」、規劃 8「每擊隨機 B」）。
 Function ApplyProc(Actor akTarget, Int aiElement, Bool abPower, Bool abSneak, Bool abOpening, Int aiSlot = -1, Int aiGeneration = -1)
 	If !TargetProcPossible(aiElement, abPower, abSneak, abOpening)
+		Return
+	EndIf
+	; No base delivery means no on-hit difference spell either. Status handling stays independent.
+	If NativeHit.GetValue() != 1.0
 		Return
 	EndIf
 	If !akTarget || akTarget.IsDead() || aiElement < 1 || aiElement > 11
@@ -6530,6 +6544,9 @@ EndFunction
 
 Bool Function ValidateBindings()
 	If !Enabled
+		Return False
+	EndIf
+	If !NativeHit || !NativeWanted
 		Return False
 	EndIf
 	If !DebugLevel

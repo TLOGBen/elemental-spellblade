@@ -384,7 +384,7 @@ def boundaries():
             old_settings=json.loads((ROOT/'.codex/pre-fix14-snapshot/settings.json').read_text(encoding='utf8'))
             current=json.loads((ROOT/'settings.json').read_text(encoding='utf8'))
             current.pop('kill_attribution_seconds')
-            for key in ('lightning_roll_mode','form_notify','form_sound','hotkeys_enabled'):current.pop(key,None)
+            for key in ('lightning_roll_mode','form_notify','form_sound','hotkeys_enabled','address_library_bin'):current.pop(key,None)  # later rounds' keys; address_library_bin = round 19b DLL build input
             current['state_schema_version'] = old_settings['state_schema_version']
             assert current == old_settings, 'only Round 14 attribution setting may change'
             continue

@@ -243,7 +243,7 @@ def run():
     assert all(after[k]['id']==f'{v:06X}' for k,v in state_schema.quest_ids(version).items())
     assert after['ESSB_DebugLevel']['id']=='000811'
     added={k:v for k,v in after.items() if k not in before}
-    assert set(added)==(set(state_schema.stub_ids(version))-set(state_schema.stub_ids(2))) | __import__('build_v03').GUARD_WINDOW_EDIDS | __import__('build_v03').hit18.new_edids(__import__('build_v03'))
+    assert set(added)==(set(state_schema.stub_ids(version))-set(state_schema.stub_ids(2))) | __import__('build_v03').GUARD_WINDOW_EDIDS | (__import__('build_v03').hit18.new_edids(__import__('build_v03')) | __import__('build_v03').hit19.NEW_EDIDS)
     from tes import read_plugin
     oldrecords,_=read_plugin(oldesp)
     newrecords,_=read_plugin(ROOT/'package/Elements Spellblade/Elements Spellblade.esp')

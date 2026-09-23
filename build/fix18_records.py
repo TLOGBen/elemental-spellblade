@@ -68,14 +68,10 @@ def add_records(b,add,settings,casting_perks):
         fx=[('EFID',I(own(BONUS_EFFECT+i))),('EFIT',struct.pack('<fII',0.,0,0))]
         if i==2:fx += [('EFID',I(own(b.util_effect_id(2)))),('EFIT',struct.pack('<fII',0.,0,0))]
         add('SPEL',BONUS_SPELL+i,'ESSB_Hit_'+n+'_Bonus',[('OBND',bytes(12)),('FULL',Z(n+' bonus')),('KSIZ',I(1)),('KWDA',I(own(b.ID_KW_PROC))),('SPIT',b.spit(0,1,1,b.ref('Skyrim.esm',casting_perks[b.SCHOOLS[i]])))]+fx)
-    entries_=entries(b,settings['lightning_roll_mode'])
-    ss=[('FULL',Z('元素魔戰士：原生命中')),('DATA',b.perk_data(playable=0,hidden=1))]
-    for index,row in enumerate(entries_):
-        fragment=b.entry(51,own(row['spell']),row['conditions'],function=10,epft=5)
-        fragment[0]=('PRKE',bytes([2,0,200-index]))
-        ss+=fragment
-    add('PERK',HIT_PERK,'ESSB_P_HitProc',ss)
-    return len(entries_)
+    # Round 19: keep the stable empty perk identity; no entry-51 fallback.
+    add('PERK',HIT_PERK,'ESSB_P_HitProc',[('FULL',Z('元素魔戰士：原生命中')),('DATA',b.perk_data(playable=0,hidden=1))])
+    return 0
+
 
 def append_variants(b,rr,add,settings):
     from tes import subs

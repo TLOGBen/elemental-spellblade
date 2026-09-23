@@ -123,6 +123,10 @@ def guard_fast():
 
 def record_checks():
     records,meta=b.read_plugin(b.OUT/b.PLUGIN);by={r.edid:r for r in records};perk=by['ESSB_P_HitProc']
+    assert not any(k=='PRKE' for k,v in perk.ss), 'round19 release perk must be empty'
+    # Original serialized oracle remains immutable in the round19 snapshot.
+    old_records,_=b.read_plugin(ROOT/'.codex/pre-fix19-snapshot/package/Elements Spellblade/Elements Spellblade.esp')
+    perk=next(r for r in old_records if r.edid=='ESSB_P_HitProc')
     entries=[];x=None;tab=None
     for k,v in perk.ss:
         if k=='PRKE':x={'conds':[]}
@@ -184,7 +188,7 @@ def record_checks():
     assert cur['ESSB_DebugLevel']['id']=='000811'
     diff={'added':{k:v for k,v in cur.items() if k not in old},'removed':[k for k in old if k not in cur], 'changed':{k:[v,cur[k]] for k,v in old.items() if cur.get(k)!=v}}
     (ROOT/'build/fix18-formid-diff.json').write_text(json.dumps(diff,ensure_ascii=False,indent=2),encoding='utf8')
-    return dict(entries=74,truth_table_states=cases,chain_probabilities=probs,identities=len(old),records=len(records))
+    return dict(entries=0,oracle_entries=74,truth_table_states=cases,chain_probabilities=probs,identities=len(old),records=len(records))
 
 def run():
     import fix18_extra_checks as extra
@@ -195,9 +199,10 @@ def run():
     for name in ['ESSBStatus.psc','ESSBMark.psc','ESSBElem.psc','ESSBElem2.psc','ESSBElem3.psc','ESSBReactions.psc']:
         assert (OLD/name).read_bytes()==(NEW/name).read_bytes(),('status layer changed',name)
     (ROOT/'build/fix18-check.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf8')
-    print('HITPROC ok: 74 entries; engine_base + script_bonus == old within 1e-4; no-eligible-target multiplier zero cross-script reads; <=0 no spell; lazy GetStack Tick preserved')
+    # Label says only what this function checks; the DLL <-> manifest <-> ESP mapping is checked by NATIVE (fix19_native.verify).
+    print('HITPROC ok: release hit perk has 0 entries; round-18 snapshot 74 entries == generator oracle; engine_base + script_bonus == old within 1e-4; no-eligible-target multiplier zero cross-script reads; <=0 no spell; lazy GetStack Tick preserved')
     print(f'FIX17 ok: Guard no-work zero Controller calls; mirror Rank/Br; SyncStage 200 samples; hit calls {before["total"]} -> {after["total"]}')
-    print('FIX18 ok: 15 input gates; 88 target combinations; 88 blood cases; six player sequences; repeat magnitude writes 0; phase-1 only; status sources byte-identical')
+    print('FIX18 ok: 15 input gates; 88 target combinations; 88 blood cases; six player sequences; repeat magnitude writes 0; native base delivery only; status sources byte-identical')
     return report
 
 if __name__=='__main__':run()

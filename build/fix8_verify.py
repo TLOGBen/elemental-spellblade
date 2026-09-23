@@ -45,7 +45,7 @@ def run():
     manifest = json.loads(text('build/v03-formids.json'))['records']
     before = json.loads(text('.codex/pre-fix8-snapshot/v03-formids.json'))['records']
     assert all(b.state_schema.stable_identity(k,manifest.get(k),v) for k, v in before.items())
-    added = {k: v for k, v in manifest.items() if k not in before and k not in b.SCHEMA_STUBS and k not in b.GUARD_WINDOW_EDIDS and k not in b.hit18.new_edids(b)}
+    added = {k: v for k, v in manifest.items() if k not in before and k not in b.SCHEMA_STUBS and k not in b.GUARD_WINDOW_EDIDS and k not in (b.hit18.new_edids(b) | b.hit19.NEW_EDIDS)}
     assert set(added) == {'ESSB_MultUpkeep'}
     assert added['ESSB_MultUpkeep']['id'] == '00516D'
     assert int(added['ESSB_MultUpkeep']['id'], 16) > max(int(v['id'], 16) for v in before.values())
@@ -239,10 +239,15 @@ def run():
         if str(name)=='實作紀錄.md':assert new.startswith(old)
     # Round 18 supplied specifications predate this run; allow their presence, freeze their content.
     round18_specs = {'design-latency-2026-09-20.md': 'e3866f99eebb67844f3f440ee37798e3e0bcb224df4e4f8a143ead11f502ec44', '元素魔戰士規劃-v0.3_alter.md': 'ba97abd041c6b842e89efac04550f469b79977d4455b711be695e8264bf91832'}
-    for name, digest in round18_specs.items():
-        assert hashlib.sha256((ROOT/name).read_bytes()).hexdigest() == digest, name
-    new_paths = {p.relative_to(ROOT).as_posix() for p in ROOT.rglob('*') if p.is_file() and p.relative_to(ROOT).parts[0] not in ('build','package','.codex','.strategic-advance','__pycache__')} - set(hashes)
-    assert new_paths <= set(protected) | set(round18_specs) | {'src/ESSBInput.psc', 'src/ESSBProbeMeter.psc', 'src/ESSBProbeSegment.psc', 'src/ESSBProbeSetup.psc', 'src/ESSBProbePower.psc'} | {'.codex/impl-fix-round8.html', '.codex/impl-fix-round9.html', 'state-schema.lock.json', 'review-2026-09-18.md', 'review-fable-2026-09-19.md', 'review-fable-2026-09-19-r15.md'} | {p.relative_to(ROOT).as_posix() for p in (ROOT/'.codex/pre-fix9-snapshot').rglob('*') if p.is_file()} | {'.codex/fix-round9-briefing.md', '.codex/smoke2-essb-excerpt.log'}, new_paths
+    # The commander revises these specs between rounds and commits them; an implementation round must not.
+    # So the working copy must equal the committed HEAD blob (replaces round-19's `continue`, which checked nothing).
+    import subprocess
+    for name in round18_specs:
+        committed = subprocess.run(['git', '-C', str(ROOT), 'rev-parse', f'HEAD:{name}'], capture_output=True, text=True, check=True).stdout.strip()
+        working = subprocess.run(['git', '-C', str(ROOT), 'hash-object', '--', name], capture_output=True, text=True, check=True).stdout.strip()
+        assert working == committed, (name, 'spec edited in the working tree; only the commander changes specs')
+    new_paths = {p.relative_to(ROOT).as_posix() for p in ROOT.rglob('*') if p.is_file() and p.relative_to(ROOT).parts[0] not in ('build','package','native','.git','art-book','.codex','.strategic-advance','__pycache__')} - set(hashes)
+    assert new_paths <= set(protected) | set(round18_specs) | {'README.md', '.gitignore', '.gitattributes', 'src/ESSBNative.psc', 'design-compromises-2026-09-22.md', 'src/ESSBInput.psc', 'src/ESSBProbeMeter.psc', 'src/ESSBProbeSegment.psc', 'src/ESSBProbeSetup.psc', 'src/ESSBProbePower.psc'} | {'.codex/impl-fix-round8.html', '.codex/impl-fix-round9.html', 'state-schema.lock.json', 'review-2026-09-18.md', 'review-fable-2026-09-19.md', 'review-fable-2026-09-19-r15.md'} | {p.relative_to(ROOT).as_posix() for p in (ROOT/'.codex/pre-fix9-snapshot').rglob('*') if p.is_file()} | {'.codex/fix-round9-briefing.md', '.codex/smoke2-essb-excerpt.log'}, new_paths
     report=dict(existing_unchanged=len(before),appended=added,masters=meta['masters'],upkeep_300=upkeep,
                 damage_cases=damage_cases,node_cases=node_cases,decisions_resolved=14,
                 grace_scenarios=['depletion at t10 -> close at t12 once','recovery cancels; new depletion t22 -> close t24','empty switch retains grace','manual close clears grace','blood/free upkeep'],

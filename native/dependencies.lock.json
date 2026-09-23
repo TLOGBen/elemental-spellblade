@@ -1,0 +1,18 @@
+{
+  "CommonLibSSE-NG": [
+    "https://github.com/CharmedBaryon/CommonLibSSE-NG",
+    "b93280e832f263dbef44e44cbe2936622a02f91a"
+  ],
+  "spdlog": [
+    "https://github.com/gabime/spdlog",
+    "27cb4c76708608465c413f6d0e6b8d99a4d84302"
+  ],
+  "rapidcsv": [
+    "https://github.com/d99kris/rapidcsv",
+    "a98b85e663114b8fdc9c0dc03abf22c296f38241"
+  ],
+  "json": [
+    "https://github.com/nlohmann/json",
+    "9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03"
+  ]
+}

@@ -100,3 +100,21 @@ Function ReleaseDivineProtection()
 	ForcePageReset()
 	Debug.Notification("元素魔戰士：已解除神佑保護並停用模組；卸載前請存檔。")
 EndFunction
+
+
+Function ApplyNativeSetting()
+	GlobalVariable wanted = Game.GetFormFromFile(0x0052D2, "Elements Spellblade.esp") as GlobalVariable
+	If wanted
+		ESSBNative.SetNativeHit(wanted.GetValueInt() == 1)
+	EndIf
+	ForcePageReset()
+EndFunction
+
+Function ShowNativeStatus()
+	String version = ESSBNative.NativeVersion()
+	Bool active = ESSBNative.IsNativeHitActive()
+	If version == ""
+		version = "未載入／版本拒絕"
+	EndIf
+	ShowMessage("ElementsSpellblade DLL：" + version + "\n命中附傷運作：" + active + "\n停用時不會退回 entry 51。", False, "確定", "")
+EndFunction
