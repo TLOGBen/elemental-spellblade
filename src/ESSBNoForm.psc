@@ -4,6 +4,10 @@ Scriptname ESSBNoForm Hidden
 三條路線：0 純武藝、1 破魔、2 融斷。適用未開啟任何形態時的近戰、拳腳、弓、弩；
 弓弩的「重擊」由潛行射擊取代（控制器已在 OnWeaponHit 換算好 abPower）。
 
+Round 20（N2）：v0.4 的無元素命中（基準真傷、吸魔、小滅法、滅法、滅法印、沉默，以及奪魔、枯竭、靜寂、
+燒魔 +5%、低魔增傷、噬命這些節點）由 DLL 在命中當下計算並施放；v0.3 的「破魔」主線那一段隨之刪除。
+這裡只剩 DLL 還沒接手的：純武藝（v0.3 節點）、斷咒（N4）、反咒（N4）、無魔、融斷路線。
+
 真實傷害（2.8）：D_true = 基準 × G(L_無元素) × M_mod(無元素樹)。
 走自有的 ESSB_TrueSpell（Resist Value = None、不掛學派、只掛 ESSB_TrueDamage keyword），
 執行期 SetNthEffectMagnitude 後 DoCombatSpellApply，是本模組唯一允許扣生命的路徑。
@@ -108,117 +112,21 @@ EndFunction
 
 ; ================================================================== 破魔（route 1）
 
-; 新手主線「破魔」：命中削減目標魔力 (20 + 4／點) × G(L)，回復你等量魔力，
-; 造成削減量 ×（0.5 + 3%／點）的真實傷害，並施加破魔印 8 秒。
-Function OnManaBreak(ESSBController akCtl, Actor akTarget, Bool abPower, Bool abHitCasting = False) Global
-	Int rank = ESSBNodes.Rank(akCtl, 11, 1, 0)
-	If rank <= 0
+; 熟練分支「斷咒」：命中施法中的敵人打斷其施法，每 5 秒一次（v0.4 列為 DLL N4，到那時才搬）。
+; round 20 前它掛在破魔主線裡、要先有破魔點數才生效；破魔主線在 N2 由 DLL 的吸魔／滅法取代後，
+; 斷咒只看自己的分支。
+Function OnInterruptCast(ESSBController akCtl, Actor akTarget, Bool abHitCasting) Global
+	If !abHitCasting || !ESSBNodes.Br(akCtl, 11, 1, 1, 0)
 		Return
 	EndIf
-	Actor player = akCtl.ThePlayer()
-	If !player
-		Return
-	EndIf
-	Float drain = (akCtl.ManabreakBase.GetValue() + akCtl.ManabreakPerRank.GetValue() * rank) * ESSBNodes.GL(akCtl, 11)
-
-	; 新手分支「蝕魔」：削魔量改為固定值與目標最大魔力 10% 取高者。
-	If ESSBNodes.Br(akCtl, 11, 1, 0, 0)
-		Float byMax = akTarget.GetActorValueMax("Magicka") * akCtl.ManabreakMaxmagPct.GetValue() * 0.01
-		If byMax > drain
-			drain = byMax
+	If akCtl.TakeInterrupt()
+		; 低衝突原則（6）：不用麻痺與硬直。把魔力清空並給 1 秒沉默，
+		; NPC 沒有魔力就會中止並改用近戰，效果等同打斷。
+		akCtl.ApplyUtil(2, akTarget.GetActorValue("Magicka") + 1.0, 0, akTarget)
+		akCtl.ApplySilenceSpell(akTarget, 1)
+		If akCtl.CachedDebugLevel >= 1
+			akCtl.LogThrottled(1, "node", "noform interrupt " + akTarget.GetFormID())
 		EndIf
-	EndIf
-
-	; 大師主線：對施法者與帶魔法護盾、元素披風的敵人削魔量 +5%／點。
-	Int pierce = ESSBNodes.Rank(akCtl, 11, 1, 3)
-	If pierce > 0 && IsSpellUser(akCtl, akTarget)
-		drain = drain * (1.0 + 0.05 * pierce)
-	EndIf
-
-	drain = akCtl.DrainAmount(drain)
-	Float before = akTarget.GetActorValue("Magicka")
-	Float actual = drain
-	If actual > before
-		actual = before
-	EndIf
-	If actual > 0.0
-		akCtl.ApplyUtil(2, actual, 0, akTarget, True)
-		akCtl.ApplyUtil(5, actual, 0, player)
-	EndIf
-
-	; 熟練主線：真實傷害比例 +3%／點（0.5 → 0.95）。
-	Float ratio = 0.5 + 0.03 * ESSBNodes.Rank(akCtl, 11, 1, 1)
-	If ratio > 0.95
-		ratio = 0.95
-	EndIf
-	Float trueAmount = actual * ratio
-	Bool levelScaled = True
-
-	; 專精分支「枯竭」：目標魔力已為 0 時，真實傷害改以你當前魔力的 20% 計。
-	If before <= 0.0 && ESSBNodes.Br(akCtl, 11, 1, 2, 0)
-		trueAmount = player.GetActorValue("Magicka") * akCtl.ManabreakDryPct.GetValue() * 0.01
-		; Dry branch has no drained amount: retain its existing single G(L).
-		levelScaled = False
-	EndIf
-
-	; 專精分支「靜寂」：沉默中的目標受真實傷害 ×1.5。
-	If akCtl.SilenceKeyword && akTarget.HasMagicEffectWithKeyword(akCtl.SilenceKeyword)
-		If ESSBNodes.Br(akCtl, 11, 1, 2, 1)
-			trueAmount = trueAmount * 1.5
-		EndIf
-	EndIf
-
-	If trueAmount > 0.0
-		akCtl.ApplyTrueDamage(trueAmount, akTarget, 11, False, levelScaled)
-	EndIf
-
-	; 破魔印 8 秒：沉默與反咒以它為條件（2.3）。
-	akCtl.ApplyManaBreakMark(akTarget)
-
-	; 專精主線「沉默」：目標魔力被削至 0 時施加沉默 1 秒（+0.2 秒／點，最長 4 秒）。
-	If before - actual <= 0.0
-		ApplySilence(akCtl, akTarget)
-	EndIf
-
-	; 熟練分支「斷咒」：命中施法中的敵人打斷其施法，每 5 秒一次。
-	If ESSBNodes.Br(akCtl, 11, 1, 1, 0) && abHitCasting
-		If akCtl.TakeInterrupt()
-			; 低衝突原則（6）：不用麻痺與硬直。把魔力清空並給 1 秒沉默，
-			; NPC 沒有魔力就會中止並改用近戰，效果等同打斷。
-			akCtl.ApplyUtil(2, akTarget.GetActorValue("Magicka") + 1.0, 0, akTarget)
-			akCtl.ApplySilenceSpell(akTarget, 1)
-			If akCtl.CachedDebugLevel >= 1
-				akCtl.LogThrottled(1, "node", "noform interrupt " + akTarget.GetFormID())
-			EndIf
-		EndIf
-	EndIf
-EndFunction
-
-Function ApplySilence(ESSBController akCtl, Actor akTarget) Global
-	Int rank = ESSBNodes.Rank(akCtl, 11, 1, 2)
-	If rank <= 0
-		Return
-	EndIf
-	Float seconds = 1.0 + 0.2 * rank
-	If seconds > 4.0
-		seconds = 4.0
-	EndIf
-	Int duration = (seconds + 0.5) as Int
-	akCtl.ApplySilenceSpell(akTarget, duration)
-
-	; 傳奇分支「封印」：沉默改為 3 公尺範圍。
-	If ESSBNodes.Br(akCtl, 11, 1, 4, 2)
-		Actor[] nearby = akCtl.ScanTargets(akTarget, 210.0, 5, akTarget)
-		Int index = 0
-		While index < nearby.Length
-			If nearby[index]
-				akCtl.ApplySilenceSpell(nearby[index], duration)
-			EndIf
-			index += 1
-		EndWhile
-	EndIf
-	If akCtl.CachedDebugLevel >= 1
-		akCtl.LogThrottled(1, "node", "noform silence " + akTarget.GetFormID() + " sec=" + duration)
 	EndIf
 EndFunction
 

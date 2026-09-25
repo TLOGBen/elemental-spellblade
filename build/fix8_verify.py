@@ -55,7 +55,10 @@ def run():
     assert meta['masters'] == ['Skyrim.esm'] and manifest['ESSB_DebugLevel']['id'] == '000811'
     quest = rec['ESSB_MainQuest'].d['VMAD']
     assert quest.count(b.vstr('MultUpkeep') + bytes([1, 1]) + b.obj(b.own(0x00516D))) == 1
-    assert quest.count(b.vstr('NoformBaseTrue') + bytes([4, 1]) + struct.pack('<f', cfg['noform_base_true'])) == 1
+    # Round 20 (N2): the no-form baseline is cast by the DLL; its configured base reaches the DLL through the
+    # generated header (and no longer through a Papyrus VMAD property).
+    assert b.vstr('NoformBaseTrue') not in quest
+    assert f"inline constexpr float kNoFormBaseTrue = {float(cfg['noform_base_true'])}f;" in text('native/include/ManifestData.h')
     assert rec['ESSB_FormRulesEffect'].d['VMAD'] == b.vmad('ESSBFormRules', {
         'UpkeepBasePct': (4, cfg['upkeep_base_pct']), 'UpkeepDarkPct': (4, cfg['upkeep_dark_pct']),
         'UpkeepLevelRelief': (4, cfg['upkeep_level_relief']),
@@ -78,38 +81,25 @@ def run():
         assert token in hit_tail and token in oldhit
     noform = body(ctlfile, 'OnNoFormHit')
     oldnoform = body('build/fix8-before/' + ctlfile, 'OnNoFormHit')
-    assert 'ApplyNoFormBaseline(akTarget, abPower, riposte)' in noform
+    # Round 20 (N2): baseline true damage, siphon and dispel moved to the DLL (tested natively: A0 and the A6
+    # scenarios, including level x damage multiplier x power like the round-8 cases below used to).
+    assert 'ApplyNoFormBaseline(' not in noform and 'OnManaBreak(' not in noform
     assert 'ComboHits += 1' in noform and 'ESSBNoForm.EmberRatio(Self)' in noform
-    assert noform.count('ApplyNoFormBaseline(') == 1
-    for name in ('ESSBNoForm.OnMartialHit', 'ESSBNoForm.OnManaBreak'):
+    for name in ('ESSBNoForm.OnMartialHit', 'ESSBNoForm.OnInterruptCast'):
         assert noform.count(name + '(') == 1
-    baseline = body(ctlfile, 'ApplyNoFormBaseline')
-    assert 'GLevel(' not in baseline and 'BaseDamageMult.GetValue()' not in baseline
     truebody = body(ctlfile, 'ApplyTrueDamage')
     assert truebody.count('GLevel(') == 1 and truebody.count('BaseDamageMult.GetValue()') == 1
     assert 'If aiTree == 11 && !abBaseline' in truebody
     damage_cases = []
     for level in (1, 25, 50, 75, 100):
         for mult in (0.25, 1, 1.7, 3):
-            for power in (False, True):
-                ctl = Ctl(cfg); ctl.level = level; ctl.BaseDamageMult.x = mult; ctl.NoformBaseTrue = cfg['noform_base_true']
-                ctl.rank_default = 15  # Low target magicka would otherwise activate TrueMult.
-                xp = []; ctl.Trees.OnValidHitXP = lambda e: xp.append(e)
-                g_calls = []; ctl.GLevel = lambda tree, lv=level: g_calls.append(tree) or (1 + .05 * lv)
-                reg = make(ROOT / 'src', ctl); target = Actor(100); target.mag = 1
-                reg['ESSBController'].ApplyNoFormBaseline(target, power)
-                expected = cfg['noform_base_true'] * (1 + .05 * level) * mult * (1.5 if power else 1)
-                assert math.isclose(target.true[-1], expected) and not xp and g_calls == [11]
-                # Existing node damage must still receive TrueMult (backward-compatible default).
-                target.true.clear(); reg['ESSBController'].ApplyTrueDamage(5, target, 11, False)
-                assert math.isclose(target.true[-1], 5 * (1 + .05 * level) * mult * (1 + .03 * 15 * cfg['node_percent_scale']))
-                damage_cases.append(dict(level=level,base_mult=mult,power=power,baseline=expected,extra_xp=len(xp)))
-    ctl.NoformBaseTrue = 0; target.true.clear(); reg['ESSBController'].ApplyNoFormBaseline(target, False)
-    assert not target.true
-
-    ctl.rank_default = 0; ctl.NoformBaseTrue = cfg['noform_base_true']; target.true.clear()
-    reg['ESSBController'].ApplyNoFormBaseline(target, False)
-    assert math.isclose(target.true[-1], cfg['noform_base_true'] * 6 * 3) and not xp
+            ctl = Ctl(cfg); ctl.level = level; ctl.BaseDamageMult.x = mult
+            ctl.rank_default = 15  # Low target magicka activates TrueMult for the node damage that stays in Papyrus.
+            reg = make(ROOT / 'src', ctl); target = Actor(100); target.mag = 1
+            # Existing Papyrus node true damage (純武藝, 反咒) still receives G once and TrueMult.
+            reg['ESSBController'].ApplyTrueDamage(5, target, 11, False)
+            assert math.isclose(target.true[-1], 5 * (1 + .05 * level) * mult * (1 + .03 * 15 * cfg['node_percent_scale']))
+            damage_cases.append(dict(level=level, base_mult=mult, node_true=target.true[-1]))
 
     # All 11 trees: NodeScale affects only the new approved coefficients.
     node_cases = 0
@@ -218,6 +208,7 @@ def run():
     hashes['.strategic-advance/essb-standalone-build/run-ledger.jsonl']=protected['.strategic-advance/essb-standalone-build/run-ledger.jsonl']
     for name,digest in hashes.items():
         if name.startswith('.strategic-advance/'): continue  # commander's campaign ledger is append-only by design
+        if '__pycache__/' in name: continue  # git-ignored bytecode caches are not sources; any python run may rewrite them
         data=(ROOT/name).read_bytes()
         if hashlib.sha256(data).hexdigest()!=digest:
             assert name in ('build_v03.py','settings.json','plan_coverage.py','實作紀錄.md') or (name.startswith('src/') and name.endswith('.psc')),name
@@ -247,6 +238,10 @@ def run():
         working = subprocess.run(['git', '-C', str(ROOT), 'hash-object', '--', name], capture_output=True, text=True, check=True).stdout.strip()
         assert working == committed, (name, 'spec edited in the working tree; only the commander changes specs')
     new_paths = {p.relative_to(ROOT).as_posix() for p in ROOT.rglob('*') if p.is_file() and p.relative_to(ROOT).parts[0] not in ('build','package','native','.git','art-book','.codex','.strategic-advance','__pycache__')} - set(hashes)
+    # Files the commander committed after round 19b (v0.4 design, CLAUDE.md, design notes) are HEAD blobs, not
+    # implementation output: allow what HEAD tracks, so only untracked stray files still fail (round 20).
+    tracked = set(subprocess.run(['git', '-C', str(ROOT), '-c', 'core.quotepath=off', 'ls-files'], capture_output=True, text=True, encoding='utf-8', check=True).stdout.splitlines())
+    new_paths -= tracked
     assert new_paths <= set(protected) | set(round18_specs) | {'README.md', '.gitignore', '.gitattributes', 'src/ESSBNative.psc', 'design-compromises-2026-09-22.md', 'src/ESSBInput.psc', 'src/ESSBProbeMeter.psc', 'src/ESSBProbeSegment.psc', 'src/ESSBProbeSetup.psc', 'src/ESSBProbePower.psc'} | {'.codex/impl-fix-round8.html', '.codex/impl-fix-round9.html', 'state-schema.lock.json', 'review-2026-09-18.md', 'review-fable-2026-09-19.md', 'review-fable-2026-09-19-r15.md'} | {p.relative_to(ROOT).as_posix() for p in (ROOT/'.codex/pre-fix9-snapshot').rglob('*') if p.is_file()} | {'.codex/fix-round9-briefing.md', '.codex/smoke2-essb-excerpt.log'}, new_paths
     report=dict(existing_unchanged=len(before),appended=added,masters=meta['masters'],upkeep_300=upkeep,
                 damage_cases=damage_cases,node_cases=node_cases,decisions_resolved=14,
@@ -254,7 +249,7 @@ def run():
                 G_once=True,base_mult_once=True,upkeep_mult_once=True,node_scale_once=True,extra_xp=0,
                 changed_source_files=changed,runtime_tested=False)
     (ROOT/'build/fix8-check.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
-    print(f'FIX8 ok: existing non-quest IDs unchanged; baseline={len(before)}; appended GLOB=0x00516D; 11 upkeep forms; 2s grace; {len(damage_cases)} baseline cases; 14 decisions; G/sliders once; encodings/scope checked')
+    print(f'FIX8 ok: existing non-quest IDs unchanged; baseline={len(before)}; appended GLOB=0x00516D; 11 upkeep forms; 2s grace; baseline in the DLL, {len(damage_cases)} Papyrus node true-damage cases; 14 decisions; G/sliders once; encodings/scope checked')
     return report
 
 if __name__=='__main__':run()

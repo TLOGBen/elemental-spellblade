@@ -1,20 +1,29 @@
-"""Native (DLL) build contract: generated header, old-ESP oracle fixture, freshness receipt, packaging, verify.
+"""Native (DLL) build contract: generated header, node-table identity, test fixtures, freshness receipt,
+packaging, verification.
 
-Round 19b layout:
-  generate_header(b)  -> native/include/ManifestData.h (FormIDs, names, Address Library hash, version)
-  fixture(b)          -> build/fix19-truth.csv: every selection input the handler can produce,
-                         with the spell the old 74 entry-51 segments (round-19 snapshot ESP) select
+Round 20 (slice N2) layout:
+  node_table(b)       the skill-tree slots the DLL reads, each checked against the ESP's node table
+                      (branch name or main-line text) so a slot holding a different node fails the build
+  generate_header(b)  -> native/include/ManifestData.h (record FormIDs, node slots, settings, version)
+  fixture(b)          -> build/fix20-magnitude-table.json (group A, from build/fix20_reference.py) and
+                         build/fix20-wiring.json (group B, from the generator's record identities)
   inputs()            -> hashes of exactly what the DLL and its tests are built from
   require_fresh(b)    -> the DLL receipt matches those hashes and the generated files are current
+  verify(b)           -> ESP / manifest / fixture identities, proc spells single-damage-effect, native tests
+The file keeps its round-19 name because build_v03.py and native/build.py import it as the native contract.
 """
 from pathlib import Path
-import hashlib, json, struct, itertools, subprocess, shutil, re
+import hashlib, json, struct, subprocess, shutil, sys
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'build'))
+import fix20_records as hit20
+import fix20_fixture
 NATIVE = ROOT / 'native'
-NATIVE_VERSION = '0.19.1'
+NATIVE_VERSION = '0.20.0'
 NATIVE_HIT = 0x52d1
 NATIVE_WANTED = 0x52d2
-NEW_EDIDS = {'ESSB_NativeHit', 'ESSB_NativeWanted'}
+NATIVE_GLOBALS = {'ESSB_NativeHit', 'ESSB_NativeWanted'}      # round 19: the MCM shows both
+NEW_EDIDS = NATIVE_GLOBALS | hit20.new_edids()                # every record the native slices added
 DEPS = {
     'CommonLibSSE-NG': ('https://github.com/CharmedBaryon/CommonLibSSE-NG', 'b93280e832f263dbef44e44cbe2936622a02f91a'),
     'spdlog': ('https://github.com/gabime/spdlog', '27cb4c76708608465c413f6d0e6b8d99a4d84302'),
@@ -22,10 +31,39 @@ DEPS = {
     'json': ('https://github.com/nlohmann/json', '9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03'),
 }
 HEADER = NATIVE / 'include/ManifestData.h'
-TRUTH = ROOT / 'build/fix19-truth.csv'
-OLD_ESP = ROOT / '.codex/pre-fix19-snapshot/package/Elements Spellblade/Elements Spellblade.esp'
+TABLE = ROOT / fix20_fixture.TABLE
+WIRING = ROOT / fix20_fixture.WIRING
 ENTRY_POINT = 2  # PRKE effect type: 0 quest stage, 1 ability, 2 entry point
 ENTRY_51 = 51    # Apply Combat Hit Spell
+
+# What each node slot must be in the ESP (plan-tree-nodes: branch name, or a fragment of the main-line text).
+# v0.4 renamed a few v0.3 nodes that kept their slot and effect; the ESP still carries the v0.3 name.
+NODE_IDENTITY = {
+    'kEarthStaminaCut': '命中削減目標耐力',
+    'kEarthDrainStrength': '汲力',
+    'kWindTailwind': '順風',
+    'kBloodOverflow': '血盾',          # v0.4 血溢: lifesteal overflow into a pool (was a temporary shield)
+    'kBloodLeechRatio': '吸血比例各血位',
+    'kBloodReverse': '逆流',
+    'kBloodRage': '血怒',
+    'kDivineExorcism': '驅魔',
+    'kWaterClearStream': '清流',
+    'kWaterSoakSlow': '浸濕減速',
+    'kCommonStage2': '同調二段時附傷',
+    'kCommonStage3Power': '同調三段時重擊附傷',
+    'kCommonAll1': '所有元素附傷 +',
+    'kCommonAll2': '所有元素附傷再',
+    'kCommonEcho': '餘響',
+    'kCommonEchoRatio': '切換後首次命中附帶前一元素附傷',
+    'kNoFormSeize': '蝕魔',             # v0.4 奪魔
+    'kNoFormSilence': '沉默',
+    'kNoFormDepletion': '枯竭',
+    'kNoFormStillness': '靜寂',
+    'kNoFormBurnCasters': '對施法者與帶魔法護盾、元素披風的敵人',
+    'kNoFormLowMagicka': '目標魔力低於 25% 時命中傷害',
+    'kNoFormDevour': '逆流',            # v0.4 噬命 (true damage heals you)
+}
+ELEMENT_SHORT = ['火', '冰', '雷', '土', '風', '血', '聖', '毒', '水', '暗', '星']
 
 
 def sha(path):
@@ -51,44 +89,196 @@ def address_library():
     return path
 
 
+# ---------------------------------------------------------------- identities
+
+
+def node_table(b):
+    """{name: slot} for every node the DLL reads, after checking each slot's identity in the ESP's node table."""
+    import fix20_reference as ref
+    # parse + balance text without plan_trees.build(): build() rewrites build/plan-tree-nodes.json, and this runs
+    # after main() has written the decided plan there.
+    plan = b.apply_fix8_decisions(b.plan_trees.apply_balance_text(b.plan_trees.parse()))
+    trees = {t['index']: t for t in plan['trees']}
+
+    def tier(tree, route, level):
+        return trees[tree]['routes'][route]['tiers'][level]
+
+    for name, slot in ref.NODES.items():
+        cell = tier(*slot[:3])
+        if len(slot) == 3:
+            assert NODE_IDENTITY[name] in cell['main'], (name, slot, cell['main'])
+        else:
+            branch = next((x for x in cell['branches'] if x['index'] == slot[3]), None)
+            assert branch and branch['name'] == NODE_IDENTITY[name], (name, slot, branch)
+    for element in range(1, 12):
+        short = ELEMENT_SHORT[element - 1]
+        adept, master = ref.adept(element), ref.master(element)
+        if adept is None:
+            assert element == ref.WATER and '附傷' not in tier(element - 1, 0, 1)['main'] and '附傷' not in tier(element - 1, 0, 3)['main']
+            continue
+        assert tier(*adept)['main'].startswith(f'{short}附傷 +'), (element, tier(*adept)['main'])
+        assert tier(*master)['main'].startswith(f'同調每段{short}附傷 +'), (element, tier(*master)['main'])
+    return dict(ref.NODES)
+
+
 def globals_(b):
-    names = ['ESSB_Enabled', 'ESSB_FormActive', 'ESSB_CurrentElement', 'ESSB_DebugLevel']
-    return {k: b.ID_GLOB[k] for k in names} | {'ESSB_NativeHit': NATIVE_HIT, 'ESSB_NativeWanted': NATIVE_WANTED}
+    """Every GLOB the DLL reads, by editor ID."""
+    ids = {k: b.ID_GLOB[k] for k in ['ESSB_Enabled', 'ESSB_FormActive', 'ESSB_CurrentElement', 'ESSB_DebugLevel']}
+    ids |= {'ESSB_NativeHit': NATIVE_HIT, 'ESSB_NativeWanted': NATIVE_WANTED}
+    for name in ['ESSB_BaseDamageMult', 'ESSB_NodeScale', 'ESSB_MultDrain', 'ESSB_MultRecovery', 'ESSB_MultDuration',
+                 'ESSB_SlowCapPct', 'ESSB_WaterWetSlowPct', 'ESSB_WaterClearStamina', 'ESSB_ManabreakMaxmagPct']:
+        ids[name] = b.ID_BALANCE_GLOB[name][0]
+    mech = [name for name, _ in b.MECH_GLOBALS]
+    for name in ['ESSB_SyncStage', 'ESSB_PrevElement', 'ESSB_TwinElement']:
+        ids[name] = b.ID_MECH_GLOB + mech.index(name)
+    for name in ['ESSB_EnvWet', 'ESSB_EnvNight']:
+        ids[name] = b.ID_GLOB_ENGINE[name]
+    for tree, key in enumerate(b.TREES):
+        ids[f'ESSB_Lvl_{key}'] = b.ID_TREE_GLOB['Lvl'] + tree
+    return ids
 
 
-def key(v):
-    m = re.search(r'_R([1-5])$', v['edid'])
-    return [v['e'], v['p'], v['s'], v['band'], int(m[1]) if m else 0]
+# Tuning field (EngineFacts.h ReadTuning) -> GLOB editor ID; group B checks the C++ reads the same GLOB.
+TUNING_GLOBALS = {
+    'baseDamageMult': 'ESSB_BaseDamageMult', 'nodeScale': 'ESSB_NodeScale', 'multDrain': 'ESSB_MultDrain',
+    'multRecovery': 'ESSB_MultRecovery', 'multDuration': 'ESSB_MultDuration', 'slowCapPct': 'ESSB_SlowCapPct',
+    'wetSlowPct': 'ESSB_WaterWetSlowPct', 'waterClearStamina': 'ESSB_WaterClearStamina',
+    'seizeMaxPct': 'ESSB_ManabreakMaxmagPct', 'syncStage': 'ESSB_SyncStage', 'envWet': 'ESSB_EnvWet',
+    'envNight': 'ESSB_EnvNight', 'prevElement': 'ESSB_PrevElement', 'twinElement': 'ESSB_TwinElement',
+}
 
 
-def selected_variants(b):
-    # Lightning is always one of the R1..R5 bands; its plain Normal/Power spells are not selectable.
-    return [v for v in b.hit18.variants(b) if v['e'] != 3 or '_R' in v['edid']]
+def proc_rows(b):
+    return b.hit18.variants(b)
+
+
+def spells(b):
+    """Cast name (HitMath.h Cast) -> the single spell record the DLL uses for it."""
+    rows = {
+        'kDrainMagicka': (b.util_spell_id(2), 'ESSB_Util_DrainMagicka'),
+        'kDrainStamina': (b.util_spell_id(3), 'ESSB_Util_DrainStamina'),
+        'kHeal': (b.util_spell_id(4), 'ESSB_Util_RestoreHealth'),
+        'kRestoreMagicka': (b.util_spell_id(5), 'ESSB_Util_RestoreMagicka'),
+        'kRestoreStamina': (b.util_spell_id(6), 'ESSB_Util_RestoreStamina'),
+        'kTrueDamage': (b.ID_TRUE_SPELL, 'ESSB_TrueDamageSpell'),
+        'kDispelMark': (b.ID_MANABREAK_SPELL, 'ESSB_ManaBreakSpell'),
+        'kSpendMagicka': (hit20.SPEND, 'ESSB_Native_SpendMagicka'),
+        'kSoakSlow': (hit20.SOAK_SLOW, 'ESSB_Native_SoakSlow'),
+        'kBloodGuard': (hit20.GUARD, 'ESSB_BloodGuard'),
+    }
+    for seconds in range(1, hit20.SILENCE_COUNT + 1):
+        rows[f'kSilence{seconds}'] = (hit20.SILENCE + seconds - 1, hit20.silence_edid(seconds))
+    return {k: dict(local_id=v[0], editor_id=v[1]) for k, v in rows.items()}
+
+
+def effects(b):
+    rows = {
+        'kBloodMark': (b.ID_MARK_EFFECT + b.ELEMENTS.index('Blood'), 'ESSB_MarkEffect_Blood'),
+        'kSilence': (b.ID_SILENCE_EFFECT, 'ESSB_SilenceEffect'),
+        'kBloodGuard': (hit20.GUARD_EFFECT, 'ESSB_BloodGuardEffect'),
+        'kEchoPending': (hit20.ECHO_EFFECT, 'ESSB_EchoPendingEffect'),
+        'kTwinWindow': (hit20.TWIN_EFFECT, 'ESSB_TwinWindowEffect'),
+    }
+    return {k: dict(local_id=v[0], editor_id=v[1]) for k, v in rows.items()}
+
+
+def vanilla(b):
+    """Skyrim.esm forms the target facts read (the same ones ESSBController's properties point at)."""
+    return {
+        'kUndeadKeyword': dict(form_id=b.FID_KW_UNDEAD, kind='KYWD'),
+        'kDaedraKeyword': dict(form_id=b.FID_KW_DAEDRA, kind='KYWD'),
+        'kArmorSpellKeyword': dict(form_id=b.FID_KW_ARMOR_SPELL, kind='KYWD'),
+        'kCloakKeyword': dict(form_id=b.FID_KW_CLOAK, kind='KYWD'),
+        'kNecroClass': dict(form_id=b.FID_CLASS_NECRO, kind='CLAS'),
+        'kNecroFaction': dict(form_id=b.FID_FACT_NECRO, kind='FACT'),
+    }
+
+
+# ---------------------------------------------------------------- generated header
+
+
+def _slot(slot):
+    return '{' + ', '.join(map(str, slot)) + '}'
 
 
 def header_text(b):
-    lines = ['#pragma once',
-             '// Generated by build/fix19_native.py from build_v03.py and settings.json. Do not edit.',
-             '#include "Selection.h"', '#include <string_view>', 'namespace essb {',
-             'struct Row { Key key; std::uint32_t id; std::string_view name; };',
-             'inline constexpr Row rows[]={']
-    for v in selected_variants(b):
-        lines.append('    {{' + ','.join(map(str, key(v))) + '},' + hex(v['id']) + ',"' + v['edid'] + '"},')
-    lines += ['};',
-              'constexpr const Row* row(Key k) noexcept { if(!k.element) return nullptr; for(auto& r:rows) if(r.key==k) return &r; return nullptr; }',
-              'constexpr std::uint32_t spell(Key k) noexcept { auto r=row(k); return r ? r->id : 0; }']
-    for name, fid in globals_(b).items():
-        lines.append(f'inline constexpr std::uint32_t {name}={hex(fid)};')
-    lines.append('inline constexpr std::string_view elementNames[12]={"",' + ','.join(f'"{z}"' for z in b.ZH) + '};')
-    lines.append(f'inline constexpr char nativeVersion[]="{NATIVE_VERSION}";')
-    lines.append(f'inline constexpr char addressHash[]="{sha(address_library())}";')
-    lines.append('}')
-    return '\n'.join(lines) + '\n'
+    import fix20_reference as ref
+    nodes = node_table(b)
+    s = settings()
+    g = globals_(b)
+    L = ['#pragma once',
+         '// Generated by build/fix19_native.py from build_v03.py, build/fix20_records.py and settings.json. Do not edit.',
+         '#include "NodeIds.h"', '#include <cstdint>', '#include <string_view>', 'namespace essb {', '',
+         'struct ProcRow { int element; int power; std::uint32_t id; std::string_view name; };',
+         '// Element proc spells: element x normal / power (build/fix18_records.py variants).',
+         'inline constexpr ProcRow procRows[] = {']
+    for v in proc_rows(b):
+        L.append(f'    {{{v["e"]}, {v["p"]}, {hex(v["id"])}, "{v["edid"]}"}},')
+    L += ['};', '', '// Spell per planned cast (HitMath.h Cast). Local FormIDs in Elements Spellblade.esp.', 'namespace spell {']
+    sp = spells(b)
+    for name, row in sp.items():
+        if not name.startswith('kSilence'):
+            L.append(f'inline constexpr std::uint32_t {name} = {hex(row["local_id"])};  // {row["editor_id"]}')
+    L.append('inline constexpr std::uint32_t kSilence[' + str(hit20.SILENCE_COUNT) + '] = {'
+             + ', '.join(hex(sp[f'kSilence{i}']['local_id']) for i in range(1, hit20.SILENCE_COUNT + 1)) + '};  // ESSB_Native_Silence_1..8')
+    L += ['}  // namespace spell', '', '// Effects the DLL looks for on the target or the player.', 'namespace effect {']
+    for name, row in effects(b).items():
+        L.append(f'inline constexpr std::uint32_t {name} = {hex(row["local_id"])};  // {row["editor_id"]}')
+    L += ['}  // namespace effect', '', 'namespace glob {']
+    names = {'ESSB_Enabled': 'kEnabled', 'ESSB_FormActive': 'kFormActive', 'ESSB_CurrentElement': 'kCurrentElement',
+             'ESSB_DebugLevel': 'kDebugLevel', 'ESSB_NativeHit': 'kNativeHit', 'ESSB_NativeWanted': 'kNativeWanted'}
+    for edid, fid in g.items():
+        if edid.startswith('ESSB_Lvl_'):
+            continue
+        cname = names.get(edid, 'k' + edid.removeprefix('ESSB_'))
+        L.append(f'inline constexpr std::uint32_t {cname} = {hex(fid)};  // {edid}')
+    L.append('inline constexpr std::uint32_t kTreeLevel[13] = {' + ', '.join(hex(g[f'ESSB_Lvl_{k}']) for k in b.TREES) + '};  // ESSB_Lvl_<tree>')
+    L += ['}  // namespace glob', '', '// Skyrim.esm forms (local FormIDs in Skyrim.esm).', 'namespace vanilla {']
+    for name, row in vanilla(b).items():
+        L.append(f'inline constexpr std::uint32_t {name} = {hex(row["form_id"])};  // {row["kind"]}')
+    L += ['}  // namespace vanilla', '',
+          '// Perk layout (build_v03 ID_MAIN_PERK / ID_BRANCH_PERK, plan_trees MAIN_MAX_RANK / MAX_BRANCH).',
+          f'inline constexpr std::uint32_t kMainPerkBase = {hex(b.ID_MAIN_PERK)};',
+          f'inline constexpr std::uint32_t kBranchPerkBase = {hex(b.ID_BRANCH_PERK)};',
+          f'inline constexpr int kMainMaxRank = {b.plan_trees.MAIN_MAX_RANK};',
+          f'inline constexpr int kBranchSlots = {b.plan_trees.MAX_BRANCH};', '',
+          '// Node slots N2 reads; each checked against the ESP node table (NODE_IDENTITY in fix19_native.py).',
+          'namespace node {']
+    for name, slot in nodes.items():
+        kind = 'NodeId' if len(slot) == 3 else 'BranchId'
+        L.append(f'inline constexpr {kind} {name}{_slot(slot)};  // ESP: {NODE_IDENTITY[name]}')
+    for label, fn in (('kProcAdept', ref.adept), ('kProcMaster', ref.master)):
+        cells = ['kNoNode'] + [_slot(fn(e)) if fn(e) else 'kNoNode' for e in range(1, 12)]
+        L.append(f'inline constexpr NodeId {label}[12] = {{{", ".join(cells)}}};  // [element]; water has none')
+    L += ['}  // namespace node', '',
+          '// settings.json element_damage (B_min, B_max per element; [0] unused) and noform_base_true.',
+          'inline constexpr float kElementDamage[12][2] = {{0.0f, 0.0f}, '
+          + ', '.join('{' + ', '.join(f'{float(x)}f' for x in s['element_damage'][n]) + '}' for n in b.ELEMENTS) + '};',
+          f'inline constexpr float kNoFormBaseTrue = {float(s["noform_base_true"])}f;',
+          'inline constexpr std::string_view elementNames[12] = {"無元素", ' + ', '.join(f'"{z}"' for z in b.ZH) + '};',
+          f'inline constexpr char nativeVersion[] = "{NATIVE_VERSION}";',
+          f'inline constexpr char addressHash[] = "{sha(address_library())}";',
+          '}  // namespace essb']
+    return '\n'.join(L) + '\n'
 
 
 def generate_header(b):
     write_if_changed(HEADER, header_text(b))
     write_if_changed(NATIVE / 'dependencies.lock.json', json.dumps(DEPS, indent=2) + '\n')
+
+
+def fixture(b):
+    """Write the group A table (reference model) and the group B wiring expectations. Returns the scenario count."""
+    count = fix20_fixture.write(b, settings(), write_if_changed, ROOT)
+    g = globals_(b)
+    fix20_fixture.wiring(b, node_table(b), {k: v['local_id'] for k, v in spells(b).items()},
+                         dict(tuning={field: g[edid] for field, edid in TUNING_GLOBALS.items()},
+                              levels=[g[f'ESSB_Lvl_{k}'] for k in b.TREES]),
+                         write_if_changed, ROOT)
+    return count
+
+
+# ---------------------------------------------------------------- freshness, package, verify
 
 
 def perk_entries(record):
@@ -116,112 +306,10 @@ def entry51_count(record):
     return count
 
 
-def old_entries(b):
-    records, _ = b.read_plugin(OLD_ESP)
-    perk = next(r for r in records if r.edid == 'ESSB_P_HitProc')
-    entries = []
-    for prke, fields in perk_entries(perk):
-        assert prke[0] == ENTRY_POINT
-        entry = {'conditions': [], 'priority': prke[2]}
-        tab = None
-        for tag, value in fields:
-            if tag == 'DATA':
-                assert list(value) == [ENTRY_51, 10, 3]
-            elif tag == 'EPFD':
-                entry['spell'] = struct.unpack('<I', value)[0] & 0xffffff
-            elif tag == 'PRKC':
-                tab = value[0]
-            elif tag == 'CTDA':
-                entry['conditions'].append((tab, value))
-        entries.append(entry)
-    assert len(entries) == 74
-    return entries
-
-
-# Independent evaluator of the serialized CTDA (OR groups included). The first passing segment in
-# serialized order (R5 -> R1) wins; this is the specified first-success chain, see native-verification.md.
-VETO_FUNCTIONS = {453: 'teammate', 700: 'commanded', 46: 'dead', 569: 'blocking'}
-
-
-def oracle(entries, state):
-    def value_of(fn, param, val):
-        if fn == 74:
-            return {0x810: state['enabled'], 0x813: state['active'], 0x812: state['element']}[param]
-        if fn == 77:
-            band = round(100 / val)
-            return 0 if state['mask'] & (1 << (5 - band)) else 100
-        if fn in VETO_FUNCTIONS:
-            return state.get(VETO_FUNCTIONS[fn], 0)
-        return {597: state['weapon'], 673: state['power'], 286: state['sneak'], 640: state['hp']}[fn]
-
-    def passes(row):
-        group = False
-        for _tab, v in row['conditions']:
-            op = v[0]
-            val = struct.unpack_from('<f', v, 4)[0]
-            fn = struct.unpack_from('<H', v, 8)[0]
-            param = struct.unpack_from('<I', v, 12)[0] & 0xffffff
-            actual = value_of(fn, param, val)
-            ok = {0: actual == val, 0x20: actual != val, 0x60: actual >= val, 0x80: actual < val, 0xa0: actual <= val}[op & 0xe0]
-            group |= ok
-            if not op & 1:
-                if not group:
-                    return False
-                group = False
-        return True
-    return next((r['spell'] for r in entries if passes(r)), 0)
-
-
-def f32(x):
-    return struct.unpack('<f', struct.pack('<f', x))[0]
-
-
-BLOOD_HP = {0: 1.0, 1: 0.65, 2: 0.35, 3: 0.1, -1: -1.0}  # one health value inside each band; -1 = no band
-
-
-def production_states():
-    """Every Input BuildInput can produce: weapon 0/7/12, power, sneak, blood band only for element 6,
-    lightning band only for element 3 (chain stops at the first success)."""
-    for element in range(1, 12):
-        bloods = [0, 1, 2, 3, -1] if element == 6 else [-1]
-        lights = [5, 4, 3, 2, 1] if element == 3 else [0]
-        for weapon, power, sneak, blood, light in itertools.product([0, 7, 12], [0, 1], [0, 1], bloods, lights):
-            yield dict(element=element, weapon=weapon, power=power, sneak=sneak, blood=blood, lightning=light)
-
-
-def oracle_state(p, hp=None, mask=None):
-    light = p['lightning']
-    default_mask = 1 << (5 - light) if light >= 2 else 0
-    return dict(enabled=1, active=1, element=p['element'], weapon=p['weapon'], power=p['power'], sneak=p['sneak'],
-                hp=f32(BLOOD_HP[p['blood']] if hp is None else hp), mask=default_mask if mask is None else mask)
-
-
-def fixture(b):
-    """Write the production truth table and prove the reductions it relies on against the old ESP."""
-    entries = old_entries(b)
-    rows = []
-    for p in production_states():
-        expected = oracle(entries, oracle_state(p))
-        # Reductions the handler relies on, checked against the old segments rather than assumed:
-        if p['element'] != 6:  # health is not read for other elements
-            assert all(oracle(entries, oracle_state(p, hp=h)) == expected for h in (1.0, .65, .35, .1, -1.0)), p
-        if p['element'] != 3:  # RNG is not drawn for other elements
-            assert all(oracle(entries, oracle_state(p, mask=m)) == expected for m in range(16)), p
-        else:  # predicates after the first success are never evaluated, so their value must not matter
-            first = 5 - p['lightning']
-            later = [m for m in range(16) if (m & ((1 << first) - 1)) == 0 and (first == 4 or (m & (1 << first)) != 0)]
-            assert all(oracle(entries, oracle_state(p, mask=m)) == expected for m in later), p
-        for veto in VETO_FUNCTIONS.values():  # vetoes are filtered before selection; old ESP agrees they give nothing
-            assert oracle(entries, oracle_state(p) | {veto: 1}) == 0, (p, veto)
-        rows.append([p['element'], p['weapon'], p['power'], p['sneak'], p['blood'], p['lightning'], expected])
-    write_if_changed(TRUTH, '# element right_item power sneak blood lightning expected_spell (old-ESP oracle)\n'
-                     + ''.join(' '.join(map(str, r)) + '\n' for r in rows))
-    return len(rows)
-
-
 def input_paths():
     """Exactly what the DLL and its tests are generated from; nothing else forces a rebuild."""
-    paths = [ROOT / 'build/fix19_native.py', TRUTH, NATIVE / 'build.py', NATIVE / 'CMakeLists.txt',
+    paths = [ROOT / 'build/fix19_native.py', ROOT / 'build/fix20_records.py', ROOT / 'build/fix20_reference.py',
+             ROOT / 'build/fix20_fixture.py', TABLE, WIRING, NATIVE / 'build.py', NATIVE / 'CMakeLists.txt',
              NATIVE / 'dependencies.lock.json', NATIVE / 'toolchain.lock.json']
     for part in ['src', 'include', 'tests', 'cmake']:
         paths += [p for p in (NATIVE / part).rglob('*') if p.is_file()]
@@ -242,7 +330,6 @@ def check_deps():
 
 
 def require_fresh(b):
-    assert settings()['lightning_roll_mode'] == 'chain', 'Native slice requires pinned chain mode'
     dll = NATIVE / 'out/Release/ElementsSpellblade.dll'
     receipt = NATIVE / 'out/build-receipt.json'
     if not dll.is_file() or not receipt.is_file():
@@ -257,10 +344,13 @@ def require_fresh(b):
 
 
 def manifest(b):
-    selectable = selected_variants(b)
-    return {'schema': 1, 'plugin': b.PLUGIN, 'native_version': NATIVE_VERSION, 'runtime': '1.5.97.0', 'globals': globals_(b),
-            'spells': [{'local_id': v['id'], 'editor_id': v['edid'], 'key': key(v), 'selectable': v in selectable}
-                       for v in b.hit18.variants(b)]}
+    """Runtime identity file: the DLL checks every compiled constant against it and the ESP at data load."""
+    return {'schema': 2, 'plugin': b.PLUGIN, 'native_version': NATIVE_VERSION, 'runtime': '1.5.97.0',
+            'globals': globals_(b),
+            'proc_spells': [{'local_id': v['id'], 'editor_id': v['edid'], 'element': v['e'], 'power': v['p']} for v in proc_rows(b)],
+            'spells': spells(b), 'effects': effects(b), 'vanilla': vanilla(b),
+            'perks': {'main_base': b.ID_MAIN_PERK, 'branch_base': b.ID_BRANCH_PERK,
+                      'main_max_rank': b.plan_trees.MAIN_MAX_RANK, 'branch_slots': b.plan_trees.MAX_BRANCH}}
 
 
 def package(b):
@@ -271,6 +361,10 @@ def package(b):
     write_if_changed(folder / 'ElementsSpellblade/manifest.json', json.dumps(manifest(b), ensure_ascii=False, indent=2) + '\n')
 
 
+def effect_ids(record):
+    return [struct.unpack('<I', v)[0] & 0xffffff for k, v in record.ss if k == 'EFID']
+
+
 def verify(b):
     dll = require_fresh(b)
     records, meta = b.read_plugin(b.OUT / b.PLUGIN)
@@ -278,18 +372,45 @@ def verify(b):
     ours = {r.edid: entry51_count(r) for r in records if r.sig == 'PERK'}
     assert sum(ours.values()) == 0, {k: v for k, v in ours.items() if v}
     by = {r.edid: r for r in records}
+    key_id = {r.edid: int(r.key.split('|')[1], 16) for r in records}
     m = json.loads((b.OUT / 'SKSE/Plugins/ElementsSpellblade/manifest.json').read_text(encoding='utf8'))
     assert m == manifest(b)
-    for row in m['spells']:
-        assert by[row['editor_id']].key.endswith(f"|{row['local_id']:06X}"), row
+    for row in m['proc_spells']:
+        assert key_id[row['editor_id']] == row['local_id'], row
+        # The override hits every effect: a proc spell may carry only the damage effect and the magnitude-less
+        # engaged marker (lightning drain and the blood-rage bonus are separate casts since round 20).
+        fx = effect_ids(by[row['editor_id']])
+        assert len(fx) == 2 and fx[1] == b.ID_ENGAGED_EFFECT, (row['editor_id'], [hex(x) for x in fx])
+    for group in ('spells', 'effects'):
+        for name, row in m[group].items():
+            assert key_id[row['editor_id']] == row['local_id'], (group, name, row)
+    for name, row in m['spells'].items():
+        fx = effect_ids(by[row['editor_id']])
+        single = not name.startswith('kSilence')
+        assert (len(fx) == 1) if single else fx == [b.ID_SILENCE_EFFECT, b.util_effect_id(12)], (name, fx)
     for name, fid in m['globals'].items():
-        assert by[name].key.endswith(f'|{fid:06X}')
+        assert key_id[name] == fid, name
+    # Group B expectations must name the records the ESP really has.
+    wiring = json.loads(WIRING.read_text(encoding='utf8'))
+    trees = b.TREES
+    for name, ids in wiring['main_perks'].items():
+        t, r, k = wiring['slots'][name]
+        assert [key_id[f'ESSB_P_{trees[t]}_{r}_{k}_M{i + 1}'] for i in range(len(ids))] == ids, name
+    for name, fid in wiring['branch_perks'].items():
+        t, r, k, n = wiring['slots'][name]
+        assert key_id[f'ESSB_P_{trees[t]}_{r}_{k}_B{n + 1}'] == fid, name
+    for cast, fid in wiring['spells'].items():
+        assert m['spells'][cast]['local_id'] == fid
+    for field, fid in wiring['globals']['tuning'].items():
+        assert key_id[TUNING_GLOBALS[field]] == fid, field
     assert sha(dll) == sha(b.OUT / 'SKSE/Plugins/ElementsSpellblade.dll')
     test = NATIVE / 'out/Release/hit_pipeline_test.exe'
-    result = subprocess.run([str(test), str(TRUTH)], text=True, capture_output=True)
-    (ROOT / 'build/fix19-native-test.log').write_text(result.stdout + result.stderr, encoding='utf8')
+    result = subprocess.run([str(test), str(TABLE), str(WIRING)], text=True, capture_output=True)
+    (ROOT / 'build/fix20-native-test.log').write_text(result.stdout + result.stderr, encoding='utf8')
     assert result.returncode == 0, result.stdout + result.stderr
-    print(f'NATIVE ok: fresh DLL {NATIVE_VERSION} + exact dependencies + manifest/ESP identities; '
+    print(f'NATIVE ok: fresh DLL {NATIVE_VERSION} + exact dependencies + manifest/ESP identities (22 proc spells with one damage '
+          f'effect each, {len(m["spells"])} cast spells, {len(m["effects"])} effects, {len(m["globals"])} globals, '
+          f'{len(wiring["main_perks"])} main lines + {len(wiring["branch_perks"])} branches by EDID); '
           f'{len(ours)} PERK records scanned by PRKE type, 0 entry-point-51 entries')
     print(result.stdout.strip())
     return m

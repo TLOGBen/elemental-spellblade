@@ -125,7 +125,7 @@ def friendly_regression(folder):
             c.OnWeaponHit(v,w,None,0)
             assert not calls and not m.native['Actor.DoCombatSpellApply'] and not m.native['CustomSkills.AdvanceSkill'],kind
     c,t,p,v,w,clock,m,env,Glob=fixture(folder);c.OnWeaponHit(v,w,None,0)
-    assert m.native['Actor.DoCombatSpellApply']==(2 if 'ApplyBakedProc' in c.functions else 3) and m.native['CustomSkills.AdvanceSkill']==2
+    assert m.native['Actor.DoCombatSpellApply']==(2 if 'ApplyBakedProc' in c.functions or 'NativeProcUnit' in c.functions else 3) and m.native['CustomSkills.AdvanceSkill']==2
     return 'teammate/summon/reanimated, form on/off rejected before damage/mark/XP; neutral direct hit accepted'
 
 def menus(folder=NEW):

@@ -80,74 +80,71 @@ EndFunction
 
 ; ================================================================== 附傷倍率
 
-Float Function HitMult(ESSBController akCtl, Int aiElement, Actor akTarget, Bool abPower) Global
+Float Function HitExtra(ESSBController akCtl, Int aiElement, Actor akTarget, Bool abPower) Global
 	If aiElement == 8
-		Return PoisonHitMult(akCtl, akTarget, abPower)
+		Return PoisonHitExtra(akCtl, akTarget, abPower)
 	ElseIf aiElement == 9
-		Return WaterHitMult(akCtl, akTarget, abPower)
+		Return WaterHitExtra(akCtl, akTarget, abPower)
 	ElseIf aiElement == 10
-		Return DarkHitMult(akCtl, akTarget, abPower)
+		Return DarkHitExtra(akCtl, akTarget, abPower)
 	ElseIf aiElement == 11
-		Return AstralHitMult(akCtl, akTarget, abPower)
+		Return AstralHitExtra(akCtl, akTarget, abPower)
 	EndIf
-	Return 1.0
+	Return 0.0
 EndFunction
 
-; 5.10：毒附傷 +1%／點、同調每段 +1%／點、開印後 5 秒內 +1%／點。
-Float Function PoisonHitMult(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	Float mult = 1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 7, 0, 1), 0.01)
-	mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 7, 0, 3), 0.01) * akCtl.SyncStage()
+; 5.10：開印後 5 秒內 +1%／點（毒附傷與同調每段由 DLL 算）。
+Float Function PoisonHitExtra(ESSBController akCtl, Actor akTarget, Bool abPower) Global
 	If akCtl.GetOpenBoost(8) > 0
-		mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 7, 1, 1), 0.01)
+		Return ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 7, 1, 1), 0.01)
 	EndIf
-	Return mult
+	Return 0.0
 EndFunction
 
-; 5.11：水附傷 +1%／點、同調每段 +1%／點、開印後 5 秒內 +1%／點、
-; 水壓每層 +（10% + 1%／點）（「水壓」分支才會有層數）。
-Float Function WaterHitMult(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	Float mult = 1.0
+; 5.11：開印後 5 秒內 +1%／點、水壓每層 +（10% + 1%／點）（「水壓」分支才會有層數）。
+Float Function WaterHitExtra(ESSBController akCtl, Actor akTarget, Bool abPower) Global
+	Float extra = 0.0
 	If akCtl.GetOpenBoost(9) > 0
-		mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 8, 1, 1), 0.01)
+		extra = extra + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 8, 1, 1), 0.01)
 	EndIf
 	; 水壓層數只有「水壓」分支才會產生，沒投點就不查狀態容器（命中路徑）。
 	If ESSBNodes.Br(akCtl, 8, 0, 1, 0)
 		Int pressure = akCtl.GetStack(akTarget, 9)
 		If pressure > 0
 			Float perLayer = 0.1 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 8, 0, 2), 0.01)
-			mult = mult + pressure * perLayer * ESSBNodes.OmniMult(akCtl)
+			extra = extra + pressure * perLayer * ESSBNodes.OmniMult(akCtl)
 		EndIf
 	EndIf
-	Return mult
+	Return extra
 EndFunction
 
-; 5.12：暗附傷 +1%／點、同調每段 +1%／點、開印後 5 秒內 +1%／點、
-; 虛空（對魔力低於 25% 的施法者 ×1.5）。
-Float Function DarkHitMult(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	Float mult = 1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 9, 0, 1), 0.01)
-	mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 9, 0, 3), 0.01) * akCtl.SyncStage()
+; 5.12：開印後 5 秒內 +1%／點（暗附傷、同調每段、夜晚由 DLL 算；虛空見 DarkHitExtraMult）。
+Float Function DarkHitExtra(ESSBController akCtl, Actor akTarget, Bool abPower) Global
 	If akCtl.GetOpenBoost(10) > 0
-		mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 9, 1, 1), 0.01)
+		Return ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 9, 1, 1), 0.01)
 	EndIf
-	If ESSBNodes.Br(akCtl, 9, 0, 3, 0) && akTarget && ESSBNoForm.IsSpellUser(akCtl, akTarget) \
-		&& akTarget.GetActorValuePercentage("Magicka") < 0.25
-		mult = mult * 1.5
-	EndIf
-	Return mult
+	Return 0.0
 EndFunction
 
-; 5.13：星附傷 +1%／點、同調每段 +1%／點、開印後 5 秒內 +1%／點、
-; 星痕弱點（重擊時每層星痕 +8%）。
-Float Function AstralHitMult(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	Float mult = 1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 10, 0, 1), 0.01)
-	mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 10, 0, 3), 0.01) * akCtl.SyncStage()
+; 5.13：開印後 5 秒內 +1%／點、星痕弱點（重擊時每層星痕 +8%）（星附傷與同調每段由 DLL 算）。
+Float Function AstralHitExtra(ESSBController akCtl, Actor akTarget, Bool abPower) Global
+	Float extra = 0.0
 	If akCtl.GetOpenBoost(11) > 0
-		mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 10, 1, 1), 0.01)
+		extra = extra + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 10, 1, 1), 0.01)
 	EndIf
 	If abPower && ESSBNodes.Br(akCtl, 10, 0, 2, 0)
-		mult = mult + 0.08 * akCtl.GetStack(akTarget, 11) * ESSBNodes.OmniMult(akCtl)
+		extra = extra + 0.08 * akCtl.GetStack(akTarget, 11) * ESSBNodes.OmniMult(akCtl)
 	EndIf
-	Return mult
+	Return extra
+EndFunction
+
+; 5.12 持續大師分支「虛空」：對魔力低於 25% 的施法者 ×1.5（差額補丁的乘法項）。
+Float Function DarkHitExtraMult(ESSBController akCtl, Actor akTarget) Global
+	If ESSBNodes.Br(akCtl, 9, 0, 3, 0) && akTarget && ESSBNoForm.IsSpellUser(akCtl, akTarget) \
+		&& akTarget.GetActorValuePercentage("Magicka") < 0.25
+		Return 1.5
+	EndIf
+	Return 1.0
 EndFunction
 
 ; 5.12 持續專精主線「詛咒滿層目標受所有傷害 +1%／點」與
@@ -228,11 +225,7 @@ Function OnPoisonHit(ESSBController akCtl, Actor akTarget, Bool abPower) Global
 EndFunction
 
 Function OnWaterHit(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	Actor player = akCtl.ThePlayer()
-	; 5.11 持續新手分支「清流」：命中回復耐力 30。
-	If ESSBNodes.Br(akCtl, 8, 0, 0, 0) && player
-		akCtl.ApplyUtil(6, akCtl.WaterClearStamina.GetValue(), 0, player)
-	EndIf
+	; 5.11 持續新手分支「清流」（命中回復耐力）round 20 起由 DLL 在命中當下施放。
 	Bool wet = akCtl.IsWet(akTarget) || akCtl.IsEnvWet()
 	; 5.11 持續熟練分支「水壓」：命中浸濕目標 +1 水壓。
 	If wet && ESSBNodes.Br(akCtl, 8, 0, 1, 0)
@@ -261,7 +254,7 @@ Function OnDarkHit(ESSBController akCtl, Actor akTarget, Bool abPower) Global
 		akCtl.ApplyUtil(5, drain, 0, player)
 	EndIf
 	; 抗性侵蝕是詛咒狀態本身的效果（基礎 -2%／層，主線把它推到 -5%），
-	; 所以不像其他分支可以先用投點擋掉；一次命中一次狀態查詢，同血樹的 OnBloodHit。
+	; 所以不像其他分支可以先用投點擋掉；一次命中一次狀態查詢。
 	Int curse = akCtl.GetStack(akTarget, 10)
 	If curse <= 0
 		Return

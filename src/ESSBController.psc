@@ -39,7 +39,6 @@ GlobalVariable Property MultRecovery Auto
 GlobalVariable Property MultDrain Auto
 GlobalVariable Property MultDuration Auto
 GlobalVariable Property MultUpkeep Auto
-Float Property NoformBaseTrue = 5.0 Auto
 Float LastRecoveryScale = -1.0
 GlobalVariable Property ManabreakBase Auto
 GlobalVariable Property ManabreakPerRank Auto
@@ -109,13 +108,14 @@ Keyword Property CloakKeyword Auto
 
 ; Round 18: player-only proc cache and immutable-layout node mirrors.
 Perk Property HitProcPerk Auto
-Spell[] Property ProcVariants Auto
-Int[] Property ProcElements Auto
-Float[] Property ProcRatios Auto
-Int[] Property ProcPowers Auto
-Int[] Property ProcSneaks Auto
-Int[] Property ProcBloodBands Auto
 Spell[] Property HitBonusSpells Auto
+{差額補丁（ApplyProc）與極致的附傷法術；round 20 起 DLL 在命中時自己算強度，這裡只補目標側。}
+Spell Property BloodGuardSpell Auto
+{護血池：DLL 以強度＝池量灌入（血溢），離開形態時這裡清空。}
+Spell Property EchoPendingSpell Auto
+{餘響待發：切換時套上，DLL 在切換後第一擊結算前一元素附傷並移除它。}
+Spell Property TwinWindowSpell Auto
+{雙生視窗：切換時套上 30 秒，DLL 讀它決定左手命中是否另帶前一元素。}
 GlobalVariable Property GDivineArmed Auto
 GlobalVariable Property FormNotify Auto
 GlobalVariable Property FormSound Auto
@@ -127,9 +127,6 @@ Int[] Property BranchCacheA Auto
 Int[] Property BranchCacheB Auto
 Int[] Property LevelMirror Auto
 Bool Property NodeMirrorReady Auto
-Float[] ProcWritten
-Float[] DrainWritten
-Bool ProcCacheReady
 Int CachedSyncStage
 Bool SyncCacheReady
 Int AppliedElement
@@ -472,7 +469,6 @@ Int FxBudget
 Float FxBudgetTime
 
 ; 切換／終焉的一次性旗標
-Bool SwitchHitPending
 Bool SwitchEndPending
 Bool InSpread
 Int TrioMask
@@ -508,7 +504,6 @@ Event OnPlayerLoadGame()
 	LastRecoveryScale = -1.0
 	Ready = False
 	RuntimeCacheReady = False
-	ProcCacheReady = False
 	SyncCacheReady = False
 	NextTickAt = 0.0
 	RegisterForSingleUpdate(2.0)
@@ -1246,10 +1241,6 @@ Function Setup()
 	If !IsCurrentController() || StateBroken
 		Return
 	EndIf
-	InitProcCache()
-	If StateBroken
-		Return
-	EndIf
 	Trees.InitTables()
 	If !IsCurrentController() || StateBroken
 		Return
@@ -1308,7 +1299,6 @@ Function Setup()
 	; Publish readiness only after every initialization phase is complete.
 	AppliedElement = CurrentElement.GetValueInt()
 	RefreshSyncStage()
-	RefreshProcMagnitudes()
 	If StateBroken
 		Return
 	EndIf
@@ -1398,7 +1388,6 @@ Function SwitchForm(Int aiIndex)
 		OnFormSwitched(previous, aiIndex)
 	EndIf
 	OnFormOpened(aiIndex)
-	RefreshProcMagnitudes()
 	ScheduleTick(1.0)
 EndFunction
 
@@ -1417,6 +1406,15 @@ Function CloseForm()
 	EndIf
 	FormActive.SetValueInt(0)
 	CurrentElement.SetValueInt(0)
+	; 關形態不是切換：沒有餘響；護血池隨形態清空。
+	If player
+		If EchoPendingSpell
+			player.DispelSpell(EchoPendingSpell)
+		EndIf
+		If BloodGuardSpell
+			player.DispelSpell(BloodGuardSpell)
+		EndIf
+	EndIf
 	PrevElement = previous
 	If GPrevElement
 		GPrevElement.SetValueInt(previous)
@@ -1476,8 +1474,10 @@ Function OnFormSwitched(Int aiOldIndex, Int aiNewIndex)
 	If GPrevElement
 		GPrevElement.SetValueInt(aiOldIndex)
 	EndIf
-	; 5.2 關閉新手分支「餘響」與關閉專精主線：切換後首次命中附帶前一元素附傷。
-	SwitchHitPending = True
+	; 5.2 關閉新手分支「餘響」與關閉專精主線：切換後首次命中附帶前一元素附傷。DLL 讀這顆標記結算並移除它。
+	If ESSBNodes.EchoRatio(Self) > 0.0
+		ApplySelfMarker(EchoPendingSpell, 0)
+	EndIf
 	; 5.2 關閉大師分支「協奏」與傳奇分支「大協奏」：切換後首次終焉。
 	SwitchEndPending = True
 	; 5.2 關閉傳奇分支「雙生」：雙持時左手武器攜帶前一個形態的元素 30 秒。
@@ -1487,12 +1487,13 @@ Function OnFormSwitched(Int aiOldIndex, Int aiNewIndex)
 		If GTwinElement
 			GTwinElement.SetValueInt(aiOldIndex)
 		EndIf
+		; DLL 以這顆 30 秒標記判斷雙生是否仍在時限內（左手另帶 GTwinElement 的元素附傷）。
+		ApplySelfMarker(TwinWindowSpell, DurationInt(30.0))
 		If CachedDebugLevel >= 1
 			LogEvent(1, "node", "common twin element=" + aiOldIndex)
 		EndIf
 	EndIf
 	RefreshSyncStage()
-	RefreshProcMagnitudes()
 EndFunction
 
 ; 融斷（規劃 2.5）：關閉形態的瞬間，15 公尺內所有登記目標的印記一次結清為爆傷，
@@ -1762,19 +1763,15 @@ Event OnWeaponHit(ObjectReference akTarget, Form akSource, Projectile akProjecti
 		hitGeneration = RegGeneration[hitSlot]
 	EndIf
 	Bool opening = WillOpenInternal(targetActor, element, hitSlot)
-	Bool procSneak = caster.IsSneaking()
-	Bool procPower = PO3_SKSEFunctions.IsPowerAttacking(caster)
-	If ranged
-		procPower = procSneak
-	EndIf
 	Int nativeDamage = NoteDamageElement(targetActor, element)
 	If nativeDamage >= 0
 		SwapFloats[nativeDamage] = Utility.GetCurrentRealTime()
 	EndIf
-	If element != hitElement
-		ApplyBakedProc(targetActor, element, power, sneak)
-	Else
-		ApplyProc(targetActor, element, procPower, procSneak, opening, hitSlot, hitGeneration)
+	; Round 20 (N2): the DLL casts the element proc with the magnitude it computes from the hit flags, and for
+	; a 雙生 left-hand hit also the twin element's proc. Papyrus adds only the difference patch of the form's
+	; own element, with the same flag-based power / sneak the DLL used.
+	If element == hitElement
+		ApplyProc(targetActor, element, power, sneak, opening, hitSlot, hitGeneration)
 	EndIf
 
 	; 5.2 持續大師分支「極致」：同調三段時每 10 次命中額外一次全額附傷。
@@ -1782,25 +1779,14 @@ Event OnWeaponHit(ObjectReference akTarget, Form akSource, Projectile akProjecti
 		ExtremeCount += 1
 		If ExtremeCount >= 10
 			ExtremeCount = 0
-			ApplyBakedProc(targetActor, element, power, sneak)
+			ApplyExtraProc(targetActor, element, power, sneak)
 			If CachedDebugLevel >= 2
 				LogThrottled(2, "node", "common extreme extra proc element=" + element)
 			EndIf
 		EndIf
 	EndIf
 
-	; 5.2 關閉新手分支「餘響」＋關閉專精主線：切換後首次命中附帶前一元素附傷。
-	If SwitchHitPending && PrevElement >= 1 && PrevElement != element
-		SwitchHitPending = False
-		Float echo = ESSBNodes.EchoRatio(Self)
-		If echo > 0.0
-			ApplyDamage(PrevElement, ESSBReactions.BaseMax(Self, PrevElement) * echo \
-				* GetDamageMult(PrevElement), targetActor)
-			If CachedDebugLevel >= 2
-				LogThrottled(2, "node", "common echo element=" + PrevElement + " ratio=" + echo)
-			EndIf
-		EndIf
-	EndIf
+	; 5.2「餘響」與關閉專精主線：round 20 起由 DLL 在切換後第一擊結算（讀 ESSB_EchoPending，見 OnFormSwitched）。
 
 	; 規劃 1.1 血形態：重擊不消耗耐力，改扣生命（耐力那一半由 ESSB_P_BaseRules 的進入點做）。
 	If element == 6 && power
@@ -1828,10 +1814,15 @@ Event OnWeaponHit(ObjectReference akTarget, Form akSource, Projectile akProjecti
 	OnValidHitInternal(targetActor, element, power, hitSlot, hitGeneration)
 EndEvent
 
-; 附傷一次：D_hit = B × R × G(L) × M_mod，後兩項（M_ext、抗性）由引擎結算。
-; magnitude 在套用前設定在自有法術上（規劃 2.7「G(L) 的實作」、規劃 8「每擊隨機 B」）。
+; 差額補丁（round 20 起）：DLL 在命中當下算好並施放附傷（隨機 B、R、G、傷害倍率、節點與同調、血位與血怒、
+; 環境、亡靈魔族、驅魔、風潛行、雷暴擊），這裡只補 DLL 讀不到的：目標身上的狀態與腳本內的計時（到 N3 為止）。
+;   bonus = unit × ((S + X) × M − S)
+;   unit × S：DLL 那一份的期望值鏡像（平均 B、不含暴擊；NativeProcUnit × NativeNodeSum）
+;   X：加法項（熱度、開印後 5 秒、過熱、熔身、火域、冰封、電蝕、聖印易傷、水壓、星痕弱點；ESSBElem.HitExtra）
+;   M：乘法項（虛空、嗜血、御風／空中追擊、詛咒／星鎖／星域、終焉後、暗風多出的倍數、連殺、開印那一擊）
+; X = 0 且 M = 1 時補丁是 0，完全不施放。
 Function ApplyProc(Actor akTarget, Int aiElement, Bool abPower, Bool abSneak, Bool abOpening, Int aiSlot = -1, Int aiGeneration = -1)
-	If !TargetProcPossible(aiElement, abPower, abSneak, abOpening)
+	If !DifferencePossible(aiElement, abPower, abSneak, abOpening)
 		Return
 	EndIf
 	; No base delivery means no on-hit difference spell either. Status handling stays independent.
@@ -1841,36 +1832,171 @@ Function ApplyProc(Actor akTarget, Int aiElement, Bool abPower, Bool abSneak, Bo
 	If !akTarget || akTarget.IsDead() || aiElement < 1 || aiElement > 11
 		Return
 	EndIf
-	Float b = (ElementDamageMin[aiElement - 1] + ElementDamageMax[aiElement - 1]) * 0.5
-	If aiElement == 3
-		b = 13.0
-	EndIf
-	If abPower
-		b *= 1.5
-	EndIf
-	Float full = b * BaseDamageMult.GetValue() * GLevel(aiElement - 1) * GetHitMult(aiElement, akTarget, abPower)
-	Float base = PlayerProcBase(aiElement, abPower)
-	If aiElement == 6
-		base *= GetBloodHitMult()
-	EndIf
-	If aiElement == 5 && abSneak
-		Float sneakMult = ESSBElem2.SneakMult(Self)
-		base *= sneakMult
-		full *= sneakMult * ESSBElem2.KillStreakMult(Self)
-	EndIf
-	If abOpening
-		full *= ESSBNodes.OpenStrikeMult(Self) * ESSBElem.OpenStrikeMult(Self, aiElement)
-	EndIf
-	Float bonus = full - base
+	Float s = NativeNodeSum(aiElement, abPower)
+	Float x = ESSBElem.HitExtra(Self, aiElement, akTarget, abPower)
+	Float m = DifferenceMult(aiElement, akTarget, abSneak, abOpening, True)
+	Float bonus = NativeProcUnit(aiElement, abPower, abSneak, akTarget) * ((s + x) * m - s)
 	If bonus <= 0.0
 		Return
 	EndIf
+	ApplyBonusProc(akTarget, aiElement, bonus, aiSlot, aiGeneration)
+EndFunction
+
+Function ApplyBonusProc(Actor akTarget, Int aiElement, Float afAmount, Int aiSlot = -1, Int aiGeneration = -1)
 	Spell procSpell = HitBonusSpells[aiElement - 1]
-	procSpell.SetNthEffectMagnitude(0, bonus)
+	procSpell.SetNthEffectMagnitude(0, afAmount)
 	If aiElement == 3
-		procSpell.SetNthEffectMagnitude(1, DrainAmount(bonus * 0.5))
+		procSpell.SetNthEffectMagnitude(1, DrainAmount(afAmount * 0.5))
 	EndIf
 	ApplyTrackedDamage(ThePlayer(), procSpell, akTarget, aiElement, aiSlot, aiGeneration)
+EndFunction
+
+; 5.2 持續大師分支「極致」（N4 前留在 Papyrus）：額外一次全額附傷＝DLL 那一份的期望值 × 目標側。不消耗連殺。
+Function ApplyExtraProc(Actor akTarget, Int aiElement, Bool abPower, Bool abSneak)
+	If !akTarget || akTarget.IsDead() || aiElement < 1 || aiElement > 11 || NativeHit.GetValue() != 1.0
+		Return
+	EndIf
+	Float s = NativeNodeSum(aiElement, abPower)
+	Float x = ESSBElem.HitExtra(Self, aiElement, akTarget, abPower)
+	Float full = NativeProcUnit(aiElement, abPower, abSneak, akTarget) * (s + x) * DifferenceMult(aiElement, akTarget, abSneak, False, False)
+	If full > 0.0
+		ApplyBonusProc(akTarget, aiElement, full)
+	EndIf
+EndFunction
+
+; 差額補丁的乘法項 M（見 ApplyProc）。abConsumeStreak：連殺 ×2 會被消耗，只有真正的那一擊才問。
+Float Function DifferenceMult(Int aiElement, Actor akTarget, Bool abSneak, Bool abOpening, Bool abConsumeStreak)
+	Float mult = ESSBElem.HitExtraMult(Self, aiElement, akTarget) * ESSBElem2.TargetDamageMult(Self, akTarget) \
+		* ESSBElem3.TargetDamageMult(Self, akTarget)
+	Float now = Utility.GetCurrentRealTime()
+	; 5.8 持續熟練分支「飲血」的 10 秒「嗜血」：命中效果 +20%。
+	If BloodthirstLeft > 0 && BloodthirstLeft > now
+		mult *= 1.2
+	EndIf
+	; 各元素關閉專精主線「終焉後 5 秒內接管元素附傷 +1%／點」（結算好的加成，接管的元素都吃）。
+	If EndBoostLeft > 0 && EndBoostLeft > now
+		mult *= 1.0 + EndBoostAmount
+	EndIf
+	If aiElement == 5 && abSneak
+		; DLL 已乘潛行攻擊 ×3；暗風把它改成 ×5（多出的 5/3）與連殺 ×2 在這裡補（N4 前）。
+		mult *= ESSBElem2.SneakMult(Self) / 3.0
+		If abConsumeStreak
+			mult *= ESSBElem2.KillStreakMult(Self)
+		EndIf
+	EndIf
+	If abOpening
+		mult *= ESSBNodes.OpenStrikeMult(Self) * ESSBElem.OpenStrikeMult(Self, aiElement)
+	EndIf
+	Return mult
+EndFunction
+
+; DLL 那一份的鏡像，扣掉 1 + 節點合計（native/include/HitMath.h 的 RollProc，平均 B、不含暴擊）：
+; 平均 B × R × G × 傷害倍率 × 血位曲線與血怒 × 環境 × 亡靈魔族 × 驅魔 × 風潛行攻擊。
+; build/fix20_verify.py 以 build/fix20_reference.py（DLL 測試用的同一份參考模型）核對。
+Float Function NativeProcUnit(Int aiElement, Bool abPower, Bool abSneak, Actor akTarget)
+	Float unit = (ElementDamageMin[aiElement - 1] + ElementDamageMax[aiElement - 1]) * 0.5
+	If abPower
+		unit *= 1.5
+	EndIf
+	unit *= GLevel(aiElement - 1) * BaseDamageMult.GetValue()
+	If aiElement == 6
+		unit *= NativeBloodCurve()
+	EndIf
+	; 規劃 2.10：室內與地城沒有環境加成。
+	Actor player = ThePlayer()
+	If player && !player.IsInInterior()
+		Bool night = EnvNight.GetValueInt() == 1
+		If (aiElement == 10 && night) || (aiElement == 7 && !night)
+			unit *= 1.2
+		EndIf
+	EndIf
+	If aiElement == 7 && akTarget
+		If IsUndeadOrDaedra(akTarget)
+			unit *= 1.5
+		EndIf
+		; 5.9 持續新手分支「驅魔」：對死靈施法者傷害 +50%。
+		If ESSBNodes.Br(Self, 6, 0, 0, 1) && IsNecromancer(akTarget)
+			unit *= 1.5
+		EndIf
+	EndIf
+	If aiElement == 5 && abSneak
+		unit *= 3.0
+	EndIf
+	Return unit
+EndFunction
+
+; DLL 那一份的節點合計鏡像（HitMath.h 的 NodeSum）：1 + 通用樹四條 + 該元素持續熟練與大師主線（水沒有）。
+Float Function NativeNodeSum(Int aiElement, Bool abPower)
+	Float sum = ESSBNodes.CommonHitMult(Self, aiElement, abPower)
+	If aiElement != 9
+		Int tree = aiElement - 1
+		sum += ESSBNodes.Pct(Self, Rank(tree, 0, 1), 0.01)
+		sum += ESSBNodes.Pct(Self, Rank(tree, 0, 3), 0.01) * SyncStage()
+	EndIf
+	Return sum
+EndFunction
+
+; v0.4 1.1 血位的命中倍率（線性：100% ×1.3、70% ×1.1、30% ×0.8、10% ×0.6）與血怒 ×1.15，DLL 的鏡像。
+Float Function NativeBloodCurve()
+	Actor player = ThePlayer()
+	If !player
+		Return 1.0
+	EndIf
+	Float mult = LinearBloodCurve(BloodPercent(), 1.3, 1.1, 0.8, 0.6)
+	Float raw = player.GetActorValuePercentage("Health")
+	If ESSBNodes.Br(Self, 5, 0, 3, 1) && raw >= 0.3 && raw <= 0.7
+		mult *= 1.15
+	EndIf
+	Return mult
+EndFunction
+
+; 100%／70%／30%／10% 四點之間線性內插，兩端外持平。
+Float Function LinearBloodCurve(Float afPercent, Float af100, Float af70, Float af30, Float af10)
+	If afPercent >= 1.0
+		Return af100
+	ElseIf afPercent >= 0.7
+		Return af70 + (afPercent - 0.7) / 0.3 * (af100 - af70)
+	ElseIf afPercent >= 0.3
+		Return af30 + (afPercent - 0.3) / 0.4 * (af70 - af30)
+	ElseIf afPercent >= 0.1
+		Return af10 + (afPercent - 0.1) / 0.2 * (af30 - af10)
+	EndIf
+	Return af10
+EndFunction
+
+; 差額補丁可能不是 0 嗎？先只看節點與腳本計時（零跨實體呼叫），需要時才讀目標狀態（效能守則）。
+Bool Function DifferencePossible(Int aiElement, Bool abPower, Bool abSneak, Bool abOpening)
+	; 火的熱度與神聖的聖印易傷不需要投點。
+	If aiElement == 1 || aiElement == 7
+		Return True
+	EndIf
+	Float now = Utility.GetCurrentRealTime()
+	If (BloodthirstLeft > 0 && BloodthirstLeft > now) || (EndBoostLeft > 0 && EndBoostLeft > now)
+		Return True
+	EndIf
+	If GetOpenBoost(aiElement) > 0 && Rank(aiElement - 1, 1, 1) > 0
+		Return True
+	EndIf
+	If Br(4, 0, 4, 0) || Br(4, 2, 4, 0) || Rank(9, 0, 2) > 0 || Br(10, 1, 3, 0) || Br(10, 2, 4, 0)
+		Return True
+	EndIf
+	If abOpening && (Br(12, 1, 3, 0) || Br(aiElement - 1, 1, 1, 0))
+		Return True
+	EndIf
+	If aiElement == 2
+		Return Rank(1, 0, 2) > 0
+	ElseIf aiElement == 3
+		Return Br(2, 1, 3, 2)
+	ElseIf aiElement == 5
+		Return abSneak && (Br(4, 2, 4, 1) || Br(4, 0, 3, 2))
+	ElseIf aiElement == 9
+		Return Br(8, 0, 1, 0)
+	ElseIf aiElement == 10
+		Return Br(9, 0, 3, 0)
+	ElseIf aiElement == 11
+		Return abPower && Br(10, 0, 2, 0)
+	EndIf
+	Return False
 EndFunction
 
 ; 這一擊會不會是開印（登記表裡還沒有這個元素）。附傷倍率要在套用前就知道。
@@ -1896,7 +2022,7 @@ Function OnNoFormHit(Actor akTarget, Weapon akWeapon, Bool abPower)
 	EndIf
 	RiposteLeft = 0
 	MarkEngaged(akTarget)
-	ApplyNoFormBaseline(akTarget, abPower, riposte)
+	; Round 20 (N2): the baseline true damage, 吸魔, 小滅法 and 滅法 are cast by the DLL at hit time.
 	Float now = Utility.GetCurrentRealTime()
 	; 5.1 純武藝專精分支「節奏」：4 秒內連續命中 3 次。
 	If now - ComboTime > 4.0
@@ -1913,22 +2039,12 @@ Function OnNoFormHit(Actor akTarget, Weapon akWeapon, Bool abPower)
 		ESSBNoForm.OnCombo(Self, ComboHits)
 	EndIf
 	ESSBNoForm.OnMartialHit(Self, akTarget, akWeapon, abPower, riposte)
-	ESSBNoForm.OnManaBreak(Self, akTarget, abPower, hitCasting)
+	ESSBNoForm.OnInterruptCast(Self, akTarget, hitCasting)
 	; 5.1 融斷熟練主線「餘燼」：關閉形態後 N 秒內無形態命中附帶前一元素附傷。
 	Float ember = ESSBNoForm.EmberRatio(Self)
 	If ember > 0.0 && EmberElem >= 1
 		ApplyDamage(EmberElem, ESSBReactions.BaseMax(Self, EmberElem) * ember * GetDamageMult(EmberElem), akTarget)
 	EndIf
-EndFunction
-
-; fix round 8 documented addition: exact baseline, independent of purchased nodes.
-; G and BaseDamageMult are applied only in ApplyTrueDamage; hit dispatcher owns XP.
-Function ApplyNoFormBaseline(Actor akTarget, Bool abPower, Float afRiposte = 1.0)
-	Float amount = NoformBaseTrue * afRiposte
-	If abPower
-		amount = amount * 1.5
-	EndIf
-	ApplyTrueDamage(amount, akTarget, 11, False, False, True)
 EndFunction
 
 Bool Function LastHitWasPower()
@@ -3019,21 +3135,6 @@ Float Function GetDamageMult(Int aiElement)
 	Return mult
 EndFunction
 
-; 附傷專用的 M_mod：共通項 × 通用樹 × 該元素樹（規劃 2.7）。
-; 一次乘完，不出現「A 加成再乘 B 加成再乘 A」的疊乘。
-Float Function GetHitMult(Int aiElement, Actor akTarget, Bool abPower)
-	Float mult = GetDamageMult(aiElement) * ESSBNodes.CommonHitMult(Self, aiElement, abPower) \
-		* ESSBElem.HitMult(Self, aiElement, akTarget, abPower) \
-		* ESSBElem2.TargetDamageMult(Self, akTarget) \
-		* ESSBElem3.TargetDamageMult(Self, akTarget)
-	; 各元素關閉專精主線「終焉後 5 秒內接管元素附傷 +1%／點」：加成隨終焉的元素結算好存起來，
-	; 之後不管接管的是哪個元素都吃同一份（規劃 2.6 的「接管元素」語意）。
-	If (EndBoostLeft > 0 && EndBoostLeft > Utility.GetCurrentRealTime())
-		mult = mult * (1.0 + EndBoostAmount)
-	EndIf
-	Return mult
-EndFunction
-
 ; ---------------------------------------------------------------- 節點框架的讀取入口
 
 Int Function Rank(Int aiTree, Int aiRoute, Int aiTier)
@@ -3097,7 +3198,6 @@ Function RefreshTrees()
 	EndIf
 	Trees.RefreshActive(tree)
 	RefreshSyncStage()
-	RefreshProcMagnitudes()
 EndFunction
 
 ; 自有常駐能力（抗咒、溫血、感應）：條件變動時加掛或移除，不用條件式常駐能力，
@@ -3156,7 +3256,6 @@ Function RefreshAbilities()
 	RefreshWindAbilities()
 	RefreshDivineProtection()
 	RefreshSyncStage()
-	RefreshProcMagnitudes()
 EndFunction
 
 Function SyncAbility(Actor akPlayer, Spell akAbility, Bool abWanted)
@@ -3352,7 +3451,7 @@ Function PayBloodCost(Float afPercentOfMax)
 	EndIf
 EndFunction
 
-; 吸血：溢出的部分由「血盾」轉為臨時護盾（上限 20% 生命）。
+; 反應的吸血回血（開印、血潮；命中吸血 round 20 起在 DLL）。
 Function Leech(Float afAmount)
 	Actor player = ThePlayer()
 	If !player || afAmount <= 0.0
@@ -3367,16 +3466,8 @@ Function Leech(Float afAmount)
 	If heal > 0.0
 		ApplyUtil(4, heal, 0, player, True)
 	EndIf
-	; 5.8 持續熟練分支「血盾」：吸血溢出轉為臨時護盾，上限 20% 生命。
-	Float overflow = afAmount - heal
-	If overflow > 0.0 && ESSBNodes.Br(Self, 5, 0, 1, 1)
-		Float cap = player.GetActorValueMax("Health") * 0.2
-		If overflow > cap
-			overflow = cap
-		EndIf
-		ApplyUtil(19, overflow, 20, player, True)
-		ApplyUtil(4, overflow, 0, player, True)
-	EndIf
+	; round 20：同一格的節點在 v0.4 是「血溢」（命中吸血的溢出灌進護血池，由 DLL 做）。反應的回血
+	;（開印、血潮）到 N3 進 DLL 之前，溢出不灌池。
 EndFunction
 
 ; ---------------------------------------------------------------- 同調
@@ -3477,7 +3568,6 @@ Function OnSyncStage(Int aiStage)
 			+ " element=" + CurrentElement.GetValueInt())
 	EndIf
 	RefreshSyncStage()
-	RefreshProcMagnitudes()
 	RefreshDivineProtection()
 EndFunction
 
@@ -3554,9 +3644,6 @@ Function AddSelf(Int aiKind, Int aiAmount)
 			GOverheat.SetValueInt(SelfOverheat)
 		EndIf
 	EndIf
-	If aiKind == 4 && before != SelfOverheat
-		RefreshProcMagnitudes()
-	EndIf
 EndFunction
 
 ; 樣式 C 的鏡射：電荷、過熱、冰盾、戰意寫進全域變數給 PERK 進入點。
@@ -3615,9 +3702,6 @@ Function ClearSelf(Int aiKind)
 			GOverheat.SetValueInt(0)
 		EndIf
 	EndIf
-	If aiKind == 4 && before != SelfOverheat
-		RefreshProcMagnitudes()
-	EndIf
 EndFunction
 
 Function ClearSelfAll()
@@ -3635,7 +3719,23 @@ Function ClearSelfAll()
 	PushSelf()
 	SyncRockArmor()
 	RefreshSyncStage()
-	RefreshProcMagnitudes()
+	; 護血池（DLL 灌入的血溢）也是疊在你身上的資源：離開形態清空（v0.4 2.3）。
+	Actor player = ThePlayer()
+	If player && BloodGuardSpell
+		player.DispelSpell(BloodGuardSpell)
+	EndIf
+EndFunction
+
+; DLL 讀的自身標記（餘響待發、雙生視窗）：套在玩家身上；aiSeconds > 0 時先寫時長。
+Function ApplySelfMarker(Spell akMarker, Int aiSeconds)
+	Actor player = ThePlayer()
+	If !player || !akMarker
+		Return
+	EndIf
+	If aiSeconds > 0
+		akMarker.SetNthEffectDuration(0, aiSeconds)
+	EndIf
+	player.DoCombatSpellApply(akMarker, player)
 EndFunction
 
 ; 岩甲是層數管理的持續能力；只在數值變化或能力遺失時重掛。
@@ -3989,7 +4089,6 @@ Function TickTimers()
 	If !IsOperational()
 		Return
 	EndIf
-	Bool procDirty = False
 	Int oldStage = CachedSyncStage
 	Float now = Utility.GetCurrentRealTime()
 	If MoltenLeft > 0
@@ -4001,7 +4100,6 @@ Function TickTimers()
 		MoltenTickAt += ticks
 		If now >= MoltenLeft
 			MoltenLeft = 0.0
-			procDirty = True
 		EndIf
 		Actor player = ThePlayer()
 		If player && ticks > 0
@@ -4063,7 +4161,6 @@ Function TickTimers()
 	If BloodthirstLeft > 0
 		If now >= BloodthirstLeft
 			BloodthirstLeft = 0.0
-			procDirty = True
 		EndIf
 		SetGlobal(GBloodthirst, SecondsLeft(BloodthirstLeft))
 	EndIf
@@ -4104,7 +4201,6 @@ Function TickTimers()
 	If EndBoostLeft > 0
 		If now >= EndBoostLeft
 			EndBoostLeft = 0.0
-			procDirty = True
 		EndIf
 		If EndBoostLeft <= 0
 			EndBoostAmount = 0.0
@@ -4159,7 +4255,6 @@ Function TickTimers()
 		If OpenBoost[slot] > 0
 			If Utility.GetCurrentRealTime() >= OpenBoost[slot]
 				OpenBoost[slot] = 0.0
-			procDirty = True
 			EndIf
 		EndIf
 		If EndBoost[slot] > 0
@@ -4174,9 +4269,6 @@ Function TickTimers()
 	If oldStage != CachedSyncStage
 		PushSyncStage()
 		RefreshDivineProtection()
-	EndIf
-	If procDirty || oldStage != CachedSyncStage
-		RefreshProcMagnitudes()
 	EndIf
 EndFunction
 
@@ -4262,9 +4354,6 @@ Function EnvCheck()
 				+ " classification=" + classification)
 		EndIf
 	EndIf
-	If changed
-		RefreshProcMagnitudes()
-	EndIf
 EndFunction
 
 Bool Function IsEnvWet()
@@ -4331,7 +4420,6 @@ Function SetMolten(Int aiSeconds)
 	MoltenLeft = Utility.GetCurrentRealTime() + aiSeconds
 	SetGlobal(GMolten, SecondsLeft(MoltenLeft))
 	RefreshSyncStage()
-	RefreshProcMagnitudes()
 EndFunction
 
 Int Function GetMoltenLeft()
@@ -4431,7 +4519,6 @@ Function SetOpenBoost(Int aiElement, Int aiSeconds)
 		OpenBoost[aiElement] = Utility.GetCurrentRealTime() + aiSeconds
 	EndIf
 	RefreshSyncStage()
-	RefreshProcMagnitudes()
 EndFunction
 
 Int Function GetOpenBoost(Int aiElement)
@@ -4455,7 +4542,6 @@ Function SetEndBoost(Int aiElement, Int aiSeconds, Float afBonus = 0.0)
 		EndBoostAmount = afBonus
 	EndIf
 	RefreshSyncStage()
-	RefreshProcMagnitudes()
 EndFunction
 
 Int Function GetEndBoost(Int aiElement)
@@ -5112,7 +5198,6 @@ Function SetBloodthirst(Int aiSeconds)
 	BloodthirstLeft = Utility.GetCurrentRealTime() + aiSeconds
 	SetGlobal(GBloodthirst, SecondsLeft(BloodthirstLeft))
 	RefreshSyncStage()
-	RefreshProcMagnitudes()
 EndFunction
 
 Int Function GetBloodthirst()
@@ -6990,25 +7075,7 @@ Bool Function ValidateBindings()
 	If !HitProcPerk
 		Return False
 	EndIf
-	If !ProcVariants
-		Return False
-	EndIf
-	If !ProcElements
-		Return False
-	EndIf
-	If !ProcRatios
-		Return False
-	EndIf
-	If !ProcPowers
-		Return False
-	EndIf
-	If !ProcSneaks
-		Return False
-	EndIf
-	If !ProcBloodBands
-		Return False
-	EndIf
-	If !HitBonusSpells
+	If !HitBonusSpells || !BloodGuardSpell || !EchoPendingSpell || !TwinWindowSpell
 		Return False
 	EndIf
 	If !GDivineArmed
@@ -7026,17 +7093,10 @@ Bool Function ValidateBindings()
 	If !InputLayer
 		Return False
 	EndIf
-	If ProcVariants.Length != 42 || ProcElements.Length != 42 || ProcRatios.Length != 42 || ProcPowers.Length != 42 || ProcSneaks.Length != 42 || ProcBloodBands.Length != 42 || HitBonusSpells.Length != 11
+	If HitBonusSpells.Length != 11
 		Return False
 	EndIf
 	Int checkProc = 0
-	While checkProc < ProcVariants.Length
-		If !ProcVariants[checkProc] || ProcElements[checkProc] < 1 || ProcElements[checkProc] > 11 || ProcRatios[checkProc] <= 0.0
-			Return False
-		EndIf
-		checkProc += 1
-	EndWhile
-	checkProc = 0
 	While checkProc < HitBonusSpells.Length
 		If !HitBonusSpells[checkProc]
 			Return False
@@ -7114,7 +7174,6 @@ Function RefreshRuntimeValues()
 	CachedSync = Sync.GetValueInt()
 	RuntimeCacheReady = True
 	RefreshSyncStage()
-	RefreshProcMagnitudes()
 EndFunction
 
 Event OnMenuClose(String asMenuName)
@@ -7716,52 +7775,6 @@ Function RefreshSyncStage()
 	SyncCacheReady = True
 EndFunction
 
-Float Function PlayerElementMult(Int aiElement)
-	Int tree = aiElement - 1
-	Float mult = 1.0
-	If aiElement != 9
-		mult += ESSBNodes.Pct(Self, Rank(tree, 0, 1), 0.01)
-		mult += ESSBNodes.Pct(Self, Rank(tree, 0, 3), 0.01) * SyncStage()
-	EndIf
-	If aiElement != 5 && GetOpenBoost(aiElement) > 0
-		mult += ESSBNodes.Pct(Self, Rank(tree, 1, 1), 0.01)
-	EndIf
-	If aiElement == 1
-		If SelfOverheat > 0
-			If Br(0, 0, 4, 1)
-				mult += 0.8
-			Else
-				mult += 0.5
-			EndIf
-		EndIf
-		If GetMoltenLeft() > 0
-			mult += 1.0
-		EndIf
-	EndIf
-	Return mult
-EndFunction
-
-Float Function PlayerProcBase(Int aiElement, Bool abPower)
-	Float b = (ElementDamageMin[aiElement - 1] + ElementDamageMax[aiElement - 1]) * 0.5
-	If aiElement == 3
-		b = 13.0
-	EndIf
-	If abPower
-		b *= 1.5
-	EndIf
-	Float common = 1.0
-	If BloodthirstLeft > Utility.GetCurrentRealTime()
-		common *= 1.2
-	EndIf
-	If (aiElement == 7 && EnvNight.GetValueInt() == 0) || (aiElement == 10 && EnvNight.GetValueInt() == 1)
-		common *= 1.2
-	EndIf
-	If EndBoostLeft > Utility.GetCurrentRealTime()
-		common *= 1.0 + EndBoostAmount
-	EndIf
-	Return b * BaseDamageMult.GetValue() * GLevel(aiElement - 1) * common * ESSBNodes.CommonHitMult(Self, aiElement, abPower) * PlayerElementMult(aiElement)
-EndFunction
-
 Float Function BloodBandMult(Int aiBand)
 	Int band = aiBand
 	If Br(5, 0, 2, 0)
@@ -7775,89 +7788,6 @@ Float Function BloodBandMult(Int aiBand)
 		Return 0.85
 	EndIf
 	Return 0.6
-EndFunction
-
-Function RefreshProcMagnitudes()
-	If StateBroken || !NodeMirrorReady || !ProcVariants
-		Return
-	EndIf
-	InitProcCache()
-	If StateBroken
-		Return
-	EndIf
-	Int i = 0
-	While i < ProcVariants.Length
-		Int e = ProcElements[i]
-		Float value = PlayerProcBase(e, ProcPowers[i] == 1) * ProcRatios[i]
-		If ProcSneaks[i] == 1
-			value *= ESSBElem2.SneakMult(Self)
-		EndIf
-		If e == 6
-			value *= BloodBandMult(ProcBloodBands[i])
-		EndIf
-		If value != ProcWritten[i]
-			ProcVariants[i].SetNthEffectMagnitude(0, value)
-			ProcWritten[i] = value
-			If e == 6
-				ProcVariants[i].SetNthEffectMagnitude(1, value * 0.15)
-			EndIf
-		EndIf
-		If e == 3
-			Float drain = DrainAmount(value * 0.5)
-			If drain != DrainWritten[i]
-				ProcVariants[i].SetNthEffectMagnitude(1, drain)
-				DrainWritten[i] = drain
-			EndIf
-		EndIf
-		i += 1
-	EndWhile
-EndFunction
-
-Bool Function TargetProcPossible(Int aiElement, Bool abPower, Bool abSneak, Bool abOpening)
-	; Innate heat and holy vulnerability exist even with zero purchased nodes.
-	If aiElement == 1 || aiElement == 7
-		Return True
-	EndIf
-	If Br(4, 0, 4, 0) || Br(4, 2, 4, 0) || Rank(9, 0, 2) > 0 || Br(10, 1, 3, 0) || Br(10, 2, 4, 0)
-		Return True
-	EndIf
-	If abOpening && (Br(12, 1, 3, 0) || Br(aiElement - 1, 1, 1, 0))
-		Return True
-	EndIf
-	If aiElement == 2
-		Return Rank(1, 0, 2) > 0
-	ElseIf aiElement == 3
-		Return Br(2, 1, 3, 2)
-	ElseIf aiElement == 5
-		Return abSneak && Br(4, 2, 4, 1)
-	ElseIf aiElement == 9
-		Return Br(8, 0, 1, 0)
-	ElseIf aiElement == 10
-		Return Br(9, 0, 3, 0)
-	ElseIf aiElement == 11
-		Return abPower && Br(10, 0, 2, 0)
-	EndIf
-	Return False
-EndFunction
-
-Function ApplyBakedProc(Actor akTarget, Int aiElement, Bool abPower, Bool abSneak)
-	If !akTarget || akTarget.IsDead() || !ProcCacheReady
-		Return
-	EndIf
-	Int wantedBand = 0
-	If aiElement == 6
-		wantedBand = BloodBand(ThePlayer().GetActorValuePercentage("Health"))
-	EndIf
-	Int i = 0
-	While i < ProcVariants.Length
-		If ProcElements[i] == aiElement && ProcPowers[i] == (abPower as Int) && ProcBloodBands[i] == wantedBand
-			If aiElement != 5 || ProcSneaks[i] == (abSneak as Int)
-				ApplyTrackedDamage(ThePlayer(), ProcVariants[i], akTarget, aiElement)
-				Return
-			EndIf
-		EndIf
-		i += 1
-	EndWhile
 EndFunction
 
 Int Function BloodBand(Float percent)
@@ -7877,23 +7807,3 @@ Function OnLethalHitWhileArmed()
 	EndIf
 EndFunction
 
-Function InitProcCache()
-	If StateBroken
-		Return
-	EndIf
-	If !ProcCacheReady
-		ProcWritten = new Float[64]
-		DrainWritten = new Float[64]
-		If !ProcWritten || !DrainWritten
-			BreakState()
-			Return
-		EndIf
-		Int j = 0
-		While j < 64
-			ProcWritten[j] = -1.0
-			DrainWritten[j] = -1.0
-			j += 1
-		EndWhile
-		ProcCacheReady = True
-	EndIf
-EndFunction

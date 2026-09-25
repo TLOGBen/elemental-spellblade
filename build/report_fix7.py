@@ -81,14 +81,49 @@ spec=[
 ('Return 1',None,'AstralDelay；固定桶引爆延遲，G／Duration 豁免'),
 ('RestoreActorValue("Health", 1.0 - player.GetActorValue("Health"))',None,'神佑保命 1 HP，G／Recovery 豁免')]
 assert len(spec)==60
+# Round 20 (N2): these producers moved. Five into the DLL's hit plan (native/include/HitMath.h, which casts
+# with a per-hit magnitude override), one to the trimmed 斷咒 helper. Row: (file, function, needle, tree, sink).
+# For DLL rows the tree's G must appear once as TreeG(t, TreeOf(kX)); the leech rides on the proc's own G.
+MOVED={
+ 2:('native/include/HitMath.h','AddBloodLeech','procMagnitude * LeechRatio(p, nodes)',5,'Cast::kHeal / kBloodGuard；G 在附傷強度（RollProc）裡乘過一次'),
+ 4:('src/ESSBNoForm.psc','OnInterruptCast','ApplySilenceSpell(akTarget, 1)',None,'ApplySilenceSpell → DurationInt；G 豁免'),
+ 5:('native/include/HitMath.h','SilenceSeconds','const float wanted =',None,'Cast::kSilence（固定時長法術）；G 豁免'),
+ 11:('native/include/HitMath.h','AddFlatHitNodes','const float cut = 3.0f',3,'Cast::kDrainStamina；回耐 ×0.5 另一步'),
+ 16:('native/include/HitMath.h','AddFlatHitNodes','25.0f * TreeG(t, TreeOf(kWind))',4,'Cast::kRestoreStamina'),
+ 20:('native/include/HitMath.h','AddFlatHitNodes','const float cut = 3.0f',3,'Cast::kDrainStamina；Cast::kRestoreStamina 取同一 cut ×0.5'),
+}
+DLL_TREE={3:'kEarth',4:'kWind',5:'kBlood'}
+def cpp_body(path,fn):
+    s=(ROOT/path).read_text(encoding='utf-8')
+    m=re.search(r'^constexpr [^\n(]*\b'+fn+r'\([^\n]*\n.*?^\}',s,re.M|re.S)
+    assert m,(path,fn)
+    return s,m
 proof=[]
 for i,(row,sp) in enumerate(zip(rows,spec),1):
     file,fn=row[7].split(':');file=file.removeprefix('src/')
     if i==60:file,fn='ESSBController.psc','RefreshDivineProtection'
+    if i in MOVED and MOVED[i][0].startswith('native/'):
+        path,fn,needle,tree,sink=MOVED[i]
+        s,m=cpp_body(path,fn)
+        hits=[(j,l.strip()) for j,l in enumerate(m[0].splitlines()) if needle in l]
+        assert hits,(i,path,fn,needle)
+        j,line=hits[0];ln=s[:m.start()].count('\n')+j+1
+        if i==2:
+            # D x ratio: no G of its own; the proc magnitude already carries G(blood) once.
+            _,proc=cpp_body(path,'RollProc')
+            assert 'TreeG(' not in m[0] and proc[0].count('TreeG(')==1,(i,'leech G')
+        elif tree is not None:
+            expected=f'TreeG(t, TreeOf({DLL_TREE[tree]}))'
+            assert expected in line and line.count('TreeG(')==1,(i,line,expected)
+        proof.append(dict(id=f'{i:02}',tree=tree,site=f'{path}:{fn}',line=ln,expression=line,sink=sink,G=0 if tree is None else 1))
+        continue
+    if i in MOVED:
+        path,fn,needle,tree,sink=MOVED[i];file=path.removeprefix('src/')
+        spec[i-1]=(needle,tree,sink)
     s=(ROOT/'src'/file).read_text(encoding='utf-8')
     m=re.search(r'^[^\n]*\b(?:Function|Event) '+fn+r'\([^\n]*\n.*?^End(?:Function|Event)',s,re.M|re.S)
     assert m,(i,file,fn)
-    needle,tree,sink=sp
+    needle,tree,sink=spec[i-1]
     hits=[(j,l.strip()) for j,l in enumerate(m[0].splitlines()) if needle in l]
     assert hits,(i,file,fn,needle)
     j,line=hits[0];ln=s[:m.start()].count('\n')+j+1

@@ -70,6 +70,10 @@ def regression_a(folder):
     assert ash(c,killing(c,holy)), 'divine lethal positive control'
     if 'ApplyBakedProc' in c.functions:
         c.NoteDamageElement(dark,10);c.ApplyBakedProc(dark,10,False,False)
+    elif 'NativeProcUnit' in c.functions:
+        # Round 20: the DLL casts the proc; OnWeaponHit records the victim's element and time unconditionally
+        # (as it does since round 18), and the Papyrus difference patch (nothing to add here) must not disturb it.
+        slot=c.NoteDamageElement(dark,10);c.SwapFloats[slot]=100.0;c.ApplyProc(dark,10,False,False,False)
     else:c.ApplyProc(dark,10,False,False,False)
     assert not ash(c,killing(c,dark)), 'another victim inherited divine damage'
     assert killing(c,dark)==10, 'darkness proc missing victim provenance'
@@ -114,7 +118,8 @@ def regression_a(folder):
     c.FormActive.v=0;assert not e.ShouldAsh(c,10)
     # Confirm all actual health delivery sites route through the wrapper.
     source=c.path.read_text(encoding='utf8')
-    for fn in ('ApplyProc','ApplyDamageRaw','ApplyTrueDamage','Execute','ApplyUtil'):
+    # Round 20: the difference patch delivers through ApplyBonusProc (shared with 極致).
+    for fn in ('ApplyBonusProc' if 'ApplyBonusProc' in c.functions else 'ApplyProc','ApplyDamageRaw','ApplyTrueDamage','Execute','ApplyUtil'):
         assert any('ApplyTrackedDamage(' in line for line in c.functions[fn][2]),fn
     assert 'Int LastDamageElement' not in source
     assert not re.search(r'NoteDamageElement\(\d', '\n'.join(p.read_text(encoding='utf8') for p in folder.glob('*.psc')))

@@ -51,11 +51,19 @@ def terminal_hit(folder):
  return 'fatal sneak/power/weapon captured; target-owned streak once; wind+ambush; no dead proc'
 
 def riposte(folder):
- f=setup(folder);amounts=[]
+ f=setup(folder);amounts=[];ripostes=[]
  f.c.fields.update(NoformBaseTrue=5.,GCombo=None)
  f.c.overrides.update(MarkEngaged=lambda *a:None,ApplyTrueDamage=lambda amount,*a:amounts.append(amount),RecentCast=lambda *a:False)
- f.env['ESSBNoForm']=NS(IsCasting=lambda *a:False,OnCombo=lambda *a:None,OnMartialHit=lambda *a:None,OnManaBreak=lambda *a:None,EmberRatio=lambda *a:0)
+ f.env['ESSBNoForm']=NS(IsCasting=lambda *a:False,OnCombo=lambda *a:None,OnMartialHit=lambda *a:ripostes.append(a[4] if len(a)>4 else 1.),
+  OnManaBreak=lambda *a:None,OnInterruptCast=lambda *a:None,EmberRatio=lambda *a:0)
  f.c.SetRiposte(3);f.clock[0]=102;f.c.OnNoFormHit(f.v,None,False)
+ if 'ApplyNoFormBaseline' not in f.c.functions:
+  # Round 20 (N2): the baseline true damage is the DLL's (it cannot read this script-side window), so the
+  # v0.3 反擊 x1.3 now reaches only the Papyrus 純武藝 base. The window rules themselves are unchanged.
+  assert not amounts and ripostes==[1.3],('riposte not passed to the martial base',ripostes)
+  f.c.OnNoFormHit(f.v,None,False);assert ripostes[-1]==1.
+  f.c.SetRiposte(3);f.clock[0]+=4;f.c.OnNoFormHit(f.v,None,False);assert ripostes[-1]==1.
+  return 'round 20: riposte x1.3 on the martial base, consumed once, expires by wall clock (baseline is the DLL\'s)'
  assert amounts==[6.5],('riposte not applied',amounts)
  f.c.OnNoFormHit(f.v,None,False);assert amounts[-1]==5.
  f.c.SetRiposte(3);f.clock[0]+=4;f.c.OnNoFormHit(f.v,None,False);assert amounts[-1]==5.
@@ -161,7 +169,7 @@ def cast_capture(folder):
  f=setup(folder);f.owned.add((11,1,1,0));casting=[True];observed=[]
  f.c.overrides.update(RecentCast=lambda *a:False,MarkEngaged=lambda *a:casting.__setitem__(0,False),ApplyNoFormBaseline=lambda *a:None)
  f.env['ESSBNoForm']=NS(IsCasting=lambda *a:casting[0],OnCombo=lambda *a:None,OnMartialHit=lambda *a:None,
-  OnManaBreak=lambda *a:observed.append(a[3] if len(a)>3 else casting[0]),EmberRatio=lambda *a:0)
+  OnManaBreak=lambda *a:observed.append(a[3] if len(a)>3 else casting[0]),OnInterruptCast=lambda *a:observed.append(a[2]),EmberRatio=lambda *a:0)
  f.c.OnNoFormHit(f.v,None,False)
  assert observed==[True],'processing-time casting check lost hit-time fact'
  if 'RecentCast' in f.c.overrides:del f.c.overrides['RecentCast']

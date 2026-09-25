@@ -55,61 +55,41 @@ EndFunction
 
 ; ================================================================== 附傷倍率
 
-Float Function HitMult(ESSBController akCtl, Int aiElement, Actor akTarget, Bool abPower) Global
+Float Function HitExtra(ESSBController akCtl, Int aiElement, Actor akTarget, Bool abPower) Global
 	If aiElement == 4
-		Return EarthHitMult(akCtl, akTarget, abPower)
-	ElseIf aiElement == 5
-		Return WindHitMult(akCtl, akTarget, abPower)
+		Return EarthHitExtra(akCtl, akTarget, abPower)
 	ElseIf aiElement == 6
-		Return BloodHitMult(akCtl, akTarget, abPower)
+		Return BloodHitExtra(akCtl, akTarget, abPower)
 	ElseIf aiElement == 7
-		Return DivineHitMult(akCtl, akTarget, abPower)
+		Return DivineHitExtra(akCtl, akTarget, abPower)
 	EndIf
-	Return 1.0
+	; 5.7 風：開啟熟練主線是拉近距離，不是附傷；風附傷的節點與潛行 ×3 由 DLL 算。
+	Return 0.0
 EndFunction
 
-; 5.6：土附傷 +1%／點、同調每段 +1%／點、開印後 5 秒內 +1%／點。
-Float Function EarthHitMult(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	Float mult = 1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 3, 0, 1), 0.01)
-	mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 3, 0, 3), 0.01) * akCtl.SyncStage()
+; 5.6：開印後 5 秒內 +1%／點（土附傷與同調每段由 DLL 算）。
+Float Function EarthHitExtra(ESSBController akCtl, Actor akTarget, Bool abPower) Global
 	If akCtl.GetOpenBoost(4) > 0
-		mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 3, 1, 1), 0.01)
+		Return ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 3, 1, 1), 0.01)
 	EndIf
-	Return mult
+	Return 0.0
 EndFunction
 
-; 5.7：風附傷 +1%／點、同調每段 +1%／點、開印後 5 秒內 +1%／點、
-; 御風（失衡目標受你所有傷害 +30%）。潛行倍率在 ApplyProc（規劃 1.1）。
-Float Function WindHitMult(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	Float mult = 1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 4, 0, 1), 0.01)
-	mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 4, 0, 3), 0.01) * akCtl.SyncStage()
-	Return mult
-EndFunction
-
-; 5.8：血附傷 +1%／點、同調每段 +1%／點、開印後 5 秒內 +1%／點、
-; 血怒（中血位命中效果 +15%）、嗜血（+20%）。血位倍率本身在 GetDamageMult(6)。
-Float Function BloodHitMult(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	Float mult = 1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 5, 0, 1), 0.01)
-	mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 5, 0, 3), 0.01) * akCtl.SyncStage()
+; 5.8：開印後 5 秒內 +1%／點（血附傷、同調每段、血位曲線與血怒由 DLL 算）。
+Float Function BloodHitExtra(ESSBController akCtl, Actor akTarget, Bool abPower) Global
 	If akCtl.GetOpenBoost(6) > 0
-		mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 5, 1, 1), 0.01)
+		Return ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 5, 1, 1), 0.01)
 	EndIf
-	Return mult
+	Return 0.0
 EndFunction
 
-; 5.9：聖附傷 +1%／點、同調每段 +1%／點、開印後 5 秒內 +1%／點、
-; 聖印每層目標受聖傷 +1%／點、驅魔（對死靈施法者 +50%）、聖痕（非亡靈也 +10%）。
-Float Function DivineHitMult(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	Float mult = 1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 6, 0, 1), 0.01)
-	mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 6, 0, 3), 0.01) * akCtl.SyncStage()
+; 5.9：開印後 5 秒內 +1%／點、聖印每層目標受聖傷 +1%／點、聖痕（聖附傷、同調每段、白天、亡靈魔族、驅魔由 DLL 算）。
+Float Function DivineHitExtra(ESSBController akCtl, Actor akTarget, Bool abPower) Global
+	Float extra = HolyVulnerability(akCtl, akTarget)
 	If akCtl.GetOpenBoost(7) > 0
-		mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 6, 1, 1), 0.01)
+		extra = extra + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 6, 1, 1), 0.01)
 	EndIf
-	mult = mult + HolyVulnerability(akCtl, akTarget)
-	If ESSBNodes.Br(akCtl, 6, 0, 0, 1) && akCtl.IsNecromancer(akTarget)
-		mult = mult + 0.5
-	EndIf
-	Return mult
+	Return extra
 EndFunction
 
 ; 聖印每層「目標受聖傷 +1%／點」＋聖痕的固定 +10%。裁決與聖光也吃同一個函式。
@@ -160,28 +140,19 @@ EndFunction
 
 ; ================================================================== 每次命中（元素專屬）
 
+; 血的命中吸血（依血位占附傷）round 20 起由 DLL 與附傷同一刀結清，這裡沒有血的每擊工作。
 Function OnHit(ESSBController akCtl, Int aiElement, Actor akTarget, Bool abPower) Global
 	If aiElement == 4
 		OnEarthHit(akCtl, akTarget, abPower)
 	ElseIf aiElement == 5
 		OnWindHit(akCtl, akTarget, abPower)
-	ElseIf aiElement == 6
-		OnBloodHit(akCtl, akTarget, abPower)
 	ElseIf aiElement == 7
 		OnDivineHit(akCtl, akTarget, abPower)
 	EndIf
 EndFunction
 
 Function OnEarthHit(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	Actor player = akCtl.ThePlayer()
-	; 5.6 持續專精主線：命中削減目標耐力 +0.5／點；分支「汲力」一半轉為你的耐力。
-	Float drain = 3.0 * ESSBNodes.Rank(akCtl, 3, 0, 2) * akCtl.GLevel(3)
-	If drain > 0.0
-		akCtl.ApplyUtil(3, drain, 0, akTarget)
-		If ESSBNodes.Br(akCtl, 3, 0, 2, 0) && player
-			akCtl.ApplyUtil(6, drain * 0.5, 0, player)
-		EndIf
-	EndIf
+	; 5.6 持續專精主線（命中削減目標耐力）與分支「汲力」round 20 起由 DLL 在命中當下施放。
 	If !abPower
 		Return
 	EndIf
@@ -204,26 +175,13 @@ Function OnEarthHit(ESSBController akCtl, Actor akTarget, Bool abPower) Global
 EndFunction
 
 Function OnWindHit(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	Actor player = akCtl.ThePlayer()
-	; 5.7 持續熟練分支「順風」：命中回復耐力 5。
-	If ESSBNodes.Br(akCtl, 4, 0, 1, 1) && player
-		akCtl.ApplyUtil(6, 25.0 * akCtl.GLevel(4), 0, player)
-	EndIf
+	; 5.7 持續熟練分支「順風」（命中回復耐力）round 20 起由 DLL 在命中當下施放。
 	; 5.7 持續傳奇主線「千刃」：同調三段時每次命中附帶風刃，機率 5%／點。
 	Int rank = ESSBNodes.Rank(akCtl, 4, 0, 4)
 	If rank > 0 && akCtl.SyncStage() >= 3 && Utility.RandomFloat(0.0, 1.0) < 0.05 * rank
 		WindBlade(akCtl, akTarget, 1.0)
 	EndIf
 	; 5.7 關閉大師分支「順勢」的視窗在接管元素身上，不在風形態，見 OnEnd。
-EndFunction
-
-Function OnBloodHit(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	; 吸血：命中流血目標時依血位回血（規劃 1.1）。溢出的部分由「血盾」轉臨時護盾。
-	If akCtl.GetStack(akTarget, 5) <= 0
-		Return
-	EndIf
-	Float amount = ESSBReactions.BaseMax(akCtl, 6) * 5.0 * akCtl.GLevel(5) * akCtl.GetBloodLeechRatio() * akCtl.GetDamageMult(6)
-	akCtl.Leech(amount)
 EndFunction
 
 Function OnDivineHit(ESSBController akCtl, Actor akTarget, Bool abPower) Global

@@ -82,7 +82,7 @@ round 19 本節寫「兩條路等價、都到同一個 0x14054CD10」，**這個
   - D 2,000,000 次雷電抽樣經 `BuildInput`：整數與連續兩種 RNG 模型的分佈。遊戲的實際 RNG 分佈沒有被離線測試取代。
   - 5 個刻意注入的錯誤（移除 blocked 過濾、改血量門檻、弓改用 power、雷電不 break、允許法杖）各自讓測試失敗。
 - `build/fix19-audit.json`：除清空 `ESSB_P_HitProc` 外，4,066 筆既有 records 的 flags/subrecords 完全相同；既有 FormID 無變動或刪除。只新增 GLOB `ESSB_NativeHit=0052D1`、`ESSB_NativeWanted=0052D2`。Papyrus 差額算式與狀態腳本逐位元組保留。
-- `build/fix19-build.log` 保留完整生成回歸；`build/fix19-negative.json` 及對應 logs 驗證 DLL 缺失／來源過期皆在寫入 package 前失敗。`native/out/build-receipt.json` 綁定 DLL 的生成來源（native/src、include 含生成的 ManifestData.h、tests、cmake、CMakeLists、兩個 lock、native/build.py、build/fix19_native.py、truth CSV）與 DLL SHA-256；19b 起不再包含整個 build_v03.py／settings.json（改 MCM 字串不必重建 DLL），`require_fresh` 另外重新產生 ManifestData.h 文字與磁碟比對，FormID 或 Address Library 設定改變仍會判定過期。Address Library 路徑改為 settings.json 的 `address_library_bin`。
+- `build/fix19b-build.log` 保留 round 19b 的完整生成回歸（round 19 的 09-22 舊證據 `fix19-build.log`、`fix19-audit.log`、`fix19-pe.txt`、`fix19-dll-pe.txt`、`fix19-fix8.log`、`fix19-papyrus.log`、`fix19-address-map.json` 描述的是被退回的 round-19 DLL，round 20 起移到 `build/retired/2026-09-22-round19/`，不再當證據）；`build/fix19-negative.json` 及對應 logs 驗證 DLL 缺失／來源過期皆在寫入 package 前失敗。`native/out/build-receipt.json` 綁定 DLL 的生成來源（native/src、include 含生成的 ManifestData.h、tests、cmake、CMakeLists、兩個 lock、native/build.py、build/fix19_native.py、truth CSV）與 DLL SHA-256；19b 起不再包含整個 build_v03.py／settings.json（改 MCM 字串不必重建 DLL），`require_fresh` 另外重新產生 ManifestData.h 文字與磁碟比對，FormID 或 Address Library 設定改變仍會判定過期。Address Library 路徑改為 settings.json 的 `address_library_bin`。
 
 ### 雷電規格衝突的處理
 
@@ -91,3 +91,29 @@ snapshot 的 74 段中，R5→R1 priority 遞減；按 smoke 證實的最低 pri
 ### 執行期尚未證實
 
 尚未部署或啟動遊戲。DLL 實際載入、事件時序、各外部 mod 的 0x1D／抗性倍率、Vancian 次數、MCM 互動與關閉／缺檔行為須依 `fix19-probes.md` 驗收；本地反組譯與 mock 回歸不能替代這些結果。
+
+## Round 20（N2）：命中時算強度
+
+2026-09-25。依然是 CommonLibSSE-NG commit `b93280e832f263dbef44e44cbe2936622a02f91a`（`native/deps/CommonLibSSE-NG/`，下列路徑相對它），SE 1.5.97 單一執行期，沒有 hook、trampoline 或寫遊戲記憶體；新增的全部是程式庫 API 與既有引擎路徑。程式分層：`HitPipeline.h`（濾網）→ `EngineFacts.h`（引擎答案 → 輸入，純函式）→ `HitMath.h`（施放計畫，純函式）→ `Selection.h`（計畫步驟 → 法術記錄）→ `Plugin.cpp`（讀引擎、施放、通知）。
+
+| 用途 | API（NG 路徑:行） | 查證結論 |
+|---|---|---|
+| 以覆寫強度施放 | `MagicCaster::CastSpellImmediate(MagicItem*, bool, TESObjectREFR*, float effectiveness, bool, float magnitudeOverride, Actor*)` virtual 1（`include/RE/M/MagicCaster.h:46`） | 沿用 19b：effectiveness 1.0（不縮放）；覆寫值由套用 visitor 0x140551980 寫進**每一個**效果（`native-verification-2.md` 第 10 節，判定 NO），0 代表不覆寫。所以每個需要自己數值的東西都是單效果法術：雷的削魔（`ESSB_Util_DrainMagicka`，覆寫＝傷害 × 0.5 × 削減倍率）、吸血（`ESSB_Util_RestoreHealth`）、護血池、耗魔、削耐回耐、真傷；附傷法術本身只剩傷害效果＋無強度的已交戰標記（建置時 `fix19_native.verify` 讀 ESP 確認）。滅法印與沉默用 0（保留記錄上的強度：沉默的 MagickaRateMult −100）。 |
+| 施放對象是玩家自己 | 同上，`a_target` = 玩家 | 自身耗魔用新的「有害但不敵對」效果（`ESSB_Native_SpendMagickaEffect`，旗標 0x8A14，無 hit event），避免自己打自己觸發受擊路徑。**未實測**，探針卡無元素步驟看數字。 |
+| 覆寫值不能改時長 | 同上（參數只有 magnitude） | 沉默 1～8 秒各做一顆固定時長法術（`ESSB_Native_Silence_1..8`），DLL 依節點、首領減半、持續時間倍率挑一顆；浸濕減速固定 10 秒；護血池 86400 秒（Papyrus 在離開形態時清掉）。 |
+| 重擊、潛行攻擊 | `TESHitEvent::Flag::kPowerAttack = 1 << 0`、`kSneakAttack = 1 << 1`（`include/RE/T/TESHitEvent.h:15-16`） | 取代 N1 的 CTDA `IsPowerAttacking`／`IsSneaking`；弓弩以潛行攻擊旗標當重擊。旗標在引擎何時設（是否等於「未被發現」）：**未實測**，探針卡風潛行與弓潛行射擊看強度。 |
+| 節點點數 | `Actor::HasPerk(BGSPerk*) const`（`include/RE/A/Actor.h:573`，`src/RE/A/Actor.cpp:699`，`Offset::Actor::HasPerk`） | 與 `ESSBTrees.GetMainRank` 同一個 4 次二分搜尋、同一組 FormID（主線 0x4000 + 節點 × 15 + 點 − 1、分支 0x2000 + 節點 × 4 + 序號）；perk 指標在資料載入時以 `TESDataHandler::LookupForm<BGSPerk>`（`include/RE/T/TESDataHandler.h:49`）一次解析（主線 2925 筆缺一即故障；分支空格為 null＝沒有）。無形態樹路線 0／1 在形態開啟時讀作 0（同 `ESSBController.Rank/Br`）。每擊最多約 20 條主線 × 4 次 ＋ 十幾個分支的 HasPerk，每次掃玩家 perk 陣列。 |
+| 生命、魔力 | `ActorValueOwner::GetActorValue`／`GetPermanentActorValue`（`include/RE/A/ActorValueOwner.h:15-16`）；`Actor::GetActorValueModifier(ACTOR_VALUE_MODIFIER::kTemporary, av)`（`include/RE/A/Actor.h:526`，`src/RE/A/Actor.cpp:268`，ID 37524） | 血位比例＝目前 ÷ 永久（與 Papyrus `GetActorValuePercentage` 相同，分母 0 時 1.0，`native-verification-2.md` 18.1）；「還差多少滿血」與護血上限用最大值＝永久 ＋ 暫時（Papyrus `GetActorValueMax` 同式）。 |
+| 室內 | `TESObjectREFR::GetParentCell()`（`include/RE/T/TESObjectREFR.h:413`）、`TESObjectCELL::IsInteriorCell()`（`src/RE/T/TESObjectCELL.cpp:140`，讀 cellFlags） | v0.4 2.10「室內、地城沒有環境加成」；日夜與天氣仍讀 Papyrus 每 5 秒寫的 `ESSB_EnvNight`／`ESSB_EnvWet`。 |
+| 目標與玩家身上的效果 | `MagicTarget::GetActiveEffectList()`（`include/RE/M/MagicTarget.h:84`）、`ActiveEffect::{flags, magnitude, GetBaseObject()}`（`include/RE/A/ActiveEffect.h:44-52, 110-111`，`src/RE/A/ActiveEffect.cpp:15`） | 唯讀走訪、跳過 `kInactive`／`kDispelled`：血印記（N2 以它代表「流血中」）、沉默、護血池強度、餘響與雙生標記、魔法護甲／披風關鍵字。`HasMagicEffectWithKeyword` 的第二參數語意未查清（19 版已註記），所以不用它，改逐一比 `BGSKeywordForm::HasKeyword`（`include/RE/B/BGSKeywordForm.h:24`）。 |
+| 餘響標記用完移除 | `ActiveEffect::Dispel(bool)`（`src/RE/A/ActiveEffect.cpp:8`，ID 33286）經 `SKSE::GetTaskInterface()->AddTask` 在主執行緒執行 | 依 `native-verification-2.md` 第 1 節「寫入遊戲狀態丟 AddTask」。任務只跑一次、不重排自己（每秒點的禁忌不適用：本輪沒有每秒點）。排隊到執行前的那一瞬間 DLL 忽略這顆標記，避免同一幀兩刀各算一次餘響。 |
+| 亡靈魔族、死靈施法者、首領 | `TESObjectREFR::HasKeyword`（`src/RE/T/TESObjectREFR.cpp:554`）、`Actor::IsInFaction`（`src/RE/A/Actor.cpp:1743`）、`TESNPC::npcClass`（`include/RE/T/TESNPC.h:268`）、`MiddleHighProcessData::commandedActors`（`include/RE/M/MiddleHighProcessData.h:147`）、`Actor::IsEssential()`（`src/RE/A/Actor.cpp:805`）、`TESActorBaseData::IsEssential/IsProtected/IsUnique`（`include/RE/T/TESActorBaseData.h:101-108`） | 與 Papyrus `IsUndeadOrDaedra`、`IsNecromancer`（職業／陣營／有受命者）、`IsVIPTarget` 同一組判斷；Skyrim.esm 的關鍵字、職業、陣營 FormID 與 ESSBController 屬性用的是同一批（manifest 逐一核對）。 |
+| 施法者判定 | `Actor::GetEquippedObject(bool)`（`include/RE/A/Actor.h:541`）+ `As<SpellItem>()` | 同 `ESSBNoForm.IsSpellUser`：任一手拿法術，或身上有魔法護甲／披風效果。 |
+| 亂數 | 無 API：`HitMath.h` 的 SplitMix64，資料載入時以 `QueryPerformanceCounter` 與 `GetTickCount64` 播種 | 只由命中 sink 使用（sink 本身有重入保護，同一時間只有一個處理者）；雷用整數 1～25（v0.4 的期望 13.0／22.35／23.38 只有整數模型成立），其他元素在區間內連續均勻。不存檔、不影響設計狀態。原生 D 組以 10 萬次抽樣檢查分布。 |
+
+### 仍未實測（探針卡 `build/fix20-probes.md`）
+
+- 同一顆法術以新強度重套，會取代舊效果還是並存（護血池依賴「取代」）；探針卡看作用中效果只有一個「護血」且數字累加。
+- `kSneakAttack` 旗標的實際語意、自身耗魔法術是否安靜、`AddTask` 驅散餘響的時序、天氣分類在雨天回 2。
+- 覆寫後外部天賦（0x1D、Ordinator）仍在 `AdjustForPerks` 放大（`native-verification-2.md` 16），通知上的數字是放大前的值。
+- 命中 sink 在哪個執行緒（沿用 19b 的未知，P1）。

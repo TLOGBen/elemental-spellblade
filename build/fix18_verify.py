@@ -1,4 +1,10 @@
-"""Round 18: actual record readback + source-body differential and cost gates."""
+"""Round 18: actual record readback + source-body differential and cost gates.
+
+Round 20 (N2) retired the parts that compared the round-18 magnitude bake (RefreshProcMagnitudes writing
+ProcVariants) with the pre-18 ApplyProc: the bake no longer exists, the DLL computes the magnitude at hit time
+(native tests), and build/fix20_verify.py checks the new difference patch against the reference model and the
+pre-round-20 target-side terms. What still applies here: sync cache, Guard fast path, the no-possible-difference
+fast path, hotkey input gates, hit cost, the empty release perk and the proc spell records."""
 from pathlib import Path
 from types import SimpleNamespace as NS
 import json,math,struct,itertools,sys,hashlib
@@ -24,8 +30,6 @@ def fixture(folder=NEW):
         def __init__(self,e,p=0):self.e=e;self.power=p;self.values={}
         def SetNthEffectMagnitude(self,i,x):self.values[i]=x;writes.append((self.e,self.power,i,x))
     if folder==NEW:
-        c.fields['ProcVariants']=Array([Spell(x['e'],x['p']) for x in r18.variants(b)])
-        c.fields['ProcCacheReady']=False
         c.fields['HitBonusSpells']=Array([Spell(e) for e in range(1,12)])
     c.fields['HitNormalSpells']=Array([Spell(e) for e in range(1,12)])
     c.fields['HitPowerSpells']=Array([Spell(e,1) for e in range(1,12)])
@@ -39,60 +43,8 @@ def ranks(f,tree,route,tier,value=0,bits=0):
     (f.t.AllRankA if i<120 else f.t.AllRankB)[idx]=value
     (f.t.AllBranchA if i<120 else f.t.AllBranchB)[idx]=bits
 
-def player_sequences():
-    rows=[]
-    for state in range(6):
-        a=fixture(OLD);n=fixture()
-        for f in (a,n):
-            f.c.overrides.update(GetStack=lambda *x:0,GetAirborne=lambda *x:0,HasStarLock=lambda *x:False,HasElementMark=lambda *x:False)
-            for tree in range(13):
-                f.t.LevelCache[tree]=1+state*13
-                for tier in range(5):
-                    ranks(f,tree,0,tier,state)
-                    ranks(f,tree,1,tier,state*2)
-            f.c.fields['CachedSync']=state*9;f.c.Sync.v=state*9
-            f.c.fields['BloodthirstLeft']=110 if state>=1 else 0
-            f.c.fields['EndBoostLeft']=110 if state>=2 else 0;f.c.fields['EndBoostAmount']=.21
-            for e in range(1,12):f.c.OpenBoost[e]=110 if state>=3 else 0
-            f.c.fields['SelfOverheat']=1 if state>=4 else 0
-            f.c.fields['MoltenLeft']=110 if state>=5 else 0
-            f.c.EnvNight.v=state%2
-        n.c.RefreshSyncStage();n.c.RefreshProcMagnitudes()
-        for e,power in itertools.product(range(1,12),(False,True)):
-            # Target-side multiplier explicitly one; blood's approved step is compared separately.
-            if e==6:continue
-            a.c.ApplyProc(a.v,e,power,False,False)
-            old=a.apps[-1]['values'][0]
-            current=next(s.values[0] for s,v in zip(n.c.ProcVariants,r18.variants(b)) if v['e']==e and v['p']==int(power) and v['s']==0 and v['band']==0 and v['existing'])
-            assert math.isclose(current,old,abs_tol=1e-4),(state,e,power,current,old)
-            rows.append([state,e,power,current])
-        n.writes.clear();n.c.RefreshProcMagnitudes();assert n.writes==[],('repeat writes',state,n.writes)
-    return {'sequences':6,'comparisons':len(rows),'repeat_writes':0,'rows':rows}
-
-def heat_case(heat,elapsed=0,rank=0):
-    result=[]
-    for folder in (OLD,NEW):
-        f=fixture(folder);f.c.CurrentElement.v=1
-        ranks(f,0,0,0,rank);ranks(f,0,0,1,rank)
-        status=Measured(folder/'ESSBStatus.psc',f.env)
-        status.fields.update(Ctl=f.c,Holder=f.v,Heat=heat,HeatTime=100-elapsed,RingClock=100-elapsed,
-            BleedRing=Array([0]*10),PoisonRing=Array([0]*12),AstralRing=Array([0]*2),AstralWeight=Array([0.]*2))
-        f.c.RegActor[0]=f.v;f.c.RegElem[0]=1;f.c.RegStatus[0]=status
-        if folder==NEW:f.c.RefreshProcMagnitudes()
-        f.m.script.clear();f.m.native.clear();f.apps.clear()
-        f.c.ApplyProc(f.v,1,False,False,False,0,f.c.RegGeneration[0])
-        base=f.c.ProcVariants[0].values[0] if folder==NEW else 0
-        result.append(dict(base=base,script=f.apps[-1]['values'][0] if f.apps else 0,heat=status.Heat,
-                           reads=f.m.script['ESSBController.GetStack'],ticks=f.m.script['ESSBStatus.Tick'],applications=len(f.apps)))
-    old,new=result
-    assert math.isclose(new['base']+new['script'],old['script'],abs_tol=1e-4),(heat,elapsed,rank,result)
-    assert old['heat']==new['heat'] and old['reads']==new['reads'] and old['ticks']==new['ticks'],result
-    if new['script']<=0:assert new['applications']==0
-    return dict(heat=heat,elapsed=elapsed,rank=rank,old=old,engine_plus_script=new)
-
 def differences():
-    rows=[heat_case(0),heat_case(4),heat_case(4,6),heat_case(4,0,9),heat_case(10,0,15)]
-    worked=rows[1]['engine_plus_script'];assert math.isclose(worked['base'],11.55,abs_tol=1e-4) and math.isclose(worked['script'],3.696,abs_tol=1e-4)
+    # With nothing target-side possible, the difference patch returns before any cross-script read or cast.
     fast=[]
     for e in range(2,12):
         if e==7:continue
@@ -100,7 +52,8 @@ def differences():
         f.c.ApplyProc(f.v,e,False,False,False)
         assert not f.apps and f.m.cross==0 and f.m.script['ESSBController.GetStack']==0,(e,f.m.script,f.m.cross)
         fast.append(e)
-    return dict(rows=rows,zero_cross_script_elements=fast,innate_exceptions=[1,7],GetStack_lazy_tick_preserved=True)
+    return dict(zero_cross_script_elements=fast,innate_exceptions=[1,7],
+                retired='round 20: engine_base + script_bonus == pre-18 ApplyProc (the bake is gone; see build/fix20_verify.py)')
 
 def sync_samples():
     a=fixture(OLD);n=fixture()
@@ -138,8 +91,8 @@ def record_checks():
             elif k=='CTDA':x['conds'].append((tab,v))
             elif k=='PRKF':entries.append(x);x=None
     assert len(entries)==74
-    expected=r18.entries(b,json.loads((ROOT/'settings.json').read_text(encoding='utf8'))['lightning_roll_mode'])
-    assert all(x['spell']==r['spell'] and x['conds']==r['conditions'] for x,r in zip(entries,expected))
+    # Round 20: the generator no longer produces the round-18 entry-51 table (the magnitude variants it selected
+    # are gone), so the snapshot is no longer compared with a generator oracle; its own properties are still read.
     # Independent evaluator of serialized CTDA including OR groups. RNG chain uses first-success selection.
     def passes(conds,state):
         group=False
@@ -192,17 +145,20 @@ def record_checks():
 
 def run():
     import fix18_extra_checks as extra
-    report=dict(input=extra.input_checks(ROOT),target_combinations=extra.targets(NS(**globals())),blood=extra.blood(NS(**globals())),player=player_sequences(),difference=differences(),sync=sync_samples(),guard=guard_fast(),records=record_checks())
+    report=dict(input=extra.input_checks(ROOT),difference=differences(),sync=sync_samples(),guard=guard_fast(),records=record_checks(),
+                retired='round 20: target_combinations/blood/player compared the round-18 bake; see build/fix20_verify.py')
     before=scenario(OLD);after=scenario(NEW)
     assert before['total']==165 and after['total']<=165
     report.update(before=before,after=after,runtime_tested=False)
-    for name in ['ESSBStatus.psc','ESSBMark.psc','ESSBElem.psc','ESSBElem2.psc','ESSBElem3.psc','ESSBReactions.psc']:
+    # The status layer proper stays byte-identical to pre-round-18; ESSBElem/2/3 changed in round 20 only in the
+    # proc-multiplier and per-hit functions, which build/fix20_verify.py checks function by function.
+    for name in ['ESSBStatus.psc','ESSBMark.psc','ESSBReactions.psc']:
         assert (OLD/name).read_bytes()==(NEW/name).read_bytes(),('status layer changed',name)
     (ROOT/'build/fix18-check.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf8')
     # Label says only what this function checks; the DLL <-> manifest <-> ESP mapping is checked by NATIVE (fix19_native.verify).
-    print('HITPROC ok: release hit perk has 0 entries; round-18 snapshot 74 entries == generator oracle; engine_base + script_bonus == old within 1e-4; no-eligible-target multiplier zero cross-script reads; <=0 no spell; lazy GetStack Tick preserved')
+    print('HITPROC ok: release hit perk has 0 entries; round-18 snapshot still 74 entries; no-possible-difference fast path: zero cross-script reads, no spell; 22 proc spells contact + engaged')
     print(f'FIX17 ok: Guard no-work zero Controller calls; mirror Rank/Br; SyncStage 200 samples; hit calls {before["total"]} -> {after["total"]}')
-    print('FIX18 ok: 15 input gates; 88 target combinations; 88 blood cases; six player sequences; repeat magnitude writes 0; native base delivery only; status sources byte-identical')
+    print('FIX18 ok: 15 input gates; status sources (Status/Mark/Reactions) byte-identical; bake comparisons retired in round 20 (fix20_verify)')
     return report
 
 if __name__=='__main__':run()

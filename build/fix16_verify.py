@@ -98,7 +98,7 @@ def domains(folder):
 
 def cost(folder):
  f=setup(folder);calls=[];f.c.overrides.update(MarkEngaged=lambda *a:None,ApplyNoFormBaseline=lambda *a:None,RecentCast=lambda *a:False)
- f.env['ESSBNoForm']=NS(IsCasting=lambda *a:calls.append('casting') or False,OnCombo=lambda *a:None,OnMartialHit=lambda *a:None,OnManaBreak=lambda *a:None,EmberRatio=lambda *a:0)
+ f.env['ESSBNoForm']=NS(IsCasting=lambda *a:calls.append('casting') or False,OnCombo=lambda *a:None,OnMartialHit=lambda *a:None,OnManaBreak=lambda *a:None,OnInterruptCast=lambda *a:None,EmberRatio=lambda *a:0)
  f.c.OnNoFormHit(f.v,None,False);assert not calls,'unowned casting natives'
  f.c.fields.update(CachedSync=30,SyncStageShown=3)
  f.c.overrides['RefreshDivineProtection']=lambda:calls.append('divine')
@@ -182,7 +182,7 @@ def casting(folder):
  f=setup(folder);calls=[];casting=[True];facts=[]
  f.c.overrides.update(RecentCast=lambda *a:False,MarkEngaged=lambda *a:casting.__setitem__(0,False),ApplyNoFormBaseline=lambda *a:None)
  f.env['ESSBNoForm']=NS(IsCasting=lambda *a:calls.append('cast') or casting[0],OnCombo=lambda *a:None,OnMartialHit=lambda *a:None,
-     OnManaBreak=lambda *a:facts.append(a[3]),EmberRatio=lambda *a:0)
+     OnManaBreak=lambda *a:facts.append(a[3]),OnInterruptCast=lambda *a:facts.append(a[2]),EmberRatio=lambda *a:0)
  f.c.OnNoFormHit(f.v,None,False);assert not calls and facts==[False],'unowned hit queried casting'
  f.owned.add((11,1,1,0));casting[0]=True;f.c.OnNoFormHit(f.v,None,False)
  assert calls==['cast'] and facts[-1] is True,'state was not captured before processing damage'
@@ -195,7 +195,7 @@ TESTS=[('A1',corpse),('A2',divine),('A3',frozen),('A4',domains),('A5',cost),('B1
 def extra_costs(folder):
  f=setup(folder);m=f.m
  nf=Measured(folder/'ESSBNoForm.psc',f.env);f.env['ESSBNoForm']=nf
- nf.overrides.update(OnCombo=lambda *a:None,OnMartialHit=lambda *a:None,OnManaBreak=lambda *a:None,EmberRatio=lambda *a:0.)
+ nf.overrides.update(OnCombo=lambda *a:None,OnMartialHit=lambda *a:None,OnManaBreak=lambda *a:None,OnInterruptCast=lambda *a:None,EmberRatio=lambda *a:0.)
  f.c.overrides.update(MarkEngaged=lambda *a:None,ApplyNoFormBaseline=lambda *a:None,RecentCast=lambda *a:False)
  f.v.GetEquippedSpell=m.wrap('Actor.GetEquippedSpell',lambda i:object())
  f.v.GetEquippedShout=m.wrap('Actor.GetEquippedShout',lambda:object())

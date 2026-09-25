@@ -1,28 +1,40 @@
-// Offline tests of the engine-free hit pipeline (HitPipeline.h + Selection.h + generated ManifestData.h).
-// Each group states what it proves; case counts are printed and recorded in build/fix19-native-test.log.
-//   A  production truth table: every Input BuildInput can emit -> spell, vs the old 74-segment ESP oracle
-//   B  wiring: engine answers -> Input, with the exact CTDA queries issued (mocked engine)
+// Offline tests of the engine-free hit handler (HitPipeline.h, EngineFacts.h, HitMath.h, Selection.h and the
+// generated ManifestData.h). Each group states what it proves; counts are printed and recorded in
+// build/fix20-native-test.log by build/fix19_native.py.
+//   A0 hand-computed anchors: a few hits worked out by hand from the v0.4 formulas (arithmetic in comments)
+//   A  magnitude table: every scenario of build/fix20-magnitude-table.json (inputs, scripted random draws)
+//      -> the ordered casts and magnitudes build/fix20_reference.py computes from the v0.4 text
+//   B  wiring: engine answers -> planner inputs with a mocked engine: perk FormIDs and the 4-probe rank
+//      search, the no-form route suppression, GLOB -> tuning field, hit flags -> attack, raw target facts,
+//      cast -> spell record; expected FormIDs come from build/fix20-wiring.json (the generator's records,
+//      checked against the built ESP), not from the code under test
 //   C  filter: every hit-fact combination the engine can report -> verdict, vs a line-by-line
-//      transliteration of the Papyrus OnWeaponHit gates (parity of DLL base and Papyrus bonus)
-//   D  lightning band distribution through BuildInput with a mocked GetRandomPercent
+//      transliteration of the Papyrus OnWeaponHit gates (no-form hits included since round 20)
+//   D  randomness: 100 000-draw distributions of the production generator (uniform B, 1..25 faces,
+//      best-of-7, 5% chance) and 20 000 planned lightning hits (faces and crit rate), each within 5 sigma
+#include "EngineFacts.h"
 #include "HitPipeline.h"
-#include "ManifestData.h"
+#include "Selection.h"
+
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
-#include <iterator>
+#include <functional>
 #include <iostream>
-#include <random>
+#include <map>
 #include <set>
-#include <sstream>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace {
+
+using json = nlohmann::json;
 
 void Check(bool ok, const std::string& message)
 {
@@ -31,139 +43,525 @@ void Check(bool ok, const std::string& message)
     }
 }
 
+bool Near(double actual, double expected)
+{
+    return std::abs(actual - expected) <= 1e-4 * std::max(1.0, std::abs(expected));
+}
+
+// ---------------------------------------------------------------- mocks shared by A0, A and D
+
+struct MapNodes {
+    std::map<std::tuple<int, int, int>, int> ranks;
+    std::set<std::tuple<int, int, int, int>> branches;
+
+    int Rank(const essb::NodeId& id) const
+    {
+        const auto it = ranks.find({ id.tree, id.route, id.tier });
+        return it == ranks.end() ? 0 : it->second;
+    }
+
+    bool Has(const essb::BranchId& id) const
+    {
+        return branches.contains({ id.tree, id.route, id.tier, id.index });
+    }
+};
+
+struct Draw {
+    std::string kind;
+    double lo = 0;
+    double hi = 0;
+    double value = 0;  // real: u in [0, 1]; int: the face; chance: probability
+    bool hit = false;  // chance outcome
+};
+
+// Replays the scenario's draws in order and checks the planner asks for exactly those.
+struct ScriptedRng {
+    std::vector<Draw> draws;
+    std::size_t next = 0;
+    std::string scenario;
+
+    const Draw& Take(const char* kind)
+    {
+        Check(next < draws.size(), scenario + ": planner drew more random values than scripted");
+        const Draw& d = draws[next++];
+        Check(d.kind == kind, scenario + ": planner drew " + kind + ", script has " + d.kind);
+        return d;
+    }
+
+    int Int(int lo, int hi)
+    {
+        const Draw& d = Take("int");
+        Check(d.lo == lo && d.hi == hi, scenario + ": integer range differs");
+        return static_cast<int>(d.value);
+    }
+
+    float Real(float lo, float hi)
+    {
+        const Draw& d = Take("real");
+        Check(Near(lo, d.lo) && Near(hi, d.hi), scenario + ": real range differs");
+        return lo + (hi - lo) * static_cast<float>(d.value);
+    }
+
+    bool Chance(float probability)
+    {
+        const Draw& d = Take("chance");
+        Check(Near(probability, d.value), scenario + ": crit probability differs");
+        return d.hit;
+    }
+};
+
+const std::map<std::string, essb::Cast> kCastNames = {
+    { "kProc", essb::Cast::kProc },
+    { "kDrainMagicka", essb::Cast::kDrainMagicka },
+    { "kDrainStamina", essb::Cast::kDrainStamina },
+    { "kTrueDamage", essb::Cast::kTrueDamage },
+    { "kSoakSlow", essb::Cast::kSoakSlow },
+    { "kDispelMark", essb::Cast::kDispelMark },
+    { "kSilence", essb::Cast::kSilence },
+    { "kHeal", essb::Cast::kHeal },
+    { "kRestoreMagicka", essb::Cast::kRestoreMagicka },
+    { "kRestoreStamina", essb::Cast::kRestoreStamina },
+    { "kSpendMagicka", essb::Cast::kSpendMagicka },
+    { "kBloodGuard", essb::Cast::kBloodGuard },
+};
+
+struct Inputs {
+    essb::Attack attack;
+    essb::Tuning tuning;
+    essb::PlayerFacts player;
+    essb::TargetFacts target;
+    MapNodes nodes;
+};
+
+Inputs Bare(int element)
+{
+    Inputs in;
+    in.attack.element = element;
+    in.tuning.level.fill(1.0f);
+    return in;
+}
+
+// ---------------------------------------------------------------- A0
+
+int GroupA0()
+{
+    const essb::Config config = essb::MakeConfig();
+    int cases = 0;
+    auto run = [&](const Inputs& in, std::vector<Draw> draws) {
+        ScriptedRng rng{ std::move(draws), 0, "A0" };
+        const essb::Plan plan = essb::PlanHit(in.attack, config, in.tuning, in.player, in.target, in.nodes, rng);
+        Check(rng.next == rng.draws.size(), "A0: scripted draws left over");
+        ++cases;
+        return plan;
+    };
+    // Fire, normal, level 1, no nodes, B = 11 (u = 0.5 of 10..12): 11 x R 1 x G 1.05 x 1 = 11.55.
+    {
+        const essb::Plan p = run(Bare(essb::kFire), { { "real", 10, 12, 0.5 } });
+        Check(p.count == 1 && p.steps[0].cast == essb::Cast::kProc && Near(p.steps[0].magnitude, 11.55), "A0 fire");
+    }
+    // Lightning power attack, crit, face 25: 25 x 1.5 x 1.05 x 2.5 = 98.4375; drain 50% = 49.21875.
+    {
+        Inputs in = Bare(essb::kLightning);
+        in.attack.power = true;
+        const essb::Plan p = run(in, { { "int", 1, 25, 25 }, { "chance", 0, 0, 0.05, true } });
+        Check(p.crit && p.count == 2 && Near(p.steps[0].magnitude, 98.4375), "A0 lightning crit");
+        Check(p.steps[1].cast == essb::Cast::kDrainMagicka && Near(p.steps[1].magnitude, 49.21875), "A0 lightning drain");
+    }
+    // Blood at 50% health, blood mark, B = 9: curve 0.8 + (0.5 - 0.3) / 0.4 x 0.3 = 0.95 -> 9 x 1.05 x 0.95 = 8.9775;
+    // leech ratio 0.35 + (0.5 - 0.3) / 0.4 x (0.15 - 0.35) = 0.25 -> heal 8.9775 x 0.25 = 2.244375.
+    {
+        Inputs in = Bare(essb::kBlood);
+        in.player.health = 50.0f;
+        in.target.bloodMark = true;
+        const essb::Plan p = run(in, { { "real", 8, 10, 0.5 } });
+        Check(p.count == 2 && Near(p.steps[0].magnitude, 8.9775), "A0 blood curve");
+        Check(p.steps[1].cast == essb::Cast::kHeal && Near(p.steps[1].magnitude, 2.244375), "A0 blood leech");
+    }
+    // Divine against undead, daytime outdoors, B = 9: 9 x 1.05 x 1.2 (day) x 1.5 (undead) = 17.01.
+    {
+        Inputs in = Bare(essb::kDivine);
+        in.target.undeadOrDaedra = true;
+        const essb::Plan p = run(in, { { "real", 8, 10, 0.5 } });
+        Check(p.count == 1 && Near(p.steps[0].magnitude, 17.01), "A0 divine undead");
+    }
+    // Fire, adept main 5 points, node scale 3: 1 + 5 x 1% x 3 = 1.15 -> B 10 x 1.05 x 1.15 = 12.075.
+    {
+        Inputs in = Bare(essb::kFire);
+        in.nodes.ranks[{ 0, 0, 1 }] = 5;
+        const essb::Plan p = run(in, { { "real", 10, 12, 0.0 } });
+        Check(Near(p.steps[0].magnitude, 12.075), "A0 fire adept");
+    }
+    // No form, power, level 1, you 100/100 magicka, target 50/50:
+    //   baseline 5 x 1.05 x 1.5 = 7.875; siphon 10 x 1.05 x 1.5 = 15.75 (target 34.25, you stay at 100);
+    //   X = 15% x 100 = 15, Y = min(34.25, 15) = 15, true damage 30; dispel mark; target keeps 19.25: no silence.
+    {
+        Inputs in = Bare(essb::kNoElement);
+        in.attack.power = true;
+        in.target.magicka = 50.0f;
+        in.target.magickaMax = 50.0f;
+        const essb::Plan p = run(in, {});
+        const std::vector<std::pair<essb::Cast, double>> expected = { { essb::Cast::kTrueDamage, 7.875 },
+            { essb::Cast::kDrainMagicka, 15.75 }, { essb::Cast::kRestoreMagicka, 15.75 }, { essb::Cast::kSpendMagicka, 15.0 },
+            { essb::Cast::kDrainMagicka, 15.0 }, { essb::Cast::kTrueDamage, 30.0 }, { essb::Cast::kDispelMark, 0.0 } };
+        Check(p.count == static_cast<int>(expected.size()), "A0 dispel cast count");
+        for (std::size_t i = 0; i < expected.size(); ++i) {
+            Check(p.steps[i].cast == expected[i].first && Near(p.steps[i].magnitude, expected[i].second), "A0 dispel step " + std::to_string(i));
+        }
+    }
+    return cases;
+}
+
 // ---------------------------------------------------------------- A
 
-int GroupA(const char* path)
+Inputs FromScenario(const json& row)
 {
-    std::ifstream file(path);
-    Check(bool(file), "truth table missing");
-    std::string line;
-    int rows = 0;
-    std::set<std::uint32_t> reached;
-    while (std::getline(file, line)) {
-        if (line.empty() || line[0] == '#') {
-            continue;
-        }
-        std::istringstream in(line);
-        essb::Input x;
-        int power = 0;
-        int sneak = 0;
-        std::uint32_t expected = 0;
-        in >> x.element >> x.rightItem >> power >> sneak >> x.blood >> x.lightning >> expected;
-        Check(!in.fail(), "bad truth-table row: " + line);
-        x.power = power != 0;
-        x.sneak = sneak != 0;
-        const std::uint32_t actual = essb::spell(essb::select(x));
-        Check(actual == expected, "A mismatch: " + line + " got " + std::to_string(actual));
-        if (actual) {
-            reached.insert(actual);
-        }
-        ++rows;
+    const json& s = row.at("state");
+    Inputs in;
+    in.attack.element = s.at("element");
+    in.attack.power = s.at("power");
+    in.attack.sneakAttack = s.at("sneak");
+    in.attack.leftHand = s.at("left");
+    essb::Tuning& t = in.tuning;
+    t.level.fill(1.0f);
+    for (const auto& level : row.at("levels")) {
+        t.level[level.at(0).get<int>()] = level.at(1).get<float>();
     }
-    // 11 elements x 3 right-hand kinds x power x sneak, blood x5 bands (4 + none), lightning x5 bands.
-    Check(rows == 9 * 12 + 60 + 60, "truth table does not cover the production input space");
-    Check(reached.size() == std::size(essb::rows), "a manifest spell is unreachable from production inputs");
-    return rows;
+    t.syncStage = s.at("stage");
+    t.baseDamageMult = s.at("base_damage_mult");
+    t.nodeScale = s.at("node_scale");
+    t.multDrain = s.at("mult_drain");
+    t.multRecovery = s.at("mult_recovery");
+    t.multDuration = s.at("mult_duration");
+    t.slowCapPct = s.at("slow_cap");
+    t.wetSlowPct = s.at("wet_slow");
+    t.waterClearStamina = s.at("water_clear");
+    t.seizeMaxPct = s.at("seize_pct");
+    t.envWet = s.at("wet");
+    t.envNight = s.at("night");
+    t.prevElement = s.at("prev");
+    t.twinElement = s.at("twin");
+    essb::PlayerFacts& p = in.player;
+    p.health = s.at("hp");
+    p.healthPermanent = s.at("hp_perm");
+    p.healthMax = s.at("hp_max");
+    p.magicka = s.at("mp");
+    p.magickaMax = s.at("mp_max");
+    p.interior = s.at("interior");
+    p.echoPending = s.at("echo_pending");
+    p.twinWindow = s.at("twin_window");
+    p.bloodGuard = s.at("guard");
+    essb::TargetFacts& g = in.target;
+    g.undeadOrDaedra = s.at("undead");
+    g.necromancer = s.at("necro");
+    g.bloodMark = s.at("blood_mark");
+    g.silenced = s.at("silenced");
+    g.spellUser = s.at("spell_user");
+    g.vip = s.at("vip");
+    g.magicka = s.at("t_mp");
+    g.magickaMax = s.at("t_mp_max");
+    for (const auto& r : row.at("ranks")) {
+        in.nodes.ranks[{ r.at(0).get<int>(), r.at(1).get<int>(), r.at(2).get<int>() }] = r.at(3).get<int>();
+    }
+    for (const auto& b : row.at("branches")) {
+        in.nodes.branches.insert({ b.at(0).get<int>(), b.at(1).get<int>(), b.at(2).get<int>(), b.at(3).get<int>() });
+    }
+    return in;
+}
+
+std::vector<Draw> DrawsOf(const json& row)
+{
+    std::vector<Draw> draws;
+    for (const auto& d : row.at("draws")) {
+        Draw draw;
+        draw.kind = d.at(0);
+        if (draw.kind == "chance") {
+            draw.value = d.at(1);
+            draw.hit = d.at(2);
+        } else {
+            draw.lo = d.at(1);
+            draw.hi = d.at(2);
+            draw.value = d.at(3);
+        }
+        draws.push_back(draw);
+    }
+    return draws;
+}
+
+int GroupA(const json& table)
+{
+    // The table must describe the production settings (compiled into ManifestData.h).
+    const essb::Config config = essb::MakeConfig();
+    const auto& damage = table.at("config").at("damage");
+    for (int e = essb::kFire; e <= essb::kAstral; ++e) {
+        Check(Near(config.damage[e][0], damage.at(e - 1).at(0)) && Near(config.damage[e][1], damage.at(e - 1).at(1)), "A: damage ranges differ from settings");
+    }
+    Check(Near(config.noFormBaseTrue, table.at("config").at("noform_base_true")), "A: noform_base_true differs");
+    int cases = 0;
+    std::set<essb::Cast> seen;
+    for (const auto& row : table.at("scenarios")) {
+        const std::string name = row.at("name");
+        const Inputs in = FromScenario(row);
+        ScriptedRng rng{ DrawsOf(row), 0, name };
+        const essb::Plan plan = essb::PlanHit(in.attack, config, in.tuning, in.player, in.target, in.nodes, rng);
+        Check(rng.next == rng.draws.size(), name + ": scripted draws left over");
+        const json& expect = row.at("expect");
+        const auto& casts = expect.at("casts");
+        Check(plan.count == static_cast<int>(casts.size()), name + ": cast count " + std::to_string(plan.count) + " != " + std::to_string(casts.size()));
+        for (int i = 0; i < plan.count; ++i) {
+            const essb::CastStep& step = plan.steps[i];
+            const json& c = casts.at(i);
+            const std::string label = name + " step " + std::to_string(i);
+            Check(step.cast == kCastNames.at(c.at(0).get<std::string>()), label + ": cast kind");
+            Check(Near(step.magnitude, c.at(1).get<double>()), label + ": magnitude " + std::to_string(step.magnitude) + " != " + std::to_string(c.at(1).get<double>()));
+            if (step.cast == essb::Cast::kProc) {
+                Check(step.element == c.at(2).get<int>() && step.power == c.at(3).get<bool>(), label + ": proc spell");
+            }
+            if (step.cast == essb::Cast::kSilence) {
+                Check(step.seconds == c.at(4).get<int>(), label + ": silence seconds");
+            }
+            seen.insert(step.cast);
+        }
+        Check(plan.consumeEcho == expect.at("consume_echo").get<bool>(), name + ": echo consumption");
+        Check(plan.crit == expect.at("crit").get<bool>(), name + ": crit");
+        Check(Near(plan.magnitude, expect.at("magnitude").get<double>()), name + ": reported magnitude");
+        ++cases;
+    }
+    Check(seen.size() == kCastNames.size(), "A: the table does not exercise every cast kind");
+    return cases;
 }
 
 // ---------------------------------------------------------------- B
 
-struct Engine {
-    int rightItem = 0;           // what CTDA 597 (right hand) reports: 7, 12 or other
-    bool power = false;
-    bool sneak = false;
-    float health = 1.0f;         // CTDA 640 value
-    std::array<int, 4> draws{};  // successive GetRandomPercent results
-    int drawn = 0;
-    std::vector<essb::Query> log;
+struct PerkEngine {
+    std::set<std::uint32_t> owned;
+    mutable std::vector<std::uint32_t> asked;
 
-    bool operator()(const essb::Query& q)
+    bool operator()(std::uint32_t id) const
     {
-        log.push_back(q);
-        switch (q.fn) {
-        case essb::Fn::kGetEquippedItemType:
-            Check(q.param == essb::kRightHand && q.op == essb::Op::kEqual, "597 must ask the right hand with ==");
-            return float(rightItem) == q.value;
-        case essb::Fn::kIsPowerAttacking:
-            Check(q.value == 1.0f && q.op == essb::Op::kEqual, "673 must be == 1");
-            return power;
-        case essb::Fn::kIsSneaking:
-            Check(q.value == 1.0f && q.op == essb::Op::kEqual, "286 must be == 1");
-            return sneak;
-        case essb::Fn::kGetActorValuePercent:
-            Check(q.param == essb::kHealth && q.op == essb::Op::kGreaterOrEqual, "640 must be Health >=");
-            return health >= q.value;
-        case essb::Fn::kGetRandomPercent:
-            Check(q.op == essb::Op::kLess, "77 must be <");
-            Check(drawn < 4, "more than four random draws");
-            return float(draws[drawn++]) < q.value;
-        }
-        throw std::runtime_error("unexpected CTDA function");
+        asked.push_back(id);
+        return owned.contains(id);
     }
 };
 
-int GroupB()
+essb::NodeId NodeOf(const json& slot)
 {
-    const int items[] = { essb::kItemBow, essb::kItemCrossbow, 0, 1 };
-    // Health boundaries only matter for blood and RNG patterns only for lightning; the other elements
-    // get two extreme values of each to show they are not read at all.
-    const std::vector<float> bloodHealths = { 1.0f, 0.85f, 0.84999f, 0.5f, 0.49999f, 0.2f, 0.19999f, 0.0f, -0.01f };
-    const std::vector<float> otherHealths = { 1.0f, -0.01f };
-    std::vector<int> allPatterns;
-    for (int pattern = 0; pattern < 16; ++pattern) {
-        allPatterns.push_back(pattern);
-    }
-    const std::vector<int> extremePatterns = { 0, 15 };
-    int cases = 0;
-    for (int element = 1; element <= 11; ++element) {
-        const auto& healths = element == 6 ? bloodHealths : otherHealths;
-        const auto& patterns = element == 3 ? allPatterns : extremePatterns;
-        for (int item : items) {
-            for (int flags = 0; flags < 4; ++flags) {
-                for (float health : healths) {
-                    for (int pattern : patterns) {
-                        Engine engine;
-                        engine.rightItem = item;
-                        engine.power = (flags & 1) != 0;
-                        engine.sneak = (flags & 2) != 0;
-                        engine.health = health;
-                        for (int i = 0; i < 4; ++i) {
-                            engine.draws[i] = (pattern >> i) & 1 ? 0 : 99;  // 0 passes every chance, 99 none
-                        }
-                        const essb::Input x = essb::BuildInput(element, engine);
+    return { slot.at(0).get<int>(), slot.at(1).get<int>(), slot.at(2).get<int>() };
+}
 
-                        const int expectedItem = item == essb::kItemBow || item == essb::kItemCrossbow ? item : 0;
-                        int expectedBlood = -1;
-                        if (element == 6) {
-                            expectedBlood = health >= 0.85f ? 0 : health >= 0.5f ? 1 : health >= 0.2f ? 2 : health >= 0.0f ? 3 : -1;
-                        }
-                        int expectedLightning = 0;
-                        int expectedDraws = 0;
-                        if (element == 3) {
-                            expectedLightning = 1;
-                            expectedDraws = 4;
-                            for (int i = 0; i < 4; ++i) {
-                                if ((pattern >> i) & 1) {
-                                    expectedLightning = 5 - i;
-                                    expectedDraws = i + 1;
-                                    break;
-                                }
-                            }
-                        }
-                        Check(x.element == element && x.rightItem == expectedItem, "B weapon wiring");
-                        Check(x.power == engine.power && x.sneak == engine.sneak, "B power/sneak wiring");
-                        Check(x.blood == expectedBlood, "B blood band wiring");
-                        Check(x.lightning == expectedLightning, "B lightning wiring");
-                        Check(engine.drawn == expectedDraws, "B RNG must be drawn lazily and only for lightning");
-                        const auto healthQueries = std::count_if(engine.log.begin(), engine.log.end(), [](const essb::Query& q) {
-                            return q.fn == essb::Fn::kGetActorValuePercent;
-                        });
-                        Check((healthQueries > 0) == (element == 6), "B health must be read only for blood");
-                        ++cases;
-                    }
-                }
+essb::BranchId BranchOf(const json& slot)
+{
+    return { slot.at(0).get<int>(), slot.at(1).get<int>(), slot.at(2).get<int>(), slot.at(3).get<int>() };
+}
+
+int GroupB(const json& wiring)
+{
+    int cases = 0;
+    // B1: main lines - owning ranks 1..k of the chain reads as rank k, with at most four probes, all inside the chain.
+    for (const auto& [name, ids] : wiring.at("main_perks").items()) {
+        const essb::NodeId id = NodeOf(wiring.at("slots").at(name));
+        const std::vector<std::uint32_t> chain = ids.get<std::vector<std::uint32_t>>();
+        Check(chain.size() == static_cast<std::size_t>(essb::kMainMaxRank), name + ": chain length");
+        for (int k = 0; k <= essb::kMainMaxRank; ++k) {
+            PerkEngine engine;
+            engine.owned.insert(chain.begin(), chain.begin() + k);
+            const essb::PerkNodes nodes(std::cref(engine), false);
+            Check(nodes.Rank(id) == k, name + ": rank " + std::to_string(k));
+            Check(engine.asked.size() <= 4, name + ": more than four HasPerk probes");
+            for (const auto asked : engine.asked) {
+                Check(std::find(chain.begin(), chain.end(), asked) != chain.end(), name + ": probed a FormID outside its chain");
+            }
+            const std::size_t before = engine.asked.size();
+            Check(nodes.Rank(id) == k && engine.asked.size() == before, name + ": rank not cached within the hit");
+            ++cases;
+        }
+    }
+    // B2: branches - one probe of the branch's own FormID.
+    for (const auto& [name, fid] : wiring.at("branch_perks").items()) {
+        const essb::BranchId id = BranchOf(wiring.at("slots").at(name));
+        for (const bool owned : { false, true }) {
+            PerkEngine engine;
+            if (owned) {
+                engine.owned.insert(fid.get<std::uint32_t>());
+            }
+            const essb::PerkNodes nodes(std::cref(engine), false);
+            Check(nodes.Has(id) == owned && engine.asked == std::vector<std::uint32_t>{ fid.get<std::uint32_t>() }, name + ": branch probe");
+            ++cases;
+        }
+    }
+    // B3: the no-form tree's routes 0/1 read as nothing while a form is active (ESSBController.Rank / Br), without probing;
+    // without a form the same slots are read. The mock owns every FormID the wiring lists.
+    {
+        PerkEngine all;
+        for (const auto& [name, ids] : wiring.at("main_perks").items()) {
+            for (const auto fid : ids) {
+                all.owned.insert(fid.get<std::uint32_t>());
             }
         }
+        for (const auto& [name, fid] : wiring.at("branch_perks").items()) {
+            all.owned.insert(fid.get<std::uint32_t>());
+        }
+        for (const auto& [name, slot] : wiring.at("slots").items()) {
+            if (slot.at(0).get<int>() != essb::kNoFormTree) {
+                continue;
+            }
+            const bool branch = slot.size() == 4;
+            const bool suppressed = slot.at(1).get<int>() < 2;
+            all.asked.clear();
+            const essb::PerkNodes active(std::cref(all), true);
+            const int value = branch ? int(active.Has(BranchOf(slot))) : active.Rank(NodeOf(slot));
+            Check(suppressed ? value == 0 && all.asked.empty() : value > 0, name + ": no-form suppression while a form is active");
+            const essb::PerkNodes inactive(std::cref(all), false);
+            const int free = branch ? int(inactive.Has(BranchOf(slot))) : inactive.Rank(NodeOf(slot));
+            Check(free > 0, name + ": readable without a form");
+            ++cases;
+        }
+    }
+    // B4: every tuning field reads the GLOB the generator says; nothing else is asked.
+    {
+        const json& g = wiring.at("globals");
+        std::map<std::uint32_t, float> values;
+        float next = 3.0f;
+        for (const auto& [field, fid] : g.at("tuning").items()) {
+            values[fid.get<std::uint32_t>()] = next;
+            next += 1.0f;
+        }
+        const auto levels = g.at("levels").get<std::vector<std::uint32_t>>();
+        Check(levels.size() == static_cast<std::size_t>(essb::kTreeCount), "B4: level globals");
+        for (const auto fid : levels) {
+            values[fid] = next;
+            next += 1.0f;
+        }
+        const std::uint32_t wet = g.at("tuning").at("envWet");
+        const std::uint32_t night = g.at("tuning").at("envNight");
+        values[wet] = 1.0f;
+        values[night] = 0.0f;
+        std::set<std::uint32_t> asked;
+        const essb::Tuning t = essb::ReadTuning([&](std::uint32_t id) {
+            Check(values.contains(id), "B4: ReadTuning asked a GLOB the wiring does not list");
+            asked.insert(id);
+            return values.at(id);
+        });
+        Check(asked.size() == values.size(), "B4: a listed GLOB was never read");
+        auto at = [&](const char* field) {
+            return values.at(g.at("tuning").at(field).get<std::uint32_t>());
+        };
+        const std::vector<std::pair<const char*, float>> fields = { { "baseDamageMult", t.baseDamageMult }, { "nodeScale", t.nodeScale },
+            { "multDrain", t.multDrain }, { "multRecovery", t.multRecovery }, { "multDuration", t.multDuration },
+            { "slowCapPct", t.slowCapPct }, { "wetSlowPct", t.wetSlowPct }, { "waterClearStamina", t.waterClearStamina },
+            { "seizeMaxPct", t.seizeMaxPct }, { "syncStage", float(t.syncStage) }, { "prevElement", float(t.prevElement) },
+            { "twinElement", float(t.twinElement) } };
+        for (const auto& [field, value] : fields) {
+            Check(value == at(field), std::string("B4: ") + field);
+            ++cases;
+        }
+        Check(t.envWet && !t.envNight, "B4: environment flags");
+        for (int tree = 0; tree < essb::kTreeCount; ++tree) {
+            Check(t.level[tree] == values.at(levels[tree]), "B4: tree level " + std::to_string(tree));
+            ++cases;
+        }
+    }
+    // B5: hit flags -> attack. Ranged: the sneak shot is the power attack; the left hand needs a different right.
+    {
+        struct Row {
+            bool power, sneak, ranged;
+            std::uint32_t source, left, right;
+            bool wantPower, wantLeft;
+        };
+        const Row rows[] = {
+            { true, false, false, 7, 5, 7, true, false },    // melee power attack, right hand
+            { false, true, false, 5, 5, 7, false, true },    // melee sneak attack from the left hand: no power
+            { true, false, true, 9, 9, 9, false, false },    // bow: the power flag does not count
+            { false, true, true, 9, 9, 9, true, false },     // bow sneak shot counts as power; bow in both hands is not "left"
+            { false, false, false, 5, 5, 5, false, false },  // identical weapons in both hands read as right
+            { false, false, false, 0, 0, 7, false, false },  // no source weapon (fists): never left
+        };
+        for (const Row& r : rows) {
+            const essb::RawAttack raw{ r.power, r.sneak, r.ranged, r.source, r.left, r.right };
+            const essb::Attack a = essb::MakeAttack(essb::kFrost, raw);
+            Check(a.element == essb::kFrost && a.power == r.wantPower && a.sneakAttack == r.sneak && a.leftHand == r.wantLeft, "B5 attack row");
+            ++cases;
+        }
+    }
+    // B6: raw target facts -> planner facts, one flag at a time.
+    {
+        using Field = bool essb::RawTarget::*;
+        struct Row {
+            Field raw;
+            bool essb::TargetFacts::*fact;
+        };
+        const Row rows[] = {
+            { &essb::RawTarget::undeadKeyword, &essb::TargetFacts::undeadOrDaedra },
+            { &essb::RawTarget::daedraKeyword, &essb::TargetFacts::undeadOrDaedra },
+            { &essb::RawTarget::necromancerClass, &essb::TargetFacts::necromancer },
+            { &essb::RawTarget::necromancerFaction, &essb::TargetFacts::necromancer },
+            { &essb::RawTarget::bloodMark, &essb::TargetFacts::bloodMark },
+            { &essb::RawTarget::silenced, &essb::TargetFacts::silenced },
+            { &essb::RawTarget::spellInLeftHand, &essb::TargetFacts::spellUser },
+            { &essb::RawTarget::spellInRightHand, &essb::TargetFacts::spellUser },
+            { &essb::RawTarget::armorSpellEffect, &essb::TargetFacts::spellUser },
+            { &essb::RawTarget::cloakEffect, &essb::TargetFacts::spellUser },
+            { &essb::RawTarget::essential, &essb::TargetFacts::vip },
+            { &essb::RawTarget::baseEssential, &essb::TargetFacts::vip },
+            { &essb::RawTarget::baseProtected, &essb::TargetFacts::vip },
+            { &essb::RawTarget::baseUnique, &essb::TargetFacts::vip },
+        };
+        const essb::TargetFacts none = essb::MakeTarget(essb::RawTarget{});
+        for (const Row& r : rows) {
+            essb::RawTarget raw;
+            raw.*(r.raw) = true;
+            const essb::TargetFacts facts = essb::MakeTarget(raw);
+            Check(facts.*(r.fact) && !(none.*(r.fact)), "B6 target flag");
+            ++cases;
+        }
+        essb::RawTarget thralls;
+        thralls.commandedActors = 1;
+        thralls.magicka = 12.0f;
+        thralls.magickaMax = 40.0f;
+        const essb::TargetFacts t = essb::MakeTarget(thralls);
+        Check(t.necromancer && t.magicka == 12.0f && t.magickaMax == 40.0f, "B6 thralls and magicka");
+        ++cases;
+    }
+    // B7: each planned cast uses the spell record the generator assigned to it.
+    {
+        const json& spells = wiring.at("spells");
+        for (const auto& [name, cast] : kCastNames) {
+            if (cast == essb::Cast::kProc) {
+                continue;
+            }
+            essb::CastStep step{ cast };
+            if (cast == essb::Cast::kSilence) {
+                for (int s = 1; s <= essb::kSilenceSpellCount; ++s) {
+                    step.seconds = s;
+                    Check(essb::SpellFor(step) == spells.at("kSilence" + std::to_string(s)).get<std::uint32_t>(), "B7 silence " + std::to_string(s));
+                    ++cases;
+                }
+                step.seconds = 0;
+                Check(essb::SpellFor(step) == 0, "B7 silence 0 must not resolve");
+                continue;
+            }
+            Check(essb::SpellFor(step) == spells.at(name).get<std::uint32_t>(), "B7 " + name);
+            ++cases;
+        }
+        std::set<std::uint32_t> procIds;
+        for (int e = essb::kFire; e <= essb::kAstral; ++e) {
+            for (const bool power : { false, true }) {
+                const essb::ProcRow* row = essb::FindProc(e, power);
+                Check(row && row->element == e && row->power == int(power), "B7 proc row");
+                procIds.insert(row->id);
+                ++cases;
+            }
+        }
+        Check(procIds.size() == 22, "B7 proc spells distinct");
+    }
+    // B8: GetActorValuePercentage semantics (0 permanent health reads as full).
+    {
+        essb::PlayerFacts p;
+        p.health = 30.0f;
+        p.healthPermanent = 0.0f;
+        Check(essb::HealthFraction(p) == 1.0f, "B8 zero permanent health");
+        p.healthPermanent = 120.0f;
+        Check(Near(essb::HealthFraction(p), 0.25), "B8 fraction");
+        cases += 2;
     }
     return cases;
 }
@@ -199,33 +597,41 @@ int PapyrusResolve(const essb::HitFacts& f)
     return -1;
 }
 
-bool PapyrusAccepts(const essb::HitFacts& f)
+// -1 rejected, 0 OnNoFormHit, 1..11 element hit.
+int PapyrusAccepts(const essb::HitFacts& f)
 {
     if (!f.causeIsPlayer || f.enabled != 1.0f) {
-        return false;
+        return -1;
     }
     if (f.bash || f.blocked) {  // Math.LogicalAnd(aiHitFlagMask, 1097731) != 0
-        return false;
+        return -1;
     }
     if (!f.targetIsActor || f.targetIsPlayer || f.teammate || f.commanded) {
-        return false;
+        return -1;
     }
     const int weaponType = PapyrusResolve(f);
     if (weaponType < 0 || weaponType > 9 || weaponType == 8) {
-        return false;
+        return -1;
     }
     const bool ranged = weaponType == 7 || weaponType == 9;
     if (!ranged && f.projectile) {
-        return false;
+        return -1;
     }
     if (f.targetDead) {
-        return false;
+        return -1;
     }
-    if (f.formActive != 1.0f) {  // !hitActive: no-form XP only, no element proc
-        return false;
+    const bool hitActive = f.formActive == 1.0f;  // FormActive.GetValueInt() == 1
+    if (!hitActive) {
+        return 0;  // OnNoFormHit
     }
     const int element = int(f.element);  // CurrentElement.GetValueInt()
-    return element >= 1 && element <= 11;
+    return element >= 1 && element <= 11 ? element : -1;
+}
+
+int Verdict(const essb::HitFacts& f)
+{
+    const essb::Verdict v = essb::Filter(f);
+    return v.reason == essb::Reject::kAccepted ? v.element : -1;
 }
 
 // Hand states the engine can report: empty, a non-weapon (spell/shield/torch), a hand-to-hand
@@ -252,26 +658,27 @@ int GroupC()
     }
     const auto hands = Hands();
     int cases = 0;
-    // C1: weapon resolution over every reportable source/projectile/hand combination.
+    // C1: weapon resolution over every reportable source/projectile/hand combination, with and without a form.
     for (const auto& source : sources) {
         for (int projectile = 0; projectile < 2; ++projectile) {
             for (const auto& right : hands) {
                 for (const auto& left : hands) {
-                    essb::HitFacts f;
-                    f.causeIsPlayer = true;
-                    f.targetIsActor = true;
-                    f.enabled = 1.0f;
-                    f.formActive = 1.0f;
-                    f.element = 1.0f;
-                    f.source = source.kind;
-                    f.sourceWeaponType = source.weaponType;
-                    f.projectile = projectile != 0;
-                    f.right = right;
-                    f.left = left;
-                    Check(essb::ResolveWeaponType(f) == PapyrusResolve(f), "C1 weapon resolution differs from Papyrus");
-                    const bool accepted = essb::Filter(f).reason == essb::Reject::kAccepted;
-                    Check(accepted == PapyrusAccepts(f), "C1 filter differs from Papyrus");
-                    ++cases;
+                    for (const float active : { 0.0f, 1.0f }) {
+                        essb::HitFacts f;
+                        f.causeIsPlayer = true;
+                        f.targetIsActor = true;
+                        f.enabled = 1.0f;
+                        f.formActive = active;
+                        f.element = 1.0f;
+                        f.source = source.kind;
+                        f.sourceWeaponType = source.weaponType;
+                        f.projectile = projectile != 0;
+                        f.right = right;
+                        f.left = left;
+                        Check(essb::ResolveWeaponType(f) == PapyrusResolve(f), "C1 weapon resolution differs from Papyrus");
+                        Check(Verdict(f) == PapyrusAccepts(f), "C1 filter differs from Papyrus");
+                        ++cases;
+                    }
                 }
             }
         }
@@ -280,7 +687,7 @@ int GroupC()
     // The GLOBs are only ever written with SetValueInt / MCM toggles, so only integer values can occur.
     const float globals[] = { 0.0f, 1.0f, 2.0f, -1.0f, 3.0f, 11.0f, 12.0f };
     for (int baseline = 0; baseline < 3; ++baseline) {
-        for (int gate = 0; gate < 8; ++gate) {
+        for (int gate = 0; gate < 9; ++gate) {
             for (int on = 0; on < 2; ++on) {
                 for (float value : globals) {
                     essb::HitFacts f;
@@ -307,9 +714,9 @@ int GroupC()
                     case 5: f.bash = flag; f.blocked = !flag; break;
                     case 6: f.enabled = value; f.formActive = flag ? 1.0f : value; break;
                     case 7: f.element = value; break;
+                    case 8: f.formActive = value; f.element = flag ? value : 5.0f; break;
                     }
-                    const bool accepted = essb::Filter(f).reason == essb::Reject::kAccepted;
-                    Check(accepted == PapyrusAccepts(f), "C2 gate differs from Papyrus");
+                    Check(Verdict(f) == PapyrusAccepts(f), "C2 gate differs from Papyrus");
                     ++cases;
                 }
             }
@@ -320,81 +727,156 @@ int GroupC()
 
 // ---------------------------------------------------------------- D
 
-// Integer model (the engine's GetRandomPercent returns 0..99) and a continuous model, each 1,000,000 hits.
-int GroupD()
+// Binomial / mean tolerance: 5 standard errors; the seeds are fixed, so the result is deterministic.
+void CheckShare(int count, int trials, double expected, const std::string& what)
 {
-    constexpr int trials = 1000000;
-    std::mt19937 rng(190020);
-    std::uniform_int_distribution<int> integer(0, 99);
-    std::array<int, 6> hits{};
-    for (int i = 0; i < trials; ++i) {
-        auto ask = [&](const essb::Query& q) {
-            if (q.fn == essb::Fn::kGetRandomPercent) {
-                return float(integer(rng)) < q.value;
-            }
-            return false;
-        };
-        ++hits[essb::select(essb::BuildInput(3, ask)).lightning];
-    }
-    double remaining = 1.0;
-    for (int band = 5; band >= 1; --band) {
-        const double chance = band == 1 ? 1.0 : std::ceil(100.0 / band) / 100.0;
-        const double expected = remaining * chance;
-        remaining *= 1.0 - chance;
-        const double measured = double(hits[band]) / trials;
-        Check(std::abs(measured - expected) < 0.002, "D integer-model distribution");
-        std::printf("R%d integer_expected=%.4f measured=%.4f\n", band, expected, measured);
-    }
-    std::uniform_real_distribution<float> real(0.0f, 100.0f);
-    hits.fill(0);
-    for (int i = 0; i < trials; ++i) {
-        auto ask = [&](const essb::Query& q) {
-            if (q.fn == essb::Fn::kGetRandomPercent) {
-                return real(rng) < q.value;
-            }
-            return false;
-        };
-        ++hits[essb::select(essb::BuildInput(3, ask)).lightning];
-    }
-    for (int band = 1; band <= 5; ++band) {
-        Check(std::abs(double(hits[band]) / trials - 0.2) < 0.002, "D continuous-model distribution");
-    }
-    return 2 * trials;
+    const double share = double(count) / trials;
+    const double sigma = std::sqrt(expected * (1 - expected) / trials);
+    Check(std::abs(share - expected) <= 5.0 * sigma, what + ": share " + std::to_string(share) + " vs " + std::to_string(expected));
 }
 
-// Manifest identity at compile time: every generated row is a distinct, in-range key.
-constexpr bool RowsAreDistinctKeys()
+int GroupD()
 {
-    for (std::size_t i = 0; i < std::size(essb::rows); ++i) {
-        const auto& key = essb::rows[i].key;
-        if (key.index() < 0 || key.index() >= essb::kKeyCount || essb::spell(key) != essb::rows[i].id) {
-            return false;
+    constexpr int trials = 100000;
+    int draws = 0;
+    essb::SplitMix64 rng(0x5EED2020ull);
+    // D1: B for fire is uniform on [10, 12]: mean 11 and four equal quarters.
+    {
+        std::array<int, 4> quarter{};
+        double sum = 0;
+        for (int i = 0; i < trials; ++i) {
+            const float b = rng.Real(10.0f, 12.0f);
+            Check(b >= 10.0f && b <= 12.0f, "D1 B out of range");
+            sum += b;
+            ++quarter[std::min(3, int((b - 10.0f) * 2.0f))];
         }
-        for (std::size_t j = i + 1; j < std::size(essb::rows); ++j) {
-            if (essb::rows[j].key == key) {
+        const double sigmaMean = (2.0 / std::sqrt(12.0)) / std::sqrt(double(trials));
+        Check(std::abs(sum / trials - 11.0) <= 5.0 * sigmaMean, "D1 mean of B");
+        for (int q = 0; q < 4; ++q) {
+            CheckShare(quarter[q], trials, 0.25, "D1 quarter " + std::to_string(q));
+        }
+        draws += trials;
+    }
+    // D2: lightning with N = 1 (production until N4): each face 1..25 has 4%.
+    {
+        std::array<int, 26> face{};
+        for (int i = 0; i < trials; ++i) {
+            ++face[essb::RollLightning(rng, 1, 25, essb::LightningRolls(essb::kChargesUntilN4))];
+        }
+        Check(face[0] == 0, "D2 face 0");
+        for (int f = 1; f <= 25; ++f) {
+            CheckShare(face[f], trials, 0.04, "D2 face " + std::to_string(f));
+        }
+        draws += trials;
+    }
+    // D3: best of 7 (six charges, v0.4 2.1 example): mean 22.35 and P(max <= 12) = (12/25)^7.
+    {
+        double sum = 0;
+        double sumSq = 0;
+        int low = 0;
+        for (int i = 0; i < trials; ++i) {
+            const int best = essb::RollLightning(rng, 1, 25, 7);
+            sum += best;
+            sumSq += double(best) * best;
+            low += best <= 12;
+        }
+        double expected = 0;
+        for (int k = 1; k <= 25; ++k) {
+            expected += 1.0 - std::pow((k - 1) / 25.0, 7);
+        }
+        const double mean = sum / trials;
+        const double sigmaMean = std::sqrt(sumSq / trials - mean * mean) / std::sqrt(double(trials));
+        Check(std::abs(expected - 22.3517) < 1e-3, "D3 expected value of best-of-7 (v0.4 says 22.35)");
+        Check(std::abs(mean - expected) <= 5.0 * sigmaMean, "D3 best-of-7 mean");
+        CheckShare(low, trials, std::pow(12.0 / 25.0, 7), "D3 best-of-7 low tail");
+        draws += 7 * trials;
+    }
+    // D4: the 5% crit roll.
+    {
+        int hits = 0;
+        for (int i = 0; i < trials; ++i) {
+            hits += rng.Chance(essb::LightningCritChance(essb::kChargesUntilN4));
+        }
+        CheckShare(hits, trials, 0.05, "D4 chance 5%");
+        draws += trials;
+    }
+    // D5: 20 000 planned lightning hits, bare profile (magnitude = face x 1.05, x1.5 on a crit):
+    // faces uniform, crit rate 5%, a crit is exactly x1.5.
+    {
+        constexpr int hits = 20000;
+        const essb::Config config = essb::MakeConfig();
+        const Inputs in = Bare(essb::kLightning);
+        std::array<int, 26> face{};
+        int crits = 0;
+        for (int i = 0; i < hits; ++i) {
+            const essb::Plan p = essb::PlanHit(in.attack, config, in.tuning, in.player, in.target, in.nodes, rng);
+            const double raw = p.steps[0].magnitude / 1.05 / (p.crit ? 1.5 : 1.0);
+            const int f = int(std::lround(raw));
+            Check(std::abs(raw - f) < 1e-3 && f >= 1 && f <= 25, "D5 magnitude is not face x 1.05 (x1.5)");
+            ++face[f];
+            crits += p.crit;
+        }
+        for (int f = 1; f <= 25; ++f) {
+            CheckShare(face[f], hits, 0.04, "D5 planned face " + std::to_string(f));
+        }
+        CheckShare(crits, hits, 0.05, "D5 planned crit rate");
+        draws += 2 * hits;
+    }
+    // D6: integer draws have no modulo bias on an awkward span.
+    {
+        std::array<int, 3> bucket{};
+        for (int i = 0; i < trials; ++i) {
+            ++bucket[rng.Int(10, 12) - 10];
+        }
+        for (int b = 0; b < 3; ++b) {
+            CheckShare(bucket[b], trials, 1.0 / 3.0, "D6 bucket " + std::to_string(b));
+        }
+        draws += trials;
+    }
+    return draws;
+}
+
+// Manifest identity at compile time: every proc row is a distinct element x power.
+constexpr bool ProcRowsDistinct()
+{
+    for (std::size_t i = 0; i < std::size(essb::procRows); ++i) {
+        for (std::size_t j = i + 1; j < std::size(essb::procRows); ++j) {
+            if (essb::procRows[i].element == essb::procRows[j].element && essb::procRows[i].power == essb::procRows[j].power) {
                 return false;
             }
         }
     }
     return true;
 }
-static_assert(RowsAreDistinctKeys());
+static_assert(ProcRowsDistinct());
+
+json Load(const char* path)
+{
+    std::ifstream file(path);
+    Check(bool(file), std::string("missing fixture ") + path);
+    json data;
+    file >> data;
+    return data;
+}
 
 }  // namespace
 
 int main(int argc, char** argv)
 {
     try {
-        Check(argc == 2, "usage: hit_pipeline_test <build/fix19-truth.csv>");
-        const int a = GroupA(argv[1]);
-        const int b = GroupB();
+        Check(argc == 3, "usage: hit_pipeline_test <build/fix20-magnitude-table.json> <build/fix20-wiring.json>");
+        const json table = Load(argv[1]);
+        const json wiring = Load(argv[2]);
+        const int a0 = GroupA0();
+        const int a = GroupA(table);
+        const int b = GroupB(wiring);
         const int c = GroupC();
         const int d = GroupD();
-        std::printf("NATIVE TRUTH TABLE ok: A %d production inputs == old 74-segment ESP oracle; all %zu manifest spells reachable\n",
-            a, std::size(essb::rows));
-        std::printf("NATIVE WIRING ok: B %d mocked engine states -> Input with exact CTDA queries; RNG lazy, health only for blood\n", b);
-        std::printf("NATIVE FILTER ok: C %d hit-fact combinations == Papyrus OnWeaponHit gates\n", c);
-        std::printf("NATIVE LIGHTNING ok: D %d BuildInput draws (integer + continuous RNG models)\n", d);
+        std::printf("NATIVE ANCHORS ok: A0 %d hand-computed hits (fire, lightning power crit + drain, blood curve + leech, divine undead, adept node, no-form dispel)\n", a0);
+        std::printf("NATIVE MAGNITUDE ok: A %d scenarios == build/fix20_reference.py (casts, order, magnitudes, draws, echo, crit)\n", a);
+        std::printf("NATIVE WIRING ok: B %d mocked engine reads -> inputs (perk FormIDs + 4-probe ranks, no-form suppression, GLOB fields, attack, target, spells)\n", b);
+        std::printf("NATIVE FILTER ok: C %d hit-fact combinations == Papyrus OnWeaponHit gates (element and no-form)\n", c);
+        std::printf("NATIVE RANDOM ok: D %d production draws (uniform B, 1..25 faces, best-of-7, 5%% crit, planned lightning faces and crits) within 5 sigma\n", d);
         return 0;
     } catch (const std::exception& e) {
         std::fprintf(stderr, "FAILED: %s\n", e.what());

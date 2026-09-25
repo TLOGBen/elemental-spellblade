@@ -4,8 +4,8 @@
     "Skyrim.esm"
   ],
   "esl_flagged": false,
-  "record_count": 4071,
-  "next_object_id": "00600E",
+  "record_count": 4070,
+  "next_object_id": "006010",
   "allocation": [
     {
       "range": "0x000800-0x00080F",
@@ -2140,6 +2140,91 @@
       "formid": "01005200",
       "type": "PERK"
     },
+    "ESSB_Native_SpendMagickaEffect": {
+      "id": "005300",
+      "formid": "01005300",
+      "type": "MGEF"
+    },
+    "ESSB_Native_SpendMagicka": {
+      "id": "005301",
+      "formid": "01005301",
+      "type": "SPEL"
+    },
+    "ESSB_Native_SoakSlow": {
+      "id": "005302",
+      "formid": "01005302",
+      "type": "SPEL"
+    },
+    "ESSB_BloodGuardEffect": {
+      "id": "005303",
+      "formid": "01005303",
+      "type": "MGEF"
+    },
+    "ESSB_BloodGuard": {
+      "id": "005304",
+      "formid": "01005304",
+      "type": "SPEL"
+    },
+    "ESSB_EchoPendingEffect": {
+      "id": "005305",
+      "formid": "01005305",
+      "type": "MGEF"
+    },
+    "ESSB_EchoPending": {
+      "id": "005306",
+      "formid": "01005306",
+      "type": "SPEL"
+    },
+    "ESSB_TwinWindowEffect": {
+      "id": "005307",
+      "formid": "01005307",
+      "type": "MGEF"
+    },
+    "ESSB_TwinWindow": {
+      "id": "005308",
+      "formid": "01005308",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Silence_1": {
+      "id": "005310",
+      "formid": "01005310",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Silence_2": {
+      "id": "005311",
+      "formid": "01005311",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Silence_3": {
+      "id": "005312",
+      "formid": "01005312",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Silence_4": {
+      "id": "005313",
+      "formid": "01005313",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Silence_5": {
+      "id": "005314",
+      "formid": "01005314",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Silence_6": {
+      "id": "005315",
+      "formid": "01005315",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Silence_7": {
+      "id": "005316",
+      "formid": "01005316",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Silence_8": {
+      "id": "005317",
+      "formid": "01005317",
+      "type": "SPEL"
+    },
     "ESSB_Proc": {
       "id": "000830",
       "formid": "01000830",
@@ -3103,106 +3188,6 @@
     "ESSB_Hit_Astral_Power": {
       "id": "000B15",
       "formid": "01000B15",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Wind_SneakNormal": {
-      "id": "005240",
-      "formid": "01005240",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Blood_Normal_B1": {
-      "id": "005241",
-      "formid": "01005241",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Blood_Normal_B2": {
-      "id": "005242",
-      "formid": "01005242",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Blood_Normal_B3": {
-      "id": "005243",
-      "formid": "01005243",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Lightning_Normal_R1": {
-      "id": "005244",
-      "formid": "01005244",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Lightning_Normal_R2": {
-      "id": "005245",
-      "formid": "01005245",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Lightning_Normal_R3": {
-      "id": "005246",
-      "formid": "01005246",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Lightning_Normal_R4": {
-      "id": "005247",
-      "formid": "01005247",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Lightning_Normal_R5": {
-      "id": "005248",
-      "formid": "01005248",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Lightning_Normal_Inc": {
-      "id": "005249",
-      "formid": "01005249",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Wind_SneakPower": {
-      "id": "00524A",
-      "formid": "0100524A",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Blood_Power_B1": {
-      "id": "00524B",
-      "formid": "0100524B",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Blood_Power_B2": {
-      "id": "00524C",
-      "formid": "0100524C",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Blood_Power_B3": {
-      "id": "00524D",
-      "formid": "0100524D",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Lightning_Power_R1": {
-      "id": "00524E",
-      "formid": "0100524E",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Lightning_Power_R2": {
-      "id": "00524F",
-      "formid": "0100524F",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Lightning_Power_R3": {
-      "id": "005250",
-      "formid": "01005250",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Lightning_Power_R4": {
-      "id": "005251",
-      "formid": "01005251",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Lightning_Power_R5": {
-      "id": "005252",
-      "formid": "01005252",
-      "type": "SPEL"
-    },
-    "ESSB_Hit_Lightning_Power_Inc": {
-      "id": "005253",
-      "formid": "01005253",
       "type": "SPEL"
     },
     "ESSB_MarkEffect_Fire": {
@@ -20796,8 +20781,8 @@
       "type": "PERK"
     },
     "ESSB_MainQuest": {
-      "id": "00600C",
-      "formid": "0100600C",
+      "id": "00600E",
+      "formid": "0100600E",
       "type": "QUST"
     },
     "ESSB_MainQuest_Schema1_Stub": {
@@ -20870,9 +20855,19 @@
       "formid": "0100600B",
       "type": "QUST"
     },
-    "ESSB_MCMQuest": {
+    "ESSB_MainQuest_Schema8_Stub": {
+      "id": "00600C",
+      "formid": "0100600C",
+      "type": "QUST"
+    },
+    "ESSB_MCMQuest_Schema8_Stub": {
       "id": "00600D",
       "formid": "0100600D",
+      "type": "QUST"
+    },
+    "ESSB_MCMQuest": {
+      "id": "00600F",
+      "formid": "0100600F",
       "type": "QUST"
     }
   }

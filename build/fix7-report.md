@@ -22,65 +22,65 @@
 | ID | 效果 | 舊基準 | 新基準 | 程式位置 |
 |---|---|---|---|---|
 | 01 | 血痕開印吸血 | 10 × 吸血比 × 開印倍率；基礎 0.5–5 | 50 × 原吸血比 × 開印倍率 | `src/ESSBReactions.psc:Open`（行 103） |
-| 02 | 命中流血目標吸血（固定 B 基準） | B_max 10 × 吸血比 × 血位命中倍率；基礎滿血 0.65，低血 3；吸血主線滿點滿血 2.6、低血 3.9 | B_max ×5 × 原吸血比 × 血位命中倍率 | `src/ESSBElem2.psc:OnBloodHit`（行 225） |
-| 03 | 切換受傷 -50% 視窗 | 1 秒 | 2 秒 | `src/ESSBController.psc:SwitchForm`（行 1391） |
-| 04 | 斷咒附帶沉默 | 1 秒（每 5 秒至多一次） | 1 秒（保留） | `src/ESSBNoForm.psc:OnManaBreak`（行 189） |
-| 05 | 低點數沉默及首領折半 | 1+0.2×rank，四捨五入；rank1–2 實際 1 秒，首領最少1秒 | 1+0.2×rank，原四捨五入及首領折半（保留） | `src/ESSBNoForm.psc:ApplySilence`（行 202） |
-| 06 | B_max 固定基準命中回血 | 10 × 0.02 × rank，滿點 3／擊 | 1 × rank | `src/ESSBElem2.psc:OnDivineHit`（行 237） |
-| 07 | 風刃命中回耐 | 3／次 | 15／次 | `src/ESSBElem2.psc:WindBladeOne`（行 600） |
-| 08 | 融斷每個印記回魔 | B_max ×0.5；依元素 = 3.5–12.5／印記 | B_max ×2／印記 | `src/ESSBNoForm.psc:OnBurst`（行 341） |
-| 09 | 附近每名中毒敵人每秒回血 | 4.5／人／秒，最多 5 人 = 22.5 | 6／人／秒，最多 5 人 | `src/ESSBElem3.psc:PoisonFormTick`（行 1095） |
-| 10 | 開印回血 | B_max 9 × 0.5 = 4.5 | 25 | `src/ESSBElem3.psc:OpenPoison`（行 347） |
-| 11 | 命中削耐的一半回耐 | 0.25 × rank，滿點 3.75／擊 | 1.5 × rank | `src/ESSBElem2.psc:OnEarthHit`（行 178） |
-| 12 | 開印固定回血 | 10 × 0.5 = 5；低血位 ×2 = 10 | 25，低血位 50 | `src/ESSBElem2.psc:OpenBlood`（行 356） |
+| 02 | 命中流血目標吸血（固定 B 基準） | B_max 10 × 吸血比 × 血位命中倍率；基礎滿血 0.65，低血 3；吸血主線滿點滿血 2.6、低血 3.9 | B_max ×5 × 原吸血比 × 血位命中倍率 | `native/include/HitMath.h:AddBloodLeech`（行 379） |
+| 03 | 切換受傷 -50% 視窗 | 1 秒 | 2 秒 | `src/ESSBController.psc:SwitchForm`（行 1381） |
+| 04 | 斷咒附帶沉默 | 1 秒（每 5 秒至多一次） | 1 秒（保留） | `src/ESSBNoForm.psc:OnInterruptCast`（行 126） |
+| 05 | 低點數沉默及首領折半 | 1+0.2×rank，四捨五入；rank1–2 實際 1 秒，首領最少1秒 | 1+0.2×rank，原四捨五入及首領折半（保留） | `native/include/HitMath.h:SilenceSeconds`（行 514） |
+| 06 | B_max 固定基準命中回血 | 10 × 0.02 × rank，滿點 3／擊 | 1 × rank | `src/ESSBElem2.psc:OnDivineHit`（行 195） |
+| 07 | 風刃命中回耐 | 3／次 | 15／次 | `src/ESSBElem2.psc:WindBladeOne`（行 558） |
+| 08 | 融斷每個印記回魔 | B_max ×0.5；依元素 = 3.5–12.5／印記 | B_max ×2／印記 | `src/ESSBNoForm.psc:OnBurst`（行 249） |
+| 09 | 附近每名中毒敵人每秒回血 | 4.5／人／秒，最多 5 人 = 22.5 | 6／人／秒，最多 5 人 | `src/ESSBElem3.psc:PoisonFormTick`（行 1088） |
+| 10 | 開印回血 | B_max 9 × 0.5 = 4.5 | 25 | `src/ESSBElem3.psc:OpenPoison`（行 340） |
+| 11 | 命中削耐的一半回耐 | 0.25 × rank，滿點 3.75／擊 | 1.5 × rank | `native/include/HitMath.h:AddFlatHitNodes`（行 407） |
+| 12 | 開印固定回血 | 10 × 0.5 = 5；低血位 ×2 = 10 | 25，低血位 50 | `src/ESSBElem2.psc:OpenBlood`（行 314） |
 | 13 | 聖印開印基礎回血 | B_max 10 ×0.5 ×環境 M ×開印 M；無分支滿點白天 8.7、夜晚 7.25 | 25 × 環境 M × 開印 M | `src/ESSBReactions.psc:Open`（行 108） |
-| 14 | 熔身每秒回耐 | 5／秒 ×10 秒 = 50 | 20／秒 | `src/ESSBController.psc:TickTimers`（行 4009） |
-| 15 | 冰封期間每秒削耐 | 5／秒 | 25／秒 | `src/ESSBElem.psc:OnFrozenTick`（行 513） |
-| 16 | 命中回耐 | 5／擊 | 25／擊 | `src/ESSBElem2.psc:OnWindHit`（行 210） |
-| 17 | 水域每秒回生命與耐力 | 各 B_max = 7／秒，5 秒各 35 | 生命與耐力各 15／秒 | `src/ESSBController.psc:TickDomain`（行 4767） |
-| 18 | 開印額外回血 | 10 × 0.05 × rank，滿點 7.5 | 2 × rank | `src/ESSBElem2.psc:OpenDivine`（行 386） |
+| 14 | 熔身每秒回耐 | 5／秒 ×10 秒 = 50 | 20／秒 | `src/ESSBController.psc:TickTimers`（行 4107） |
+| 15 | 冰封期間每秒削耐 | 5／秒 | 25／秒 | `src/ESSBElem.psc:OnFrozenTick`（行 517） |
+| 16 | 命中回耐 | 5／擊 | 25／擊 | `native/include/HitMath.h:AddFlatHitNodes`（行 416） |
+| 17 | 水域每秒回生命與耐力 | 各 B_max = 7／秒，5 秒各 35 | 生命與耐力各 15／秒 | `src/ESSBController.psc:TickDomain`（行 4853） |
+| 18 | 開印額外回血 | 10 × 0.05 × rank，滿點 7.5 | 2 × rank | `src/ESSBElem2.psc:OpenDivine`（行 344） |
 | 19 | 每次終焉回魔 | B_max；依元素 = 7–25 | B_max ×3 | `src/ESSBNodes.psc:OnEndReward`（行 248） |
-| 20 | 每擊固定削耐 | 0.5 × rank；滿點 7.5 | 3 × rank | `src/ESSBElem2.psc:OnEarthHit`（行 178） |
-| 21 | 引爆臨時生命護盾 | B_max 10 ×當次引爆層數，10 秒；同款 Peak Value Modifier 不逐次相加 | 25／引爆層 | `src/ESSBElem3.psc:OnAstralDetonate`（行 857） |
-| 22 | 星痕引爆回血 | B_max 10 ×當次層數 | 20／引爆層 | `src/ESSBElem3.psc:OnAstralDetonate`（行 861） |
-| 23 | 血池每秒回血 | B_max 10／秒，5 秒共 50 | 20／秒 | `src/ESSBController.psc:TickDomain`（行 4762） |
-| 24 | 死咒結算吸血與吸魔 | 各 10 ×環境 M（夜晚 12） | 生命與魔力各 30 × 環境 M | `src/ESSBElem3.psc:AfterDeathCurse`（行 653） |
-| 25 | 裁決回血（每名被裁決目標各一次） | B_max 10 ×環境 M，白天 12／次；範圍最多 6 次 = 72 | 25／目標，單次累計 min(25×目標數,100)，再乘環境 M | `src/ESSBElem2.psc:Judge`（行 720） |
-| 26 | 命中治療每名同伴 | B_max 10／擊 | 25／同伴／擊 | `src/ESSBElem2.psc:OnDivineHit`（行 254） |
-| 27 | 開印治療每名同伴 | B_max 10 | 40／同伴 | `src/ESSBElem2.psc:OpenDivine`（行 402） |
-| 28 | 聖引預約下一開印治療玩家 | B_max 10 | 40 | `src/ESSBElem2.psc:OpenDivine`（行 406） |
-| 29 | 聖域每秒回生命與魔力 | 各 B_max 10／秒，5 秒各 50 | 生命 25／秒、魔力 20／秒 | `src/ESSBController.psc:TickDomain`（行 4764） |
-| 30 | 神聖領域同一回復路徑，延長時長 | 各 10／秒，8 秒各 80 | 同 29；同一領域，不另疊加 | `src/ESSBController.psc:TickDomain`（行 4765） |
-| 31 | 聖印記融斷每目標額外治療 | 10 ×環境 M，白天 12 | 25 × 環境 M／目標 | `src/ESSBElem2.psc:EndDivineNodes`（行 880） |
-| 32 | 連續三次命中回耐 | 25／三擊 | 60／三擊 | `src/ESSBNoForm.psc:OnCombo`（行 101） |
-| 33 | 命中回魔 | B_max 10 | 25 | `src/ESSBElem3.psc:OnAstralHit`（行 303） |
-| 34 | 開印回魔 | B_max 10 | 40 | `src/ESSBElem3.psc:OpenAstral`（行 430） |
+| 20 | 每擊固定削耐 | 0.5 × rank；滿點 7.5 | 3 × rank | `native/include/HitMath.h:AddFlatHitNodes`（行 407） |
+| 21 | 引爆臨時生命護盾 | B_max 10 ×當次引爆層數，10 秒；同款 Peak Value Modifier 不逐次相加 | 25／引爆層 | `src/ESSBElem3.psc:OnAstralDetonate`（行 850） |
+| 22 | 星痕引爆回血 | B_max 10 ×當次層數 | 20／引爆層 | `src/ESSBElem3.psc:OnAstralDetonate`（行 854） |
+| 23 | 血池每秒回血 | B_max 10／秒，5 秒共 50 | 20／秒 | `src/ESSBController.psc:TickDomain`（行 4848） |
+| 24 | 死咒結算吸血與吸魔 | 各 10 ×環境 M（夜晚 12） | 生命與魔力各 30 × 環境 M | `src/ESSBElem3.psc:AfterDeathCurse`（行 646） |
+| 25 | 裁決回血（每名被裁決目標各一次） | B_max 10 ×環境 M，白天 12／次；範圍最多 6 次 = 72 | 25／目標，單次累計 min(25×目標數,100)，再乘環境 M | `src/ESSBElem2.psc:Judge`（行 678） |
+| 26 | 命中治療每名同伴 | B_max 10／擊 | 25／同伴／擊 | `src/ESSBElem2.psc:OnDivineHit`（行 212） |
+| 27 | 開印治療每名同伴 | B_max 10 | 40／同伴 | `src/ESSBElem2.psc:OpenDivine`（行 360） |
+| 28 | 聖引預約下一開印治療玩家 | B_max 10 | 40 | `src/ESSBElem2.psc:OpenDivine`（行 364） |
+| 29 | 聖域每秒回生命與魔力 | 各 B_max 10／秒，5 秒各 50 | 生命 25／秒、魔力 20／秒 | `src/ESSBController.psc:TickDomain`（行 4850） |
+| 30 | 神聖領域同一回復路徑，延長時長 | 各 10／秒，8 秒各 80 | 同 29；同一領域，不另疊加 | `src/ESSBController.psc:TickDomain`（行 4851） |
+| 31 | 聖印記融斷每目標額外治療 | 10 ×環境 M，白天 12 | 25 × 環境 M／目標 | `src/ESSBElem2.psc:EndDivineNodes`（行 838） |
+| 32 | 連續三次命中回耐 | 25／三擊 | 60／三擊 | `src/ESSBNoForm.psc:OnCombo`（行 105） |
+| 33 | 命中回魔 | B_max 10 | 25 | `src/ESSBElem3.psc:OnAstralHit`（行 296） |
+| 34 | 開印回魔 | B_max 10 | 40 | `src/ESSBElem3.psc:OpenAstral`（行 423） |
 | 35 | 詛咒開印吸魔／回魔 | 10 ×環境 M ×開印 M；滿點夜晚 17.4 | 40 × 原倍率 | `src/ESSBReactions.psc:Open`（行 121） |
-| 36 | 命中詛咒目標吸魔／回魔 | B_max 10 ×環境 M，夜晚 12 | 30 × 環境 M | `src/ESSBElem3.psc:OnDarkHit`（行 259） |
-| 37 | 詛咒目標死亡回魔 | B_max 10 ×詛咒層數，1–13 層 = 10–130 | 15／詛咒層 | `src/ESSBElem3.psc:OnKill`（行 1189） |
-| 38 | 蝕魔終焉預約下一終焉吸魔／回魔 | 10 ×環境 M（夜晚 12） | 40 × 環境 M | `src/ESSBElem3.psc:OnAnyEnd`（行 1054） |
+| 36 | 命中詛咒目標吸魔／回魔 | B_max 10 ×環境 M，夜晚 12 | 30 × 環境 M | `src/ESSBElem3.psc:OnDarkHit`（行 252） |
+| 37 | 詛咒目標死亡回魔 | B_max 10 ×詛咒層數，1–13 層 = 10–130 | 15／詛咒層 | `src/ESSBElem3.psc:OnKill`（行 1182） |
+| 38 | 蝕魔終焉預約下一終焉吸魔／回魔 | 10 ×環境 M（夜晚 12） | 40 × 環境 M | `src/ESSBElem3.psc:OnAnyEnd`（行 1047） |
 | 39 | 裂痕開印削耐 | 10 × 開印倍率（滿點 14.5） | 40 × 開印倍率 | `src/ESSBReactions.psc:Open`（行 92） |
 | 40 | 裂痕開印回耐 | 10 | 40 | `src/ESSBReactions.psc:Open`（行 93） |
-| 41 | 開印回耐 | 10 | 40 | `src/ESSBElem2.psc:OpenWind`（行 329） |
+| 41 | 開印回耐 | 10 | 40 | `src/ESSBElem2.psc:OpenWind`（行 287） |
 | 42 | 同調升段回生命與魔力 | 各 B_max ×2；依元素 = 14–50 | 生命與魔力各 B_max ×4 | `src/ESSBNodes.psc:OnSyncStage`（行 120） |
-| 43 | 水印記融斷治療與回耐 | 各 B_max 7 ×2 ×afMult；倍率中含新通用／元素／無形態融斷節點 | 各 B_max ×2 ×afMult（保留基準 14） | `src/ESSBElem3.psc:EndWaterNodes`（行 996） |
-| 44 | 開印回耐 | 15 | 50 | `src/ESSBElem.psc:OpenFire`（行 248） |
-| 45 | 聖臨時玩家與附近同伴回血 | 各 B_max 10 ×2 = 20 | 玩家與同伴各 60 | `src/ESSBElem2.psc:OnFormOpened`（行 468） |
-| 46 | 自燃回血 | B_max 12 ×2 = 24 | 60 | `src/ESSBElem.psc:OnIgnite`（行 404） |
-| 47 | 影身觸發回魔 | B_max 10 ×2 = 20 | 50 | `src/ESSBElem3.psc:OnShadowBody`（行 1249） |
-| 48 | 化灰回魔 | B_max 10 ×2 = 20 | 60 | `src/ESSBElem2.psc:OnAsh`（行 1043） |
+| 43 | 水印記融斷治療與回耐 | 各 B_max 7 ×2 ×afMult；倍率中含新通用／元素／無形態融斷節點 | 各 B_max ×2 ×afMult（保留基準 14） | `src/ESSBElem3.psc:EndWaterNodes`（行 989） |
+| 44 | 開印回耐 | 15 | 50 | `src/ESSBElem.psc:OpenFire`（行 252） |
+| 45 | 聖臨時玩家與附近同伴回血 | 各 B_max 10 ×2 = 20 | 玩家與同伴各 60 | `src/ESSBElem2.psc:OnFormOpened`（行 426） |
+| 46 | 自燃回血 | B_max 12 ×2 = 24 | 60 | `src/ESSBElem.psc:OnIgnite`（行 408） |
+| 47 | 影身觸發回魔 | B_max 10 ×2 = 20 | 50 | `src/ESSBElem3.psc:OnShadowBody`（行 1242） |
+| 48 | 化灰回魔 | B_max 10 ×2 = 20 | 60 | `src/ESSBElem2.psc:OnAsh`（行 1001） |
 | 49 | 感電開印削魔 | B_max 25 ×開印倍率，滿點 36.25 | 60 × 開印倍率 | `src/ESSBReactions.psc:Open`（行 87） |
 | 50 | 被近戰命中時感電削魔 | B_max 25 | 50 | `src/ESSBGuard.psc:OnHitEx`（行 196） |
-| 51 | 開印回魔 | B_max 25 | 60 | `src/ESSBElem.psc:OpenShock`（行 305） |
-| 52 | 地震削耐基準及主線 | B_max 10 ×2 ×(1+0.03×rank) ×終焉 M；rank15 基準29 | 40 ×(1+0.03×rank) ×終焉 M | `src/ESSBElem2.psc:QuakeStamina`（行 494） |
-| 53 | 裂痕削甲（主線追加） | 30 +2 ×rank；滿點 60，再乘開印 M；擴散目標不乘開印 M | 60+4×rank | `src/ESSBElem2.psc:FissureArmor`（行 416） |
+| 51 | 開印回魔 | B_max 25 | 60 | `src/ESSBElem.psc:OpenShock`（行 309） |
+| 52 | 地震削耐基準及主線 | B_max 10 ×2 ×(1+0.03×rank) ×終焉 M；rank15 基準29 | 40 ×(1+0.03×rank) ×終焉 M | `src/ESSBElem2.psc:QuakeStamina`（行 452） |
+| 53 | 裂痕削甲（主線追加） | 30 +2 ×rank；滿點 60，再乘開印 M；擴散目標不乘開印 M | 60+4×rank | `src/ESSBElem2.psc:FissureArmor`（行 374） |
 | 54 | 每層岩甲護甲 | 15／層；基礎 5 層 = 75；萬象後 8 層 =120 | 20／層 | `src/ESSBElem2.psc:RockArmorPerLayer`（行 31） |
-| 55 | 放電削魔及跳躍削魔 | 傷害未乘 G 的 amount ×0.5（電蝕 1.0）；跳躍再 ×0.4（電弧 0.8）；B_max=25 | amount ×原削魔比；跳躍仍 ×原跳躍比（保留） | `src/ESSBElem.psc:Discharge`（行 539） |
-| 56 | 重擊消耗裂痕額外削耐 | 50 | 80 | `src/ESSBElem2.psc:OnEarthHit`（行 191） |
+| 55 | 放電削魔及跳躍削魔 | 傷害未乘 G 的 amount ×0.5（電蝕 1.0）；跳躍再 ×0.4（電弧 0.8）；B_max=25 | amount ×原削魔比；跳躍仍 ×原跳躍比（保留） | `src/ESSBElem.psc:Discharge`（行 543） |
+| 56 | 重擊消耗裂痕額外削耐 | 50 | 80 | `src/ESSBElem2.psc:OnEarthHit`（行 162） |
 | 57 | 磐石每層岩甲護甲 | 25／層；厚土＋萬象最多 13 層 =325 | 25／層（保留） | `src/ESSBElem2.psc:RockArmorPerLayer`（行 29） |
-| 58 | 滿電荷自動放電回魔 | B_max 25 ×charge；基礎 cap6=150；主線＋萬象 cap14=350 | B_max ×charge（保留） | `src/ESSBElem.psc:OnTick`（行 779） |
-| 59 | 高點數星痕引爆延遲 | rank≥10 時 1 秒；否則2秒 | rank≥10 為 1 秒，否則 2 秒（保留） | `src/ESSBElem3.psc:AstralDelay`（行 832） |
-| 60 | 神佑救命瞬間回血 | 1 HP，另給2秒守護 | 1 HP（保留） | `src/ESSBController.psc:RefreshDivineProtection`（行 7548） |
+| 58 | 滿電荷自動放電回魔 | B_max 25 ×charge；基礎 cap6=150；主線＋萬象 cap14=350 | B_max ×charge（保留） | `src/ESSBElem.psc:OnTick`（行 783） |
+| 59 | 高點數星痕引爆延遲 | rank≥10 時 1 秒；否則2秒 | rank≥10 為 1 秒，否則 2 秒（保留） | `src/ESSBElem3.psc:AstralDelay`（行 825） |
+| 60 | 神佑救命瞬間回血 | 1 HP，另給2秒守護 | 1 HP（保留） | `src/ESSBController.psc:RefreshDivineProtection`（行 7607） |
 
 ### G(L) 單次縮放證據
 
@@ -89,65 +89,65 @@
 | ID | 所屬樹 | 唯一 G 來源（原碼） | 下游路徑 | G 次數 |
 |---|---|---|---|---|
 | 01 | 5 | `akCtl.Leech(50.0 * akCtl.GLevel(5) * akCtl.GetBloodLeechRatio() * mult)`；`src/ESSBReactions.psc:Open`（行 103） | Leech → ApplyUtil(4/19, abBalanced=True) | 1 |
-| 02 | 5 | `Float amount = ESSBReactions.BaseMax(akCtl, 6) * 5.0 * akCtl.GLevel(5) * akCtl.GetBloodLeechRatio() * akCtl.GetDamageMult(6)`；`src/ESSBElem2.psc:OnBloodHit`（行 225） | Leech → ApplyUtil(4/19, abBalanced=True) | 1 |
-| 03 | 豁免 | `SetGuardSwitch(2)`；`src/ESSBController.psc:SwitchForm`（行 1391） | SetGuardSwitch → DurationInt；G 豁免 | 0 |
-| 04 | 豁免 | `akCtl.ApplySilenceSpell(akTarget, 1)`；`src/ESSBNoForm.psc:OnManaBreak`（行 189） | ApplySilenceSpell → DurationInt；G 豁免 | 0 |
-| 05 | 豁免 | `Float seconds = 1.0 + 0.2 * rank`；`src/ESSBNoForm.psc:ApplySilence`（行 202） | ApplySilenceSpell；G 豁免 | 0 |
-| 06 | 6 | `akCtl.ApplyUtil(4, 1.0 * heal * akCtl.GLevel(6), 0, player)`；`src/ESSBElem2.psc:OnDivineHit`（行 237） | ApplyUtil(4) | 1 |
-| 07 | 4 | `akCtl.ApplyUtil(6, 15.0 * akCtl.GLevel(4), 0, player)`；`src/ESSBElem2.psc:WindBladeOne`（行 600） | ApplyUtil(6) | 1 |
-| 08 | 11 | `akCtl.ApplyUtil(5, ESSBReactions.BaseMax(akCtl, aiElement) * 2.0 * aiMarks * akCtl.GLevel(11), 0, player)`；`src/ESSBNoForm.psc:OnBurst`（行 341） | ApplyUtil(5) | 1 |
-| 09 | 7 | `heal = heal + 6.0 * akCtl.GLevel(7)`；`src/ESSBElem3.psc:PoisonFormTick`（行 1095） | heal 累加 → ApplyUtil(4) | 1 |
-| 10 | 7 | `akCtl.ApplyUtil(4, 25.0 * akCtl.GLevel(7), 0, player)`；`src/ESSBElem3.psc:OpenPoison`（行 347） | ApplyUtil(4) | 1 |
-| 11 | 3 | `Float drain = 3.0 * ESSBNodes.Rank(akCtl, 3, 0, 2) * akCtl.GLevel(3)`；`src/ESSBElem2.psc:OnEarthHit`（行 178） | drain ×0.5 → ApplyUtil(6)；同來源削耐走 ApplyUtil(3) | 1 |
-| 12 | 5 | `Float heal = 25.0 * akCtl.GLevel(5)`；`src/ESSBElem2.psc:OpenBlood`（行 356） | 低血位 ×2 → ApplyUtil(4) | 1 |
+| 02 | 5 | `const float heal = procMagnitude * LeechRatio(p, nodes) * t.multRecovery;`；`native/include/HitMath.h:AddBloodLeech`（行 379） | Cast::kHeal / kBloodGuard；G 在附傷強度（RollProc）裡乘過一次 | 1 |
+| 03 | 豁免 | `SetGuardSwitch(2)`；`src/ESSBController.psc:SwitchForm`（行 1381） | SetGuardSwitch → DurationInt；G 豁免 | 0 |
+| 04 | 豁免 | `akCtl.ApplySilenceSpell(akTarget, 1)`；`src/ESSBNoForm.psc:OnInterruptCast`（行 126） | ApplySilenceSpell → DurationInt；G 豁免 | 0 |
+| 05 | 豁免 | `const float wanted = std::min(1.0f + 0.2f * static_cast<float>(nodes.Rank(node::kNoFormSilence)), static_cast<float>(kMaxSilenceSeconds));`；`native/include/HitMath.h:SilenceSeconds`（行 514） | Cast::kSilence（固定時長法術）；G 豁免 | 0 |
+| 06 | 6 | `akCtl.ApplyUtil(4, 1.0 * heal * akCtl.GLevel(6), 0, player)`；`src/ESSBElem2.psc:OnDivineHit`（行 195） | ApplyUtil(4) | 1 |
+| 07 | 4 | `akCtl.ApplyUtil(6, 15.0 * akCtl.GLevel(4), 0, player)`；`src/ESSBElem2.psc:WindBladeOne`（行 558） | ApplyUtil(6) | 1 |
+| 08 | 11 | `akCtl.ApplyUtil(5, ESSBReactions.BaseMax(akCtl, aiElement) * 2.0 * aiMarks * akCtl.GLevel(11), 0, player)`；`src/ESSBNoForm.psc:OnBurst`（行 249） | ApplyUtil(5) | 1 |
+| 09 | 7 | `heal = heal + 6.0 * akCtl.GLevel(7)`；`src/ESSBElem3.psc:PoisonFormTick`（行 1088） | heal 累加 → ApplyUtil(4) | 1 |
+| 10 | 7 | `akCtl.ApplyUtil(4, 25.0 * akCtl.GLevel(7), 0, player)`；`src/ESSBElem3.psc:OpenPoison`（行 340） | ApplyUtil(4) | 1 |
+| 11 | 3 | `const float cut = 3.0f * static_cast<float>(nodes.Rank(node::kEarthStaminaCut)) * TreeG(t, TreeOf(kEarth));`；`native/include/HitMath.h:AddFlatHitNodes`（行 407） | Cast::kDrainStamina；回耐 ×0.5 另一步 | 1 |
+| 12 | 5 | `Float heal = 25.0 * akCtl.GLevel(5)`；`src/ESSBElem2.psc:OpenBlood`（行 314） | 低血位 ×2 → ApplyUtil(4) | 1 |
 | 13 | 6 | `akCtl.ApplyUtil(4, 25.0 * akCtl.GetDamageMult(7) * akCtl.GLevel(6) * mult, 0, player)`；`src/ESSBReactions.psc:Open`（行 108） | ApplyUtil(4) | 1 |
-| 14 | 0 | `ApplyUtil(6, 20.0 * GLevel(0) * ticks, 0, player)`；`src/ESSBController.psc:TickTimers`（行 4009） | ApplyUtil(6) | 1 |
-| 15 | 1 | `akCtl.ApplyUtil(3, 25.0 * akCtl.GLevel(1), 0, akTarget)`；`src/ESSBElem.psc:OnFrozenTick`（行 513） | ApplyUtil(3) | 1 |
-| 16 | 4 | `akCtl.ApplyUtil(6, 25.0 * akCtl.GLevel(4), 0, player)`；`src/ESSBElem2.psc:OnWindHit`（行 210） | ApplyUtil(6) | 1 |
-| 17 | 8 | `ApplyUtil(4, 15.0 * GLevel(8) * ticks, 0, player)`；`src/ESSBController.psc:TickDomain`（行 4767） | 生命／耐力各自同一 G → ApplyUtil(4/6) | 1 |
-| 18 | 6 | `akCtl.ApplyUtil(4, 2.0 * rank * akCtl.GLevel(6), 0, player)`；`src/ESSBElem2.psc:OpenDivine`（行 386） | ApplyUtil(4) | 1 |
+| 14 | 0 | `ApplyUtil(6, 20.0 * GLevel(0) * ticks, 0, player)`；`src/ESSBController.psc:TickTimers`（行 4107） | ApplyUtil(6) | 1 |
+| 15 | 1 | `akCtl.ApplyUtil(3, 25.0 * akCtl.GLevel(1), 0, akTarget)`；`src/ESSBElem.psc:OnFrozenTick`（行 517） | ApplyUtil(3) | 1 |
+| 16 | 4 | `plan.Add({ Cast::kRestoreStamina, 25.0f * TreeG(t, TreeOf(kWind)) * t.multRecovery });`；`native/include/HitMath.h:AddFlatHitNodes`（行 416） | Cast::kRestoreStamina | 1 |
+| 17 | 8 | `ApplyUtil(4, 15.0 * GLevel(8) * ticks, 0, player)`；`src/ESSBController.psc:TickDomain`（行 4853） | 生命／耐力各自同一 G → ApplyUtil(4/6) | 1 |
+| 18 | 6 | `akCtl.ApplyUtil(4, 2.0 * rank * akCtl.GLevel(6), 0, player)`；`src/ESSBElem2.psc:OpenDivine`（行 344） | ApplyUtil(4) | 1 |
 | 19 | current | `akCtl.ApplyUtil(5, ESSBReactions.BaseMax(akCtl, aiElement) * 3.0 * akCtl.GLevel(TreeOf(akCtl.CurrentElement.GetValueInt())), 0, player)`；`src/ESSBNodes.psc:OnEndReward`（行 248） | ApplyUtil(5)；TreeOf(CurrentElement)，非 common 的 12 | 1 |
-| 20 | 3 | `Float drain = 3.0 * ESSBNodes.Rank(akCtl, 3, 0, 2) * akCtl.GLevel(3)`；`src/ESSBElem2.psc:OnEarthHit`（行 178） | ApplyUtil(3)；回耐另取同一未分類 drain ×0.5 | 1 |
-| 21 | 10 | `akCtl.ApplyUtil(19, 25.0 * aiLayers * akCtl.GLevel(10), 10, player)`；`src/ESSBElem3.psc:OnAstralDetonate`（行 857） | ApplyUtil(19) | 1 |
-| 22 | 10 | `akCtl.ApplyUtil(4, 20.0 * aiLayers * akCtl.GLevel(10), 0, player)`；`src/ESSBElem3.psc:OnAstralDetonate`（行 861） | ApplyUtil(4) | 1 |
-| 23 | 5 | `ApplyUtil(4, 20.0 * GLevel(5) * ticks, 0, player)`；`src/ESSBController.psc:TickDomain`（行 4762） | ApplyUtil(4) | 1 |
-| 24 | 9 | `Float gain = 30.0 * akCtl.GetDamageMult(10) * akCtl.GLevel(9)`；`src/ESSBElem3.psc:AfterDeathCurse`（行 653） | ApplyUtil(4/5) 各一次，不回寫 gain | 1 |
-| 25 | 6 | `akCtl.ApplyUtil(4, afHealBase * akCtl.GetDamageMult(7) * akCtl.GLevel(6), 0, player)`；`src/ESSBElem2.psc:Judge`（行 720） | JudgeArea 分配 100 基準預算 → Judge → ApplyUtil(4) | 1 |
-| 26 | 6 | `HealAllies(akCtl, 25.0 * akCtl.GLevel(6))`；`src/ESSBElem2.psc:OnDivineHit`（行 254） | HealAllies → ApplyUtil(4)；helper 不乘 G | 1 |
-| 27 | 6 | `HealAllies(akCtl, 40.0 * akCtl.GLevel(6))`；`src/ESSBElem2.psc:OpenDivine`（行 402） | HealAllies → ApplyUtil(4) | 1 |
-| 28 | 6 | `akCtl.ApplyUtil(4, 40.0 * akCtl.GLevel(6), 0, player)`；`src/ESSBElem2.psc:OpenDivine`（行 406） | ApplyUtil(4) | 1 |
-| 29 | 6 | `ApplyUtil(4, 25.0 * GLevel(6) * ticks, 0, player)`；`src/ESSBController.psc:TickDomain`（行 4764） | 生命 25G／魔力 20G → ApplyUtil(4/5) | 1 |
-| 30 | 6 | `ApplyUtil(5, 20.0 * GLevel(6) * ticks, 0, player)`；`src/ESSBController.psc:TickDomain`（行 4765） | 同 29 的 TickDomain；不重複領域回復 | 1 |
-| 31 | 6 | `akCtl.ApplyUtil(4, 25.0 * akCtl.GetDamageMult(7) * akCtl.GLevel(6), 0, player)`；`src/ESSBElem2.psc:EndDivineNodes`（行 880） | ApplyUtil(4) | 1 |
-| 32 | 11 | `akCtl.ApplyUtil(6, 60.0 * akCtl.GLevel(11), 0, player)`；`src/ESSBNoForm.psc:OnCombo`（行 101） | ApplyUtil(6) | 1 |
-| 33 | 10 | `akCtl.ApplyUtil(5, 25.0 * akCtl.GLevel(10), 0, player)`；`src/ESSBElem3.psc:OnAstralHit`（行 303） | ApplyUtil(5) | 1 |
-| 34 | 10 | `akCtl.ApplyUtil(5, 40.0 * akCtl.GLevel(10), 0, player)`；`src/ESSBElem3.psc:OpenAstral`（行 430） | ApplyUtil(5) | 1 |
+| 20 | 3 | `const float cut = 3.0f * static_cast<float>(nodes.Rank(node::kEarthStaminaCut)) * TreeG(t, TreeOf(kEarth));`；`native/include/HitMath.h:AddFlatHitNodes`（行 407） | Cast::kDrainStamina；Cast::kRestoreStamina 取同一 cut ×0.5 | 1 |
+| 21 | 10 | `akCtl.ApplyUtil(19, 25.0 * aiLayers * akCtl.GLevel(10), 10, player)`；`src/ESSBElem3.psc:OnAstralDetonate`（行 850） | ApplyUtil(19) | 1 |
+| 22 | 10 | `akCtl.ApplyUtil(4, 20.0 * aiLayers * akCtl.GLevel(10), 0, player)`；`src/ESSBElem3.psc:OnAstralDetonate`（行 854） | ApplyUtil(4) | 1 |
+| 23 | 5 | `ApplyUtil(4, 20.0 * GLevel(5) * ticks, 0, player)`；`src/ESSBController.psc:TickDomain`（行 4848） | ApplyUtil(4) | 1 |
+| 24 | 9 | `Float gain = 30.0 * akCtl.GetDamageMult(10) * akCtl.GLevel(9)`；`src/ESSBElem3.psc:AfterDeathCurse`（行 646） | ApplyUtil(4/5) 各一次，不回寫 gain | 1 |
+| 25 | 6 | `akCtl.ApplyUtil(4, afHealBase * akCtl.GetDamageMult(7) * akCtl.GLevel(6), 0, player)`；`src/ESSBElem2.psc:Judge`（行 678） | JudgeArea 分配 100 基準預算 → Judge → ApplyUtil(4) | 1 |
+| 26 | 6 | `HealAllies(akCtl, 25.0 * akCtl.GLevel(6))`；`src/ESSBElem2.psc:OnDivineHit`（行 212） | HealAllies → ApplyUtil(4)；helper 不乘 G | 1 |
+| 27 | 6 | `HealAllies(akCtl, 40.0 * akCtl.GLevel(6))`；`src/ESSBElem2.psc:OpenDivine`（行 360） | HealAllies → ApplyUtil(4) | 1 |
+| 28 | 6 | `akCtl.ApplyUtil(4, 40.0 * akCtl.GLevel(6), 0, player)`；`src/ESSBElem2.psc:OpenDivine`（行 364） | ApplyUtil(4) | 1 |
+| 29 | 6 | `ApplyUtil(4, 25.0 * GLevel(6) * ticks, 0, player)`；`src/ESSBController.psc:TickDomain`（行 4850） | 生命 25G／魔力 20G → ApplyUtil(4/5) | 1 |
+| 30 | 6 | `ApplyUtil(5, 20.0 * GLevel(6) * ticks, 0, player)`；`src/ESSBController.psc:TickDomain`（行 4851） | 同 29 的 TickDomain；不重複領域回復 | 1 |
+| 31 | 6 | `akCtl.ApplyUtil(4, 25.0 * akCtl.GetDamageMult(7) * akCtl.GLevel(6), 0, player)`；`src/ESSBElem2.psc:EndDivineNodes`（行 838） | ApplyUtil(4) | 1 |
+| 32 | 11 | `akCtl.ApplyUtil(6, 60.0 * akCtl.GLevel(11), 0, player)`；`src/ESSBNoForm.psc:OnCombo`（行 105） | ApplyUtil(6) | 1 |
+| 33 | 10 | `akCtl.ApplyUtil(5, 25.0 * akCtl.GLevel(10), 0, player)`；`src/ESSBElem3.psc:OnAstralHit`（行 296） | ApplyUtil(5) | 1 |
+| 34 | 10 | `akCtl.ApplyUtil(5, 40.0 * akCtl.GLevel(10), 0, player)`；`src/ESSBElem3.psc:OpenAstral`（行 423） | ApplyUtil(5) | 1 |
 | 35 | 9 | `Float drain = 40.0 * akCtl.GetDamageMult(10) * akCtl.GLevel(9) * mult`；`src/ESSBReactions.psc:Open`（行 121） | ApplyUtil(2/5) 各一次 | 1 |
-| 36 | 9 | `Float drain = 30.0 * akCtl.GetDamageMult(10) * akCtl.GLevel(9)`；`src/ESSBElem3.psc:OnDarkHit`（行 259） | ApplyUtil(2/5) 各一次 | 1 |
-| 37 | 9 | `akCtl.ApplyUtil(5, 15.0 * curse * akCtl.GLevel(9), 0, player)`；`src/ESSBElem3.psc:OnKill`（行 1189） | ApplyUtil(5) | 1 |
-| 38 | 9 | `Float drain = 40.0 * akCtl.GetDamageMult(10) * akCtl.GLevel(9)`；`src/ESSBElem3.psc:OnAnyEnd`（行 1054） | ApplyUtil(2/5) 各一次 | 1 |
+| 36 | 9 | `Float drain = 30.0 * akCtl.GetDamageMult(10) * akCtl.GLevel(9)`；`src/ESSBElem3.psc:OnDarkHit`（行 252） | ApplyUtil(2/5) 各一次 | 1 |
+| 37 | 9 | `akCtl.ApplyUtil(5, 15.0 * curse * akCtl.GLevel(9), 0, player)`；`src/ESSBElem3.psc:OnKill`（行 1182） | ApplyUtil(5) | 1 |
+| 38 | 9 | `Float drain = 40.0 * akCtl.GetDamageMult(10) * akCtl.GLevel(9)`；`src/ESSBElem3.psc:OnAnyEnd`（行 1047） | ApplyUtil(2/5) 各一次 | 1 |
 | 39 | 3 | `akCtl.ApplyUtil(3, 40.0 * akCtl.GLevel(3) * mult, 0, akTarget)`；`src/ESSBReactions.psc:Open`（行 92） | ApplyUtil(3) | 1 |
 | 40 | 3 | `akCtl.ApplyUtil(6, 40.0 * akCtl.GLevel(3) * mult, 0, player)`；`src/ESSBReactions.psc:Open`（行 93） | ApplyUtil(6) | 1 |
-| 41 | 4 | `akCtl.ApplyUtil(6, 40.0 * akCtl.GLevel(4), 0, player)`；`src/ESSBElem2.psc:OpenWind`（行 329） | ApplyUtil(6) | 1 |
+| 41 | 4 | `akCtl.ApplyUtil(6, 40.0 * akCtl.GLevel(4), 0, player)`；`src/ESSBElem2.psc:OpenWind`（行 287） | ApplyUtil(6) | 1 |
 | 42 | current | `Float amount = ESSBReactions.BaseMax(akCtl, akCtl.CurrentElement.GetValueInt()) * 4.0 * akCtl.GLevel(TreeOf(akCtl.CurrentElement.GetValueInt()))`；`src/ESSBNodes.psc:OnSyncStage`（行 120） | amount → ApplyUtil(4/5)；用當前元素樹 | 1 |
-| 43 | 8 | `Float amount = ESSBReactions.ReactDamage(akCtl, 9, 2.0) * afMult * akCtl.GLevel(8)`；`src/ESSBElem3.psc:EndWaterNodes`（行 996） | ReactDamage 不乘 G；ApplyUtil(4/6)，不走 ApplyDamage | 1 |
-| 44 | 0 | `akCtl.ApplyUtil(6, 50.0 * akCtl.GLevel(0), 0, player)`；`src/ESSBElem.psc:OpenFire`（行 248） | ApplyUtil(6) | 1 |
-| 45 | 6 | `akCtl.ApplyUtil(4, 60.0 * akCtl.GLevel(6), 0, player)`；`src/ESSBElem2.psc:OnFormOpened`（行 468） | 玩家 ApplyUtil(4)；同伴 HealAllies → ApplyUtil(4) | 1 |
-| 46 | 0 | `akCtl.ApplyUtil(4, 60.0 * akCtl.GLevel(0), 0, player)`；`src/ESSBElem.psc:OnIgnite`（行 404） | ApplyUtil(4) | 1 |
-| 47 | 9 | `akCtl.ApplyUtil(5, 50.0 * akCtl.GLevel(9), 0, player)`；`src/ESSBElem3.psc:OnShadowBody`（行 1249） | ApplyUtil(5) | 1 |
-| 48 | 6 | `akCtl.ApplyUtil(5, 60.0 * akCtl.GLevel(6), 0, player)`；`src/ESSBElem2.psc:OnAsh`（行 1043） | ApplyUtil(5) | 1 |
+| 43 | 8 | `Float amount = ESSBReactions.ReactDamage(akCtl, 9, 2.0) * afMult * akCtl.GLevel(8)`；`src/ESSBElem3.psc:EndWaterNodes`（行 989） | ReactDamage 不乘 G；ApplyUtil(4/6)，不走 ApplyDamage | 1 |
+| 44 | 0 | `akCtl.ApplyUtil(6, 50.0 * akCtl.GLevel(0), 0, player)`；`src/ESSBElem.psc:OpenFire`（行 252） | ApplyUtil(6) | 1 |
+| 45 | 6 | `akCtl.ApplyUtil(4, 60.0 * akCtl.GLevel(6), 0, player)`；`src/ESSBElem2.psc:OnFormOpened`（行 426） | 玩家 ApplyUtil(4)；同伴 HealAllies → ApplyUtil(4) | 1 |
+| 46 | 0 | `akCtl.ApplyUtil(4, 60.0 * akCtl.GLevel(0), 0, player)`；`src/ESSBElem.psc:OnIgnite`（行 408） | ApplyUtil(4) | 1 |
+| 47 | 9 | `akCtl.ApplyUtil(5, 50.0 * akCtl.GLevel(9), 0, player)`；`src/ESSBElem3.psc:OnShadowBody`（行 1242） | ApplyUtil(5) | 1 |
+| 48 | 6 | `akCtl.ApplyUtil(5, 60.0 * akCtl.GLevel(6), 0, player)`；`src/ESSBElem2.psc:OnAsh`（行 1001） | ApplyUtil(5) | 1 |
 | 49 | 2 | `akCtl.ApplyUtil(2, 60.0 * akCtl.GetDamageMult(3) * akCtl.GLevel(2) * mult, 0, akTarget)`；`src/ESSBReactions.psc:Open`（行 87） | ApplyUtil(2) | 1 |
 | 50 | 2 | `Ctl.ApplyUtil(2, 50.0 * Ctl.GetDamageMult(3) * Ctl.GLevel(2), 0, attacker)`；`src/ESSBGuard.psc:OnHitEx`（行 196） | ApplyUtil(2) | 1 |
-| 51 | 2 | `akCtl.ApplyUtil(5, 60.0 * akCtl.GLevel(2), 0, player)`；`src/ESSBElem.psc:OpenShock`（行 305） | ApplyUtil(5) | 1 |
-| 52 | 3 | `Return 4.0 * (1.0 + 0.03 * ESSBNodes.Rank(akCtl, 3, 2, 2)) * akCtl.GLevel(3)`；`src/ESSBElem2.psc:QuakeStamina`（行 494） | QuakeStamina → Quake.stamina → QuakeOne → ApplyUtil(3)；傷害 amount 另一支才進 ApplyDamage | 1 |
-| 53 | 3 | `Return (60.0 + 4.0 * ESSBNodes.Rank(akCtl, 3, 0, 0)) * akCtl.GLevel(3)`；`src/ESSBElem2.psc:FissureArmor`（行 416） | FissureArmor → Open/OpenEarth → ApplyUtil(1)；擴散不乘開印 M | 1 |
+| 51 | 2 | `akCtl.ApplyUtil(5, 60.0 * akCtl.GLevel(2), 0, player)`；`src/ESSBElem.psc:OpenShock`（行 309） | ApplyUtil(5) | 1 |
+| 52 | 3 | `Return 4.0 * (1.0 + 0.03 * ESSBNodes.Rank(akCtl, 3, 2, 2)) * akCtl.GLevel(3)`；`src/ESSBElem2.psc:QuakeStamina`（行 452） | QuakeStamina → Quake.stamina → QuakeOne → ApplyUtil(3)；傷害 amount 另一支才進 ApplyDamage | 1 |
+| 53 | 3 | `Return (60.0 + 4.0 * ESSBNodes.Rank(akCtl, 3, 0, 0)) * akCtl.GLevel(3)`；`src/ESSBElem2.psc:FissureArmor`（行 374） | FissureArmor → Open/OpenEarth → ApplyUtil(1)；擴散不乘開印 M | 1 |
 | 54 | 3 | `Return 20.0 * akCtl.GLevel(3)`；`src/ESSBElem2.psc:RockArmorPerLayer`（行 31） | RockArmorPerLayer → SyncRockArmor → ApplyUtil(18) | 1 |
-| 55 | 2 | `akCtl.ApplyUtil(2, amount * drainRatio * akCtl.GLevel(2), 0, akTarget)`；`src/ESSBElem.psc:Discharge`（行 539） | 直擊／跳躍 ApplyUtil(2) 各乘一次；amount 本身未乘 G，生命傷害另走 ApplyDamage | 1 |
-| 56 | 3 | `akCtl.ApplyUtil(3, 80.0 * akCtl.GLevel(3), 0, akTarget)`；`src/ESSBElem2.psc:OnEarthHit`（行 191） | ApplyUtil(3) | 1 |
+| 55 | 2 | `akCtl.ApplyUtil(2, amount * drainRatio * akCtl.GLevel(2), 0, akTarget)`；`src/ESSBElem.psc:Discharge`（行 543） | 直擊／跳躍 ApplyUtil(2) 各乘一次；amount 本身未乘 G，生命傷害另走 ApplyDamage | 1 |
+| 56 | 3 | `akCtl.ApplyUtil(3, 80.0 * akCtl.GLevel(3), 0, akTarget)`；`src/ESSBElem2.psc:OnEarthHit`（行 162） | ApplyUtil(3) | 1 |
 | 57 | 3 | `Return 25.0 * akCtl.GLevel(3)`；`src/ESSBElem2.psc:RockArmorPerLayer`（行 29） | RockArmorPerLayer → SyncRockArmor → ApplyUtil(18) | 1 |
-| 58 | 2 | `akCtl.ApplyUtil(5, ESSBReactions.BaseMax(akCtl, 3) * charge * akCtl.GLevel(2), 0, player)`；`src/ESSBElem.psc:OnTick`（行 779） | ApplyUtil(5)；Discharge 不修改呼叫端 charge | 1 |
-| 59 | 豁免 | `Return 1`；`src/ESSBElem3.psc:AstralDelay`（行 832） | AstralDelay；固定桶引爆延遲，G／Duration 豁免 | 0 |
-| 60 | 豁免 | `player.RestoreActorValue("Health", 1.0 - player.GetActorValue("Health"))`；`src/ESSBController.psc:RefreshDivineProtection`（行 7548） | 神佑保命 1 HP，G／Recovery 豁免 | 0 |
+| 58 | 2 | `akCtl.ApplyUtil(5, ESSBReactions.BaseMax(akCtl, 3) * charge * akCtl.GLevel(2), 0, player)`；`src/ESSBElem.psc:OnTick`（行 783） | ApplyUtil(5)；Discharge 不修改呼叫端 charge | 1 |
+| 59 | 豁免 | `Return 1`；`src/ESSBElem3.psc:AstralDelay`（行 825） | AstralDelay；固定桶引爆延遲，G／Duration 豁免 | 0 |
+| 60 | 豁免 | `player.RestoreActorValue("Health", 1.0 - player.GetActorValue("Health"))`；`src/ESSBController.psc:RefreshDivineProtection`（行 7607） | 神佑保命 1 HP，G／Recovery 豁免 | 0 |
 
 既有已乘 G 的破魔、反噬及生命傷害不再加第二次；破魔在 `OnManaBreak` 先算 G、再 `DrainAmount`、再限制可吸取魔力，`ApplyUtil(2, ..., True)` 跳過重乘，真傷沿用 `abLevelScaled=True`。百分比治療長流、血盾 20% 上限、抗性百分點不新增 G。
 

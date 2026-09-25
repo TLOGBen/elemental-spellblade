@@ -1,17 +1,11 @@
 #pragma once
-// Engine-free stages of the native hit handler (Plugin.cpp does the engine reads and the cast):
-//   1. Filter(HitFacts)        which hits count - mirrors ESSBController.OnWeaponHit/ResolveHitWeaponType,
-//                              so the DLL base proc and the Papyrus difference bonus accept the same hits
-//   2. BuildInput(element, q)  asks the engine the same CTDA predicates the old entry-51 segments used
-//   3. select(Input)           Selection.h
-// Everything here is constexpr/pure so tests can drive it with mocked engine answers.
-#include "Selection.h"
-
+// Stage 1 of the native hit handler: which hits count. Filter mirrors ESSBController.OnWeaponHit /
+// ResolveHitWeaponType, so the DLL and the Papyrus difference patch accept the same hits.
+// Round 20 (N2): a hit without an active form is accepted too (element 0) - the DLL now owns the
+// no-form hit (baseline true damage, siphon, dispel). Pure/constexpr so tests drive it directly.
 #include <cstdint>
 
 namespace essb {
-
-// ---------------------------------------------------------------- stage 1: filter
 
 inline constexpr int kNoWeapon = -1;  // "not a TESObjectWEAP" for weapon-type fields
 inline constexpr int kStaff = 8;      // RE::WEAPON_TYPE::kStaff
@@ -63,13 +57,13 @@ enum class Reject : std::uint8_t
     kUnsupportedWeapon,
     kMeleeProjectile,
     kDeadTarget,
-    kFormInactive,
     kBadElement,
 };
 
 struct Verdict {
     Reject reason{ Reject::kAccepted };
     int weaponType{ kNoWeapon };
+    int element{ 0 };  // accepted hits: 0 = no form, 1..11 = the active form's element
 };
 
 constexpr bool IsRangedType(int weaponType) noexcept
@@ -142,83 +136,12 @@ constexpr Verdict Filter(const HitFacts& f) noexcept
         return { Reject::kDeadTarget, weaponType };
     }
     if (f.formActive != 1.0f) {
-        return { Reject::kFormInactive, weaponType };
+        return { Reject::kAccepted, weaponType, 0 };  // OnNoFormHit
     }
     if (!ValidElement(f.element)) {
         return { Reject::kBadElement, weaponType };
     }
-    return { Reject::kAccepted, weaponType };
-}
-
-// ---------------------------------------------------------------- stage 2: read the selection state
-
-// CTDA function indices, identical to RE::FUNCTION_DATA::FunctionID (static_assert in Plugin.cpp).
-enum class Fn : std::uint16_t
-{
-    kGetRandomPercent = 77,
-    kIsSneaking = 286,
-    kGetEquippedItemType = 597,
-    kGetActorValuePercent = 640,
-    kIsPowerAttacking = 673,
-};
-
-enum class Op : std::uint8_t
-{
-    kEqual,
-    kGreaterOrEqual,
-    kLess,
-};
-
-// One condition the engine evaluates on the player (subject and target = player).
-struct Query {
-    Fn fn{};
-    float value{};
-    Op op{ Op::kEqual };
-    std::uint32_t param{};
-};
-
-inline constexpr std::uint32_t kRightHand = 1;  // CTDA 597 parameter
-inline constexpr std::uint32_t kLeftHand = 0;
-inline constexpr std::uint32_t kHealth = 24;  // ActorValue Health, the CTDA 640 parameter
-
-// Health bands of the blood element, highest first: CTDA 640 >= threshold.
-inline constexpr float kBloodThresholds[4] = { 0.85f, 0.5f, 0.2f, 0.0f };
-
-// Lightning chain: R5 first, each GetRandomPercent < 100/(5-i); the first success wins, otherwise R1.
-// Evaluation stops at the first success, so the engine RNG is only drawn as often as the chain needs.
-inline constexpr float kLightningChance[4] = { 100.0f / 5, 100.0f / 4, 100.0f / 3, 100.0f / 2 };
-
-// ask(Query) -> bool is the engine (Plugin.cpp) or a mock (tests).
-template <class Ask>
-constexpr Input BuildInput(int element, Ask&& ask)
-{
-    Input x{};
-    x.element = element;
-    if (ask(Query{ Fn::kGetEquippedItemType, float(kItemBow), Op::kEqual, kRightHand })) {
-        x.rightItem = kItemBow;
-    } else if (ask(Query{ Fn::kGetEquippedItemType, float(kItemCrossbow), Op::kEqual, kRightHand })) {
-        x.rightItem = kItemCrossbow;
-    }
-    x.power = ask(Query{ Fn::kIsPowerAttacking, 1.0f, Op::kEqual, 0 });
-    x.sneak = ask(Query{ Fn::kIsSneaking, 1.0f, Op::kEqual, 0 });
-    if (element == 6) {
-        for (int band = 0; band < 4; ++band) {
-            if (ask(Query{ Fn::kGetActorValuePercent, kBloodThresholds[band], Op::kGreaterOrEqual, kHealth })) {
-                x.blood = band;
-                break;
-            }
-        }
-    }
-    if (element == 3) {
-        x.lightning = 1;
-        for (int i = 0; i < 4; ++i) {
-            if (ask(Query{ Fn::kGetRandomPercent, kLightningChance[i], Op::kLess, 0 })) {
-                x.lightning = 5 - i;
-                break;
-            }
-        }
-    }
-    return x;
+    return { Reject::kAccepted, weaponType, static_cast<int>(f.element) };
 }
 
 }  // namespace essb

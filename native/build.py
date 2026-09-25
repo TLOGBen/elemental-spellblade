@@ -16,7 +16,7 @@ CMAKE = n.NATIVE / 'deps' / f"cmake-{LOCK['cmake']}-windows-x86_64" / 'bin' / 'c
 if not CMAKE.is_file():
     raise RuntimeError(f'CMake {LOCK["cmake"]} missing at {CMAKE}; run python -B native/fetch_cmake.py once')
 OUT = n.NATIVE / 'out'
-LOG = ROOT / 'build/fix19-msvc.log'
+LOG = ROOT / 'build/fix20-msvc.log'
 
 
 def run(cmd, log):
@@ -27,7 +27,7 @@ def run(cmd, log):
     log.write(result.stdout)
     log.flush()
     if result.returncode:
-        raise RuntimeError(f'Native build step failed ({result.returncode}); see build/fix19-msvc.log')
+        raise RuntimeError(f'Native build step failed ({result.returncode}); see build/fix20-msvc.log')
     return result.stdout
 
 
@@ -79,7 +79,7 @@ def main():
         'cxx_compiler': cl_path,
         'windows_sdk': sdk,
         'ctest': {'passed_percent': int(summary[1]), 'failed': int(summary[2]), 'tests': int(summary[3]), 'lines': totals},
-        'truth_table_rows': cases,
+        'magnitude_scenarios': cases,
     }, indent=2) + '\n', encoding='utf8')
     print(f'Native build ok: cl {cl_version}, cmake {cmake_version}, SDK {sdk}; ctest {summary[3]} test(s), 0 failed; receipt written.')
 

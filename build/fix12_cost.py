@@ -68,6 +68,9 @@ def scenario(folder, debug=0, prepare_only=False):
         def HasPerk(self,p):m.native['Actor.HasPerk']+=1;return False
         def DoCombatSpellApply(self,s,t):m.native['Actor.DoCombatSpellApply']+=1
         def DispelSpell(self,s):m.native['Actor.DispelSpell']+=1
+        # Round 20: the difference patch's mirror of the DLL reads the environment and race keywords.
+        def IsInInterior(self):m.native['ObjectReference.IsInInterior']+=1;return False
+        def HasKeyword(self,k):m.native['Actor.HasKeyword']+=1;return False
     class Spell:
         def SetNthEffectMagnitude(self,i,x):m.native['Spell.SetNthEffectMagnitude']+=1
         def SetNthEffectDuration(self,i,x):m.native['Spell.SetNthEffectDuration']+=1
@@ -103,22 +106,16 @@ def scenario(folder, debug=0, prepare_only=False):
         t.fields.update(AllRankA=h.Array([0]*120),AllRankB=h.Array([0]*75),AllBranchA=h.Array([0]*120),AllBranchB=h.Array([0]*75),
                         AllValid=h.Array([True]*13),LevelCache=h.Array([1]*13))
         c.fields['LiftQueued']=False
-    if 'ProcVariants' in c.fields:
-        import fix18_records as hit18
-        import build_v03 as b
+    if 'ProcVariants' in c.fields or 'NativeProcUnit' in c.functions:
         c.fields.update(RankCacheA=t.AllRankA, RankCacheB=t.AllRankB,
             BranchCacheA=t.AllBranchA, BranchCacheB=t.AllBranchB,
             LevelMirror=t.LevelCache, NodeMirrorReady=True,
             HitBonusSpells=h.Array([Spell() for _ in range(11)]))
-        rows=hit18.variants(b)
-        for field,key in [('ProcElements','e'),('ProcPowers','p'),('ProcSneaks','s'),('ProcBloodBands','band'),('ProcRatios','ratio')]:
-            c.fields[field]=h.Array([v[key] for v in rows])
-        c.fields['ProcVariants']=h.Array([Spell() for _ in rows])
-        player.IsSneaking=wrap('Actor.IsSneaking',lambda:False)
         player.GetActorValuePercentage=wrap('Actor.GetActorValuePercentage',lambda av:1.0)
-        env['PO3_SKSEFunctions']=NS(IsPowerAttacking=wrap('PO3.IsPowerAttacking',lambda a:False))
+    if 'NativeProcUnit' in c.functions:
+        # Round 20 (N2): the DLL computes and casts the proc; nothing is pre-written into spell records. (The
+        # round-18/19 ProcVariants bake this fixture used to prepare is gone; no verified snapshot needs it.)
         c.RefreshSyncStage()
-        c.RefreshProcMagnitudes()
     m.script.clear();m.native.clear();m.autoreads.clear();m.cross=m.concat=m.logcalls=0
     if prepare_only:return c,t,player,target,weapon,clock,m,env,Glob
     c.OnWeaponHit(target,weapon,None,0)

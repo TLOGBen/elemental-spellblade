@@ -49,6 +49,8 @@ def lightning(folder):
         c.fields['ProcVariants']=h.Array([Spell() for _ in c.ProcVariants]);c.fields['ProcCacheReady']=False
     applied=[]
     p.DoCombatSpellApply=lambda s,target:applied.append((s,dict(getattr(s,"mag",{})),target))
+    if 'NativeProcUnit' in c.functions:
+        return lightning_round20(c,v,w,env,applied)
     for power in (False,True):
         for drain in (.25,1,3):
             c.MultDrain.v=drain;applied.clear()
@@ -77,6 +79,32 @@ def lightning(folder):
     else:c.ApplyProc(v,1,False,False,False)
     assert set(applied[0][1])=={0}
     return 'ordinary/power x drain .25/1/3; full extra-proc path twice; no player restore/true damage'
+
+def lightning_round20(c,v,w,env,applied):
+    # Round 20 (N2): the DLL casts the lightning proc and its 50% magicka drain as two single-effect spells
+    # (the override hits every effect); drain x MultDrain is tested natively (A0, A1 'mult_drain' scenarios).
+    # What stays in Papyrus is the two-effect bonus spell of the difference patch and 極致: check that one.
+    c.fields['HitBonusSpells']=h.Array([Spell() for _ in range(11)])
+    for drain in (.25,1,3):
+        c.MultDrain.v=drain;applied.clear()
+        c.ApplyBonusProc(v,3,40.0)
+        assert len(applied)==1
+        _,magnitudes,target=applied[0]
+        assert math.isclose(magnitudes[0],40.0) and math.isclose(magnitudes[1],40.0*.5*drain) and target is v
+    # Full weapon handler extra-proc branch (極致): the DLL owns the base, so Papyrus casts exactly the extra.
+    c.MultDrain.v=1;applied.clear()
+    env['ESSBNodes'].overrides['HasExtreme']=lambda *a:True
+    c.overrides.update(SyncStage=lambda:3, SendModEvent=lambda *a:None);c.fields['ExtremeCount']=9
+    c.OnWeaponHit(v,w,None,0)
+    hits=[row for row in applied if 0 in row[1]]
+    assert len(hits)==1,'expected the extra proc only (the base is the DLL cast)'
+    assert all(math.isclose(mag[1],mag[0]*.5) for _,mag,target in hits)
+    assert all(target is v for _,_,target in applied),'lightning must never restore the player'
+    assert all(s not in (c.TrueSpell,) for s,_,_ in applied)
+    # Non-lightning bonus stays single effect.
+    applied.clear();c.ApplyBonusProc(v,1,40.0)
+    assert set(applied[0][1])=={0}
+    return 'round 20: bonus spell drain x .25/1/3; OnWeaponHit extra proc once (DLL base); non-lightning single effect'
 
 def eviction(folder):
     c,p=controller(folder);clock=[100];ended=[];dispelled=[]
@@ -205,9 +233,13 @@ def opens(folder):
             if f in old.functions and name != 'ESSBStatus':
                 prior=old.functions[f];current=new.functions[f]
                 if f=='AddSelf':
+                    # Rounds 18-19 added a magnitude-refresh hook here; round 20 removed it again (the DLL
+                    # computes the magnitude at hit time). Either way the cap logic must equal the original.
                     lines=list(current[2]);hook=['If aiKind == 4 && before != SelfOverheat','RefreshProcMagnitudes()','EndIf']
-                    pos=next(i for i in range(len(lines)-2) if [x.strip() for x in lines[i:i+3]]==hook)
-                    del lines[pos:pos+3];current=(*current[:2],lines)
+                    pos=next((i for i in range(len(lines)-2) if [x.strip() for x in lines[i:i+3]]==hook),None)
+                    if pos is not None:
+                        del lines[pos:pos+3]
+                    current=(*current[:2],lines)
                 assert prior==current,(name,f)
             elif name == 'ESSBStatus':
                 assert 'RingAdd(BleedRing, aiAmount, Cap(5, 8))' in '\n'.join(new.functions[f][2])
@@ -226,12 +258,17 @@ def cooldown(folder, which):
         c.fields.update(ManabreakBase=Glob(20),ManabreakPerRank=Glob(4),SilenceKeyword=None)
         c.overrides.update(DrainAmount=lambda x:x,ApplyUtil=lambda *a:None,ApplyTrueDamage=lambda *a:None,
             ApplyManaBreakMark=lambda *a:None,ApplySilenceSpell=lambda *a:triggered.append(clock[0]))
-        oldstamp=c.InterruptTime;vm.OnManaBreak(c,v,False,*([casting[0]] if folder==NEW else []))
+        # Round 20: 斷咒 lives in OnInterruptCast (破魔's drain moved to the DLL); older sources keep OnManaBreak.
+        if 'OnInterruptCast' in vm.functions:
+            hit=lambda:vm.OnInterruptCast(c,v,casting[0])
+        else:
+            hit=lambda:vm.OnManaBreak(c,v,False,*([casting[0]] if folder==NEW else []))
+        oldstamp=c.InterruptTime;hit()
         assert c.InterruptTime==oldstamp,'non-caster consumes interrupt cooldown'
-        casting[0]=True;clock[0]+=1;vm.OnManaBreak(c,v,False,*([casting[0]] if folder==NEW else []))
+        casting[0]=True;clock[0]+=1;hit()
         assert triggered==[101]
-        clock[0]+=1;vm.OnManaBreak(c,v,False,*([casting[0]] if folder==NEW else []));assert triggered==[101]
-        clock[0]=106;vm.OnManaBreak(c,v,False,*([casting[0]] if folder==NEW else []));assert triggered==[101,106]
+        clock[0]+=1;hit();assert triggered==[101]
+        clock[0]=106;hit();assert triggered==[101,106]
     else:
         hp=[1.0];p.GetActorValuePercentage=lambda av:hp[0]
         env=dict(ESSBNodes=NS(Br=lambda *a:True))
@@ -357,11 +394,13 @@ def record_checks():
     records,meta=b.read_plugin(b.OUT/b.PLUGIN);by={r.edid:r for r in records}
     drain=by['ESSB_UtilEffect_DrainMagicka'];data=drain.d['DATA']
     assert struct.unpack_from('<i',data,68)[0]==24+1  # Primary AV Magicka
+    # Round 20 (N2): the DLL casts lightning with a per-hit magnitude override that the engine applies to every
+    # effect of the spell, so the drain is its own single-effect cast (ESSB_Util_DrainMagicka) at 50% of the
+    # damage override; the proc spell keeps only the damage effect and the magnitude-less engaged marker.
     for power in ('Normal','Power'):
         s=by['ESSB_Hit_Lightning_'+power]
-        refs=s.refs('EFID');assert len(refs)==3 and refs[1]==drain.key and refs[2]==by['ESSB_EngagedEffect'].key
-        mags=[struct.unpack('<fII',v)[0] for tag,v in s.ss if tag=='EFIT']
-        assert math.isclose(mags[1],mags[0]*.5)
+        refs=s.refs('EFID');assert len(refs)==2 and drain.key not in refs and refs[1]==by['ESSB_EngagedEffect'].key
+    util=by['ESSB_Util_DrainMagicka'];assert util.refs('EFID')==[drain.key]
     armor=by['ESSB_Util_ArmorBuff'];effect=by['ESSB_UtilEffect_ArmorBuff']
     # SPEL: type ability, constant effect, self. MGEF: No Duration, DamageResist.
     spit=armor.d['SPIT'];data=effect.d['DATA']
@@ -370,7 +409,7 @@ def record_checks():
     assert struct.unpack_from('<I',data,0)[0]&0x200
     assert struct.unpack_from('<i',data,68)[0]==39
     assert struct.unpack('<fII',armor.d['EFIT'])[2]==0
-    return dict(records=len(records),masters=meta['masters'],lightning_effects=3,armor='constant self ability, no duration')
+    return dict(records=len(records),masters=meta['masters'],lightning_effects='damage + engaged; drain is the separate ESSB_Util_DrainMagicka cast',armor='constant self ability, no duration')
 
 def boundaries():
     old=json.loads((ROOT/'.codex/pre-fix13-snapshot/v03-formids.json').read_text(encoding='utf8'))['records']

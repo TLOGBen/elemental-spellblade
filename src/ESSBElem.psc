@@ -43,76 +43,80 @@ EndFunction
 
 ; ================================================================== 附傷倍率（M_mod 的元素樹部分）
 
-Float Function HitMult(ESSBController akCtl, Int aiElement, Actor akTarget, Bool abPower) Global
+Float Function HitExtra(ESSBController akCtl, Int aiElement, Actor akTarget, Bool abPower) Global
 	If aiElement == 1
-		Return FireHitMult(akCtl, akTarget, abPower)
+		Return FireHitExtra(akCtl, akTarget, abPower)
 	ElseIf aiElement == 2
-		Return FrostHitMult(akCtl, akTarget, abPower)
+		Return FrostHitExtra(akCtl, akTarget, abPower)
 	ElseIf aiElement == 3
-		Return ShockHitMult(akCtl, akTarget, abPower)
+		Return ShockHitExtra(akCtl, akTarget, abPower)
 	ElseIf aiElement >= 4 && aiElement <= 7
-		Return ESSBElem2.HitMult(akCtl, aiElement, akTarget, abPower)
+		Return ESSBElem2.HitExtra(akCtl, aiElement, akTarget, abPower)
 	ElseIf aiElement >= 8 && aiElement <= 11
-		Return ESSBElem3.HitMult(akCtl, aiElement, akTarget, abPower)
+		Return ESSBElem3.HitExtra(akCtl, aiElement, akTarget, abPower)
+	EndIf
+	Return 0.0
+EndFunction
+
+; 差額補丁的乘法項裡屬於元素的部分（暗的虛空 ×1.5）；其餘元素 1。
+Float Function HitExtraMult(ESSBController akCtl, Int aiElement, Actor akTarget) Global
+	If aiElement == 10
+		Return ESSBElem3.DarkHitExtraMult(akCtl, akTarget)
 	EndIf
 	Return 1.0
 EndFunction
 
-; 5.3：熱度每層 +（8% + 0.2%／點）、火附傷 +1%／點、同調每段 +1%／點、
-; 開印後 5 秒內 +1%／點、過熱中 +50%（熔爐 +80%）、熔身 +100%、火域內目標 +20%。
-Float Function FireHitMult(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	Float mult = 1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 0, 0, 1), 0.01)
+; 5.3：熱度每層 +（8% + 0.2%／點）、開印後 5 秒內 +1%／點、過熱中 +50%（熔爐 +80%）、熔身 +100%、火域內目標 +20%。
+; （火附傷 +1%／點與同調每段 +1%／點由 DLL 算。）
+Float Function FireHitExtra(ESSBController akCtl, Actor akTarget, Bool abPower) Global
+	Float extra = 0.0
 	Int heat = akCtl.GetStack(akTarget, 1)
 	If heat > 0
 		Float perLayer = 0.08 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 0, 0, 0), 0.002)
-		mult = mult + heat * perLayer * ESSBNodes.OmniMult(akCtl)
+		extra = extra + heat * perLayer * ESSBNodes.OmniMult(akCtl)
 	EndIf
-	mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 0, 0, 3), 0.01) * akCtl.SyncStage()
 	If akCtl.GetOpenBoost(1) > 0
-		mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 0, 1, 1), 0.01)
+		extra = extra + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 0, 1, 1), 0.01)
 	EndIf
 	If akCtl.GetSelf(4) > 0
 		; 規劃 1.1：過熱期間火附傷 +50%；熔爐分支改為 +80%。
 		If ESSBNodes.Br(akCtl, 0, 0, 4, 1)
-			mult = mult + 0.8
+			extra = extra + 0.8
 		Else
-			mult = mult + 0.5
+			extra = extra + 0.5
 		EndIf
 	EndIf
 	If akCtl.GetMoltenLeft() > 0
-		mult = mult + 1.0
+		extra = extra + 1.0
 	EndIf
 	If akCtl.InDomain(akTarget, 1)
-		mult = mult + 0.2
+		extra = extra + 0.2
 	EndIf
-	Return mult
+	Return extra
 EndFunction
 
-; 5.4：冰附傷 +1%／點、冰封目標 +2%／點、同調每段 +1%／點、開印後 5 秒內 +1%／點。
-Float Function FrostHitMult(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	Float mult = 1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 1, 0, 1), 0.01)
+; 5.4：冰封目標 +2%／點、開印後 5 秒內 +1%／點（冰附傷與同調每段由 DLL 算）。
+Float Function FrostHitExtra(ESSBController akCtl, Actor akTarget, Bool abPower) Global
+	Float extra = 0.0
 	If akCtl.GetStack(akTarget, 2) >= 5
-		mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 1, 0, 2), 0.02)
+		extra = extra + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 1, 0, 2), 0.02)
 	EndIf
-	mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 1, 0, 3), 0.01) * akCtl.SyncStage()
 	If akCtl.GetOpenBoost(2) > 0
-		mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 1, 1, 1), 0.01)
+		extra = extra + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 1, 1, 1), 0.01)
 	EndIf
-	Return mult
+	Return extra
 EndFunction
 
-; 5.5：雷附傷 +1%／點、同調每段 +1%／點、開印後 5 秒內 +1%／點、
-; 電蝕分支（目標魔力為 0 時 +25%）。
-Float Function ShockHitMult(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	Float mult = 1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 2, 0, 1), 0.01)
-	mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 2, 0, 3), 0.01) * akCtl.SyncStage()
+; 5.5：開印後 5 秒內 +1%／點、電蝕分支（目標魔力為 0 時 +25%）（雷附傷與同調每段由 DLL 算）。
+Float Function ShockHitExtra(ESSBController akCtl, Actor akTarget, Bool abPower) Global
+	Float extra = 0.0
 	If akCtl.GetOpenBoost(3) > 0
-		mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 2, 1, 1), 0.01)
+		extra = extra + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 2, 1, 1), 0.01)
 	EndIf
 	If ESSBNodes.Br(akCtl, 2, 1, 3, 2) && akTarget.GetActorValue("Magicka") <= 0.0
-		mult = mult + 0.25
+		extra = extra + 0.25
 	EndIf
-	Return mult
+	Return extra
 EndFunction
 
 ; ================================================================== 開印與終焉倍率

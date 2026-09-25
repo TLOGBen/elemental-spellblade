@@ -1,4 +1,4 @@
-"""Round 18 record families; no target-status migration."""
+"""Round 18 record families (proc spell table, bonus spells, hotkeys, weapon glows); no target-status migration."""
 import struct, json
 HIT_PERK=0x5200
 DIVINE_ARMED=0x5201
@@ -14,48 +14,16 @@ WEAPON_SHADER=0x52B0
 KEY_CODES=[79,80,81,75,76,77,71,72,73,82,83]
 
 def variants(b):
+    """The element proc spells the DLL selects from: element x normal/power (22 records at ID_HIT_SPELL).
+
+    Round 20 (N2) removed the round-18 magnitude variants (lightning R1-R5 and _Inc, blood B1-B3, wind
+    sneak): the DLL computes the magnitude per hit and casts with an override, so one spell per element
+    and attack kind is enough. The round-18 entry-51 table they served lives on only in the snapshot ESP."""
     rows=[]
     for e in range(1,12):
         for p in range(2):
-            rows.append(dict(id=b.ID_HIT_SPELL+(e-1)*2+p,edid=f'ESSB_Hit_{b.ELEMENTS[e-1]}_'+('Power' if p else 'Normal'),e=e,p=p,s=0,band=0,ratio=1.0,existing=True))
-    def add(e,p,s=0,band=0,ratio=1.0,suffix=''):
-        rows.append(dict(id=VARIANT+len([x for x in rows if not x['existing']]),edid=f'ESSB_Hit_{b.ELEMENTS[e-1]}_'+suffix,e=e,p=p,s=s,band=band,ratio=ratio,existing=False))
-    for p in range(2):
-        pn='Power' if p else 'Normal'
-        add(5,p,s=1,suffix='Sneak'+pn)
-        for band in range(1,4):add(6,p,band=band,suffix=pn+f'_B{band}')
-        for j,value in enumerate([3,8,13,18,23],1):add(3,p,ratio=value/13,suffix=pn+f'_R{j}')
-        add(3,p,ratio=5/13,suffix=pn+'_Inc')
+            rows.append(dict(id=b.ID_HIT_SPELL+(e-1)*2+p,edid=f'ESSB_Hit_{b.ELEMENTS[e-1]}_'+('Power' if p else 'Normal'),e=e,p=p,existing=True))
     return rows
-
-def entries(b,mode='chain'):
-    rows=variants(b); out=[]
-    def spell(e,p,s,band,j=None,inc=False):
-        return next(x for x in rows if x['e']==e and x['p']==p and x['s']==s and x['band']==band and (x['edid'].endswith('_Inc') if inc else x['edid'].endswith(f'_R{j}') if j else x['ratio']==1 and not x['edid'].endswith('_R3')))
-    for e in range(1,12):
-        attacks=[(False,False,None),(False,True,None),(True,False,False),(True,True,True)]
-        if e==5:attacks=[(False,p,s) for p in (False,True) for s in (False,True)]+[(True,False,False),(True,True,True)]
-        for ranged,power,sneak in attacks:
-            for band in range(4 if e==6 else 1):
-                js=list(range(5,0,-1)) if e==3 and mode=='chain' else list(range(1,6)) if e==3 else [None]
-                for j in js:
-                    cond=[(0,b.gv_eq(b.own(b.ID_GLOB['ESSB_Enabled']),1)),(0,b.gv_eq(b.own(b.ID_GLOB['ESSB_FormActive']),1)),(0,b.gv_eq(b.own(b.ID_GLOB['ESSB_CurrentElement']),e))]
-                    if ranged:
-                        cond += [(0,b.ctda(1,7,597,1)),(0,b.ctda(0,12,597,1))]
-                    else:
-                        cond += [(0,b.ctda(0x20,7,597,1)),(0,b.ctda(0x20,12,597,1)),(0,b.ctda(0,int(power),673))]
-                    if sneak is not None:cond.append((0,b.ctda(0,int(sneak),286)))
-                    if e==6:
-                        lower=[.85,.5,.2,0][band];upper=[None,.85,.5,.2][band]
-                        cond.append((0,b.ctda(0x60,lower,640,24)))
-                        if upper is not None:cond.append((0,b.ctda(0x80,upper,640,24)))
-                    if j and ((mode=='chain' and j>1) or (mode=='additive' and j>1)):
-                        chance=(1/j if mode=='chain' else .5)*100
-                        cond.append((0,b.ctda(0x80,chance,77)))
-                    cond += [(2,b.ctda(0,0,f)) for f in (453,700,46,569)]
-                    v=spell(e,int(power),int(bool(sneak)) if e==5 else 0,band,j if mode=='chain' or j==1 else None,inc=mode=='additive' and j>1)
-                    out.append(dict(e=e,p=int(power),s=sneak,ranged=ranged,band=band,j=j,spell=v['id'],conditions=cond))
-    return out
 
 def add_records(b,add,settings,casting_perks):
     I,F,Z=b.I,b.F,b.Z;own=b.own
@@ -72,25 +40,6 @@ def add_records(b,add,settings,casting_perks):
     add('PERK',HIT_PERK,'ESSB_P_HitProc',[('FULL',Z('元素魔戰士：原生命中')),('DATA',b.perk_data(playable=0,hidden=1))])
     return 0
 
-
-def append_variants(b,rr,add,settings):
-    from tes import subs
-    byid={struct.unpack_from('<I',raw,12)[0]&0xffffff:list(subs(raw[24:])) for sig,raw in rr if sig=='SPEL'}
-    for v in variants(b):
-        if v['existing']:continue
-        ss=byid[b.ID_HIT_SPELL+(v['e']-1)*2+v['p']]
-        magnitude=(13 if v['e']==3 else sum(settings['element_damage'][b.ELEMENTS[v['e']-1]])/2)*(1.5 if v['p'] else 1)*v['ratio']
-        if v['s']:magnitude*=3
-        if v['e']==6:magnitude*=[1.25,1.1,.85,.6][v['band']]
-        effect_index=-1;out=[]
-        for k,value in ss:
-            if k=='EDID':continue
-            if k=='EFID':effect_index+=1
-            if k=='EFIT' and effect_index==0:value=struct.pack('<fII',magnitude,0,0)
-            if k=='EFIT' and effect_index==1 and v['e']==6:value=struct.pack('<fII',magnitude*.15,0,0)
-            if k=='EFIT' and effect_index==1 and v['e']==3:value=struct.pack('<fII',magnitude*.5*settings['mult_drain'],0,0)
-            out.append((k,value))
-        add('SPEL',v['id'],v['edid'],out)
 
 def weapon_glows(b,add,fx_records,fxe):
     I,Z=b.I,b.Z

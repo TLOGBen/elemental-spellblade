@@ -49,6 +49,11 @@ class HitScript(h.Script):
         tree=ast.fix_missing_locations(PapyrusAdd().visit(ast.parse(h.expression(text),mode='eval')))
         return eval(compile(tree,'<actual-papyrus>','eval'),{'__builtins__':{}},scope)
 
+def native_generation(c):
+    # Round 18-19 (baked native base, ApplyBakedProc) and round 20 (DLL computes the magnitude, NativeProcUnit)
+    # both deliver the element proc outside Papyrus; the script only records attribution and adds differences.
+    return 'ApplyBakedProc' in c.functions or 'NativeProcUnit' in c.functions
+
 def make(folder=ROOT/'src', right=None, left=None, magic=False):
     c,_=controller(folder); c.__class__=HitScript
     p=Actor(right,left,magic); t=Actor(); calls=collections.Counter(); logs=[]; clock=[10.0]
@@ -63,7 +68,7 @@ def make(folder=ROOT/'src', right=None, left=None, magic=False):
     c.overrides.update(AfterOpen=lambda *a:None,HitStacks=lambda *a:calls.update(['stacks']),
         ElementHitHook=lambda *a:None,AddSync=lambda *a:calls.update(['sync']),ScheduleTick=lambda *a:None,ScheduleTickInternal=lambda *a:None,
         CooldownSeconds=lambda x:x,DurationInt=lambda x:x)
-    if 'ApplyBakedProc' in c.functions:
+    if native_generation(c):
         p.IsSneaking=lambda:False
         c.env['PO3_SKSEFunctions']=NS(IsPowerAttacking=lambda a:False)
         def note(*args):
@@ -78,7 +83,7 @@ def hit_case(name,source,projectile,equipped,flags,accept,power=False,left=None,
     c,p,t,calls,logs,_=make(folder,equipped,left,magic)
     c.OnWeaponHit(t,source,projectile,flags)
     damage=[spell for spell in t.hits if spell in c.HitNormalSpells or spell in c.HitPowerSpells]
-    if 'ApplyBakedProc' in c.functions:
+    if native_generation(c):
         assert calls['native-base-attribution']==int(accept) and not damage,(name,calls,damage)
     else:assert len(damage)==int(accept),(name,'proc',len(damage),logs)
     assert calls['reaction']==int(accept) and calls['xp']==int(accept),(name,calls)
@@ -86,7 +91,7 @@ def hit_case(name,source,projectile,equipped,flags,accept,power=False,left=None,
     slot=c.FindSlot(t)
     assert (slot>=0 and c.RegElem[slot]==10)==accept,(name,'mark',slot)
     if accept:
-        if 'ApplyBakedProc' not in c.functions:
+        if not native_generation(c):
             assert damage[0].mag==(15 if power else 10),(name,'multiplier',damage[0].mag)
         # Round18 native magnitude and selection are independently read back in HITPROC.
         assert c.LastHitPower==power
@@ -132,7 +137,7 @@ def outgoing():
         c,p,t,calls,logs,_=make(right=Weapon(kind)); w=Weapon(kind)
         for source,proj in [(w,None),(w,arrow),(Spell(),arrow)]: c.OnWeaponHit(t,source,proj,0)
         assert calls['xp']==1 and calls['reaction']==1 and calls['sync']==1
-        assert (calls['native-base-attribution'] if 'ApplyBakedProc' in c.functions else len([s for s in t.hits if s in c.HitNormalSpells]))==1
+        assert (calls['native-base-attribution'] if native_generation(c) else len([s for s in t.hits if s in c.HitNormalSpells]))==1
     # No-form accepted shots follow the existing no-form path once; resolved weapon is forwarded.
     for kind in (7,9):
         c,p,t,calls,logs,_=make(right=Weapon(kind)); c.FormActive.v=0; received=[]

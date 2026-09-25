@@ -163,6 +163,20 @@ def run():
             add(t,2,tier,'ESSBElem.psc',fn,base)
     for t in [1,2,6,7,8]:add(t,2,2,'ESSBElem.psc','OnEnd',.01)
     add(9,0,2,'ESSBElem3.psc','TargetDamageMult',.01)
+    # Round 20 (N2): the sustain adept / master element lines are applied by the DLL at hit time
+    # (native/include/HitMath.h NodeSum, slots from the generated node::kProcAdept / kProcMaster tables);
+    # the Papyrus difference patch only mirrors them (ESSBController.NativeNodeSum), so the site is the DLL.
+    hitmath=(ROOT/'native/include/HitMath.h').read_text(encoding='utf-8')
+    nodesum=re.search(r'constexpr float NodeSum\(.*?\n\}',hitmath,re.S)[0]
+    manifest=(ROOT/'native/include/ManifestData.h').read_text(encoding='utf-8')
+    for table,tier in (('kProcAdept',1),('kProcMaster',3)):
+        assert f'Pct(t, nodes.Rank(node::{table}[element]), 0.01f)' in nodesum,(table,'DLL site')
+        cells=re.search(r'NodeId '+table+r'\[12\] = \{(.*?)\};',manifest)[1]
+        for t in range(11):
+            if t==8:
+                continue  # water: its sustain adept / master lines are recovery, not proc damage
+            assert '{'+f'{t}, 0, {tier}'+'}' in cells,(table,t)
+            mapped[t,0,tier].append((f'native/include/HitMath.h:NodeSum[{table}]',hitmath[:hitmath.index(nodesum)].count('\n')+1,.01))
     for route,tier,base in [(0,0,.01),(0,3,.005),(2,3,.01)]:add(11,route,tier,'ESSBNodes.psc','RefreshWeaponPercent',base)
     scaled={}
     for row in rows:
@@ -192,53 +206,18 @@ def run():
             assert math.isclose(perks[2,3,rank].entries[0],1+.01*rank*scale)
             assert len(perks[0,3,rank].entries)==5
             assert all(math.isclose(v,1+.005*rank*scale) for v in perks[0,3,rank].entries.values())
-    # Execute ManaBreak and its real ApplyTrueDamage body with controlled actor values.
-    cases=[]
-    for level,rank,mag,expected in [(10,1,1000,36),(100,15,1000,480),(100,15,100,100)]:
-        ctl=Ctl(settings);ctl.level=level;ctl.rank_default=0;ctl.ranks={(11,1,0):rank,(11,1,1):15};reg=make_scripts(ROOT/'src',ctl);target=Actor(mag)
-        reg['ESSBNoForm'].OnManaBreak(ctl,target,False)
-        assert math.isclose(target.true[-1],expected*.95),(level,rank,target.true)
-        assert math.isclose(ctl.player.mag,300+expected)
-        cases.append(dict(level=level,rank=rank,available_magicka=mag,actual=expected,true_damage=target.true[-1],restored=ctl.player.mag-300,G_count=1))
-    # Branch floor and caster bonus, unchanged ratio ceiling, dry branch single original G.
-    ctl=Ctl(settings);ctl.rank_default=0;ctl.ranks={(11,1,0):15,(11,1,1):15,(11,1,3):15};ctl.branches={(11,1,0,0)};reg=make_scripts(ROOT/'src',ctl);target=Actor(10000);target.GetEquippedSpell=lambda i:True
-    reg['ESSBNoForm'].OnManaBreak(ctl,target,False)
-    assert math.isclose(target.true[-1],1000*1.75*.95)
-    ctl=Ctl(settings);ctl.rank_default=0;ctl.ranks={(11,1,0):1};ctl.branches={(11,1,2,0)};reg=make_scripts(ROOT/'src',ctl);target=Actor(0)
-    reg['ESSBNoForm'].OnManaBreak(ctl,target,False);assert math.isclose(target.true[-1],300*.2*6)
+    # Round 20 (N2): the v0.3 破魔 main line (ESSBNoForm.OnManaBreak) was replaced by the DLL's v0.4 siphon /
+    # small dispel / dispel; their formulas are tested natively (hit_pipeline_test groups A0/A), not here.
+    cases='retired in round 20: no-form siphon and dispel moved to the DLL (native groups A0/A)'
     # Actual water helper, including same bonuses at all MCM scales.
     water=[]
     for scale in [1,3,5]:
         ctl=Ctl(settings);ctl.NodeScale.x=scale;reg=make_scripts(ROOT/'src',ctl)
         value=reg['ESSBElem3'].FlowPercent(ctl);assert math.isclose(value,.08);assert reg['ESSBElem3'].WetSlow(ctl)==30
         water.append(dict(node_scale=scale,regen_pct=value*100,health_300=value*300,health_500=value*500))
-    # Compare real old/new GetHitMult formula bodies under the same declared conditions.
-    multipliers=[]
-    for element,name in enumerate(build_v03.ELEMENTS,1):
-        vals=[]
-        for before in [True,False]:
-            cfg=json.loads((ROOT/'build/fix6-before/settings.json').read_text(encoding='utf-8')) if before else settings
-            cfg={**settings,**cfg};ctl=Ctl(cfg);ctl.NodeScale.x=1 if before else settings['node_percent_scale'];ctl.EnvNight.x=1 if element==10 else 0
-            ctl.stacks={1:12,2:5,6:8,9:8,10:13};ctl.branches={(8,0,1,0)};ctl.EndBoostLeft=5;ctl.EndBoostAmount=.15*(1 if before else 3)
-            reg=make_scripts(ROOT/('build/fix6-before/src' if before else 'src'),ctl);target=Actor()
-            elem=reg['ESSBElem'].HitMult(ctl,element,target,True)
-            full=reg['ESSBController'].GetHitMult(element,target,True)
-            vals.append(dict(element_mult=elem,M_mod=full,G_times_M=full*6))
-        multipliers.append(dict(element=name,old=vals[0],new=vals[1]))
-    # All-branch conditional envelope. This is a bound, not a claim every window can coexist.
-    envelopes=[]
-    for element,name in enumerate(build_v03.ELEMENTS,1):
-        pair=[]
-        for before in [True,False]:
-            ctl=Ctl(settings);ctl.NodeScale.x=1 if before else settings['node_percent_scale'];ctl.EnvNight.x=1 if element==10 else 0
-            ctl.all_branches=True;ctl.BloodthirstLeft=10;ctl.EndBoostLeft=5;ctl.EndBoostAmount=.15*(1 if before else 3)
-            ctl.stacks={1:17,2:5,4:1,6:8,9:8,10:13,11:9}
-            ctl.GetSelf=lambda k:1;ctl.GetMoltenLeft=lambda:10;ctl.InDomain=lambda t,e:True
-            ctl.HasStarLock=lambda t:True;ctl.GetAirborne=lambda t:2;ctl.IsNecromancer=lambda t:True
-            reg=make_scripts(ROOT/('build/fix6-before/src' if before else 'src'),ctl)
-            target=Actor(1000);target.mag=100;target.GetEquippedSpell=lambda i:True
-            pair.append(reg['ESSBController'].GetHitMult(element,target,True))
-        envelopes.append(dict(element=name,old=pair[0],new=pair[1]))
+    # Round 20 (N2): GetHitMult no longer exists. The proc multiplier is the DLL's (native group A) plus the
+    # Papyrus difference patch for target-side terms, checked against the same reference by build/fix20_verify.py.
+    multipliers=envelopes='retired in round 20: see build/fix20-check.json (difference patch vs reference)'
     # Ensure the scale applies to engine entry points too, without changing their conditions/count.
     by={(t['id'],r['index'],n['index']):n for t in plan['trees'] for r in t['routes'] for n in r['tiers']}
     # Identity and text independent ESP readback.
@@ -268,6 +247,6 @@ def run():
     (ROOT/'build/fix6-classification.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
     report=dict(classification=dict(stats),scaled_distribution=dict(collections.Counter(re.search(r'\+([\d.]+)%／點',r['old'])[1] for r in rows if r['status']=='SCALED')),manabreak=cases,water=water,multipliers=multipliers,branch_envelopes=envelopes,existing_unchanged=len(baseline),added=added,description_perks=3225,masters=meta['masters'],runtime_tested=False)
     (ROOT/'build/fix6-check.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
-    print(f'FIX6 ok: {len(rows)} classified; {len(scaled)} scaled nodes bound; 12 appended GLOBs; existing non-quest IDs unchanged; baseline={len(baseline)}; actual Papyrus formulas + PERK text + shared slow cap checked')
+    print(f'FIX6 ok: {len(rows)} classified; {len(scaled)} scaled nodes bound; 12 appended GLOBs; existing non-quest IDs unchanged; baseline={len(baseline)}; Papyrus formulas / DLL NodeSum sites + PERK text + shared slow cap checked')
     return report
 if __name__=='__main__':run()

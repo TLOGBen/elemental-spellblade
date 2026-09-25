@@ -1,6 +1,6 @@
 {
-  "state_schema_version": 8,
-  "signature_sha256": "f752d5515638951f8d90dca4fde8f7e1a4aaa06a24b1b19aa3b454c32a52e00c",
+  "state_schema_version": 9,
+  "signature_sha256": "791625a6540a7c7ec0d003ca8dd0b8a6a08e7c1a765a318a48bbb7e4b1bed05c",
   "signatures": {
     "ESSBStatus": {
       "parent": "activemagiceffect",
@@ -616,6 +616,11 @@
           "auto"
         ],
         [
+          "bloodguardspell",
+          "spell",
+          "auto"
+        ],
+        [
           "bloodthirstleft",
           "float",
           "member"
@@ -861,9 +866,9 @@
           "auto"
         ],
         [
-          "drainwritten",
-          "float[]",
-          "member"
+          "echopendingspell",
+          "spell",
+          "auto"
         ],
         [
           "elementdamagemax",
@@ -1636,11 +1641,6 @@
           "auto"
         ],
         [
-          "noformbasetrue",
-          "float",
-          "auto"
-        ],
-        [
           "noreanimatekeyword",
           "keyword",
           "auto"
@@ -1783,46 +1783,6 @@
         [
           "prevelement",
           "int",
-          "member"
-        ],
-        [
-          "procbloodbands",
-          "int[]",
-          "auto"
-        ],
-        [
-          "proccacheready",
-          "bool",
-          "member"
-        ],
-        [
-          "procelements",
-          "int[]",
-          "auto"
-        ],
-        [
-          "procpowers",
-          "int[]",
-          "auto"
-        ],
-        [
-          "procratios",
-          "float[]",
-          "auto"
-        ],
-        [
-          "procsneaks",
-          "int[]",
-          "auto"
-        ],
-        [
-          "procvariants",
-          "spell[]",
-          "auto"
-        ],
-        [
-          "procwritten",
-          "float[]",
           "member"
         ],
         [
@@ -2171,11 +2131,6 @@
           "member"
         ],
         [
-          "switchhitpending",
-          "bool",
-          "member"
-        ],
-        [
           "sync",
           "globalvariable",
           "auto"
@@ -2259,6 +2214,11 @@
           "twintime",
           "float",
           "member"
+        ],
+        [
+          "twinwindowspell",
+          "spell",
+          "auto"
         ],
         [
           "undeadkeyword",
@@ -2592,8 +2552,8 @@
     }
   },
   "quests": {
-    "ESSB_MainQuest": "00600C",
-    "ESSB_MCMQuest": "00600D"
+    "ESSB_MainQuest": "00600E",
+    "ESSB_MCMQuest": "00600F"
   },
   "history": [
     {
@@ -2651,6 +2611,14 @@
       "quests": {
         "ESSB_MainQuest": "00600A",
         "ESSB_MCMQuest": "00600B"
+      }
+    },
+    {
+      "state_schema_version": 8,
+      "signature_sha256": "f752d5515638951f8d90dca4fde8f7e1a4aaa06a24b1b19aa3b454c32a52e00c",
+      "quests": {
+        "ESSB_MainQuest": "00600C",
+        "ESSB_MCMQuest": "00600D"
       }
     }
   ]

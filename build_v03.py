@@ -1226,6 +1226,7 @@ def check_node_calls(plan):
 
 import fix18_records as hit18
 import fix19_native as hit19
+import fix20_records as hit20
 
 
 def build_esp(plan):
@@ -1326,6 +1327,7 @@ def build_esp(plan):
         add('GLOB', ID_GLOB_ENGINE[name], name, [('FNAM', b's'), ('FLTV', F(default))])
 
     hit18.add_records(sys.modules[__name__], add, settings, casting_perks)
+    hit20.add_records(sys.modules[__name__], add)
 
     # -------------------------------------------------------------- KYWD
     add('KYWD', ID_KW_PROC, 'ESSB_Proc', [])
@@ -1487,26 +1489,18 @@ def build_esp(plan):
             magnitude = sum(element_damage[name]) / 2.0 * (1.5 if power else 1.0)
             suffix = 'Power' if power else 'Normal'
             label = '重擊' if power else '普通'
-            if name == 'Blood':
-                magnitude *= 1.25
             effect = hit_power_ids.get(power, ID_HIT_EFFECT + ix)
+            # Round 20 (N2): the DLL casts this with a per-hit magnitude override, which the engine applies
+            # to every effect of the spell. So the damage spell carries only the damage effect and the
+            # magnitude-less engaged marker; lightning's magicka drain and blood's 血怒 bonus moved to
+            # their own casts (fix20_records / the DLL's plan). The record magnitude is only a default.
             add('SPEL', ID_HIT_SPELL + ix * 2 + power, f'ESSB_Hit_{name}_{suffix}', [
                 ('OBND', bytes(12)), ('FULL', Z(f'元素魔戰士：{ZH[ix]}附傷（{label}）')),
                 ('KSIZ', I(1)), ('KWDA', I(own(ID_KW_PROC))),
                 ('ETYP', I(ref('Skyrim.esm', 0x13F45))), ('DESC', Z('')),
                 ('SPIT', spit(0, 1, 1, ref('Skyrim.esm', casting_perks[SCHOOLS[ix]]))),
                 ('EFID', I(own(effect))), ('EFIT', struct.pack('<fII', magnitude, 0, 0)),
-            ] + ([('EFID', I(own(util_effect_id(2)))),
-                  ('EFIT', struct.pack('<fII', magnitude * 0.5 * settings['mult_drain'], 0, 0))]
-                 if name == 'Lightning' else []) + (
-                 [('EFID', I(own(hit18.BONUS_EFFECT + ix))), ('EFIT', struct.pack('<fII', magnitude * 0.15, 0, 0)),
-                  ('CTDA', ctda(CTDA_GE, 0.3, 640, 24, run_on=2, reference=ref('Skyrim.esm', 0x14))),
-                  ('CTDA', ctda(0xA0, 0.7, 640, 24, run_on=2, reference=ref('Skyrim.esm', 0x14))),
-                  ('CTDA', ctda(CTDA_EQ, 1, 448, own(ID_BRANCH_PERK + (5*15+3)*4+1), run_on=2, reference=ref('Skyrim.esm', 0x14)))]
-                 if name == 'Blood' else []) +
-                 [('EFID', I(own(ID_ENGAGED_EFFECT))), ('EFIT', struct.pack('<fII', 0.0, 0, 30))])
-
-    hit18.append_variants(sys.modules[__name__], rr, add, settings)
+                ('EFID', I(own(ID_ENGAGED_EFFECT))), ('EFIT', struct.pack('<fII', 0.0, 0, 30))])
 
     # -------------------------------------------------------------- 印記（規劃 2.2）
     # Script 原型、隱藏無傷。8 秒；水元素印記由控制器在套用前改成 10 秒
@@ -1992,7 +1986,6 @@ def build_esp(plan):
     props = {
         **{name.removeprefix('ESSB_'): (1, own(fid))
            for name, (fid, _) in ID_BALANCE_GLOB.items()},
-        'NoformBaseTrue': (4, settings['noform_base_true']),
         'ElementDamageMin': (14, [element_damage[name][0] for name in ELEMENTS]),
         'ElementDamageMax': (14, [element_damage[name][1] for name in ELEMENTS]),
         'Enabled': (1, own(ID_GLOB['ESSB_Enabled'])),
@@ -2070,18 +2063,14 @@ def build_esp(plan):
         'FxSoundDrawSheathe': (11, [fx[f'{FX_PLUGIN}|ZZSound_DrawSheathe_{n}'] for n in ELEMENTS]),
         'FxSoundCharge': (11, [fx[f'{FX_PLUGIN}|ZZSound_Charge_{n}'] for n in ELEMENTS]),
     }
-    proc_rows = hit18.variants(sys.modules[__name__])
     props.update({
         'HitProcPerk': (1, own(hit18.HIT_PERK)),
         'GDivineArmed': (1, own(hit18.DIVINE_ARMED)),
         'FormNotify': (1, own(hit18.NOTIFY)), 'FormSound': (1, own(hit18.SOUND)),
         'GuardLayer': (1, (own(ID_QUEST), 0)), 'InputLayer': (1, (own(ID_QUEST), 0)),
-        'ProcVariants': (11, [own(v['id']) for v in proc_rows]),
-        'ProcElements': (13, [v['e'] for v in proc_rows]),
-        'ProcRatios': (14, [v['ratio'] for v in proc_rows]),
-        'ProcPowers': (13, [v['p'] for v in proc_rows]),
-        'ProcSneaks': (13, [v['s'] for v in proc_rows]),
-        'ProcBloodBands': (13, [v['band'] for v in proc_rows]),
+        'BloodGuardSpell': (1, own(hit20.GUARD)),
+        'EchoPendingSpell': (1, own(hit20.ECHO)),
+        'TwinWindowSpell': (1, own(hit20.TWIN)),
         'HitBonusSpells': (11, [own(hit18.BONUS_SPELL+i) for i in range(11)]),
         'NativeHit': (1, own(hit19.NATIVE_HIT)), 'NativeWanted': (1, own(hit19.NATIVE_WANTED)),
     })
@@ -3174,7 +3163,7 @@ def validate_mcm(records, written):
     expected_globals |= {f'ESSB_{prefix}_{tree}' for tree in TREES for prefix in ('Lvl', 'Pts')}
     expected_globals |= {'ESSB_Mult' + n for n in ('Dot', 'Cooldown', 'Recovery', 'Drain', 'Duration', 'Upkeep')}
     expected_globals |= {'ESSB_Hotkey_'+n for n in ELEMENTS} | {'ESSB_HotkeysEnabled','ESSB_FormNotify','ESSB_FormSound'}
-    expected_globals |= hit19.NEW_EDIDS
+    expected_globals |= hit19.NATIVE_GLOBALS
     assert glob_edids == expected_globals and len(glob_edids) == 54
     assert functions == {'RespecCurrent', 'RespecAll', 'DumpRegistry', 'RestoreDefaults', 'ReleaseDivineProtection', 'ApplyNativeSetting', 'ShowNativeStatus'}
     rows = config['pages'][2]['content']
@@ -3343,6 +3332,7 @@ def main():
     runpy.run_path(str(WORK / 'build/fix16_verify.py'))['run']()
     runpy.run_path(str(WORK / 'build/fix18_verify.py'))['run']()
     hit19.verify(sys.modules[__name__])
+    runpy.run_path(str(WORK / 'build/fix20_verify.py'))['run']()
     runpy.run_path(str(WORK / 'build/fix18_probes.py'))['run'](sys.modules[__name__])
     perks = sum(1 for r in check if r.sig == 'PERK')
     print(f'READBACK ok: masters={meta["masters"]} records={len(check)} manifest={written["record_count"]} '
@@ -3472,6 +3462,8 @@ def validate_delivery(records):
         'ESSB_FearSpell', 'ESSB_FrenzySpell', 'ESSB_ReanimateSpell', 'ESSB_StripSpell',
     }
     contact_names.update(f'ESSB_Util_{u[0]}' for u in UTILS if u[4])
+    # Round 20: the DLL's own contact casts (soaked slow, fixed-duration silences); its self casts stay 0.
+    contact_names.update({'ESSB_Native_SoakSlow'} | {hit20.silence_edid(s) for s in range(1, hit20.SILENCE_COUNT + 1)})
     groups = {0: [], 1: []}
     rows = []
     for record in records:
