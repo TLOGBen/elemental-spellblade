@@ -39,6 +39,7 @@ inline constexpr std::uint32_t kDrainStamina = 0x10a3;  // ESSB_Util_DrainStamin
 inline constexpr std::uint32_t kHeal = 0x10a4;  // ESSB_Util_RestoreHealth
 inline constexpr std::uint32_t kRestoreMagicka = 0x10a5;  // ESSB_Util_RestoreMagicka
 inline constexpr std::uint32_t kRestoreStamina = 0x10a6;  // ESSB_Util_RestoreStamina
+inline constexpr std::uint32_t kBleedTick = 0x10a7;  // ESSB_Util_BleedTick
 inline constexpr std::uint32_t kTrueDamage = 0x5021;  // ESSB_TrueDamageSpell
 inline constexpr std::uint32_t kDispelMark = 0x5023;  // ESSB_ManaBreakSpell
 inline constexpr std::uint32_t kSpendMagicka = 0x5301;  // ESSB_Native_SpendMagicka
@@ -76,11 +77,16 @@ inline constexpr std::uint32_t kSlowCapPct = 0x5165;  // ESSB_SlowCapPct
 inline constexpr std::uint32_t kWaterWetSlowPct = 0x5163;  // ESSB_WaterWetSlowPct
 inline constexpr std::uint32_t kWaterClearStamina = 0x5166;  // ESSB_WaterClearStamina
 inline constexpr std::uint32_t kManabreakMaxmagPct = 0x515f;  // ESSB_ManabreakMaxmagPct
+inline constexpr std::uint32_t kMultCooldown = 0x5169;  // ESSB_MultCooldown
+inline constexpr std::uint32_t kMultDot = 0x5168;  // ESSB_MultDot
+inline constexpr std::uint32_t kPoisonDotK = 0x5158;  // ESSB_PoisonDotK
+inline constexpr std::uint32_t kBleedDotK = 0x5159;  // ESSB_BleedDotK
 inline constexpr std::uint32_t kSyncStage = 0x5000;  // ESSB_SyncStage
 inline constexpr std::uint32_t kPrevElement = 0x5008;  // ESSB_PrevElement
 inline constexpr std::uint32_t kTwinElement = 0x5009;  // ESSB_TwinElement
 inline constexpr std::uint32_t kEnvWet = 0x1f13;  // ESSB_EnvWet
 inline constexpr std::uint32_t kEnvNight = 0x1f15;  // ESSB_EnvNight
+inline constexpr std::uint32_t kEnvStormy = 0x1f14;  // ESSB_EnvStormy
 inline constexpr std::uint32_t kTreeLevel[13] = {0x2400, 0x2401, 0x2402, 0x2403, 0x2404, 0x2405, 0x2406, 0x2407, 0x2408, 0x2409, 0x240a, 0x240b, 0x240c};  // ESSB_Lvl_<tree>
 }  // namespace glob
 
@@ -130,14 +136,241 @@ inline constexpr NodeId kNoFormBurnCasters{11, 1, 3};  // v0.4 noform 對施法�
 inline constexpr NodeId kNoFormLowMagicka{11, 1, 4};  // v0.4 noform 目標魔力低於 25% 時命中傷害
 inline constexpr BranchId kNoFormDevour{11, 1, 4, 1};  // v0.4 noform 噬命
 inline constexpr BranchId kNoFormHushBreak{11, 2, 1, 2};  // v0.4 noform 寂滅
+inline constexpr NodeId kCommonMarkDuration{12, 1, 1};  // v0.4 common 印記持續
+inline constexpr BranchId kCommonDualMark{12, 1, 2, 0};  // v0.4 common 雙印
+inline constexpr BranchId kCommonResidual{12, 2, 1, 1};  // v0.4 common 疊印
+inline constexpr NodeId kCommonCapBonus{12, 1, 4};  // v0.4 common 每種元素狀態上限
+inline constexpr BranchId kCommonOmni{12, 1, 4, 0};  // v0.4 common 萬象
+inline constexpr BranchId kCommonJump{12, 1, 0, 1};  // v0.4 common 跳印
+inline constexpr NodeId kCommonEnd{12, 2, 0};  // v0.4 common 終焉
+inline constexpr NodeId kCommonEndAgain{12, 2, 3};  // v0.4 common 終焉再
+inline constexpr NodeId kCommonSyncEnd{12, 0, 2};  // v0.4 common 同調三段時終焉
+inline constexpr NodeId kFireSourceN{0, 0, 0};  // v0.4 fire 火源倍率 N
+inline constexpr BranchId kFireMeltdown{0, 2, 1, 1};  // v0.4 fire 熔斷
+inline constexpr BranchId kFireKindling{0, 0, 0, 0};  // v0.4 fire 添薪
+inline constexpr BranchId kFireBrand{0, 0, 1, 0};  // v0.4 fire 烙印
+inline constexpr BranchId kFireMoltenCore{0, 0, 2, 0};  // v0.4 fire 熔心
+inline constexpr BranchId kFireMoltenBody{0, 0, 2, 1};  // v0.4 fire 熔身
+inline constexpr BranchId kFireBath{0, 0, 3, 1};  // v0.4 fire 火浴
+inline constexpr NodeId kFireInferno{0, 0, 4};  // v0.4 fire 業火
+inline constexpr BranchId kFireForge{0, 0, 4, 1};  // v0.4 fire 熔爐
+inline constexpr NodeId kFireOpenQuick{0, 1, 0};  // v0.4 fire 開印後 5 秒內熱度升階免等待
+inline constexpr BranchId kFireIgnite{0, 1, 0, 0};  // v0.4 fire 引火
+inline constexpr BranchId kFireFlareOpen{0, 1, 1, 0};  // v0.4 fire 烈火點燃
+inline constexpr BranchId kFireBlazeStart{0, 1, 3, 0};  // v0.4 fire 烈火之始
+inline constexpr BranchId kFireTinder{0, 1, 3, 1};  // v0.4 fire 火種
+inline constexpr BranchId kFireFierce{0, 2, 0, 0};  // v0.4 fire 猛爆
+inline constexpr BranchId kFireResidualPressure{0, 2, 0, 2};  // v0.4 fire 餘壓
+inline constexpr BranchId kFireBlaze{0, 2, 1, 0};  // v0.4 fire 熾焰
+inline constexpr NodeId kFireConsume{0, 2, 2};  // v0.4 fire 爆燃的消耗加成
+inline constexpr BranchId kFireEmber{0, 2, 2, 0};  // v0.4 fire 餘燼
+inline constexpr NodeId kFrostAccumulate{1, 0, 0};  // v0.4 frost 每次命中凍結累積
+inline constexpr BranchId kFrostErode{1, 0, 0, 0};  // v0.4 frost 寒蝕
+inline constexpr BranchId kFrostSkin{1, 0, 1, 1};  // v0.4 frost 霜膚
+inline constexpr NodeId kFrostFrozenProc{1, 0, 2};  // v0.4 frost 冰封目標受冰附傷
+inline constexpr BranchId kFrostPermafrost{1, 0, 2, 0};  // v0.4 frost 永凍
+inline constexpr BranchId kFrostFrostbite{1, 0, 3, 3};  // v0.4 frost 凍傷
+inline constexpr NodeId kFrostOpenFreeze{1, 1, 0};  // v0.4 frost 開印凍結
+inline constexpr BranchId kFrostDeepRime{1, 1, 1, 0};  // v0.4 frost 深霜結
+inline constexpr BranchId kFrostIceArmor{1, 1, 1, 1};  // v0.4 frost 冰甲
+inline constexpr BranchId kFrostLock{1, 1, 3, 0};  // v0.4 frost 霜鎖
+inline constexpr BranchId kFrostAbsolute{1, 1, 4, 0};  // v0.4 frost 絕霜
+inline constexpr BranchId kFrostSharp{1, 2, 0, 0};  // v0.4 frost 銳碎
+inline constexpr BranchId kFrostLinger{1, 2, 2, 0};  // v0.4 frost 寒留
+inline constexpr BranchId kFrostCoffin{1, 2, 4, 0};  // v0.4 frost 冰棺
+inline constexpr BranchId kEarthDeepFissure{3, 1, 1, 0};  // v0.4 earth 深裂痕
+inline constexpr BranchId kEarthRift{3, 1, 3, 1};  // v0.4 earth 裂地
+inline constexpr BranchId kWindRideWind{4, 0, 4, 0};  // v0.4 wind 御風
+inline constexpr BranchId kWindDarkWind{4, 0, 3, 2};  // v0.4 wind 暗風
+inline constexpr BranchId kWindKillStreak{4, 2, 4, 1};  // v0.4 wind 連殺
+inline constexpr BranchId kWindAirChase{4, 2, 4, 0};  // v0.4 wind 空中追擊
+inline constexpr NodeId kBloodLayerDamage{5, 0, 0};  // v0.4 blood 流血每層傷害
+inline constexpr BranchId kBloodDeepWound{5, 0, 0, 1};  // v0.4 blood 深創
+inline constexpr BranchId kBloodStanch{5, 0, 3, 0};  // v0.4 blood 止血
+inline constexpr NodeId kBloodOpenLayers{5, 1, 0};  // v0.4 blood 開印流血
+inline constexpr BranchId kBloodDeepMark{5, 1, 1, 0};  // v0.4 blood 深血痕
+inline constexpr BranchId kBloodLead{5, 2, 3, 2};  // v0.4 blood 血引
+inline constexpr NodeId kDivineHolyBonus{6, 0, 0};  // v0.4 divine 聖佑各階武器傷害與聖傷加成
+inline constexpr BranchId kDivineRetribution{6, 0, 1, 0};  // v0.4 divine 神罰
+inline constexpr NodeId kDivineJudgeDamage{6, 0, 2};  // v0.4 divine 聖裁傷害
+inline constexpr BranchId kDivineStigma{6, 1, 3, 0};  // v0.4 divine 聖痕
+inline constexpr BranchId kDivineDawn{6, 1, 4, 0};  // v0.4 divine 聖啟
+inline constexpr BranchId kDivineMercy{6, 1, 1, 0};  // v0.4 divine 慈光
+inline constexpr BranchId kDivineLead{6, 2, 3, 1};  // v0.4 divine 聖引
+inline constexpr BranchId kDivineHolyDomain{6, 2, 4, 0};  // v0.4 divine 神聖領域
+inline constexpr NodeId kPoisonDoseDamage{7, 0, 0};  // v0.4 poison 每劑傷害
+inline constexpr BranchId kPoisonThreshold{7, 0, 2, 1};  // v0.4 poison 傳染門檻
+inline constexpr NodeId kPoisonOpenDoses{7, 1, 0};  // v0.4 poison 開印劑數
+inline constexpr BranchId kPoisonToxicStart{7, 1, 4, 0};  // v0.4 poison 劇毒之始
+inline constexpr BranchId kPoisonFester{7, 2, 0, 0};  // v0.4 poison 潰爛
+inline constexpr NodeId kPoisonPlague{7, 0, 4};  // v0.4 poison 瘟疫
+inline constexpr NodeId kPoisonMiasmaRate{7, 0, 2};  // v0.4 poison 瘴氣每秒傳遞劑量
+inline constexpr BranchId kPoisonLinger{7, 2, 1, 0};  // v0.4 poison 延毒
+inline constexpr BranchId kWaterPressure{8, 0, 1, 0};  // v0.4 water 水壓
+inline constexpr NodeId kWaterPressureDamage{8, 0, 2};  // v0.4 water 水壓每層水附傷
+inline constexpr BranchId kWaterDeepSoak{8, 1, 1, 0};  // v0.4 water 深濕
+inline constexpr BranchId kWaterOceanStart{8, 1, 4, 0};  // v0.4 water 汪洋之始
+inline constexpr BranchId kWaterStrongGuide{8, 2, 0, 0};  // v0.4 water 強引
+inline constexpr BranchId kWaterOcean{8, 2, 2, 0};  // v0.4 water 汪洋
+inline constexpr BranchId kWaterPurgeTide{8, 1, 3, 2};  // v0.4 water 淨潮
+inline constexpr BranchId kWaterEbb{8, 2, 1, 2};  // v0.4 water 退潮
+inline constexpr BranchId kDarkFearCurse{9, 0, 1, 2};  // v0.4 darkness 懼咒
+inline constexpr NodeId kDarkIllusionTime{9, 0, 2};  // v0.4 darkness 幻覺持續
+inline constexpr BranchId kDarkFrenzyCurse{9, 0, 2, 1};  // v0.4 darkness 狂咒
+inline constexpr NodeId kDarkAbyss{9, 0, 4};  // v0.4 darkness 深淵
+inline constexpr NodeId kDarkOpenCurse{9, 1, 0};  // v0.4 darkness 開印詛咒
+inline constexpr BranchId kDarkConfusion{9, 1, 3, 0};  // v0.4 darkness 迷亂
+inline constexpr BranchId kDarkNether{9, 2, 1, 2};  // v0.4 darkness 冥印
+inline constexpr BranchId kDarkLinger{9, 0, 0, 1};  // v0.4 darkness 咒延
+inline constexpr BranchId kDarkDevour{9, 2, 2, 2};  // v0.4 darkness 噬咒
+inline constexpr NodeId kDarkCurseLost{9, 2, 2};  // v0.4 darkness 死咒的「已損失生命」係數
+inline constexpr BranchId kDarkGlutton{9, 2, 0, 0};  // v0.4 darkness 饕餮
+inline constexpr BranchId kDarkEcho{9, 0, 3, 3};  // v0.4 darkness 回魘
+inline constexpr BranchId kDarkPhantom{9, 1, 1, 1};  // v0.4 darkness 幻影
+inline constexpr NodeId kAstralCap{10, 0, 2};  // v0.4 astral 星痕層數上限
+inline constexpr BranchId kAstralWeakness{10, 0, 2, 0};  // v0.4 astral 星痕弱點
+inline constexpr NodeId kAstralDelay{10, 1, 0};  // v0.4 astral 星痕延遲
+inline constexpr BranchId kAstralLock{10, 1, 3, 0};  // v0.4 astral 星鎖
+inline constexpr BranchId kAstralRadiance{10, 1, 4, 0};  // v0.4 astral 星耀
 inline constexpr NodeId kProcAdept[12] = {kNoNode, {0, 0, 1}, {1, 0, 1}, {2, 0, 1}, {3, 0, 1}, {4, 0, 1}, {5, 0, 1}, {6, 0, 1}, {7, 0, 1}, kNoNode, {9, 0, 1}, {10, 0, 1}};  // [element]; water has none
 inline constexpr NodeId kProcMaster[12] = {kNoNode, {0, 0, 3}, {1, 0, 3}, {2, 0, 3}, {3, 0, 3}, {4, 0, 3}, {5, 0, 3}, {6, 0, 3}, {7, 0, 3}, kNoNode, {9, 0, 3}, {10, 0, 3}};  // [element]; water has none
+inline constexpr NodeId kOpenProc[12] = {kNoNode, {0, 1, 1}, {1, 1, 1}, {2, 1, 1}, {3, 1, 1}, kNoNode, {5, 1, 1}, {6, 1, 1}, {7, 1, 1}, {8, 1, 1}, {9, 1, 1}, {10, 1, 1}};  // [element]; round 22, checked by v0.4 label
+inline constexpr NodeId kMarkDuration[12] = {kNoNode, {0, 1, 2}, {1, 1, 2}, {2, 1, 2}, {3, 1, 2}, {4, 1, 2}, {5, 1, 2}, {6, 1, 2}, {7, 1, 2}, {8, 1, 2}, {9, 1, 2}, {10, 1, 2}};  // [element]; round 22, checked by v0.4 label
+inline constexpr NodeId kOpenEffect[12] = {kNoNode, {0, 1, 4}, {1, 1, 4}, {2, 1, 4}, {3, 1, 4}, {4, 1, 4}, {5, 1, 4}, {6, 1, 4}, {7, 1, 4}, {8, 1, 4}, {9, 1, 4}, {10, 1, 4}};  // [element]; round 22, checked by v0.4 label
+inline constexpr NodeId kTakeover[12] = {kNoNode, kNoNode, {1, 2, 2}, {2, 2, 2}, kNoNode, kNoNode, kNoNode, {6, 2, 2}, {7, 2, 2}, {8, 2, 2}, kNoNode, {10, 2, 2}};  // [element]; round 22, checked by v0.4 label
+inline constexpr NodeId kEndMain[12] = {kNoNode, {0, 2, 0}, {1, 2, 0}, {2, 2, 0}, {3, 2, 0}, {4, 2, 0}, {5, 2, 0}, {6, 2, 0}, {7, 2, 0}, {8, 2, 0}, {9, 2, 0}, {10, 2, 0}};  // [element]; round 22, checked by v0.4 label
+inline constexpr NodeId kSignature[12] = {kNoNode, {0, 2, 4}, {1, 2, 4}, {2, 2, 4}, {3, 2, 4}, {4, 2, 4}, {5, 2, 4}, {6, 2, 4}, {7, 2, 4}, {8, 2, 4}, {9, 2, 4}, {10, 2, 4}};  // [element]; round 22, checked by v0.4 label
 }  // namespace node
+
+// Round 22 (slice N3): the status layer records (build/fix22_records.py KINDS, in this order).
+enum class StatusKind : std::uint8_t
+{
+    kFreeze,
+    kFrozen,
+    kCrystal,
+    kFissure,
+    kDowned,
+    kUnbalance,
+    kBleed,
+    kJudge,
+    kCatalyzed,
+    kSoak,
+    kPressure,
+    kCurse,
+    kFearCooldown,
+    kFrenzyCooldown,
+    kStar,
+    kStarFuse,
+    kAirborne,
+    kStarLock,
+    kOpenCooldown,
+    kEndCooldown,
+    kGuided,
+    kDeathCurse,
+    kNether,
+    kResidual,
+    kWashCooldown,
+    kDomainFire,
+    kDomainFrost,
+    kDomainAstral,
+    kPhantom,
+    kHeat1,
+    kHeat2,
+    kHeat3,
+    kHeat4,
+    kHeatDecay,
+    kVentedHeat,
+    kMoltenBody,
+    kFireBath,
+    kSourceLinger,
+    kHoly1,
+    kHoly2,
+    kHoly3,
+    kHolyDecay,
+    kOpenBoost,
+    kEndBoost,
+    kBloodthirst,
+    kKillStreak,
+    kBloodZone,
+    kCrossCooldown,
+    kFireDomainPlayer,
+    kPunish,
+    kCount,
+};
+
+struct StatusRecord { std::uint32_t effect; std::uint32_t spell; float seconds; bool onPlayer; bool stub; std::string_view editorId; };
+inline constexpr StatusRecord kStatusRecords[] = {
+    {0x5400, 0x5401, 6.0f, false, false, "ESSB_N3_Freeze"},
+    {0x5402, 0x5403, 3.0f, false, true, "ESSB_N3_Frozen"},
+    {0x5404, 0x5405, 6.0f, false, false, "ESSB_N3_Crystal"},
+    {0x5406, 0x5407, 8.0f, false, false, "ESSB_N3_Fissure"},
+    {0x5408, 0x5409, 3.0f, false, false, "ESSB_N3_Downed"},
+    {0x540a, 0x540b, 3.0f, false, false, "ESSB_N3_Unbalance"},
+    {0x540c, 0x540d, 10.0f, false, false, "ESSB_N3_Bleed"},
+    {0x540e, 0x540f, 4.0f, false, false, "ESSB_N3_Judge"},
+    {0x5410, 0x5411, 12.0f, false, false, "ESSB_N3_Catalyzed"},
+    {0x5412, 0x5413, 10.0f, false, false, "ESSB_N3_Soak"},
+    {0x5414, 0x5415, 8.0f, false, false, "ESSB_N3_Pressure"},
+    {0x5416, 0x5417, 8.0f, false, false, "ESSB_N3_Curse"},
+    {0x5418, 0x5419, 12.0f, false, false, "ESSB_N3_FearCooldown"},
+    {0x541a, 0x541b, 20.0f, false, false, "ESSB_N3_FrenzyCooldown"},
+    {0x541c, 0x541d, 30.0f, false, false, "ESSB_N3_Star"},
+    {0x541e, 0x541f, 2.0f, false, true, "ESSB_N3_StarFuse"},
+    {0x5420, 0x5421, 2.0f, false, true, "ESSB_N3_Airborne"},
+    {0x5422, 0x5423, 3.0f, false, false, "ESSB_N3_StarLock"},
+    {0x5424, 0x5425, 1.0f, false, false, "ESSB_N3_OpenCooldown"},
+    {0x5426, 0x5427, 1.0f, false, false, "ESSB_N3_EndCooldown"},
+    {0x5428, 0x5429, 30.0f, false, false, "ESSB_N3_Guided"},
+    {0x542a, 0x542b, 3.0f, false, true, "ESSB_N3_DeathCurse"},
+    {0x542c, 0x542d, 8.0f, false, false, "ESSB_N3_Nether"},
+    {0x542e, 0x542f, 4.0f, false, false, "ESSB_N3_Residual"},
+    {0x5430, 0x5431, 10.0f, false, false, "ESSB_N3_WashCooldown"},
+    {0x5432, 0x5433, 2.0f, false, false, "ESSB_N3_DomainFire"},
+    {0x5434, 0x5435, 2.0f, false, false, "ESSB_N3_DomainFrost"},
+    {0x5436, 0x5437, 2.0f, false, false, "ESSB_N3_DomainAstral"},
+    {0x5438, 0x5439, 3.0f, false, false, "ESSB_N3_Phantom"},
+    {0x543a, 0x543b, 3600.0f, true, false, "ESSB_N3_Heat1"},
+    {0x543c, 0x543d, 3600.0f, true, false, "ESSB_N3_Heat2"},
+    {0x543e, 0x543f, 8.0f, true, true, "ESSB_N3_Heat3"},
+    {0x5440, 0x5441, 6.0f, true, true, "ESSB_N3_Heat4"},
+    {0x5442, 0x5443, 6.0f, true, false, "ESSB_N3_HeatDecay"},
+    {0x5444, 0x5445, 30.0f, true, false, "ESSB_N3_VentedHeat"},
+    {0x5446, 0x5447, 10.0f, true, true, "ESSB_N3_MoltenBody"},
+    {0x5448, 0x5449, 8.0f, true, false, "ESSB_N3_FireBath"},
+    {0x544a, 0x544b, 2.0f, true, false, "ESSB_N3_SourceLinger"},
+    {0x544c, 0x544d, 3600.0f, true, false, "ESSB_N3_Holy1"},
+    {0x544e, 0x544f, 3600.0f, true, false, "ESSB_N3_Holy2"},
+    {0x5450, 0x5451, 3600.0f, true, false, "ESSB_N3_Holy3"},
+    {0x5452, 0x5453, 8.0f, true, false, "ESSB_N3_HolyDecay"},
+    {0x5454, 0x5455, 5.0f, true, false, "ESSB_N3_OpenBoost"},
+    {0x5456, 0x5457, 5.0f, true, false, "ESSB_N3_EndBoost"},
+    {0x5458, 0x5459, 10.0f, true, false, "ESSB_N3_Bloodthirst"},
+    {0x545a, 0x545b, 3600.0f, true, false, "ESSB_N3_KillStreak"},
+    {0x545c, 0x545d, 86400.0f, true, false, "ESSB_N3_BloodZone"},
+    {0x545e, 0x545f, 10.0f, true, false, "ESSB_N3_CrossCooldown"},
+    {0x5460, 0x5461, 2.0f, true, false, "ESSB_N3_FireDomainPlayer"},
+    {0x5462, 0x5463, 8.0f, true, false, "ESSB_N3_Punish"},
+};
+
+namespace status {
+inline constexpr std::uint32_t kMarkEffect[12] = {0, 0x1000, 0x1001, 0x1002, 0x1003, 0x1004, 0x1005, 0x1006, 0x1007, 0x1008, 0x1009, 0x100a};  // ESSB_MarkEffect_<X>
+inline constexpr std::uint32_t kMarkSpell[12] = {0, 0x1020, 0x1021, 0x1022, 0x1023, 0x1024, 0x1025, 0x1026, 0x1027, 0x1028, 0x1029, 0x102a};  // ESSB_MarkSpell_<X>
+inline constexpr std::uint32_t kReactSpell[12] = {0, 0x1060, 0x1061, 0x1062, 0x1063, 0x1064, 0x1065, 0x1066, 0x1067, 0x1068, 0x1069, 0x106a};  // ESSB_React_<X>
+inline constexpr int kDotMaxSeconds = 45;
+inline constexpr std::uint32_t kBleedDotEffect = 0x5464;  // ESSB_N3_BleedDotEffect
+inline constexpr std::uint32_t kBleedDot[45] = {0x5465, 0x5466, 0x5467, 0x5468, 0x5469, 0x546a, 0x546b, 0x546c, 0x546d, 0x546e, 0x546f, 0x5470, 0x5471, 0x5472, 0x5473, 0x5474, 0x5475, 0x5476, 0x5477, 0x5478, 0x5479, 0x547a, 0x547b, 0x547c, 0x547d, 0x547e, 0x547f, 0x5480, 0x5481, 0x5482, 0x5483, 0x5484, 0x5485, 0x5486, 0x5487, 0x5488, 0x5489, 0x548a, 0x548b, 0x548c, 0x548d, 0x548e, 0x548f, 0x5490, 0x5491};  // 1..N s
+inline constexpr std::uint32_t kPoisonDotEffect = 0x5492;  // ESSB_N3_PoisonDotEffect
+inline constexpr std::uint32_t kPoisonDot[45] = {0x5493, 0x5494, 0x5495, 0x5496, 0x5497, 0x5498, 0x5499, 0x549a, 0x549b, 0x549c, 0x549d, 0x549e, 0x549f, 0x54a0, 0x54a1, 0x54a2, 0x54a3, 0x54a4, 0x54a5, 0x54a6, 0x54a7, 0x54a8, 0x54a9, 0x54aa, 0x54ab, 0x54ac, 0x54ad, 0x54ae, 0x54af, 0x54b0, 0x54b1, 0x54b2, 0x54b3, 0x54b4, 0x54b5, 0x54b6, 0x54b7, 0x54b8, 0x54b9, 0x54ba, 0x54bb, 0x54bc, 0x54bd, 0x54be, 0x54bf};  // 1..N s
+inline constexpr float kMarkRecordSeconds = 8.0f;  // ESSB_MarkSpell_<X> EFIT duration
+inline constexpr std::uint32_t kFearEffect = 0x5120;  // ESSB_FearEffect
+inline constexpr std::uint32_t kFrenzyEffect = 0x5122;  // ESSB_FrenzyEffect
+inline constexpr std::uint32_t kSlowEffect = 0x1090;  // ESSB_UtilEffect_Slow
+}  // namespace status
 
 // settings.json element_damage (B_min, B_max per element; [0] unused) and noform_base_true.
 inline constexpr float kElementDamage[12][2] = {{0.0f, 0.0f}, {10.0f, 12.0f}, {8.0f, 10.0f}, {1.0f, 25.0f}, {8.0f, 10.0f}, {8.0f, 9.0f}, {8.0f, 10.0f}, {8.0f, 10.0f}, {8.0f, 9.0f}, {5.0f, 7.0f}, {8.0f, 10.0f}, {8.0f, 10.0f}};
 inline constexpr float kNoFormBaseTrue = 5.0f;
 inline constexpr std::string_view elementNames[12] = {"無元素", "火焰", "冰霜", "雷電", "大地", "風", "鮮血", "神聖", "毒素", "水", "黑暗", "星界"};
-inline constexpr char nativeVersion[] = "0.21.0";
+inline constexpr char nativeVersion[] = "0.22.0";
 inline constexpr char addressHash[] = "1d7530d001139ca58f462ea0210a8055868159057ba8b5ebc624fc5e9c4f5e9a";
 }  // namespace essb

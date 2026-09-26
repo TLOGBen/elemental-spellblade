@@ -19,14 +19,17 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'build'))
 import fix20_records as hit20
 import fix21_records as hit21
+import fix22_records as hit22
 import fix20_fixture
+import fix22_fixture
 import fix20_reference as _ref
+import fix22_reference as _ref22
 NATIVE = ROOT / 'native'
-NATIVE_VERSION = '0.21.0'
+NATIVE_VERSION = '0.22.0'
 NATIVE_HIT = 0x52d1
 NATIVE_WANTED = 0x52d2
 NATIVE_GLOBALS = {'ESSB_NativeHit', 'ESSB_NativeWanted'}      # round 19: the MCM shows both
-NEW_EDIDS = NATIVE_GLOBALS | hit20.new_edids() | hit21.new_edids()   # every record the native slices added
+NEW_EDIDS = NATIVE_GLOBALS | hit20.new_edids() | hit21.new_edids() | hit22.new_edids()   # every record the native slices added
 DEPS = {
     'CommonLibSSE-NG': ('https://github.com/CharmedBaryon/CommonLibSSE-NG', 'b93280e832f263dbef44e44cbe2936622a02f91a'),
     'spdlog': ('https://github.com/gabime/spdlog', '27cb4c76708608465c413f6d0e6b8d99a4d84302'),
@@ -36,13 +39,39 @@ DEPS = {
 HEADER = NATIVE / 'include/ManifestData.h'
 TABLE = ROOT / fix20_fixture.TABLE
 WIRING = ROOT / fix20_fixture.WIRING
+STATUS_TABLE = ROOT / fix22_fixture.TABLE
+STATUS_WIRING = ROOT / fix22_fixture.WIRING
 ENTRY_POINT = 2  # PRKE effect type: 0 quest stage, 1 ability, 2 entry point
 ENTRY_51 = 51    # Apply Combat Hit Spell
 
-# Every node:: constant the DLL reads -> (tree id, v0.4 node name). The same mapping the reference model resolves
-# (build/fix20_reference.NODE_NAMES); the slot of each is looked up by name in the identity table.
-NODE_IDENTITY = dict(_ref.NODE_NAMES)
+# Every node:: constant the DLL reads -> (tree id, v0.4 node name): the hit formulas' (build/fix20_reference.NODE_NAMES)
+# and, from round 22, the status layer's (build/fix22_reference.NODE_NAMES); the slot of each is looked up by name in
+# the identity table.
+NODE_IDENTITY = dict(_ref.NODE_NAMES) | dict(_ref22.NODE_NAMES)
+assert len(NODE_IDENTITY) == len(_ref.NODE_NAMES) + len(_ref22.NODE_NAMES), 'a node constant is named twice'
 ELEMENT_SHORT = ['火', '冰', '雷', '土', '風', '血', '聖', '毒', '水', '暗', '星']
+TREE_IDS = ['fire', 'frost', 'lightning', 'earth', 'wind', 'blood', 'divine', 'poison', 'water', 'darkness', 'astral']
+
+
+def _array_identity():
+    """Every per-element node table the DLL indexes (node::kX[element]) -> [element] (tree id, v0.4 name) or None,
+    by the same labels node_table / skeleton_tables check against the plan (build/fix21_identity.py registers the
+    reads it finds in the C++ sources through this)."""
+    import fix20_reference as ref
+    out = {
+        'kProcAdept': [None] + [(TREE_IDS[e - 1], f'{ELEMENT_SHORT[e - 1]}附傷') if ref.adept(e) else None
+                                for e in range(1, 12)],
+        'kProcMaster': [None] + [(TREE_IDS[e - 1], f'同調每段{ELEMENT_SHORT[e - 1]}附傷') if ref.master(e) else None
+                                 for e in range(1, 12)],
+    }
+    for name, (_route, _level, pattern, without) in _ref22.SKELETON.items():
+        out[name] = [None] + [None if TREE_IDS[e - 1] in without else
+                              (TREE_IDS[e - 1], pattern.format(x=ELEMENT_SHORT[e - 1])) for e in range(1, 12)]
+    out['kSignature'] = [None] + [(tree, _ref22.SIGNATURE[tree]) for tree in TREE_IDS]
+    return out
+
+
+ARRAY_IDENTITY = _array_identity()
 
 
 def sha(path):
@@ -71,37 +100,72 @@ def address_library():
 # ---------------------------------------------------------------- identities
 
 
-def node_table(b):
-    """{constant: slot} for every node the DLL reads, looked up by v0.4 name in the identity table; the element
-    skeleton tables (kProcAdept / kProcMaster) are checked by name too."""
-    import fix20_reference as ref
+def _plan(b):
     # parse + balance text without plan_trees.build(): build() rewrites build/plan-tree-nodes.json, and this runs
     # after main() has written the decided plan there.
-    plan = b.apply_fix8_decisions(b.plan_trees.apply_balance_text(b.plan_trees.parse()))
+    return b.apply_fix8_decisions(b.plan_trees.apply_balance_text(b.plan_trees.parse()))
+
+
+def node_table(b):
+    """{constant: slot} for every node the DLL reads, looked up by v0.4 name in the identity table; the element
+    skeleton tables (kProcAdept / kProcMaster, and round 22's per-element lines) are checked by name too."""
+    import fix20_reference as ref
+    plan = _plan(b)
     trees = {t['index']: t for t in plan['trees']}
+    by_name = {}
+    for tree in plan['trees']:
+        for route in tree['routes']:
+            for cell in route['tiers']:
+                by_name[(tree['id'], cell['main_label'])] = (tree['index'], route['index'], cell['index'])
+                for branch in cell['branches']:
+                    by_name[(tree['id'], branch['name'])] = (tree['index'], route['index'], cell['index'], branch['slot'])
 
     def tier(tree, route, level):
         return trees[tree]['routes'][route]['tiers'][level]
 
-    for name, slot in ref.NODES.items():
-        tree_id, label = NODE_IDENTITY[name]
-        cell = tier(*slot[:3])
-        assert trees[slot[0]]['id'] == tree_id, (name, slot, tree_id)
-        if len(slot) == 3:
-            assert cell['main_label'] == label, (name, slot, cell['main_label'], label)
-        else:
-            branch = next((x for x in cell['branches'] if x['slot'] == slot[3]), None)
-            assert branch and branch['name'] == label, (name, slot, branch, label)
+    missing = {k: v for k, v in NODE_IDENTITY.items() if v not in by_name}
+    assert not missing, f'DLL nodes not in the v0.4 identity table: {missing}'
+    table = {name: by_name[key] for name, key in NODE_IDENTITY.items()}
+    for name, slot in ref.NODES.items():   # the round-20 reference resolves the same slots on its own
+        assert table[name] == slot, (name, slot, table[name])
     for element in range(1, 12):
         short = ELEMENT_SHORT[element - 1]
         adept, master = ref.adept(element), ref.master(element)
         if adept is None:
-            assert element == ref.WATER and tier(element - 1, 0, 1)['main_label'] != f'{short}附傷' \
-                and tier(element - 1, 0, 3)['main_label'] != f'同調每段{short}附傷'
+            assert element == ref.WATER and tier(element - 1, 0, 1)['main_label'] != f'{short}附傷'                 and tier(element - 1, 0, 3)['main_label'] != f'同調每段{short}附傷'
             continue
         assert tier(*adept)['main_label'] == f'{short}附傷', (element, tier(*adept)['main_label'])
         assert tier(*master)['main_label'] == f'同調每段{short}附傷', (element, tier(*master)['main_label'])
-    return dict(ref.NODES)
+    return table
+
+
+def skeleton_tables(b):
+    """Round 22: the per-element main lines the status layer reads, [element] -> slot or None, each checked by its
+    v0.4 label in that element's own tree (a tree whose table has another line there gets None)."""
+    plan = _plan(b)
+    trees = {t['index']: t for t in plan['trees']}
+    out = {}
+    for name, (route, level, pattern, without) in _ref22.SKELETON.items():
+        cells = [None]
+        for element in range(1, 12):
+            tree = trees[element - 1]
+            label = pattern.format(x=ELEMENT_SHORT[element - 1])
+            cell = tree['routes'][route]['tiers'][level]
+            if tree['id'] in without:
+                assert cell['main_label'] != label, (name, tree['id'], cell['main_label'])
+                cells.append(None)
+                continue
+            assert cell['main_label'] == label, (name, tree['id'], cell['main_label'], label)
+            cells.append((element - 1, route, level))
+        out[name] = cells
+    cells = [None]
+    for element in range(1, 12):
+        tree = trees[element - 1]
+        cell = tree['routes'][2]['tiers'][4]
+        assert cell['main_label'] == _ref22.SIGNATURE[tree['id']], (tree['id'], cell['main_label'])
+        cells.append((element - 1, 2, 4))
+    out['kSignature'] = cells
+    return out
 
 
 def globals_(b):
@@ -109,12 +173,13 @@ def globals_(b):
     ids = {k: b.ID_GLOB[k] for k in ['ESSB_Enabled', 'ESSB_FormActive', 'ESSB_CurrentElement', 'ESSB_DebugLevel']}
     ids |= {'ESSB_NativeHit': NATIVE_HIT, 'ESSB_NativeWanted': NATIVE_WANTED}
     for name in ['ESSB_BaseDamageMult', 'ESSB_NodeScale', 'ESSB_MultDrain', 'ESSB_MultRecovery', 'ESSB_MultDuration',
-                 'ESSB_SlowCapPct', 'ESSB_WaterWetSlowPct', 'ESSB_WaterClearStamina', 'ESSB_ManabreakMaxmagPct']:
+                 'ESSB_SlowCapPct', 'ESSB_WaterWetSlowPct', 'ESSB_WaterClearStamina', 'ESSB_ManabreakMaxmagPct',
+                 'ESSB_MultCooldown', 'ESSB_MultDot', 'ESSB_PoisonDotK', 'ESSB_BleedDotK']:
         ids[name] = b.ID_BALANCE_GLOB[name][0]
     mech = [name for name, _ in b.MECH_GLOBALS]
     for name in ['ESSB_SyncStage', 'ESSB_PrevElement', 'ESSB_TwinElement']:
         ids[name] = b.ID_MECH_GLOB + mech.index(name)
-    for name in ['ESSB_EnvWet', 'ESSB_EnvNight']:
+    for name in ['ESSB_EnvWet', 'ESSB_EnvNight', 'ESSB_EnvStormy']:
         ids[name] = b.ID_GLOB_ENGINE[name]
     for tree, key in enumerate(b.TREES):
         ids[f'ESSB_Lvl_{key}'] = b.ID_TREE_GLOB['Lvl'] + tree
@@ -128,6 +193,8 @@ TUNING_GLOBALS = {
     'wetSlowPct': 'ESSB_WaterWetSlowPct', 'waterClearStamina': 'ESSB_WaterClearStamina',
     'seizeMaxPct': 'ESSB_ManabreakMaxmagPct', 'syncStage': 'ESSB_SyncStage', 'envWet': 'ESSB_EnvWet',
     'envNight': 'ESSB_EnvNight', 'prevElement': 'ESSB_PrevElement', 'twinElement': 'ESSB_TwinElement',
+    'multCooldown': 'ESSB_MultCooldown', 'envStormy': 'ESSB_EnvStormy',
+    'multDot': 'ESSB_MultDot', 'poisonDotK': 'ESSB_PoisonDotK', 'bleedDotK': 'ESSB_BleedDotK',
 }
 
 
@@ -143,6 +210,7 @@ def spells(b):
         'kHeal': (b.util_spell_id(4), 'ESSB_Util_RestoreHealth'),
         'kRestoreMagicka': (b.util_spell_id(5), 'ESSB_Util_RestoreMagicka'),
         'kRestoreStamina': (b.util_spell_id(6), 'ESSB_Util_RestoreStamina'),
+        'kBleedTick': (b.util_spell_id(7), 'ESSB_Util_BleedTick'),   # round 22 放血: no resist, no G(L)
         'kTrueDamage': (b.ID_TRUE_SPELL, 'ESSB_TrueDamageSpell'),
         'kDispelMark': (b.ID_MANABREAK_SPELL, 'ESSB_ManaBreakSpell'),
         'kSpendMagicka': (hit20.SPEND, 'ESSB_Native_SpendMagicka'),
@@ -242,7 +310,12 @@ def header_text(b):
     for label, fn in (('kProcAdept', ref.adept), ('kProcMaster', ref.master)):
         cells = ['kNoNode'] + [_slot(fn(e)) if fn(e) else 'kNoNode' for e in range(1, 12)]
         L.append(f'inline constexpr NodeId {label}[12] = {{{", ".join(cells)}}};  // [element]; water has none')
-    L += ['}  // namespace node', '',
+    for label, cells in skeleton_tables(b).items():
+        text = ', '.join('kNoNode' if c is None else _slot(c) for c in cells)
+        L.append(f'inline constexpr NodeId {label}[12] = {{{text}}};  // [element]; round 22, checked by v0.4 label')
+    L += ['}  // namespace node', '']
+    L += status_header(b)
+    L += ['',
           '// settings.json element_damage (B_min, B_max per element; [0] unused) and noform_base_true.',
           'inline constexpr float kElementDamage[12][2] = {{0.0f, 0.0f}, '
           + ', '.join('{' + ', '.join(f'{float(x)}f' for x in s['element_damage'][n]) + '}' for n in b.ELEMENTS) + '};',
@@ -252,6 +325,54 @@ def header_text(b):
           f'inline constexpr char addressHash[] = "{sha(address_library())}";',
           '}  // namespace essb']
     return '\n'.join(L) + '\n'
+
+
+MARK_RECORD_SECONDS = 8   # build_v03 ESSB_MarkSpell_<X> (the DLL checks it against the loaded record)
+
+
+def status_ids(b):
+    """Round 22: every record the status layer casts or looks for, by role."""
+    return {
+        'marks': [dict(effect=b.ID_MARK_EFFECT + i, spell=b.ID_MARK_SPELL + i, editor_id=f'ESSB_MarkSpell_{n}')
+                  for i, n in enumerate(b.ELEMENTS)],
+        'react': [dict(spell=b.ID_REACT_SPELL + i, editor_id=f'ESSB_React_{n}') for i, n in enumerate(b.ELEMENTS)],
+        'kinds': [dict(kind=k[0], effect=hit22.effect_id(k[0]), spell=hit22.spell_id(k[0]), seconds=k[4], player=k[3],
+                       stub=k[5], editor_id=hit22.edid_spell(k[1])) for k in hit22.KINDS],
+        'dots': {key: dict(effect=hit22.dot_effect_id(key),
+                           spells=[hit22.dot_spell_id(key, s) for s in range(1, hit22.DOT_MAX_SECONDS + 1)],
+                           editor_id=hit22.edid_effect(suffix))
+                 for key, suffix, *_ in hit22.DOT_KINDS},
+        'fear': dict(effect=b.ID_FEAR_EFFECT, editor_id='ESSB_FearEffect'),
+        'frenzy': dict(effect=b.ID_FRENZY_EFFECT, editor_id='ESSB_FrenzyEffect'),
+        'slow': dict(effect=b.util_effect_id(0), editor_id='ESSB_UtilEffect_Slow'),
+    }
+
+
+def status_header(b):
+    ids = status_ids(b)
+    L = ['// Round 22 (slice N3): the status layer records (build/fix22_records.py KINDS, in this order).',
+         'enum class StatusKind : std::uint8_t', '{']
+    L += [f'    {row["kind"]},' for row in ids['kinds']]
+    L += ['    kCount,', '};', '',
+          'struct StatusRecord { std::uint32_t effect; std::uint32_t spell; float seconds; bool onPlayer; bool stub; std::string_view editorId; };',
+          'inline constexpr StatusRecord kStatusRecords[] = {']
+    for row in ids['kinds']:
+        L.append(f'    {{{hex(row["effect"])}, {hex(row["spell"])}, {float(row["seconds"])}f, {str(row["player"]).lower()}, '
+                 f'{str(row["stub"]).lower()}, "{row["editor_id"]}"}},')
+    L += ['};', '', 'namespace status {']
+    L.append('inline constexpr std::uint32_t kMarkEffect[12] = {0, ' + ', '.join(hex(m['effect']) for m in ids['marks']) + '};  // ESSB_MarkEffect_<X>')
+    L.append('inline constexpr std::uint32_t kMarkSpell[12] = {0, ' + ', '.join(hex(m['spell']) for m in ids['marks']) + '};  // ESSB_MarkSpell_<X>')
+    L.append('inline constexpr std::uint32_t kReactSpell[12] = {0, ' + ', '.join(hex(m['spell']) for m in ids['react']) + '};  // ESSB_React_<X>')
+    L.append(f'inline constexpr int kDotMaxSeconds = {hit22.DOT_MAX_SECONDS};')
+    for key, row in ids['dots'].items():
+        cap = key[0].upper() + key[1:]
+        L.append(f'inline constexpr std::uint32_t k{cap}DotEffect = {hex(row["effect"])};  // {row["editor_id"]}')
+        L.append(f'inline constexpr std::uint32_t k{cap}Dot[{hit22.DOT_MAX_SECONDS}] = {{' + ', '.join(hex(x) for x in row['spells']) + '};  // 1..N s')
+    L.append(f'inline constexpr float kMarkRecordSeconds = {float(MARK_RECORD_SECONDS)}f;  // ESSB_MarkSpell_<X> EFIT duration')
+    for name in ('fear', 'frenzy', 'slow'):
+        L.append(f'inline constexpr std::uint32_t k{name.capitalize()}Effect = {hex(ids[name]["effect"])};  // {ids[name]["editor_id"]}')
+    L += ['}  // namespace status']
+    return L
 
 
 def generate_header(b):
@@ -267,6 +388,9 @@ def fixture(b):
                          dict(tuning={field: g[edid] for field, edid in TUNING_GLOBALS.items()},
                               levels=[g[f'ESSB_Lvl_{k}'] for k in b.TREES]),
                          write_if_changed, ROOT)
+    # Round 22: the status layer's scenario table (reference model) and record wiring.
+    count += fix22_fixture.write(b, settings(), write_if_changed, ROOT)
+    fix22_fixture.wiring(b, write_if_changed, ROOT)
     return count
 
 
@@ -301,8 +425,9 @@ def entry51_count(record):
 def input_paths():
     """Exactly what the DLL and its tests are generated from; nothing else forces a rebuild."""
     paths = [ROOT / 'build/fix19_native.py', ROOT / 'build/fix20_records.py', ROOT / 'build/fix21_records.py',
-             ROOT / 'build/fix20_reference.py',
-             ROOT / 'build/fix20_fixture.py', TABLE, WIRING, NATIVE / 'build.py', NATIVE / 'CMakeLists.txt',
+             ROOT / 'build/fix22_records.py', ROOT / 'build/fix20_reference.py', ROOT / 'build/fix22_reference.py',
+             ROOT / 'build/fix20_fixture.py', TABLE, WIRING, ROOT / 'build/fix22_fixture.py', STATUS_TABLE, STATUS_WIRING,
+             NATIVE / 'build.py', NATIVE / 'CMakeLists.txt',
              NATIVE / 'dependencies.lock.json', NATIVE / 'toolchain.lock.json']
     for part in ['src', 'include', 'tests', 'cmake']:
         paths += [p for p in (NATIVE / part).rglob('*') if p.is_file()]
@@ -341,7 +466,7 @@ def manifest(b):
     return {'schema': 2, 'plugin': b.PLUGIN, 'native_version': NATIVE_VERSION, 'runtime': '1.5.97.0',
             'globals': globals_(b),
             'proc_spells': [{'local_id': v['id'], 'editor_id': v['edid'], 'element': v['e'], 'power': v['p']} for v in proc_rows(b)],
-            'spells': spells(b), 'effects': effects(b), 'vanilla': vanilla(b),
+            'spells': spells(b), 'effects': effects(b), 'vanilla': vanilla(b), 'status': status_ids(b),
             'perks': {'main_base': b.ID_MAIN_PERK, 'branch_base': b.ID_BRANCH_PERK,
                       'main_max_rank': b.plan_trees.MAIN_MAX_RANK, 'branch_slots': b.plan_trees.MAX_BRANCH}}
 
@@ -401,9 +526,14 @@ def verify(b):
     result = subprocess.run([str(test), str(TABLE), str(WIRING)], text=True, capture_output=True)
     (ROOT / 'build/fix20-native-test.log').write_text(result.stdout + result.stderr, encoding='utf8')
     assert result.returncode == 0, result.stdout + result.stderr
+    status = subprocess.run([str(NATIVE / 'out/Release/status_test.exe'), str(STATUS_TABLE), str(STATUS_WIRING)],
+                            text=True, capture_output=True)
+    (ROOT / 'build/fix22-native-test.log').write_text(status.stdout + status.stderr, encoding='utf8')
+    assert status.returncode == 0, status.stdout + status.stderr
     print(f'NATIVE ok: fresh DLL {NATIVE_VERSION} + exact dependencies + manifest/ESP identities (22 proc spells with one damage '
           f'effect each, {len(m["spells"])} cast spells, {len(m["effects"])} effects, {len(m["globals"])} globals, '
           f'{len(wiring["main_perks"])} main lines + {len(wiring["branch_perks"])} branches by EDID); '
           f'{len(ours)} PERK records scanned by PRKE type, 0 entry-point-51 entries')
     print(result.stdout.strip())
+    print(status.stdout.strip())
     return m

@@ -785,7 +785,7 @@ Function OpenTree(Int aiTree, Bool abQueued = False)
 	If !Controller || !Controller.IsCurrentController() || Controller.StateBroken
 		Return
 	EndIf
-	If !Ready || !Controller.IsOperational()
+	If !Ready || !Controller.IsReadyUI()
 		Debug.Notification("元素魔戰士：尚未就緒")
 		Return
 	EndIf
@@ -922,7 +922,7 @@ Function Reconcile(Int aiTree)
 		Debug.Notification("點數不足：" + TreeName(aiTree) + " 有 " + refused + " 個分支已退回")
 	EndIf
 	RefreshTree(aiTree)
-	If Controller && Controller.IsOperational()
+	If Controller && Controller.IsReadyUI()
 		Controller.RefreshAbilities()
 	EndIf
 	If Controller.CachedDebugLevel >= 1
@@ -1004,7 +1004,7 @@ Function RespecAll()
 		EndIf
 		tree += 1
 	EndWhile
-	If Controller && Controller.IsOperational()
+	If Controller && Controller.IsReadyUI()
 		Controller.RefreshAbilities()
 	EndIf
 	Debug.Notification("洗點完成：全部，退回 " + removed + " 個節點，冷卻中 " + skipped + " 棵")
@@ -1058,7 +1058,7 @@ Int Function RespecTree(Int aiTree, Bool abRefreshAbilities = True)
 		stamp.SetValue(Utility.GetCurrentGameTime())
 	EndIf
 	RefreshTree(aiTree)
-	If Controller && abRefreshAbilities && Controller.IsOperational()
+	If Controller && abRefreshAbilities && Controller.IsReadyUI()
 		Controller.RefreshAbilities()
 	EndIf
 	If Controller.CachedDebugLevel >= 1
@@ -1209,7 +1209,7 @@ String Function SkillIdInternal(Int aiTree)
 EndFunction
 
 Bool Function BeginSettings()
-	If !Controller || !Controller.IsOperational() || !Ready
+	If !Controller || !Controller.IsReadyUI() || !Ready
 		Debug.Notification("元素魔戰士：尚未就緒")
 		Return False
 	EndIf
@@ -1229,7 +1229,7 @@ Bool Function BeginSettings()
 EndFunction
 
 Function FinishSettings(Int aiChoice)
-	If !Controller || !Controller.IsOperational()
+	If !Controller || !Controller.IsReadyUI()
 		Return
 	EndIf
 	If !SettingsBusy

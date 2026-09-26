@@ -8,6 +8,15 @@ from types import SimpleNamespace as NS
 import hashlib, json, math, re, struct, sys
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
+# Round 22: these checks run on the pre-fix22 scripts; build/fix22_history.py ties them to today's (declared changes only).
+import sys as _sys22
+_sys22.path.insert(0, str(ROOT / 'build'))
+import fix22_history as _fix22_history
+SRC22 = _fix22_history.legacy_source()
+def CUR22(rel):  # a repo path as the older rounds knew it: src/* comes from the pre-fix22 snapshot
+    rel = str(rel).replace(chr(92), '/')
+    return SRC22 / rel[4:] if rel.startswith('src/') else ROOT / rel
+
 sys.path[:0] = [str(ROOT/'build'), str(ROOT)]
 import papyrus_harness as h
 from fix11_verify import HitScript, add
@@ -20,7 +29,7 @@ class Script(HitScript):
 from fix12_cost import scenario
 from fix10_verify import controller, Actor
 OLD = ROOT/'.codex/pre-fix13-snapshot/src'
-NEW = ROOT/'src'
+NEW = SRC22
 
 def ledger(item, detail):
     # Round 14 write scope excludes the archived Round 13 progress page.
@@ -441,14 +450,14 @@ def boundaries():
         if name == 'state-schema.lock.json':
             state_schema.preflight()
             continue
-        assert hashlib.sha256((ROOT/name).read_bytes()).hexdigest()==digest,name
+        assert hashlib.sha256(CUR22(name).read_bytes()).hexdigest()==digest,name
     raw=(ROOT/'實作紀錄.md').read_bytes();prefix=before['log_prefix']
     assert raw.startswith((ROOT/'.codex/pre-fix18b-snapshot/實作紀錄.md').read_bytes())  # Current round18b byte baseline
     for name,enc in before['encodings'].items():
         if name=='實作紀錄.md':
             baseline=(ROOT/'.codex/pre-fix18b-snapshot/實作紀錄.md').read_bytes()
             enc=dict(bom=baseline.startswith(b'\xef\xbb\xbf'),crlf=baseline.count(b'\r\n'),lf=baseline.count(b'\n'))
-        raw=(ROOT/name).read_bytes()
+        raw=CUR22(name).read_bytes()
         assert raw.startswith(b'\xef\xbb\xbf')==enc['bom'],name
         assert (raw.count(b'\r\n')==raw.count(b'\n'))==(enc['crlf']==enc['lf']),name
     import state_schema

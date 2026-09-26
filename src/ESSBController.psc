@@ -1,19 +1,19 @@
 Scriptname ESSBController extends ReferenceAlias
-{元素魔戰士 控制器：形態層、附傷、印記登記表、同調、融斷、環境
-（規劃 v0.3 第 1、1.1、1.1.1、2.1～2.10、2.13、6.1 節）。
+{元素魔戰士 控制器：形態層、同調、融斷、環境、自身資源與反應本體的事件入口
+（規劃 v0.4 第 1、1.1、2.1～2.10、2.13、6.1 節）。
 
 形態切換在同一個腳本幀內完成：移除舊形態能力、加上新形態能力、更新全域變數。
 沒有 Utility.Wait、沒有忙等迴圈、沒有每幀輪詢。附傷與所有反應傷害都用
 DoCombatSpellApply 套自有法術，不用 Spell.Cast，避免觸發施法事件被其他模組吃掉；
 絕不直接 DamageActorValue 生命，讓 Ordinator 等天賦照常成立。
 
-登記表（規劃 2.2）：同時帶印記的目標上限 8 個，第 9 個目標被開印時最舊的印記
-提前過期並觸發過期終焉（EXPIRE 終焉），再給新目標開印。每個目標的開印與終焉
-各有 1 秒內部冷卻，過期終焉也受此限制。
+Round 22（N3）起沒有登記表、沒有狀態容器：目標身上的印記、層數、冰封、催毒、死咒、星痕，與你身上的熱度、
+聖佑階梯，都是 DLL 掛的引擎效果（native/include/Status.h）。DLL 在命中那一幀決定開印／刷新／被切，做完開印與
+終焉的狀態部分，再用 ModEvent（ESSB_Open、ESSB_End、ESSB_Frozen、ESSB_Hallucinate、ESSB_Judgment、ESSB_Splash、
+ESSB_Shatter、ESSB_Landing、ESSB_Death）叫這裡的處理函式跑反應本體（ESSBReactions，N5 前在 Papyrus）。
+本腳本讀寫目標狀態一律經 ESSBNative（狀態代碼見 ESSBNative.psc）。
 
-狀態種類 aiKind（與 ESSBStatus／ESSBReactions 共用）：
-  1 熱度 2 凍結 3 裂痕 4 失衡 5 血痕 6 聖印 7 毒層 8 浸濕 9 水壓 10 詛咒 11 星痕
-自身資源 aiKind：1 電荷 2 岩甲 3 風勢 4 過熱
+自身資源 aiKind（N4 前留在這裡）：1 電荷 2 岩甲 3 風勢
 輔助法術 UtilSpells 索引：
   0 減速 1 減防 2 削魔 3 削耐 4 回血 5 回魔 6 回耐 7 放血（無抗性）}
 
@@ -64,13 +64,11 @@ GlobalVariable Property GameHour Auto
 
 Spell Property SettingsPower Auto
 Spell Property FormRulesAbility Auto
-Spell Property StatusHostSpell Auto
 Spell Property EngagedSpell Auto
 Spell[] Property FormPowers Auto
 Spell[] Property FormAbilities Auto
 Spell[] Property HitNormalSpells Auto
 Spell[] Property HitPowerSpells Auto
-Spell[] Property MarkSpells Auto
 Spell[] Property ReactSpells Auto
 Spell[] Property UtilSpells Auto
 Spell[] Property UtilTargetSpells Auto
@@ -108,8 +106,6 @@ Keyword Property CloakKeyword Auto
 
 ; Round 18: player-only proc cache and immutable-layout node mirrors.
 Perk Property HitProcPerk Auto
-Spell[] Property HitBonusSpells Auto
-{差額補丁（ApplyProc）與極致的附傷法術；round 20 起 DLL 在命中時自己算強度，這裡只補目標側。}
 Spell Property BloodGuardSpell Auto
 {護血池：DLL 以強度＝池量灌入（血溢），離開形態時這裡清空。}
 Spell Property EchoPendingSpell Auto
@@ -163,14 +159,16 @@ Spell Property FearSpell Auto
 {恐懼（原型 7 Demoralize，magnitude＝可影響的最高等級，同原版幻術）。}
 Spell Property FrenzySpell Auto
 {瘋狂（原型 8 Frenzy，magnitude＝等級上限）。}
+Spell Property FrenzyBladeSpell Auto
+{round 22「狂刃」：瘋狂中的目標傷害 +50%（ESSB_N3_FrenzyBlade，AttackDamageMult +0.5，跟瘋狂同秒數）。}
+Spell Property VisionSpell Auto
+{v0.4 5.12「幻視」：不能魅惑的目標 3 秒攻擊傷害 ×0.8（ESSB_N3_Vision，AttackDamageMult -0.2）。}
 Spell Property ReanimateSpell Auto
 {亡者歸來（原型 22 Reanimate，magnitude＝等級上限、duration 依階數）。}
 Spell Property CleanseSpell Auto
 {洗淨：限定關鍵字的 Dispel（中毒、元素持續傷、減速）＋ Cure Disease。}
 Spell Property PurgeSpell Auto
 {淨化／洗滌：關鍵字範圍更大的 Dispel ＋ Cure Disease ＋ Cure Poison。}
-Spell Property StripSpell Auto
-{沖刷：對目標的 Dispel 原型，只影響有時限的法術效果。}
 Spell Property PoisonResistAbility Auto
 {5.10「免疫」：毒形態毒抗 +50% 的常駐能力。}
 
@@ -254,17 +252,6 @@ Float[] LiftDue
 Float[] LiftForce
 Float[] LiftDamage
 Float NextTickAt
-Int[] RegGeneration
-Float[] RegUntil
-Bool[] RegSecondReal
-Float[] RegPendStarLock
-Bool[] RegPendWetLock
-Bool[] RegHostPending
-Float[] RegHostRequest
-Actor SwapActor
-Int SwapGeneration
-Float SwapDeadline
-Float SwapStarted
 Int[] SettledElement
 Actor[] SettledDead
 Int SettledNext
@@ -272,55 +259,25 @@ Actor[] DeadActor
 Int[] DeadElement
 Int[] DeadFreeze
 Int[] DeadBleed
-Int[] DeadPoison
 Int DeadNext
 Float[] TrioTimes
 Int PerpetualKeep
 Actor[] PendingServants
 Float[] PendingServantDue
 Bool ReanimateBusy
-Int[] PendingStacks
-Bool[] PendingSet
-Int[] PendingAstral
-Float[] PendingAstralWeight
-Float[] PendingRadiance
-Float[] PendingFrozen
-Float[] PendingCatalyze
-Float[] PendingCatalyzeMult
-Float[] PendingCurse
-Float[] PendingCurseBase
-Float[] PendingCurseMult
-Float[] PendingNextEnd
-Float[] PendingNextOpen
-Float[] PendingAir
-Float[] PendingAirDamage
-Int[] BackupIntsA
-Int[] BackupIntsB
-Int[] BackupIntsC
-Int[] BackupIntsD
-Float[] BackupFloatsA
-Float[] BackupFloatsB
-Bool[] BackupValid
 
 
-
-; 登記表（8 格）
-Actor[] RegActor
-Int[] RegElem
-Int[] RegSeq
-Int[] RegPendElem
-Int[] RegPendAmt
-Float[] RegLastOpen
-Float[] RegLastEnd
-ESSBMark[] RegMark
-ESSBStatus[] RegStatus
-Int NextSeq = 1
-
-; 換宿暫存（規劃 8 的 30 秒宿主問題：每目標約 25 秒搬一次家）
-Int SwapSlot = -1
-Int[] SwapInts
-; FIX14: damage timestamps parallel to DamageActor[128]; no longer swap state.
-Float[] SwapFloats
+; 擊殺掛勾（round 22）：DLL 的死亡快照（ESSB_Death，屍體還帶著效果時送出）與 PO3 的擊殺回報誰先到都行；
+; 回報了擊殺、快照卻沒來（目標身上沒有任何狀態）時，每秒 tick 在 1 秒後以空快照結算。
+Int[] DeadMarks
+Actor[] PendingKillActor
+Float[] PendingKillAt
+Int PendingKillNext
+; FIX14: damage timestamps parallel to DamageActor[128].
+Float[] DamageTime
+; 融斷當下的電荷：ESSB_End 在融斷之後才回來，那時自身資源已清空（見 EndCharge）。
+Int BurstCharge
+Bool PlayerInFireDomain
 
 
 ; FIX15: target-owned facts and once-only death payloads.
@@ -331,9 +288,6 @@ Bool[] HitPower
 Int[] HitWeapon
 Bool[] HitKillDone
 Int HitNext
-Int[] DeadCurse
-Int[] DeadHeat
-Int[] DeadHoly
 Int SwitchCharge
 Bool DivineArmed
 Actor[] CastActor
@@ -349,7 +303,6 @@ Int KillProcNext
 Int SelfCharge
 Int SelfRockArmor
 Int SelfWind
-Int SelfOverheat
 Float ChargeDecayAt
 Float SelfLastHit
 Float StormCharge
@@ -370,15 +323,10 @@ Int CachedSync
 Bool LiftQueued
 Bool Property StateBroken = False Auto
 Bool FixInitialised
-Bool RegistryInitialised
+Bool TablesInitialised
 Bool FirstSetupDone
 
 ; ---------------------------------------------------------------- 節點狀態（機制前線）
-; 副印記（通用樹「雙印」與「疊印」共用同一格；規劃 2.2 明寫雙印不占名額）
-Int[] RegElem2
-Int[] RegSeq2
-Float[] RegSecondUntil
-ESSBMark[] RegMark2
 
 ; 無元素樹
 Int Resolve
@@ -388,8 +336,6 @@ Float ComboTime
 Float InterruptTime
 
 ; 秒計時器（每秒 tick 減 1，歸零時把對應的全域變數寫回 0）
-Float MoltenTickAt
-Float MoltenLeft
 Float EmberLeft
 Int EmberElem
 Float QuenchLeft
@@ -403,7 +349,6 @@ Float SyncKeepLeft
 Int SyncKeep
 Int IceShield
 Int PendingDischarge
-Int NextMarkBonus
 Int PrevElement
 Int TwinElement
 Float TwinTime
@@ -418,12 +363,8 @@ Float CloakGuardLeft
 Float NoBloodCostLeft
 Float WindFollowLeft
 Float KeepSneakLeft
-Int PendingBleed
-Bool PendingHeal
-Bool KillStreakReady
 Bool DivineSaveUsed
 ; FIX10: provenance belongs to the victim, never to the active form.
-Int[] RegLastDamage
 Actor[] DamageActor
 Int[] DamageElement
 Int DamageNext
@@ -438,12 +379,6 @@ Float[] KnockTime
 Float[] PullTime
 Float[] WashTime
 Int KnockNext
-Float EndBoostLeft
-Float EndBoostAmount
-
-; 開印後／終焉後的 5 秒視窗（各元素開啟熟練與關閉專精主線）
-Float[] OpenBoost
-Float[] EndBoost
 
 ; 領域（火域、冰原、地裂、血池、聖域、毒霧、潮池、死域、星域）：
 ; 不放任何 ObjectReference，只記中心座標、半徑與剩餘秒數，由既有的每秒 tick 做幾何判定
@@ -464,7 +399,6 @@ Int WaterMirror
 Float GuardDarkLeft
 Float GuardAstralLeft
 Float GuardStarLeft
-Bool PendingDrain
 Float CleanseTime
 Int AstralHits
 
@@ -563,189 +497,10 @@ Function InitFixState()
 	If FixInitialised
 		Return
 	EndIf
-	If !SwapFloats || SwapFloats.Length != 128
-		SwapFloats = new Float[128]
-		If !SwapFloats
-			BreakState()
-			Return
-		EndIf
-	EndIf
 	; Allocate once on this schema; failure latches and never retries.
-	If !PendingAir
-		PendingAir = new Float[8]
-		If !PendingAir
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !PendingAirDamage
-		PendingAirDamage = new Float[8]
-		If !PendingAirDamage
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	InitBackupInts()
-	If !IsCurrentController() || StateBroken
-		Return
-	EndIf
-	If !BackupFloatsA
-		BackupFloatsA = new Float[96]
-		If !BackupFloatsA
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !BackupFloatsB
-		BackupFloatsB = new Float[96]
-		If !BackupFloatsB
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !BackupValid
-		BackupValid = new Bool[8]
-		If !BackupValid
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !PendingNextEnd
-		PendingNextEnd = new Float[8]
-		If !PendingNextEnd
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !PendingNextOpen
-		PendingNextOpen = new Float[8]
-		If !PendingNextOpen
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !PendingStacks
-		PendingStacks = new Int[96]
-		If !PendingStacks
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !PendingSet
-		PendingSet = new Bool[96]
-		If !PendingSet
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !PendingAstral
-		PendingAstral = new Int[8]
-		If !PendingAstral
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !PendingAstralWeight
-		PendingAstralWeight = new Float[8]
-		If !PendingAstralWeight
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !PendingRadiance
-		PendingRadiance = new Float[8]
-		If !PendingRadiance
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !PendingFrozen
-		PendingFrozen = new Float[8]
-		If !PendingFrozen
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !PendingCatalyze
-		PendingCatalyze = new Float[8]
-		If !PendingCatalyze
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !PendingCatalyzeMult
-		PendingCatalyzeMult = new Float[8]
-		If !PendingCatalyzeMult
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !PendingCurse
-		PendingCurse = new Float[8]
-		If !PendingCurse
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !PendingCurseBase
-		PendingCurseBase = new Float[8]
-		If !PendingCurseBase
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !PendingCurseMult
-		PendingCurseMult = new Float[8]
-		If !PendingCurseMult
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegGeneration
-		RegGeneration = new Int[8]
-		If !RegGeneration
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegUntil
-		RegUntil = new Float[8]
-		If !RegUntil
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegSecondReal
-		RegSecondReal = new Bool[8]
-		If !RegSecondReal
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegPendStarLock
-		RegPendStarLock = new Float[8]
-		If !RegPendStarLock
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegPendWetLock
-		RegPendWetLock = new Bool[8]
-		If !RegPendWetLock
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegHostPending
-		RegHostPending = new Bool[8]
-		If !RegHostPending
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegHostRequest
-		RegHostRequest = new Float[8]
-		If !RegHostRequest
+	If !DamageTime
+		DamageTime = new Float[128]
+		If !DamageTime
 			BreakState()
 			Return
 		EndIf
@@ -806,27 +561,6 @@ Function InitFixState()
 			Return
 		EndIf
 	EndIf
-	If !DeadCurse
-		DeadCurse = new Int[8]
-		If !DeadCurse
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !DeadHeat
-		DeadHeat = new Int[8]
-		If !DeadHeat
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !DeadHoly
-		DeadHoly = new Int[8]
-		If !DeadHoly
-			BreakState()
-			Return
-		EndIf
-	EndIf
 	If !CastActor
 		CastActor = new Actor[8]
 		If !CastActor
@@ -883,6 +617,13 @@ Function InitFixState()
 			Return
 		EndIf
 	EndIf
+	If !DeadMarks
+		DeadMarks = new Int[8]
+		If !DeadMarks
+			BreakState()
+			Return
+		EndIf
+	EndIf
 	If !DeadFreeze
 		DeadFreeze = new Int[8]
 		If !DeadFreeze
@@ -897,9 +638,16 @@ Function InitFixState()
 			Return
 		EndIf
 	EndIf
-	If !DeadPoison
-		DeadPoison = new Int[8]
-		If !DeadPoison
+	If !PendingKillActor
+		PendingKillActor = new Actor[4]
+		If !PendingKillActor
+			BreakState()
+			Return
+		EndIf
+	EndIf
+	If !PendingKillAt
+		PendingKillAt = new Float[4]
+		If !PendingKillAt
 			BreakState()
 			Return
 		EndIf
@@ -949,13 +697,6 @@ Function InitFixState()
 	If !LiftActor
 		LiftActor = new Actor[8]
 		If !LiftActor
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegLastDamage
-		RegLastDamage = new Int[8]
-		If !RegLastDamage
 			BreakState()
 			Return
 		EndIf
@@ -1013,11 +754,12 @@ Function ArmUpdate()
 	RegisterForSingleUpdate(delay)
 EndFunction
 
-Function InitRegistry()
+; 推力冷卻環與三格領域（round 22 起沒有目標登記表）。
+Function InitTables()
 	If !IsCurrentController() || StateBroken
 		Return
 	EndIf
-	If RegistryInitialised
+	If TablesInitialised
 		Return
 	EndIf
 	InitFixState()
@@ -1025,111 +767,6 @@ Function InitRegistry()
 		Return
 	EndIf
 	; Allocate once on this schema; failure latches and never retries.
-	If !RegActor
-		RegActor = new Actor[8]
-		If !RegActor
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegElem
-		RegElem = new Int[8]
-		If !RegElem
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegSeq
-		RegSeq = new Int[8]
-		If !RegSeq
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegPendElem
-		RegPendElem = new Int[8]
-		If !RegPendElem
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegPendAmt
-		RegPendAmt = new Int[8]
-		If !RegPendAmt
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegLastOpen
-		RegLastOpen = new Float[8]
-		If !RegLastOpen
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegLastEnd
-		RegLastEnd = new Float[8]
-		If !RegLastEnd
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegMark
-		RegMark = new ESSBMark[8]
-		If !RegMark
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegStatus
-		RegStatus = new ESSBStatus[8]
-		If !RegStatus
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegElem2
-		RegElem2 = new Int[8]
-		If !RegElem2
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegSeq2
-		RegSeq2 = new Int[8]
-		If !RegSeq2
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegSecondUntil
-		RegSecondUntil = new Float[8]
-		If !RegSecondUntil
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !RegMark2
-		RegMark2 = new ESSBMark[8]
-		If !RegMark2
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !OpenBoost
-		OpenBoost = new Float[12]
-		If !OpenBoost
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !EndBoost
-		EndBoost = new Float[12]
-		If !EndBoost
-			BreakState()
-			Return
-		EndIf
-	EndIf
 	If !KnockActor
 		KnockActor = new Actor[8]
 		If !KnockActor
@@ -1160,13 +797,17 @@ Function InitRegistry()
 	EndIf
 	If !DomainResident
 		DomainResident = new Actor[18]
+		If !DomainResident
+			BreakState()
+			Return
+		EndIf
 	EndIf
 	If !DomainResidentAt
 		DomainResidentAt = new Float[18]
-	EndIf
-	If !DomainResident || !DomainResidentAt
-		BreakState()
-		Return
+		If !DomainResidentAt
+			BreakState()
+			Return
+		EndIf
 	EndIf
 	If !DomainElem
 		DomainElem = new Int[3]
@@ -1217,7 +858,7 @@ Function InitRegistry()
 			Return
 		EndIf
 	EndIf
-	RegistryInitialised = True
+	TablesInitialised = True
 EndFunction
 
 Function Setup()
@@ -1241,7 +882,7 @@ Function Setup()
 		BreakState()
 		Return
 	EndIf
-	InitRegistry()
+	InitTables()
 	If !IsCurrentController() || StateBroken
 		Return
 	EndIf
@@ -1311,10 +952,21 @@ Function Setup()
 		InputLayer.Setup()
 	EndIf
 	PO3_Events_Alias.RegisterForWeaponHit(Self)
+	; DLL → 反應本體（round 22）。ModEvent 的登記不隨存檔保存，每次載入由這裡重登。
+	RegisterForModEvent("ESSB_Open", "OnESSBOpen")
+	RegisterForModEvent("ESSB_End", "OnESSBEnd")
+	RegisterForModEvent("ESSB_Frozen", "OnESSBFrozen")
+	RegisterForModEvent("ESSB_Hallucinate", "OnESSBHallucinate")
+	RegisterForModEvent("ESSB_Judgment", "OnESSBJudgment")
+	RegisterForModEvent("ESSB_Splash", "OnESSBSplash")
+	RegisterForModEvent("ESSB_Shatter", "OnESSBShatter")
+	RegisterForModEvent("ESSB_Landing", "OnESSBLanding")
+	RegisterForModEvent("ESSB_Death", "OnESSBDeath")
+	RegisterForModEvent("ESSB_Rise", "OnESSBRise")
 	SendModEvent("ESSB_FormRulesReady")
 	If CachedDebugLevel >= 1
 		LogEvent(1, "init", "ready enabled=" + Enabled.GetValueInt() + " element=" + CurrentElement.GetValueInt() \
-			+ " active=" + FormActive.GetValueInt() + " slots=8")
+			+ " active=" + FormActive.GetValueInt() + " native=" + NativeHit.GetValueInt())
 	EndIf
 	ScheduleTick(1.0)
 EndFunction
@@ -1395,7 +1047,8 @@ Function SwitchForm(Int aiIndex)
 EndFunction
 
 Function CloseForm()
-	If !IsOperational()
+	; 關閉形態是選單也會要求的動作（洗點前先關形態），總開關關著也要能關；DLL 那一半（融斷、洩壓）在總開關關著時本來就不做。
+	If !IsReadyUI()
 		Return
 	EndIf
 	Actor player = ThePlayer()
@@ -1439,6 +1092,7 @@ Function OnFormOpened(Int aiIndex)
 		PlayFormSound(FxSoundFormActive, aiIndex)
 	EndIf
 	FormOpenTime = Utility.GetCurrentRealTime()
+	BurstCharge = 0
 	RefreshAbilities()
 	; 5.2 開啟大師分支「臨界」。
 	ESSBNodes.OnFormOpened(Self, aiIndex)
@@ -1469,6 +1123,8 @@ Function OnFormSwitched(Int aiOldIndex, Int aiNewIndex)
 	If aiOldIndex == 3
 		SwitchCharge = SelfCharge
 	EndIf
+	; DLL：離開舊形態的自身階梯（熱度洩壓、熔心、餘壓、聖佑清空、神聖領域）。
+	ESSBNative.FormLeave(aiOldIndex, False)
 	ClearSelfAll()
 	; 規劃 2.12 第 3 列：DrawSheathe_舊 接 FormActive_新（新的那一聲由 OnFormOpened 播，
 	; SwitchForm 的呼叫順序就是先 OnFormSwitched 再 OnFormOpened）。
@@ -1499,44 +1155,26 @@ Function OnFormSwitched(Int aiOldIndex, Int aiNewIndex)
 	RefreshSyncStage()
 EndFunction
 
-; 融斷（規劃 2.5）：關閉形態的瞬間，15 公尺內所有登記目標的印記一次結清為爆傷，
+; 融斷（規劃 2.5）：關閉形態的瞬間，範圍內每個帶印記的目標一次結清為爆傷，
 ; 倍率 K_sync 隨同調段數 0／1／2／3 段 = ×1／×1.5／×2／×3。
 Function OnFormClosed(Int aiIndex)
-	InitRegistry()
-	If !IsCurrentController() || StateBroken
-		Return
-	EndIf
-	Actor player = ThePlayer()
-	; 規劃 2.12 第 2 列：關形態／融斷一次 Release 音。爆炸由每個印記目標的 EndMark 放，
+	; 規劃 2.12 第 2 列：關形態／融斷一次 Release 音。爆炸由 ESSB_End 的反應本體放，
 	; 預算（每 0.5 秒 5 個）在 PlaceFx 裡，所以「範圍內每個印記目標一次爆炸」自動封頂 5 個。
 	PlayFormSound(FxSoundRelease, aiIndex)
 	Int syncBefore = Sync.GetValueInt()
 	Int stage = SyncStage()
-	; 融斷倍率：K_sync × 通用樹關閉路線 × 無元素樹融斷路線 × 該元素印記的融斷加成（各印記另乘）。
+	; 融斷倍率：K_sync × 通用樹關閉路線 × 無元素樹融斷路線 × 該元素印記的融斷加成（各印記另乘，在 ESSBReactions.End）。
 	Float k = SyncMult() * ESSBNodes.CommonBurstMult(Self) * ESSBNoForm.BurstMult(Self)
 	Float radius = ESSBNoForm.BurstRadius(Self)
-	Int burst = 0
-	Int skipped = 0
-	Int index = 0
-	While index < 8
-		Actor target = RegActor[index]
-		If target && (RegElem[index] >= 1 || RegElem2[index] >= 1)
-			If target.IsDead()
-				CaptureDeath(index)
-				ClearSlot(index)
-			ElseIf player && target.GetDistance(player) <= radius
-				; 5.1 融斷大師分支「斷界」（所有被結清元素的弱化 3 秒）是 DLL N5；v0.3 的減速＋碎甲近似已拿掉。
-				EndBothMarks(index, k)
-				burst += 1
-			Else
-				skipped += 1
-			EndIf
-		EndIf
-		index += 1
-	EndWhile
+	; 雷終焉的放電用融斷當下的電荷；終焉事件在下面的 ClearSelfAll 之後才回來。
+	BurstCharge = SelfCharge
+	; DLL：範圍內每個帶印記的目標各結清一次（每目標一次終焉冷卻、融斷的狀態部分），反應本體由 ESSB_End 回來跑。
+	; 5.1 融斷大師分支「斷界」（所有被結清元素的弱化 3 秒）是 DLL N5。
+	Int burst = ESSBNative.BurstMarks(radius, k)
+	; DLL：離開形態的自身階梯（熱度洩壓、熔心、餘壓、聖佑清空、神聖領域）。
+	ESSBNative.FormLeave(aiIndex, True)
 	If CachedDebugLevel >= 1
-		LogEvent(1, "burst", "targets=" + burst + " outofrange=" + skipped + " stage=" + stage \
-			+ " k=" + k + " radius=" + radius)
+		LogEvent(1, "burst", "targets=" + burst + " stage=" + stage + " k=" + k + " radius=" + radius)
 	EndIf
 
 	; 5.2 持續傳奇分支「永續」：Z 關閉時若同調三段，融斷後保留一段同調到下一次開形態。
@@ -1711,12 +1349,7 @@ Event OnWeaponHit(ObjectReference akTarget, Form akSource, Projectile akProjecti
 		; Engine weapon damage already killed it: never send corpse damage/open marks.
 		If sneak && hitElement == 5
 			SetSelf(3, ESSBElem2.WindThreshold(Self))
-			TakeKillStreak()
 			ESSBElem2.LethalAmbush(Self, targetActor)
-		EndIf
-		Int deadSlot = FindSlot(targetActor)
-		If deadSlot >= 0
-			CaptureDeath(deadSlot)
 		EndIf
 		; Kill callback may have arrived before the weapon callback.
 		Int settled = 0
@@ -1759,29 +1392,22 @@ Event OnWeaponHit(ObjectReference akTarget, Form akSource, Projectile akProjecti
 		element = TwinElement
 	EndIf
 
-	Int hitSlot = FindSlotInternal(targetActor)
-	Int hitGeneration = -1
-	If hitSlot >= 0
-		hitGeneration = RegGeneration[hitSlot]
-	EndIf
-	Bool opening = WillOpenInternal(targetActor, element, hitSlot)
 	Int nativeDamage = NoteDamageElement(targetActor, element)
 	If nativeDamage >= 0
-		SwapFloats[nativeDamage] = Utility.GetCurrentRealTime()
+		DamageTime[nativeDamage] = Utility.GetCurrentRealTime()
 	EndIf
-	; Round 20 (N2): the DLL casts the element proc with the magnitude it computes from the hit flags, and for
-	; a 雙生 left-hand hit also the twin element's proc. Papyrus adds only the difference patch of the form's
-	; own element, with the same flag-based power / sneak the DLL used.
-	If element == hitElement
-		ApplyProc(targetActor, element, power, sneak, opening, hitSlot, hitGeneration)
-	EndIf
+	; Round 22 (N3): the DLL does the whole hit in the hit frame -- the proc with its magnitude and every target-side
+	; multiplier read from the target's effects, and the mark: open / refresh / cut, layers and ladders (and the twin
+	; element's proc and mark for a 雙生 left-hand hit). Open and end reactions come back as ModEvents (OnESSBOpen /
+	; OnESSBEnd). Papyrus keeps only what is N4: the self counters, 極致, the blood power cost, 順勢, 雷暴, 雷霆.
 
 	; 5.2 持續大師分支「極致」：同調三段時每 10 次命中額外一次全額附傷。
 	If ESSBNodes.HasExtreme(Self) && SyncStage() >= 3
 		ExtremeCount += 1
 		If ExtremeCount >= 10
 			ExtremeCount = 0
-			ApplyExtraProc(targetActor, element, power, sneak)
+			; 額外一次全額附傷：DLL 以這一擊的旗標與目標當下的狀態算強度並施放（不消耗連殺）。
+			ESSBNative.CastProc(targetActor, power)
 			If CachedDebugLevel >= 2
 				LogThrottled(2, "node", "common extreme extra proc element=" + element)
 			EndIf
@@ -1801,10 +1427,10 @@ Event OnWeaponHit(ObjectReference akTarget, Form akSource, Projectile akProjecti
 
 	; 5.5 持續專精分支「雷暴」與關閉傳奇分支「雷霆」：命中時的額外放電。
 	If element == 3 && ESSBElem.StormChance(Self)
-		ESSBElem.Discharge(Self, targetActor, GetSelf(1), True, 1.0)
+		ESSBElem.Discharge(Self, targetActor, GetSelf(1), True, 1.0, 1.0, -1.0, False)
 	EndIf
 	If (ThunderLeft > 0 && ThunderLeft > Utility.GetCurrentRealTime()) && HasElementMark(targetActor, 3)
-		ESSBElem.Discharge(Self, targetActor, GetSelf(1), False, 0.3)
+		ESSBElem.Discharge(Self, targetActor, GetSelf(1), False, 0.3, 1.0, -1.0, False)
 	EndIf
 
 	If CachedDebugLevel >= 2
@@ -1813,198 +1439,8 @@ Event OnWeaponHit(ObjectReference akTarget, Form akSource, Projectile akProjecti
 				+ " power=" + power + " left=" + leftHand + " flags=" + aiHitFlagMask + " sync=" + Sync.GetValueInt())
 		EndIf
 	EndIf
-	OnValidHitInternal(targetActor, element, power, hitSlot, hitGeneration)
+	OnValidHitInternal(targetActor, element, power)
 EndEvent
-
-; 差額補丁（round 20 起）：DLL 在命中當下算好並施放附傷（隨機 B、R、G、傷害倍率、節點與同調、血位與血怒、
-; 環境、亡靈魔族、驅魔、風潛行、雷暴擊），這裡只補 DLL 讀不到的：目標身上的狀態與腳本內的計時（到 N3 為止）。
-;   bonus = unit × ((S + X) × M − S)
-;   unit × S：DLL 那一份的期望值鏡像（平均 B、不含暴擊；NativeProcUnit × NativeNodeSum）
-;   X：加法項（熱度、開印後 5 秒、過熱、熔身、火域、冰封、聖印易傷、水壓、星痕弱點；ESSBElem.HitExtra）
-;   M：乘法項（嗜血、御風／空中追擊、星鎖／星域、終焉後、暗風多出的倍數、連殺）
-;   round 21：v0.3 的電蝕、虛空、詛咒滿層增傷、開印那一擊 ×1.5 隨技能樹改版拿掉。
-; X = 0 且 M = 1 時補丁是 0，完全不施放。
-Function ApplyProc(Actor akTarget, Int aiElement, Bool abPower, Bool abSneak, Bool abOpening, Int aiSlot = -1, Int aiGeneration = -1)
-	If !DifferencePossible(aiElement, abPower, abSneak, abOpening)
-		Return
-	EndIf
-	; No base delivery means no on-hit difference spell either. Status handling stays independent.
-	If NativeHit.GetValue() != 1.0
-		Return
-	EndIf
-	If !akTarget || akTarget.IsDead() || aiElement < 1 || aiElement > 11
-		Return
-	EndIf
-	Float s = NativeNodeSum(aiElement, abPower)
-	Float x = ESSBElem.HitExtra(Self, aiElement, akTarget, abPower)
-	Float m = DifferenceMult(aiElement, akTarget, abSneak, abOpening, True)
-	Float bonus = NativeProcUnit(aiElement, abPower, abSneak, akTarget) * ((s + x) * m - s)
-	If bonus <= 0.0
-		Return
-	EndIf
-	ApplyBonusProc(akTarget, aiElement, bonus, aiSlot, aiGeneration)
-EndFunction
-
-Function ApplyBonusProc(Actor akTarget, Int aiElement, Float afAmount, Int aiSlot = -1, Int aiGeneration = -1)
-	Spell procSpell = HitBonusSpells[aiElement - 1]
-	procSpell.SetNthEffectMagnitude(0, afAmount)
-	If aiElement == 3
-		procSpell.SetNthEffectMagnitude(1, DrainAmount(afAmount * 0.5))
-	EndIf
-	ApplyTrackedDamage(ThePlayer(), procSpell, akTarget, aiElement, aiSlot, aiGeneration)
-EndFunction
-
-; 5.2 持續大師分支「極致」（N4 前留在 Papyrus）：額外一次全額附傷＝DLL 那一份的期望值 × 目標側。不消耗連殺。
-Function ApplyExtraProc(Actor akTarget, Int aiElement, Bool abPower, Bool abSneak)
-	If !akTarget || akTarget.IsDead() || aiElement < 1 || aiElement > 11 || NativeHit.GetValue() != 1.0
-		Return
-	EndIf
-	Float s = NativeNodeSum(aiElement, abPower)
-	Float x = ESSBElem.HitExtra(Self, aiElement, akTarget, abPower)
-	Float full = NativeProcUnit(aiElement, abPower, abSneak, akTarget) * (s + x) * DifferenceMult(aiElement, akTarget, abSneak, False, False)
-	If full > 0.0
-		ApplyBonusProc(akTarget, aiElement, full)
-	EndIf
-EndFunction
-
-; 差額補丁的乘法項 M（見 ApplyProc）。abConsumeStreak：連殺 ×2 會被消耗，只有真正的那一擊才問。
-Float Function DifferenceMult(Int aiElement, Actor akTarget, Bool abSneak, Bool abOpening, Bool abConsumeStreak)
-	Float mult = ESSBElem2.TargetDamageMult(Self, akTarget) * ESSBElem3.TargetDamageMult(Self, akTarget)
-	Float now = Utility.GetCurrentRealTime()
-	; 5.8 持續熟練分支「飲血」的 10 秒「嗜血」：命中效果 +20%。
-	If BloodthirstLeft > 0 && BloodthirstLeft > now
-		mult *= 1.2
-	EndIf
-	; 各元素關閉專精主線「終焉後 5 秒內接管元素附傷 +1%／點」（結算好的加成，接管的元素都吃）。
-	If EndBoostLeft > 0 && EndBoostLeft > now
-		mult *= 1.0 + EndBoostAmount
-	EndIf
-	If aiElement == 5 && abSneak
-		; DLL 已乘潛行攻擊 ×3；暗風把它改成 ×5（多出的 5/3）與連殺 ×2 在這裡補（N4 前）。
-		mult *= ESSBElem2.SneakMult(Self) / 3.0
-		If abConsumeStreak
-			mult *= ESSBElem2.KillStreakMult(Self)
-		EndIf
-	EndIf
-	; v0.4 把十份「開印那一擊附傷 ×1.5」全部換成各元素專屬的開場（abOpening 不再放大附傷）。
-	Return mult
-EndFunction
-
-; DLL 那一份的鏡像，扣掉 1 + 節點合計（native/include/HitMath.h 的 RollProc，平均 B、不含暴擊）：
-; 平均 B × R × G × 傷害倍率 × 血位曲線與血怒 × 環境 × 亡靈魔族 × 驅魔 × 風潛行攻擊。
-; build/fix20_verify.py 以 build/fix20_reference.py（DLL 測試用的同一份參考模型）核對。
-Float Function NativeProcUnit(Int aiElement, Bool abPower, Bool abSneak, Actor akTarget)
-	Float unit = (ElementDamageMin[aiElement - 1] + ElementDamageMax[aiElement - 1]) * 0.5
-	If abPower
-		unit *= 1.5
-	EndIf
-	unit *= GLevel(aiElement - 1) * BaseDamageMult.GetValue()
-	If aiElement == 6
-		unit *= NativeBloodCurve()
-	EndIf
-	; 規劃 2.10：室內與地城沒有環境加成。
-	Actor player = ThePlayer()
-	If player && !player.IsInInterior()
-		Bool night = EnvNight.GetValueInt() == 1
-		If (aiElement == 10 && night) || (aiElement == 7 && !night)
-			unit *= 1.2
-		EndIf
-	EndIf
-	If aiElement == 7 && akTarget
-		If IsUndeadOrDaedra(akTarget)
-			unit *= 1.5
-		EndIf
-		; 5.9 持續新手分支「驅魔」：對死靈施法者傷害 +50%。
-		If ESSBNodes.Br(Self, 6, 0, 0, 1) && IsNecromancer(akTarget) ; @node 驅魔
-			unit *= 1.5
-		EndIf
-	EndIf
-	If aiElement == 5 && abSneak
-		unit *= 3.0
-	EndIf
-	Return unit
-EndFunction
-
-; DLL 那一份的節點合計鏡像（HitMath.h 的 NodeSum）：1 + 通用樹四條 + 該元素持續熟練與大師主線（水沒有）。
-Float Function NativeNodeSum(Int aiElement, Bool abPower)
-	Float sum = ESSBNodes.CommonHitMult(Self, aiElement, abPower)
-	If aiElement != 9
-		Int tree = aiElement - 1
-		sum += ESSBNodes.Pct(Self, Rank(tree, 0, 1), 0.01) ; @node *附傷{fire frost lightning earth wind blood divine poison darkness astral}
-		sum += ESSBNodes.Pct(Self, Rank(tree, 0, 3), 0.01) * SyncStage() ; @node 同調每段*附傷{fire frost lightning earth wind blood divine poison darkness astral}
-	EndIf
-	Return sum
-EndFunction
-
-; v0.4 1.1 血位的命中倍率（線性：100% ×1.3、70% ×1.1、30% ×0.8、10% ×0.6）與血怒 ×1.15，DLL 的鏡像。
-Float Function NativeBloodCurve()
-	Actor player = ThePlayer()
-	If !player
-		Return 1.0
-	EndIf
-	Float mult = LinearBloodCurve(BloodPercent(), 1.3, 1.1, 0.8, 0.6)
-	Float raw = player.GetActorValuePercentage("Health")
-	If ESSBNodes.Br(Self, 5, 0, 3, 1) && raw >= 0.3 && raw <= 0.7 ; @node 血怒
-		mult *= 1.15
-	EndIf
-	Return mult
-EndFunction
-
-; 100%／70%／30%／10% 四點之間線性內插，兩端外持平。
-Float Function LinearBloodCurve(Float afPercent, Float af100, Float af70, Float af30, Float af10)
-	If afPercent >= 1.0
-		Return af100
-	ElseIf afPercent >= 0.7
-		Return af70 + (afPercent - 0.7) / 0.3 * (af100 - af70)
-	ElseIf afPercent >= 0.3
-		Return af30 + (afPercent - 0.3) / 0.4 * (af70 - af30)
-	ElseIf afPercent >= 0.1
-		Return af10 + (afPercent - 0.1) / 0.2 * (af30 - af10)
-	EndIf
-	Return af10
-EndFunction
-
-; 差額補丁可能不是 0 嗎？先只看節點與腳本計時（零跨實體呼叫），需要時才讀目標狀態（效能守則）。
-Bool Function DifferencePossible(Int aiElement, Bool abPower, Bool abSneak, Bool abOpening)
-	; 火的熱度與神聖的聖印易傷不需要投點。
-	If aiElement == 1 || aiElement == 7
-		Return True
-	EndIf
-	Float now = Utility.GetCurrentRealTime()
-	If (BloodthirstLeft > 0 && BloodthirstLeft > now) || (EndBoostLeft > 0 && EndBoostLeft > now)
-		Return True
-	EndIf
-	; 開啟熟練主線「開印後 5 秒內 X 附傷」（風的同一格是「開印拉近距離」，不算）。
-	If aiElement != 5 && GetOpenBoost(aiElement) > 0 && Rank(aiElement - 1, 1, 1) > 0 ; @node 開印後 5 秒內*附傷{fire frost lightning earth blood divine poison water darkness astral}
-		Return True
-	EndIf
-	If Br(4, 0, 4, 0) || Br(4, 2, 4, 0) || Br(10, 1, 3, 0) || Br(10, 2, 4, 0) ; @node 御風, 空中追擊, 星鎖, 星域
-		Return True
-	EndIf
-	If aiElement == 2
-		Return Rank(1, 0, 2) > 0 ; @node 冰封目標受冰附傷
-	ElseIf aiElement == 5
-		Return abSneak && (Br(4, 2, 4, 1) || Br(4, 0, 3, 2)) ; @node 連殺, 暗風
-	ElseIf aiElement == 9
-		Return Br(8, 0, 1, 0) ; @node 水壓
-	ElseIf aiElement == 11
-		Return abPower && Br(10, 0, 2, 0) ; @node 星痕弱點
-	EndIf
-	Return False
-EndFunction
-
-; 這一擊會不會是開印（登記表裡還沒有這個元素）。附傷倍率要在套用前就知道。
-Bool Function WillOpen(Actor akTarget, Int aiElement)
-	InitRegistry()
-	If !IsCurrentController() || StateBroken
-		Return False
-	EndIf
-	Int slot = FindSlot(akTarget)
-	If slot < 0
-		Return True
-	EndIf
-	Return RegElem[slot] != aiElement && !(RegElem2[slot] == aiElement && RegSecondReal[slot])
-EndFunction
 
 ; 關形態的有效命中（規劃 5.1）。基準真傷、吸魔、小滅法、滅法與它們的節點（含反擊的吸魔 ×2）由 DLL 在命中
 ; 當下施放；這裡只剩斷咒（N4 前留在 Papyrus）。v0.3 純武藝路線（連段、節奏、疾攻、重擊碎甲、暴擊、終結、處決）
@@ -2046,349 +1482,14 @@ Function ElementHitHook(Actor akTarget, Int aiElement, Bool abPower)
 	EndIf
 EndFunction
 
-; 每次有效命中：登記目標、掛「已交戰」標記、開印或刷新、累積元素狀態與同調。
-Function OnValidHit(Actor akTarget, Int aiElement, Bool abPower)
-	InitRegistry()
-	If !IsCurrentController() || StateBroken
-		Return
-	EndIf
-	Actor player = ThePlayer()
-	If !player
-		Return
-	EndIf
-	SelfLastHit = Utility.GetCurrentRealTime()
-	MarkEngaged(akTarget)
-	Int slot = AcquireSlot(akTarget)
-	If slot < 0
-		Return
-	EndIf
-	EnsureStatus(slot, akTarget)
-	If RegElem[slot] == aiElement || (RegElem2[slot] == aiElement && RegSecondReal[slot])
-		ApplyMark(akTarget, aiElement)
-		HitStacks(akTarget, aiElement, abPower)
-	Else
-		InstallMark(slot, aiElement, akTarget)
-	EndIf
-	; 5.3 持續專精主線：帶熱度目標火抗 -1%／點。
-	If aiElement == 1
-		ESSBElem.ApplyFireResistShred(Self, akTarget)
-	EndIf
-	ElementHitHook(akTarget, aiElement, abPower)
-	AddSync(1)
-	If Trees
-		; 規劃 4：開形態的有效命中給當前元素樹 + 通用樹。
-		Trees.OnValidHitXP(aiElement)
-	EndIf
-	If FormActive.GetValueInt() == 1
-		ScheduleTick(1.0)
+; 只掛印記、不做開印反應（傳導、聖輝、暗染、星散、風襲、灼身、靜電……「附近 1 人也帶印記」）。
+Function ApplyMark(Actor akTarget, Int aiElement)
+	If akTarget && aiElement >= 1 && aiElement <= 11
+		ESSBNative.ApplyMark(akTarget, aiElement)
 	EndIf
 EndFunction
 
-Function InstallMark(Int aiSlot, Int aiElement, Actor akTarget)
-	If RegElem[aiSlot] >= 1
-		If !ESSBNodes.HasDualMark(Self) || RegElem2[aiSlot] >= 1
-			EndMark(aiSlot, 0, 1.0)
-		EndIf
-	EndIf
-	If RegElem[aiSlot] >= 1
-		; After promotion the surviving older mark stays primary; the new mark is secondary.
-		RegElem2[aiSlot] = aiElement
-		RegSeq2[aiSlot] = NextSeq
-		NextSeq += 1
-		RegSecondReal[aiSlot] = True
-		ApplyMark(akTarget, aiElement)
-		OpenSecond(aiSlot, aiElement, akTarget)
-	Else
-		RegElem[aiSlot] = aiElement
-		RegSeq[aiSlot] = NextSeq
-		NextSeq += 1
-		ApplyMark(akTarget, aiElement)
-		OpenMark(aiSlot, aiElement, akTarget)
-	EndIf
-EndFunction
-
-; 規劃 2.2：印記 8 秒，浸濕 10 秒。時長在套用前以 SetNthEffectDuration 設定。
-Function ApplyMark(Actor akTarget, Int aiElement, Int aiSlot = -1)
-	Actor player = ThePlayer()
-	If !player || !MarkSpells || aiElement < 1 || aiElement > MarkSpells.Length
-		Return
-	EndIf
-	Spell markSpell = MarkSpells[aiElement - 1]
-	If !markSpell
-		Return
-	EndIf
-	Int slot = aiSlot
-	If slot >= 0 && RegActor[slot] != akTarget
-		slot = -1
-	EndIf
-	If slot < 0
-		slot = FindSlot(akTarget)
-	EndIf
-	If slot < 0
-		slot = AcquireSlot(akTarget)
-	EndIf
-	If slot < 0
-		Return
-	EndIf
-	If RegElem[slot] != aiElement && !(RegElem2[slot] == aiElement && RegSecondReal[slot])
-		If RegElem[slot] >= 1 && (!ESSBNodes.HasDualMark(Self) || RegElem2[slot] >= 1)
-			EndMark(slot, 0, 1.0)
-		EndIf
-		If RegElem[slot] < 1
-			RegElem[slot] = aiElement
-			RegSeq[slot] = NextSeq
-		Else
-			RegElem2[slot] = aiElement
-			RegSeq2[slot] = NextSeq
-			RegSecondReal[slot] = True
-		EndIf
-		NextSeq += 1
-	EndIf
-	Int duration = 8
-	If aiElement == 9
-		duration = 10
-	EndIf
-	; 5.2 開啟熟練主線（印記持續 +0.2 秒／點）＋各元素開啟專精主線（同樣 +0.2 秒／點）
-	; ＋冰的「寒留」（終焉後接管元素的印記持續 +4 秒，一次性）。
-	duration = duration + ESSBNodes.MarkDurationBonus(Self) + ESSBElem.MarkDurationBonus(Self, aiElement)
-	If NextMarkBonus > 0
-		duration = duration + NextMarkBonus
-		NextMarkBonus = 0
-	EndIf
-	duration = DurationInt(duration)
-	If slot >= 0
-		If RegElem[slot] == aiElement
-			RegMark[slot] = None
-			RegUntil[slot] = Utility.GetCurrentRealTime() + duration
-		ElseIf RegElem2[slot] == aiElement && RegSecondReal[slot]
-			RegMark2[slot] = None
-			RegSecondUntil[slot] = Utility.GetCurrentRealTime() + duration
-		EndIf
-	EndIf
-	markSpell.SetNthEffectDuration(0, duration)
-	player.DoCombatSpellApply(markSpell, akTarget)
-EndFunction
-
-; 同元素再命中的層數（規劃 2.3 的「命中」欄）加上節點修正。
-Function HitStacks(Actor akTarget, Int aiElement, Bool abPower)
-	Int amount = 1
-	If abPower && (aiElement == 1 || aiElement == 2)
-		amount = 2
-	EndIf
-	If aiElement == 1
-		AddStack(akTarget, 1, ESSBElem.HitStacks(Self, 1, abPower))
-	ElseIf aiElement == 2
-		amount = ESSBElem.HitStacks(Self, 2, abPower)
-		If IsEnvStormy()
-			amount = amount * 2
-		EndIf
-		AddStack(akTarget, 2, amount)
-	ElseIf aiElement == 3
-		AddSelf(1, 1)
-	ElseIf aiElement == 4
-		AddSelf(2, 1)
-	ElseIf aiElement == 5
-		AddSelf(3, 1)
-	ElseIf aiElement == 6
-		AddStack(akTarget, 5, 1)
-	ElseIf aiElement == 7
-		AddStack(akTarget, 6, 1)
-	ElseIf aiElement == 8
-		AddStack(akTarget, 7, ESSBElem.HitStacks(Self, 8, abPower))
-	ElseIf aiElement == 9
-		; 浸濕是單層狀態，命中只刷新時間（規劃 2.3）。
-		AddStack(akTarget, 8, 1)
-	ElseIf aiElement == 10
-		AddStack(akTarget, 10, ESSBElem.HitStacks(Self, 10, abPower))
-	ElseIf aiElement == 11
-		AddStack(akTarget, 11, ESSBElem.HitStacks(Self, 11, abPower))
-	EndIf
-	; 火形態：同調三段後每次命中累積 1 過熱（規劃 1.1）。熔身期間過熱不累積（5.3）。
-	If aiElement == 1 && SyncStage() >= 3 && MoltenLeft <= 0
-		AddSelf(4, 1)
-	EndIf
-EndFunction
-
-; 各狀態的層數上限（規劃 2.3：基礎 + 該樹分支 + 通用樹「萬象」欄的 +1／每 5 點）。
-; 0 代表無上限（毒層）。量表類（凍結）不吃通用樹加成。
-Int Function StackCap(Int aiKind)
-	If aiKind == 1
-		Return ESSBElem.HeatCap(Self)
-	ElseIf aiKind == 2
-		Return 5
-	ElseIf aiKind == 5
-		Return ESSBElem2.BleedCap(Self)
-	ElseIf aiKind == 6
-		Return ESSBElem2.HolyCap(Self)
-	ElseIf aiKind == 7
-		Return 0
-	ElseIf aiKind == 9
-		Return ESSBElem3.PressureCap(Self)
-	ElseIf aiKind == 10
-		Return ESSBElem3.CurseCap(Self)
-	ElseIf aiKind == 11
-		Return ESSBElem3.AstralCap(Self)
-	EndIf
-	Return 1
-EndFunction
-
-; ---------------------------------------------------------------- 登記表
-
-Int Function FindSlot(Actor akTarget)
-	InitRegistry()
-	If !IsCurrentController() || StateBroken
-		Return -1
-	EndIf
-	Int index = 0
-	While index < 8
-		If RegActor[index] == akTarget
-			Return index
-		EndIf
-		index += 1
-	EndWhile
-	Return -1
-EndFunction
-
-Int Function RegistryCount()
-	InitRegistry()
-	If !IsCurrentController() || StateBroken
-		Return 0
-	EndIf
-	Int total = 0
-	Int index = 0
-	While index < 8
-		If RegActor[index]
-			total += 1
-		EndIf
-		index += 1
-	EndWhile
-	Return total
-EndFunction
-
-Int Function AcquireSlot(Actor akTarget)
-	InitRegistry()
-	If !IsCurrentController() || StateBroken
-		Return -1
-	EndIf
-	Int free = -1
-	Int oldest = -1
-	Int oldestSeq = 0
-	Int index = 0
-	While index < 8
-		If RegActor[index] == akTarget
-			Return index
-		EndIf
-		If !RegActor[index] && free < 0
-			free = index
-		EndIf
-		If RegActor[index] && (oldest < 0 || RegSeq[index] < oldestSeq)
-			oldest = index
-			oldestSeq = RegSeq[index]
-		EndIf
-		index += 1
-	EndWhile
-	If free >= 0
-		OccupySlot(free, akTarget)
-		Return free
-	EndIf
-	If oldest < 0
-		Return -1
-	EndIf
-	; 規劃 2.2：第 9 個目標被開印時，最舊的印記提前過期並觸發過期終焉。
-	If CachedDebugLevel >= 1
-		LogEvent(1, "evict", "slot=" + oldest + " target=" + RegActor[oldest].GetFormID() \
-			+ " element=" + RegElem[oldest] + " for=" + akTarget.GetFormID())
-	EndIf
-	Actor victim = RegActor[oldest]
-	Int generation = RegGeneration[oldest]
-	EndBothMarks(oldest, 1.0, 3)
-	If RegActor[oldest] != victim || RegGeneration[oldest] != generation
-		Return -1
-	EndIf
-	ClearSlot(oldest)
-	OccupySlot(oldest, akTarget)
-	Return oldest
-EndFunction
-
-Function OccupySlot(Int aiSlot, Actor akTarget)
-	RegGeneration[aiSlot] = RegGeneration[aiSlot] + 1
-	RegLastDamage[aiSlot] = LastDamageFor(akTarget)
-	RegActor[aiSlot] = akTarget
-	RegElem[aiSlot] = 0
-	RegSeq[aiSlot] = NextSeq
-	NextSeq += 1
-	RegLastOpen[aiSlot] = -100.0
-	RegLastEnd[aiSlot] = -100.0
-	RegPendElem[aiSlot] = 0
-	RegPendAmt[aiSlot] = 0
-EndFunction
-
-Function ClearSlot(Int aiSlot)
-	InitRegistry()
-	If !IsCurrentController() || StateBroken
-		Return
-	EndIf
-	If RegActor[aiSlot] && RegActor[aiSlot].IsDead()
-		CaptureDeath(aiSlot)
-	EndIf
-	ClearPendingState(aiSlot)
-	BackupValid[aiSlot] = False
-	If SwapSlot == aiSlot
-		CancelSwap()
-	EndIf
-	RegGeneration[aiSlot] = RegGeneration[aiSlot] + 1
-	RegUntil[aiSlot] = 0.0
-	RegPendStarLock[aiSlot] = 0
-	RegPendWetLock[aiSlot] = False
-	RegHostPending[aiSlot] = False
-	RegLastDamage[aiSlot] = 0
-	RegActor[aiSlot] = None
-	RegElem[aiSlot] = 0
-	RegSeq[aiSlot] = 0
-	RegMark[aiSlot] = None
-	RegStatus[aiSlot] = None
-	RegPendElem[aiSlot] = 0
-	RegPendAmt[aiSlot] = 0
-	RegLastOpen[aiSlot] = -100.0
-	RegLastEnd[aiSlot] = -100.0
-	ClearSecond(aiSlot)
-EndFunction
-
-; 開印：每個目標 1 秒內部冷卻（規劃 2.6）。
-Function OpenMark(Int aiSlot, Int aiElement, Actor akTarget)
-	Float now = Utility.GetCurrentRealTime()
-	If now - RegLastOpen[aiSlot] < CooldownSeconds(1.0)
-		If CachedDebugLevel >= 3
-			LogThrottled(3, "open", akTarget.GetFormID() + " refused cooldown element=" + aiElement)
-		EndIf
-		RegElem[aiSlot] = aiElement
-		Return
-	EndIf
-	RegLastOpen[aiSlot] = now
-	RegElem[aiSlot] = aiElement
-	RegSeq[aiSlot] = NextSeq
-	NextSeq += 1
-	If Trees
-		; 規劃 4：開印給新印記元素樹 + 通用樹。
-		Trees.OnOpenXP(aiElement)
-	EndIf
-	ESSBReactions.Open(Self, aiElement, akTarget)
-	AfterOpen(aiElement, akTarget)
-EndFunction
-
-; 副印記的開印（雙印）：不占登記名額、不做終焉，其餘與主印記相同。
-Function OpenSecond(Int aiSlot, Int aiElement, Actor akTarget)
-	Float now = Utility.GetCurrentRealTime()
-	If now - RegLastOpen[aiSlot] < CooldownSeconds(1.0)
-		Return
-	EndIf
-	RegLastOpen[aiSlot] = now
-	If Trees
-		Trees.OnOpenXP(aiElement)
-	EndIf
-	ESSBReactions.Open(Self, aiElement, akTarget)
-	AfterOpen(aiElement, akTarget)
-EndFunction
+; ---------------------------------------------------------------- 開印之後（ESSB_Open 的通用樹部分）
 
 ; 開印之後的通用樹節點：先制／開印同調、廣印、餘電。
 Function AfterOpen(Int aiElement, Actor akTarget)
@@ -2400,406 +1501,18 @@ Function AfterOpen(Int aiElement, Actor akTarget)
 	If PendingDischarge > 0
 		Int charge = PendingDischarge
 		PendingDischarge = 0
-		ESSBElem.Discharge(Self, akTarget, charge, False, 0.5)
+		ESSBElem.Discharge(Self, akTarget, charge, False, 0.5, 1.0, -1.0, False)
 	EndIf
 	; v0.3 的通用樹「廣印」（開印擴散到附近 1 人）v0.4 已移除（同格改為「跳印」，DLL N3）。
 EndFunction
 
-; 對一個還沒登記的目標直接開印（火臨／冰臨／雷臨、廣印、雙斷共用）。
+; 對目標直接開印（火臨／冰臨／雷臨、雙斷）：DLL 做開印的狀態部分，反應本體由 ESSB_Open 回來跑。
 Function ForceOpenOn(Actor akTarget, Int aiElement)
-	InitRegistry()
-	If !IsCurrentController() || StateBroken
+	If !akTarget || akTarget.IsDead() || aiElement < 1 || aiElement > 11
 		Return
 	EndIf
-	If !akTarget || aiElement < 1 || aiElement > 11
-		Return
-	EndIf
-	Int slot = AcquireSlot(akTarget)
-	If slot < 0
-		Return
-	EndIf
-	EnsureStatus(slot, akTarget)
 	MarkEngaged(akTarget)
-	If RegElem[slot] == aiElement || (RegElem2[slot] == aiElement && RegSecondReal[slot])
-		ApplyMark(akTarget, aiElement)
-		Return
-	EndIf
-	InstallMark(slot, aiElement, akTarget)
-EndFunction
-
-; 終焉：aiReason 0 被切掉、1 融斷、2 自然過期、3 第 9 目標逐出（視同過期）。
-Function EndMark(Int aiSlot, Int aiReason, Float afMult, ESSBMark akFinishing = None)
-	FinishMark(aiSlot, False, aiReason, afMult, TakeEndSlot(aiSlot), False, akFinishing)
-EndFunction
-
-Bool Function TakeEndSlot(Int aiSlot)
-	Float now = Utility.GetCurrentRealTime()
-	If now - RegLastEnd[aiSlot] < CooldownSeconds(1.0)
-		Return False
-	EndIf
-	RegLastEnd[aiSlot] = now
-	Return True
-EndFunction
-
-; Both marks in one Z burst share one cooldown reservation.
-Function EndBothMarks(Int aiSlot, Float afMult, Int aiReason = 1)
-	Actor target = RegActor[aiSlot]
-	Int generation = RegGeneration[aiSlot]
-	Bool allowed = TakeEndSlot(aiSlot)
-	; Expiry settles real marks only; a residual echo has no independent expiry.
-	If aiReason != 3 || RegSecondReal[aiSlot]
-		FinishMark(aiSlot, True, aiReason, afMult, allowed, False)
-	EndIf
-	If RegActor[aiSlot] != target || RegGeneration[aiSlot] != generation
-		Return
-	EndIf
-	FinishMark(aiSlot, False, aiReason, afMult, allowed, False)
-EndFunction
-
-; All chain ends consume the matching mark through this same cooldown gate.
-Function EndLinkedMark(Actor akTarget, Int aiElement, Float afMult)
-	Int slot = FindSlot(akTarget)
-	If slot < 0
-		Return
-	EndIf
-	If RegElem[slot] == aiElement
-		FinishMark(slot, False, 2, afMult, TakeEndSlot(slot), True)
-	ElseIf RegElem2[slot] == aiElement
-		FinishMark(slot, True, 2, afMult, TakeEndSlot(slot), True)
-	EndIf
-EndFunction
-
-Function FinishMark(Int aiSlot, Bool abSecond, Int aiReason, Float afMult, Bool abAllowed, Bool abChain, ESSBMark akFinishing = None)
-	Actor target = RegActor[aiSlot]
-	Int generation = RegGeneration[aiSlot]
-	Int element = RegElem[aiSlot]
-	Int sequence = RegSeq[aiSlot]
-	ESSBMark mark = RegMark[aiSlot]
-	Bool realMark = True
-	If abSecond
-		element = RegElem2[aiSlot]
-		sequence = RegSeq2[aiSlot]
-		mark = RegMark2[aiSlot]
-		realMark = RegSecondReal[aiSlot]
-	EndIf
-	If !target || element < 1
-		Return
-	EndIf
-	Bool dead = target.IsDead()
-	If dead
-		CaptureDeath(aiSlot)
-	EndIf
-	; Detach and promote before any cross-script call can deliver an AME callback.
-	If abSecond
-		ClearSecond(aiSlot)
-	Else
-		RegElem[aiSlot] = 0
-		RegMark[aiSlot] = None
-		RegUntil[aiSlot] = 0.0
-		If RegElem2[aiSlot] >= 1 && RegSecondReal[aiSlot]
-			RegElem[aiSlot] = RegElem2[aiSlot]
-			RegSeq[aiSlot] = RegSeq2[aiSlot]
-			RegMark[aiSlot] = RegMark2[aiSlot]
-			RegUntil[aiSlot] = RegSecondUntil[aiSlot]
-			ClearSecond(aiSlot)
-		EndIf
-	EndIf
-	; A finish callback still settles End, but must never dispel its own dead AME.
-	If !akFinishing || mark != akFinishing
-		If mark
-			mark.DispelIfActive()
-		ElseIf realMark
-			target.DispelSpell(MarkSpells[element - 1])
-		EndIf
-	EndIf
-	If dead
-		Return
-	EndIf
-	If element == 9
-		; v0.4 的「汪洋」是水終焉時浸濕延長到 30 秒（DLL N3），v0.3 的「保留浸濕為副印記」已拿掉：終焉一律解開汪洋之始的鎖。
-		If RegPendWetLock[aiSlot]
-			PendingStacks[aiSlot * 12 + 8] = 0
-		EndIf
-		RegPendWetLock[aiSlot] = False
-		ESSBStatus waterStatus = GetStatus(target)
-		If waterStatus
-			waterStatus.ReleaseWetLock(False)
-		EndIf
-	EndIf
-	If dead || target.IsDead() || !abAllowed
-		Return
-	EndIf
-	If Trees
-		Trees.OnEndXP(element)
-	EndIf
-	ESSBReactions.End(Self, element, target, aiReason, afMult, abChain)
-	PlaceFx(element, target)
-	If RegActor[aiSlot] != target || RegGeneration[aiSlot] != generation
-		Return
-	EndIf
-	If aiReason == 0 && !abChain && ESSBNodes.HasResidualMark(Self) && RegElem2[aiSlot] < 1
-		RegElem2[aiSlot] = element
-		RegSeq2[aiSlot] = sequence
-		RegSecondUntil[aiSlot] = Utility.GetCurrentRealTime() + DurationSeconds(4.0)
-		RegSecondReal[aiSlot] = False
-	EndIf
-EndFunction
-
-; 副印記的終焉（融斷時、或副印記過期時）。
-Function EndSecondMark(Int aiSlot, Int aiReason, Float afMult, ESSBMark akFinishing = None)
-	FinishMark(aiSlot, True, aiReason, afMult, TakeEndSlot(aiSlot), False, akFinishing)
-EndFunction
-
-Function ClearSecond(Int aiSlot)
-	RegSecondReal[aiSlot] = False
-	RegElem2[aiSlot] = 0
-	RegSeq2[aiSlot] = 0
-	RegSecondUntil[aiSlot] = 0.0
-	RegMark2[aiSlot] = None
-EndFunction
-
-; ---------------------------------------------------------------- 印記 AME 回報
-
-Function OnMarkStart(Int aiElement, Actor akTarget, ESSBMark akMark)
-	If !IsOperational()
-		Return
-	EndIf
-	Int slot = FindSlot(akTarget)
-	If slot < 0
-		akMark.DispelIfActive()
-		Return
-	EndIf
-	If RegElem[slot] == aiElement
-		RegMark[slot] = akMark
-	ElseIf RegElem2[slot] == aiElement && RegSecondReal[slot]
-		RegMark2[slot] = akMark
-	Else
-		akMark.DispelIfActive()
-	EndIf
-EndFunction
-
-Function OnMarkFinish(Int aiElement, Actor akTarget, ESSBMark akMark)
-	If !IsOperational()
-		Return
-	EndIf
-	Int slot = FindSlot(akTarget)
-	If slot < 0
-		Return
-	EndIf
-	If RegElem[slot] == aiElement && RegMark[slot] == akMark
-		If akTarget.IsDead()
-			CaptureDeath(slot)
-			Return
-		EndIf
-		EndMark(slot, 2, 1.0, akMark)
-	ElseIf RegElem2[slot] == aiElement && RegMark2[slot] == akMark
-		If akTarget.IsDead()
-			CaptureDeath(slot)
-			Return
-		EndIf
-		EndSecondMark(slot, 2, 1.0, akMark)
-	EndIf
-	; Keep the status host registered: pending DoT/death curse must survive mark expiry.
-EndFunction
-
-; ---------------------------------------------------------------- 狀態容器
-
-Function EnsureStatus(Int aiSlot, Actor akTarget)
-	If RegStatus[aiSlot] || !StatusHostSpell || RegHostPending[aiSlot]
-		Return
-	EndIf
-	Actor player = ThePlayer()
-	If !player
-		Return
-	EndIf
-	RegHostPending[aiSlot] = True
-	RegHostRequest[aiSlot] = Utility.GetCurrentRealTime()
-	player.DoCombatSpellApply(StatusHostSpell, akTarget)
-EndFunction
-
-Function OnStatusStart(Actor akTarget, ESSBStatus akStatus)
-	If !IsOperational()
-		Return
-	EndIf
-	InitRegistry()
-	If !IsCurrentController() || StateBroken
-		Return
-	EndIf
-	Int slot = FindSlot(akTarget)
-	If slot < 0
-		If SwapActor == akTarget
-			CancelSwap()
-		EndIf
-		akStatus.PrepareSwap()
-		akStatus.DispelIfActive()
-		Return
-	EndIf
-	If RegStatus[slot] && RegStatus[slot] != akStatus
-		akStatus.PrepareSwap()
-		akStatus.DispelIfActive()
-		Return
-	EndIf
-	Int generation = RegGeneration[slot]
-	If BackupValid[slot]
-		Int[] savedInts = ReadSwapInts(slot)
-		Float[] savedFloats = ReadSwapFloats(slot)
-		akStatus.ImportState(savedInts, savedFloats)
-		akStatus.RebaseImportedClock()
-		If RegActor[slot] != akTarget || RegGeneration[slot] != generation
-			akStatus.PrepareSwap()
-			akStatus.DispelIfActive()
-			Return
-		EndIf
-		BackupValid[slot] = False
-	EndIf
-	If SwapSlot == slot && SwapActor == akTarget && SwapGeneration == generation
-		CancelSwap()
-	EndIf
-	RegStatus[slot] = akStatus
-	RegHostPending[slot] = False
-	Float starLock = RegPendStarLock[slot]
-	Bool wetLock = RegPendWetLock[slot]
-	RegPendStarLock[slot] = 0
-	RegPendWetLock[slot] = False
-	If starLock > 0
-		akStatus.SetStarLock(0, starLock)
-	EndIf
-	If wetLock
-		akStatus.SetWetLock()
-	EndIf
-	If RegActor[slot] == akTarget && RegGeneration[slot] == generation
-		FlushPendingState(slot, akStatus)
-	EndIf
-EndFunction
-
-Function OnStatusFinish(Actor akTarget, ESSBStatus akStatus)
-	If !IsOperational()
-		Return
-	EndIf
-	InitRegistry()
-	If !IsCurrentController() || StateBroken
-		Return
-	EndIf
-	Int slot = FindSlot(akTarget)
-	If slot < 0
-		Return
-	EndIf
-	If RegStatus[slot] == akStatus
-		If akTarget.IsDead()
-			CaptureDeath(slot)
-		EndIf
-		RegStatus[slot] = None
-	EndIf
-EndFunction
-
-ESSBStatus Function GetStatus(Actor akTarget)
-	Int slot = FindSlot(akTarget)
-	If slot < 0
-		Return None
-	EndIf
-	Return RegStatus[slot]
-EndFunction
-
-Function AddStack(Actor akTarget, Int aiKind, Int aiAmount)
-	Int slot = FindSlot(akTarget)
-	If slot < 0 || aiKind < 1 || aiKind > 11
-		Return
-	EndIf
-	If aiKind == 11
-		AddAstral(akTarget, aiAmount, 1.0)
-		Return
-	EndIf
-	ESSBStatus status = RegStatus[slot]
-	If status
-		status.AddStack(aiKind, aiAmount)
-	Else
-		Int pos = slot * 12 + aiKind
-		PendingStacks[pos] = PendingStacks[pos] + aiAmount
-		EnsureStatus(slot, akTarget)
-	EndIf
-EndFunction
-
-Int Function GetStack(Actor akTarget, Int aiKind)
-	Int slot = FindSlot(akTarget)
-	If slot < 0 || aiKind < 1 || aiKind > 11
-		Return 0
-	EndIf
-	ESSBStatus status = RegStatus[slot]
-	If status
-		Return status.GetStack(aiKind)
-	EndIf
-	If aiKind == 11
-		Return PendingAstral[slot]
-	EndIf
-	Return PendingStacks[slot * 12 + aiKind]
-EndFunction
-
-Bool Function IsWet(Actor akTarget)
-	Return GetStack(akTarget, 8) > 0
-EndFunction
-
-; 宿主只有 30 秒：每目標約 25 秒搬一次家，不是每次命中都搬。
-Function CancelSwap()
-	SwapSlot = -1
-	SwapActor = None
-	; SwapInts is legacy; SwapFloats holds damage timestamps. Per-slot backups own swap state.
-	SwapStarted = 0.0
-EndFunction
-
-Function SwapHosts()
-	InitRegistry()
-	If !IsCurrentController() || StateBroken
-		Return
-	EndIf
-	Float now = Utility.GetCurrentRealTime()
-	If SwapSlot >= 0
-		If RegActor[SwapSlot] != SwapActor || RegGeneration[SwapSlot] != SwapGeneration
-			CancelSwap()
-		ElseIf now >= SwapDeadline
-			CancelSwap()
-		ElseIf now - SwapStarted >= 3.0
-			; Missing start callback: retry while retaining the exported state and identity.
-			RegHostPending[SwapSlot] = False
-			EnsureStatus(SwapSlot, SwapActor)
-			SwapStarted = now
-
-		EndIf
-		If SwapSlot >= 0
-			Return
-		EndIf
-	EndIf
-	Int index = 0
-	While index < 8
-		Actor target = RegActor[index]
-		ESSBStatus status = RegStatus[index]
-		If target && !status
-			If RegHostPending[index] && now - RegHostRequest[index] >= 3.0
-				RegHostPending[index] = False
-			EndIf
-			EnsureStatus(index, target)
-		ElseIf status && target && SwapSlot < 0 && status.IsStale(25.0)
-			SwapSlot = index
-			SwapActor = target
-			Int generation = RegGeneration[index]
-			SwapGeneration = generation
-			SwapStarted = now
-			SwapDeadline = now + 9.0
-			status.PrepareSwap()
-			Int[] exportedInts = status.ExportInts()
-			Float[] exportedFloats = status.ExportFloats()
-			If RegActor[index] == target && RegGeneration[index] == generation \
-				&& SwapSlot == index && SwapActor == target && SwapGeneration == generation
-				SaveSwapData(index, exportedInts, exportedFloats)
-				RegStatus[index] = None
-				RegHostPending[index] = False
-				status.DispelIfActive()
-				EnsureStatus(index, target)
-			ElseIf SwapSlot == index && SwapActor == target && SwapGeneration == generation
-				CancelSwap()
-			EndIf
-		EndIf
-		index += 1
-	EndWhile
+	ESSBNative.ForceOpen(akTarget, aiElement)
 EndFunction
 
 ; ---------------------------------------------------------------- 傷害與法術套用封裝
@@ -2812,6 +1525,10 @@ Function ApplyDamage(Int aiElement, Float afAmount, Actor akTarget, Int aiKillPr
 	Float amount = afAmount * BaseDamageMult.GetValue() * GLevel(ESSBNodes.TreeOf(aiElement)) \
 		* ESSBElem2.TargetDamageMult(Self, akTarget) \
 		* ESSBElem3.TargetDamageMult(Self, akTarget)
+	; 5.3 火域：內部敵人受火傷 +20%（附傷與 DLL 結算的火傷由 DLL 讀領域效果）。
+	If aiElement == 1 && DomainActive() && InDomain(akTarget, 1)
+		amount = amount * 1.2
+	EndIf
 	If aiKillProc > 0
 		ArmKillProc(akTarget, aiKillProc, afAmount, amount)
 	EndIf
@@ -3048,11 +1765,6 @@ Function ApplyUtil(Int aiIndex, Float afMagnitude, Int aiDuration, Actor akTarge
 	Else
 		player.DoCombatSpellApply(utilSpell, akTarget)
 	EndIf
-EndFunction
-
-; 放血：不吃 G(L) 與抗性，走 resist = none 的自有法術，不直接 DamageActorValue。
-Function ApplyBleedDrain(Actor akTarget, Float afAmount)
-	ApplyUtil(7, afAmount, 0, akTarget)
 EndFunction
 
 ; 碎冰處決（規劃 2.6）：首領與必要角色由呼叫端改走傷害，不會走到這裡。
@@ -3558,41 +2270,13 @@ Function AddSelf(Int aiKind, Int aiAmount)
 		If before != SelfWind
 			GWind.SetValueInt(SelfWind)
 		EndIf
-	ElseIf aiKind == 4
-		SelfOverheat += aiAmount
-		If SelfOverheat >= ESSBElem.OverheatCap(Self)
-			If ESSBElem.HasMoltenBody(Self)
-				; 5.3 持續專精分支「熔身」：不再對自己爆，改為進入 10 秒熔身。
-				SetMolten(10)
-				SelfOverheat = 0
-				If CachedDebugLevel >= 1
-					LogEvent(1, "overheat", "moltenbody")
-				EndIf
-			Else
-				; 規劃 1.1：過熱滿對自己爆一次最大生命 10% 的火傷並歸零。
-				Actor player = ThePlayer()
-				If player
-					ApplyDamageRaw(1, player.GetActorValueMax("Health") * 0.1, player)
-				EndIf
-				SelfOverheat = 0
-				If CachedDebugLevel >= 1
-					LogEvent(1, "overheat", "vent")
-				EndIf
-			EndIf
-		EndIf
-		If before != SelfOverheat
-			GOverheat.SetValueInt(SelfOverheat)
-		EndIf
 	EndIf
 EndFunction
 
-; 樣式 C 的鏡射：電荷、過熱、冰盾、戰意寫進全域變數給 PERK 進入點。
+; 樣式 C 的鏡射：電荷、冰盾、戰意寫進全域變數給 PERK 進入點（v0.3 的過熱在 v0.4 是 DLL 的熱度階梯）。
 Function PushSelf()
 	If GCharge && GCharge.GetValueInt() != SelfCharge
 		GCharge.SetValueInt(SelfCharge)
-	EndIf
-	If GOverheat && GOverheat.GetValueInt() != SelfOverheat
-		GOverheat.SetValueInt(SelfOverheat)
 	EndIf
 	If GIceShield && GIceShield.GetValueInt() != IceShield
 		GIceShield.SetValueInt(IceShield)
@@ -3612,8 +2296,6 @@ Int Function GetSelf(Int aiKind)
 		Return SelfRockArmor
 	ElseIf aiKind == 3
 		Return SelfWind
-	ElseIf aiKind == 4
-		Return SelfOverheat
 	EndIf
 	Return 0
 EndFunction
@@ -3636,11 +2318,6 @@ Function ClearSelf(Int aiKind)
 		If before != 0
 			GWind.SetValueInt(0)
 		EndIf
-	ElseIf aiKind == 4
-		SelfOverheat = 0
-		If before != 0
-			GOverheat.SetValueInt(0)
-		EndIf
 	EndIf
 EndFunction
 
@@ -3648,7 +2325,6 @@ Function ClearSelfAll()
 	SelfCharge = 0
 	SelfRockArmor = 0
 	SelfWind = 0
-	SelfOverheat = 0
 	StormCharge = 0
 	IceShield = 0
 	HolyShield = 0
@@ -3734,11 +2410,6 @@ Function SetSelf(Int aiKind, Int aiValue)
 		SelfWind = aiValue
 		If before != SelfWind
 			GWind.SetValueInt(SelfWind)
-		EndIf
-	ElseIf aiKind == 4
-		SelfOverheat = aiValue
-		If before != SelfOverheat
-			GOverheat.SetValueInt(SelfOverheat)
 		EndIf
 	EndIf
 EndFunction
@@ -3864,7 +2535,8 @@ Actor[] Function ScanTargets(ObjectReference akCenter, Float afRadius, Int aiMax
 	Return result
 EndFunction
 
-; 毒的擴散：每個帶毒目標每次只找一個對象，不做全場掃描（規劃 2.7）。
+; 毒的擴散：每個帶毒目標每次只找一個對象，不做全場掃描（規劃 2.7）。狀態碼 25＝擴散一劑：
+; m' = m + 劑數、d' = max(d - t, 12)（審查修正 5；命中的 +3 秒規則是碼 7）。
 Function SpreadPoison(Actor akFrom, Int aiAmount, Int aiTargets = 1)
 	If !akFrom
 		Return
@@ -3872,8 +2544,8 @@ Function SpreadPoison(Actor akFrom, Int aiAmount, Int aiTargets = 1)
 	Actor[] nearby = ScanTargets(akFrom, 210.0, aiTargets, akFrom)
 	Int index = 0
 	While index < nearby.Length
-		If nearby[index]
-			AddStackTo(nearby[index], 7, aiAmount)
+		If nearby[index] && aiAmount > 0
+			ESSBNative.AddStatus(nearby[index], 25, aiAmount)
 		EndIf
 		index += 1
 	EndWhile
@@ -3883,12 +2555,21 @@ EndFunction
 
 Function Tick()
 	If !IsOperational()
+		; 總開關關掉（IsOperational 不成立）時：仍要解除神佑的延遲死亡，否則角色會停在不會死的狀態（RefreshDivineProtection
+		; 在 eligible 不成立時 EndDeferredKill）；並保持 5 秒一次的空 tick，重新打開總開關後每秒工作照常接上。
+		If IsCurrentController() && !StateBroken && Ready
+			If DivineArmed
+				RefreshDivineProtection()
+			EndIf
+			NextTickAt = 0.0
+			ScheduleTick(5.0)
+		EndIf
 		Return
 	EndIf
 	; 主控台 `set ESSB_DebugLevel to N` 不會觸發任何事件，快取只在載入／換形態／關 MCM 時刷新，
 	; 玩家在遊戲中途開除錯會一直看不到紀錄。每個 tick 讀一次（不是每刀），成本可忽略。
 	CachedDebugLevel = DebugLevel.GetValueInt()
-	InitRegistry()
+	InitTables()
 	If !IsCurrentController() || StateBroken
 		Return
 	EndIf
@@ -3898,7 +2579,7 @@ Function Tick()
 	Float now = Utility.GetCurrentRealTime()
 
 	; 自身資源衰減（規劃 2.3）：風勢 5 秒未命中歸零；電荷 10 秒未命中後每秒 -1；
-	; 岩甲與過熱不衰減。
+	; 岩甲不衰減。
 	If SelfWind > 0 && now - SelfLastHit >= 5.0
 		SelfWind = 0
 		GWind.SetValueInt(SelfWind)
@@ -3943,27 +2624,8 @@ Function Tick()
 
 	RefreshDivineProtection()
 	TickTimers()
-
-	; 清掉死亡或離線的登記格；死亡的目標先跑擊殺掛勾（連鎖冰封、無魔）。
-	Int index = 0
-	While index < 8
-		Actor target = RegActor[index]
-		Int generation = RegGeneration[index]
-		If target && (target.IsDead() || target.IsDisabled())
-			If target.IsDead()
-				CaptureDeath(index)
-			EndIf
-			If RegActor[index] == target && RegGeneration[index] == generation
-				ClearSlot(index)
-			EndIf
-		ElseIf target && RegElem[index] >= 1 && RegUntil[index] > 0.0 && now >= RegUntil[index]
-			EndMark(index, 2, 1.0)
-		ElseIf target && RegElem2[index] >= 1 && RegSecondUntil[index] > 0.0 && now >= RegSecondUntil[index]
-			; 疊印的副印記過期：過期終焉，倍率 ×1（規劃 2.6）。
-			EndSecondMark(index, 2, 1.0)
-		EndIf
-		index += 1
-	EndWhile
+	; 印記與目標狀態的過期由 DLL 讀引擎效果的時長結算（ESSB_End 理由 2）；這裡只剩擊殺掛勾的保底。
+	SettleStaleKills(now)
 
 	; 5.2 持續傳奇主線「化身」是 DLL N4（冷卻後的下一次命中觸發該元素的持續傳奇；被動數值改為 10 秒視同已取得）。
 	; v0.3「每 N 秒自動施放一次」的近似已拿掉。
@@ -3993,15 +2655,13 @@ Function Tick()
 		EndIf
 	EndIf
 
-	SwapHosts()
-
 	If now - LastEnvCheck >= 5.0
 		LastEnvCheck = now
 		EnvCheck()
 	EndIf
 
 	Float delay = 5.0
-	If FormActive.GetValueInt() == 1 || RegistryCount() > 0 || TimersActive()
+	If FormActive.GetValueInt() == 1 || TimersActive() || KillPending()
 		delay = 1.0
 	EndIf
 	NextTickAt = 0.0
@@ -4015,28 +2675,7 @@ Function TickTimers()
 	EndIf
 	Int oldStage = CachedSyncStage
 	Float now = Utility.GetCurrentRealTime()
-	If MoltenLeft > 0
-		Float stop = now
-		If stop > MoltenLeft
-			stop = MoltenLeft
-		EndIf
-		Int ticks = (stop - MoltenTickAt) as Int
-		MoltenTickAt += ticks
-		If now >= MoltenLeft
-			MoltenLeft = 0.0
-		EndIf
-		Actor player = ThePlayer()
-		If player && ticks > 0
-			; 熔身：每秒回耐力 5（5.3 持續專精分支）。
-			ApplyUtil(6, 5.0 * ticks, 0, player)
-		EndIf
-		If MoltenLeft <= 0
-			; 結束後過熱歸零。
-			SelfOverheat = 0
-			GOverheat.SetValueInt(SelfOverheat)
-		EndIf
-		SetGlobal(GMolten, SecondsLeft(MoltenLeft))
-	EndIf
+	; v0.3 的熔身（過熱滿 10 秒、每秒回耐力）在 v0.4 是 DLL 的熔身效果與每秒 tick。
 	If EmberLeft > 0
 		If now >= EmberLeft
 			EmberLeft = 0.0
@@ -4117,14 +2756,6 @@ Function TickTimers()
 			WindFollowLeft = 0.0
 		EndIf
 	EndIf
-	If EndBoostLeft > 0
-		If now >= EndBoostLeft
-			EndBoostLeft = 0.0
-		EndIf
-		If EndBoostLeft <= 0
-			EndBoostAmount = 0.0
-		EndIf
-	EndIf
 	If KeepSneakLeft > 0
 		If now >= KeepSneakLeft
 			KeepSneakLeft = 0.0
@@ -4134,7 +2765,6 @@ Function TickTimers()
 			If sneaker
 				PO3_SKSEFunctions.ResetActorDetection(sneaker)
 			EndIf
-			KillStreakReady = False
 		EndIf
 	EndIf
 	If DoubleBurstLeft > 0
@@ -4169,20 +2799,6 @@ Function TickTimers()
 			SyncKeep = 0
 		EndIf
 	EndIf
-	Int slot = 1
-	While slot <= 11
-		If OpenBoost[slot] > 0
-			If Utility.GetCurrentRealTime() >= OpenBoost[slot]
-				OpenBoost[slot] = 0.0
-			EndIf
-		EndIf
-		If EndBoost[slot] > 0
-			If Utility.GetCurrentRealTime() >= EndBoost[slot]
-				EndBoost[slot] = 0.0
-			EndIf
-		EndIf
-		slot += 1
-	EndWhile
 	TickDomain()
 	RefreshSyncStage()
 	If oldStage != CachedSyncStage
@@ -4192,7 +2808,7 @@ Function TickTimers()
 EndFunction
 
 Bool Function TimersActive()
-	If (MoltenLeft > 0 && MoltenLeft > Utility.GetCurrentRealTime()) || (EmberLeft > 0 && EmberLeft > Utility.GetCurrentRealTime()) || (QuenchLeft > 0 && QuenchLeft > Utility.GetCurrentRealTime()) || (ShockLeft > 0 && ShockLeft > Utility.GetCurrentRealTime()) || DomainActive()
+	If (EmberLeft > 0 && EmberLeft > Utility.GetCurrentRealTime()) || (QuenchLeft > 0 && QuenchLeft > Utility.GetCurrentRealTime()) || (ShockLeft > 0 && ShockLeft > Utility.GetCurrentRealTime()) || DomainActive()
 		Return True
 	EndIf
 	If (GuardDarkLeft > 0 && GuardDarkLeft > Utility.GetCurrentRealTime()) || (GuardAstralLeft > 0 && GuardAstralLeft > Utility.GetCurrentRealTime()) || (GuardStarLeft > 0 && GuardStarLeft > Utility.GetCurrentRealTime()) || WaterMirror > 0
@@ -4204,7 +2820,7 @@ Bool Function TimersActive()
 	If (BloodthirstLeft > 0 && BloodthirstLeft > Utility.GetCurrentRealTime()) || (GuardWindLeft > 0 && GuardWindLeft > Utility.GetCurrentRealTime()) || (GuardDivineLeft > 0 && GuardDivineLeft > Utility.GetCurrentRealTime()) || (CloakGuardLeft > 0 && CloakGuardLeft > Utility.GetCurrentRealTime())
 		Return True
 	EndIf
-	Return (NoBloodCostLeft > 0 && NoBloodCostLeft > Utility.GetCurrentRealTime()) || (WindFollowLeft > 0 && WindFollowLeft > Utility.GetCurrentRealTime()) || (KeepSneakLeft > 0 && KeepSneakLeft > Utility.GetCurrentRealTime()) 		|| (EndBoostLeft > 0 && EndBoostLeft > Utility.GetCurrentRealTime()) || DivineSaveUsed
+	Return (NoBloodCostLeft > 0 && NoBloodCostLeft > Utility.GetCurrentRealTime()) || (WindFollowLeft > 0 && WindFollowLeft > Utility.GetCurrentRealTime()) || (KeepSneakLeft > 0 && KeepSneakLeft > Utility.GetCurrentRealTime()) 		|| DivineSaveUsed
 EndFunction
 
 Function SetGlobal(GlobalVariable akGlobal, Int aiValue)
@@ -4298,7 +2914,7 @@ EndFunction
 
 ; ---------------------------------------------------------------- 節點狀態的對外入口
 ; 全部是給 ESSBNodes／ESSBNoForm／ESSBElem 呼叫的小存取器。狀態留在控制器，
-; 節點腳本是無狀態的全域函式，這樣加新元素只要加函式，不必再動登記表。
+; 節點腳本是無狀態的全域函式，這樣加新元素只要加函式。
 
 ; ---- 戰意（無元素樹「節奏」給、「處決」消耗；5 秒未命中歸零）
 Int Function GetResolve()
@@ -4330,19 +2946,6 @@ Function AddIceShield(Int aiAmount)
 		IceShield = 5
 	EndIf
 	GIceShield.SetValueInt(IceShield)
-EndFunction
-
-; ---- 秒計時器
-Function SetMolten(Int aiSeconds)
-	MoltenTickAt = Utility.GetCurrentRealTime()
-	aiSeconds = DurationInt(aiSeconds)
-	MoltenLeft = Utility.GetCurrentRealTime() + aiSeconds
-	SetGlobal(GMolten, SecondsLeft(MoltenLeft))
-	RefreshSyncStage()
-EndFunction
-
-Int Function GetMoltenLeft()
-	Return SecondsLeft(MoltenLeft)
 EndFunction
 
 Function SetEmber(Int aiSeconds, Int aiElement)
@@ -4414,10 +3017,6 @@ Function SetPendingDischarge(Int aiValue)
 	PendingDischarge = aiValue
 EndFunction
 
-Function SetNextMarkBonus(Int aiSeconds)
-	NextMarkBonus = aiSeconds
-EndFunction
-
 ; ---- 同調保留（承接／連斷／永續／三重奏）
 Function SetSyncKeep(Int aiValue, Int aiSeconds)
 	aiSeconds = DurationInt(aiSeconds)
@@ -4429,48 +3028,6 @@ EndFunction
 
 Function SetSyncKeepAll()
 	SetSyncKeep(Sync.GetValueInt(), 60)
-EndFunction
-
-; ---- 開印後／終焉後的 5 秒視窗
-Function SetOpenBoost(Int aiElement, Int aiSeconds)
-	aiSeconds = DurationInt(aiSeconds)
-	If aiElement >= 1 && aiElement <= 11
-		OpenBoost[aiElement] = Utility.GetCurrentRealTime() + aiSeconds
-	EndIf
-	RefreshSyncStage()
-EndFunction
-
-Int Function GetOpenBoost(Int aiElement)
-	If aiElement < 1 || aiElement > 11
-		Return 0
-	EndIf
-	If OpenBoost[aiElement] <= 0.0
-		Return 0
-	EndIf
-	Return SecondsLeft(OpenBoost[aiElement])
-EndFunction
-
-Function SetEndBoost(Int aiElement, Int aiSeconds, Float afBonus = 0.0)
-	aiSeconds = DurationInt(aiSeconds)
-	If aiElement >= 1 && aiElement <= 11
-		EndBoost[aiElement] = Utility.GetCurrentRealTime() + aiSeconds
-	EndIf
-	; 接管元素吃的是「剛結束的那個元素的階數」算出來的加成，所以把值也存起來。
-	If afBonus > 0.0
-		EndBoostLeft = Utility.GetCurrentRealTime() + aiSeconds
-		EndBoostAmount = afBonus
-	EndIf
-	RefreshSyncStage()
-EndFunction
-
-Int Function GetEndBoost(Int aiElement)
-	If aiElement < 1 || aiElement > 11
-		Return 0
-	EndIf
-	If EndBoost[aiElement] <= 0.0
-		Return 0
-	EndIf
-	Return SecondsLeft(EndBoost[aiElement])
 EndFunction
 
 ; ---- 一次性旗標
@@ -4538,55 +3095,10 @@ Bool Function TakeIceHeart()
 	Return True
 EndFunction
 
-; ---- 狀態容器的寫入補充（節點要設定絕對層數時用）
-Function SetStack(Actor akTarget, Int aiKind, Int aiValue)
-	Int slot = FindSlot(akTarget)
-	If slot < 0 || aiKind < 1 || aiKind > 11
-		Return
-	EndIf
-	ESSBStatus status = RegStatus[slot]
-	If status
-		status.SetStack(aiKind, aiValue)
-	ElseIf aiKind == 11
-		PendingAstral[slot] = aiValue
-		PendingAstralWeight[slot] = aiValue as Float
-		EnsureStatus(slot, akTarget)
-	Else
-		Int pos = slot * 12 + aiKind
-		PendingSet[pos] = True
-		PendingStacks[pos] = aiValue
-		EnsureStatus(slot, akTarget)
-	EndIf
-EndFunction
-
-; 對還沒登記的目標疊層（寒潮、連鎖冰封這類範圍效果）。
+; 對目標加層（代碼見 ESSBNative.psc）：狀態本身是 DLL 掛在目標身上的引擎效果，上限與萬象也在 DLL。
 Function AddStackTo(Actor akTarget, Int aiKind, Int aiAmount)
-	InitRegistry()
-	If !IsCurrentController() || StateBroken
-		Return
-	EndIf
-	If !akTarget
-		Return
-	EndIf
-	Int slot = AcquireSlot(akTarget)
-	If slot < 0
-		Return
-	EndIf
-	EnsureStatus(slot, akTarget)
-	AddStack(akTarget, aiKind, aiAmount)
-EndFunction
-
-Function SetNextOpenMult(Actor akTarget, Float afMult)
-	Int slot = FindSlot(akTarget)
-	If slot < 0
-		Return
-	EndIf
-	ESSBStatus status = RegStatus[slot]
-	If status
-		status.SetNextOpenMult(afMult)
-	Else
-		PendingNextOpen[slot] = afMult
-		EnsureStatus(slot, akTarget)
+	If akTarget && aiAmount > 0
+		ESSBNative.AddStatus(akTarget, aiKind, aiAmount)
 	EndIf
 EndFunction
 
@@ -4602,31 +3114,17 @@ Bool Function HasElementMark(Actor akTarget, Int aiElement)
 	Return akTarget.HasMagicEffectWithKeyword(mark)
 EndFunction
 
-; 登記表裡帶指定元素印記、離玩家最近的一個（化身、雷神用）。
+; 離玩家最近、帶指定元素印記的目標（雷神用）。
 Actor Function NearestMarked(Int aiElement)
-	InitRegistry()
-	If !IsCurrentController() || StateBroken
-		Return None
-	EndIf
 	Actor player = ThePlayer()
-	If !player
+	If !player || aiElement < 1 || aiElement > 11
 		Return None
 	EndIf
-	Actor best = None
-	Float bestDistance = 100000.0
-	Int index = 0
-	While index < 8
-		Actor target = RegActor[index]
-		If target && RegElem[index] == aiElement && !target.IsDead()
-			Float d = target.GetDistance(player)
-			If d < bestDistance
-				bestDistance = d
-				best = target
-			EndIf
-		EndIf
-		index += 1
-	EndWhile
-	Return best
+	Actor[] found = ESSBNative.MarkedNear(player, 7000.0, 1, aiElement)
+	If found && found.Length > 0
+		Return found[0]
+	EndIf
+	Return None
 EndFunction
 
 ; ---- 領域（火域、冰原）
@@ -4635,7 +3133,7 @@ EndFunction
 ; 3 格：同元素的領域直接取代自己那一格，否則取空格，全滿就換掉剩餘秒數最少的那一格。
 ; 半徑預設 3 公尺（規劃 2.9 例外表），星域另外傳入隨主線成長的半徑。
 Function StartDomain(Int aiElement, Actor akCenter, Int aiSeconds, Float afRadius = 210.0)
-	InitRegistry()
+	InitTables()
 	If !IsCurrentController() || StateBroken
 		Return
 	EndIf
@@ -4693,7 +3191,7 @@ Bool Function InDomain(Actor akTarget, Int aiElement)
 	If !IsOperational()
 		Return False
 	EndIf
-	InitRegistry()
+	InitTables()
 	If !IsCurrentController() || StateBroken
 		Return False
 	EndIf
@@ -4717,7 +3215,7 @@ Bool Function InDomain(Actor akTarget, Int aiElement)
 EndFunction
 
 Bool Function DomainActive()
-	InitRegistry()
+	InitTables()
 	If !IsCurrentController() || StateBroken
 		Return False
 	EndIf
@@ -4741,11 +3239,12 @@ Function TickDomain()
 	If !IsOperational()
 		Return
 	EndIf
-	InitRegistry()
+	InitTables()
 	If !IsCurrentController() || StateBroken
 		Return
 	EndIf
 	If !DomainActive()
+		PlayerInFireDomain = False
 		Return
 	EndIf
 	Actor player = ThePlayer()
@@ -4778,6 +3277,15 @@ Function TickDomain()
 			Int index = 0
 			While index < nearby.Length
 				Actor victim = nearby[index]
+				; 火域（受火附傷 +20%）、冰原（凍結累積 ×2）、星域（受所有元素傷 +20%）：DLL 讀內部敵人身上的領域效果
+				;（2 秒，每秒續；離開或領域結束後最多殘留 2 秒）。
+				If victim && element == 1
+					ESSBNative.SetWindow(victim, 32, 2.0, 0.0)
+				ElseIf victim && element == 2
+					ESSBNative.SetWindow(victim, 33, 2.0, 0.0)
+				ElseIf victim && element == 11
+					ESSBNative.SetWindow(victim, 34, 2.0, 0.0)
+				EndIf
 				ticks = DomainTargetTicks(victim, slot, stop)
 				If victim && ticks > 0
 					If element == 2
@@ -4819,6 +3327,15 @@ Function TickDomain()
 		EndIf
 		slot += 1
 	EndWhile
+	; 火域：你在其中熱度升階免等待（DLL 讀你身上的效果），進入火域時白熱引信一次性 +5 秒（v0.4 5.3）。
+	Bool inFire = player && PlayerInDomain(1)
+	If inFire
+		ESSBNative.SetWindow(player, 35, 2.0, 0.0)
+		If !PlayerInFireDomain
+			ESSBNative.ExtendFuse(5.0)
+		EndIf
+	EndIf
+	PlayerInFireDomain = inFire
 	; 鏡射給 PERK 進入點的是「玩家在不在領域裡」，不是「領域存不存在」。
 	SetGlobal(GDomainFire, DomainFlag(1, False))
 	SetGlobal(GDomainFrost, DomainFlag(2, False))
@@ -4919,7 +3436,7 @@ EndFunction
 
 ; aiKind 0 = 跌倒／吹飛／吹上天（8 秒），1 = 拉近（3 秒）。
 Bool Function TakePush(Actor akTarget, Int aiKind)
-	InitRegistry()
+	InitTables()
 	If !IsCurrentController() || StateBroken
 		Return False
 	EndIf
@@ -4982,6 +3499,8 @@ Bool Function Knockdown(Actor akTarget, Float afForce)
 		Return False
 	EndIf
 	player.PushActorAway(akTarget, afForce)
+	; v0.4 2.3：土造成的跌倒掛上「倒地」（3 秒），倒地的目標被你打的每一刀都算重擊（DLL）。
+	ESSBNative.AddStatus(akTarget, 13, 1)
 	If CachedDebugLevel >= 2
 		LogThrottled(2, "push", akTarget.GetFormID() + " knockdown force=" + afForce)
 	EndIf
@@ -5061,32 +3580,24 @@ Bool Function LiftUp(Actor akTarget, Float afMetres, Float afLandingDamage)
 	Return True
 EndFunction
 
-; ---- 浮空（自有狀態，存在狀態容器裡，每秒 tick 倒數，到期結算落地傷害）
+; ---- 浮空（DLL 掛在目標身上的效果；到期時 DLL 以 ESSB_Landing 送回落地傷害，見 OnLanding）
 Function SetAirborne(Actor akTarget, Int aiSeconds, Float afDamage)
-	AddStackTo(akTarget, 4, 1)
-	Int slot = FindSlot(akTarget)
-	If slot < 0
+	If !akTarget
 		Return
 	EndIf
-	ESSBStatus status = RegStatus[slot]
-	If status
-		status.SetAirborne(aiSeconds, afDamage)
-	Else
-		PendingAir[slot] = Utility.GetCurrentRealTime() + DurationSeconds(aiSeconds)
-		PendingAirDamage[slot] = afDamage
-		EnsureStatus(slot, akTarget)
-	EndIf
+	; 浮空期間同時失衡（v0.4 5.7）。
+	ESSBNative.AddStatus(akTarget, 4, 1)
+	ESSBNative.SetWindow(akTarget, 36, aiSeconds as Float, afDamage)
 EndFunction
 
 Int Function GetAirborne(Actor akTarget)
-	ESSBStatus status = GetStatus(akTarget)
-	If !status
+	If !akTarget
 		Return 0
 	EndIf
-	Return status.GetAirborne()
+	Return ESSBNative.GetStatus(akTarget, 14)
 EndFunction
 
-; 由 ESSBStatus 在浮空到期時呼叫：落地傷害（5.7 關閉傳奇主線）。
+; 浮空到期（ESSB_Landing）：落地傷害（5.7 關閉傳奇主線）。
 Function OnLanding(Actor akTarget, Float afAmount)
 	If afAmount > 0.0
 		ApplyDamage(5, afAmount, akTarget)
@@ -5110,6 +3621,11 @@ Function AddHolyShield(Int aiAmount)
 EndFunction
 
 Function SetBloodthirst(Int aiSeconds)
+	; DLL 讀你身上的嗜血效果（命中效果 +20%）；Papyrus 的反應本體讀這裡的計時（GetDamageMult）。
+	Actor player = ThePlayer()
+	If player
+		ESSBNative.SetWindow(player, 30, aiSeconds as Float, 0.0)
+	EndIf
 	aiSeconds = DurationInt(aiSeconds)
 	BloodthirstLeft = Utility.GetCurrentRealTime() + aiSeconds
 	SetGlobal(GBloodthirst, SecondsLeft(BloodthirstLeft))
@@ -5166,44 +3682,15 @@ Function SetRiposte(Int aiSeconds)
 	ApplySelfMarker(RiposteWindowSpell, DurationInt(aiSeconds))
 EndFunction
 
-Function SetPendingBleed(Int aiLayers)
-	PendingBleed = aiLayers
-EndFunction
-
-Int Function TakePendingBleed()
-	Int value = PendingBleed
-	PendingBleed = 0
-	Return value
-EndFunction
-
-Function SetPendingHeal()
-	PendingHeal = True
-EndFunction
-
-Bool Function TakePendingHeal()
-	Bool value = PendingHeal
-	PendingHeal = False
-	Return value
-EndFunction
-
-; 5.7 關閉傳奇分支「連殺」：擊殺後 5 秒內不解除潛行，下一次潛行攻擊 ×2。
+; 5.7 關閉傳奇分支「連殺」：擊殺後 5 秒內不解除潛行；下一次潛行攻擊 ×2 是 DLL 讀的連殺效果（ESSBElem2.TryKillStreak）。
 Function KeepSneak(Int aiSeconds)
 	aiSeconds = DurationInt(aiSeconds)
 	KeepSneakLeft = Utility.GetCurrentRealTime() + aiSeconds
-	KillStreakReady = True
 	Actor player = ThePlayer()
 	If player
 		; 規劃 8：用「壓低偵測值」實作，尊重原版偵測系統，不鎖 AI。
 		PO3_SKSEFunctions.PreventActorDetection(player)
 	EndIf
-EndFunction
-
-Bool Function TakeKillStreak()
-	If !KillStreakReady || KeepSneakLeft <= Utility.GetCurrentRealTime()
-		Return False
-	EndIf
-	KillStreakReady = False
-	Return True
 EndFunction
 
 ; 反震的 10 秒冷卻（5.6 持續大師分支）。
@@ -5285,17 +3772,6 @@ Function SetGuardStar(Int aiSeconds)
 	GuardStarLeft = Utility.GetCurrentRealTime() + aiSeconds
 	SetGlobal(GGuardStar, SecondsLeft(GuardStarLeft))
 	ApplyGuardWindow(8, GuardStarLeft)
-EndFunction
-
-; ---- 蝕魔終焉（5.12 關閉熟練分支）：下一次終焉附帶吸魔
-Function SetPendingDrain()
-	PendingDrain = True
-EndFunction
-
-Bool Function TakePendingDrain()
-	Bool value = PendingDrain
-	PendingDrain = False
-	Return value
 EndFunction
 
 ; ---- 星界之門（5.13 關閉大師分支）：接管元素直接視為同調一段
@@ -5408,30 +3884,20 @@ Int Function DispelHostileEffects(Actor akActor)
 	Return removed
 EndFunction
 
-; ---- 沖刷／洗滌（5.11）：對目標的 Dispel 原型，只影響有時限的法術效果。
-; 每目標 10 秒一次（沿用推力的環狀表，kind 2）。
-; TARGET 路徑才留無限定的 Dispel 原型，所以這裡硬性擋掉「對玩家自己施放」。
-; 沖刷一個有時限的增益。每目標 10 秒一次（開印沖刷、洗滌）；潮池的「每秒沖刷一個」走 abEverySecond，不吃這個冷卻。
+; ---- 沖刷（5.11）：沖掉目標一個「手施、有時限、有益」的增益，判定同浸濕／水壓的全數沖刷（DLL WashBuffs：
+; 排除種族能力、任務腳本、常駐能力、疾病、藥水與本模組自己的效果）。每目標 10 秒一次（沿用推力的環狀表，
+; kind 2）；潮池的「每秒沖刷一個」走 abEverySecond，不吃這個冷卻。
 Function ApplyStrip(Actor akTarget, Bool abEverySecond = False)
 	Actor player = ThePlayer()
-	If !player || !StripSpell || !akTarget
-		Return
-	EndIf
-	If akTarget == player
-		If CachedDebugLevel >= 1
-			LogEvent(1, "strip", "refused: never dispel the player with the target-path Dispel")
-		EndIf
-		Return
-	EndIf
-	If !IsValidTarget(akTarget)
+	If !player || !akTarget || akTarget == player || !IsValidTarget(akTarget)
 		Return
 	EndIf
 	If !abEverySecond && !TakePush(akTarget, 2)
 		Return
 	EndIf
-	player.DoCombatSpellApply(StripSpell, akTarget)
+	Int washed = ESSBNative.WashBuffs(akTarget, 1)
 	If CachedDebugLevel >= 1
-		LogThrottled(1, "strip", akTarget.GetFormID() + " dispel timed buff")
+		LogThrottled(1, "strip", akTarget.GetFormID() + " washed=" + washed)
 	EndIf
 EndFunction
 
@@ -5495,27 +3961,41 @@ Bool Function CanCharm(Actor akTarget)
 	Return akTarget.GetLevel() <= ESSBElem3.CharmCap(Self)
 EndFunction
 
-Function ApplyFear(Actor akTarget, Int aiSeconds)
+; abScaled：秒數已經乘過 MultDuration（DLL 的幻覺階梯送來的秒數），不再乘一次。
+Function ApplyFear(Actor akTarget, Int aiSeconds, Bool abScaled = False)
 	Actor player = ThePlayer()
 	If !player || !FearSpell || !CanCharm(akTarget) || aiSeconds < 1
 		Return
 	EndIf
+	Int seconds = aiSeconds
+	If !abScaled
+		seconds = DurationInt(aiSeconds)
+	EndIf
 	FearSpell.SetNthEffectMagnitude(0, ESSBElem3.CharmCap(Self) as Float)
-	FearSpell.SetNthEffectDuration(0, DurationInt(aiSeconds))
+	FearSpell.SetNthEffectDuration(0, seconds)
 	player.DoCombatSpellApply(FearSpell, akTarget)
 	If CachedDebugLevel >= 1
 		LogThrottled(1, "fear", akTarget.GetFormID() + " sec=" + aiSeconds)
 	EndIf
 EndFunction
 
-Function ApplyFrenzy(Actor akTarget, Int aiSeconds)
+Function ApplyFrenzy(Actor akTarget, Int aiSeconds, Bool abScaled = False)
 	Actor player = ThePlayer()
 	If !player || !FrenzySpell || !CanCharm(akTarget) || aiSeconds < 1
 		Return
 	EndIf
+	Int seconds = aiSeconds
+	If !abScaled
+		seconds = DurationInt(aiSeconds)
+	EndIf
 	FrenzySpell.SetNthEffectMagnitude(0, ESSBElem3.CharmCap(Self) as Float)
-	FrenzySpell.SetNthEffectDuration(0, DurationInt(aiSeconds))
+	FrenzySpell.SetNthEffectDuration(0, seconds)
 	player.DoCombatSpellApply(FrenzySpell, akTarget)
+	; 5.12 開啟熟練分支「狂刃」：瘋狂中的目標造成的傷害 +50%（同樣秒數的引擎效果，AttackDamageMult +0.5）。
+	If ESSBNodes.Br(Self, 9, 1, 1, 2) && FrenzyBladeSpell ; @node 狂刃
+		FrenzyBladeSpell.SetNthEffectDuration(0, seconds)
+		player.DoCombatSpellApply(FrenzyBladeSpell, akTarget)
+	EndIf
 	If CachedDebugLevel >= 1
 		LogThrottled(1, "frenzy", akTarget.GetFormID() + " sec=" + aiSeconds)
 	EndIf
@@ -5665,90 +4145,17 @@ Bool Function IsPoisoned(Actor akTarget)
 	Return akTarget.HasMagicEffectWithKeyword(HarmfulKeyword)
 EndFunction
 
-; ---- 汪洋（5.11 關閉專精分支）：終焉後把該元素保留成副印記，融斷時再結算一次。
-Function KeepAsSecond(Actor akTarget, Int aiElement, Int aiSeconds)
-	InitRegistry()
-	If !IsCurrentController() || StateBroken
-		Return
-	EndIf
-	Int slot = FindSlot(akTarget)
-	If slot < 0 || RegElem2[slot] >= 1
-		Return
-	EndIf
-	RegElem2[slot] = aiElement
-	RegSeq2[slot] = RegSeq[slot]
-	RegSecondUntil[slot] = Utility.GetCurrentRealTime() + DurationSeconds(aiSeconds)
-	If CachedDebugLevel >= 2
-		LogThrottled(2, "node", "water ocean second mark element=" + aiElement)
-	EndIf
-EndFunction
-
-; ---- 大潮（5.11 關閉大師分支）：對別的目標設定「接管元素的下一次終焉」倍率。
-Function SetNextEndMultOn(Actor akTarget, Float afMult)
-	Int slot = FindSlot(akTarget)
-	If slot < 0
-		Return
-	EndIf
-	ESSBStatus status = RegStatus[slot]
-	If status
-		status.SetNextEndMult(afMult)
-	Else
-		PendingNextEnd[slot] = afMult
-		EnsureStatus(slot, akTarget)
-	EndIf
-EndFunction
-
-; ---- 星鎖（5.13 開啟大師分支）：開印目標 3 秒內受所有元素傷 +10%。
-Function SetStarLock(Actor akTarget, Int aiSeconds)
-	Int slot = FindSlot(akTarget)
-	If slot < 0
-		Return
-	EndIf
-	ESSBStatus status = RegStatus[slot]
-	If status
-		status.SetStarLock(aiSeconds)
-	Else
-		If Utility.GetCurrentRealTime() + DurationSeconds(aiSeconds) > RegPendStarLock[slot]
-			RegPendStarLock[slot] = Utility.GetCurrentRealTime() + DurationSeconds(aiSeconds)
-		EndIf
-		EnsureStatus(slot, akTarget)
-	EndIf
-EndFunction
-
-Bool Function HasStarLock(Actor akTarget)
-	ESSBStatus status = GetStatus(akTarget)
-	If !status
-		Return False
-	EndIf
-	Return status.HasStarLock()
-EndFunction
-
-; ---- 汪洋之始（5.11 開啟傳奇分支）：浸濕不會過期，直到被切掉。
-Function SetWetLock(Actor akTarget)
-	Int slot = FindSlot(akTarget)
-	If slot < 0
-		Return
-	EndIf
-	ESSBStatus status = RegStatus[slot]
-	If status
-		status.SetWetLock()
-	Else
-		RegPendWetLock[slot] = True
-		EnsureStatus(slot, akTarget)
-	EndIf
-EndFunction
-
 ; ---- 化灰與血承
 ; FIX14: bounded per-actor recent damage survives registry eviction; no current-form fallback.
 Int Function LastDamageFor(Actor akTarget)
-	If !akTarget || !DamageActor || !SwapFloats || SwapFloats.Length != 128
+	If !akTarget || !DamageActor || !DamageTime
 		Return 0
 	EndIf
 	Float now = Utility.GetCurrentRealTime()
 	Int i = 0
 	While i < 128
 		If DamageActor[i] == akTarget
-			Float age = now - SwapFloats[i]
+			Float age = now - DamageTime[i]
 			If DamageElement[i] >= 1 && age >= 0.0 && age <= ESSBState.KillAttributionSeconds()
 				Return DamageElement[i]
 			EndIf
@@ -5763,19 +4170,9 @@ Bool Function LastDamageWasElement(Actor akTarget, Int aiElement)
 	Return LastDamageFor(akTarget) == aiElement
 EndFunction
 
-Int Function NoteDamageElement(Actor akTarget, Int aiElement, Int aiSlot = -1, Int aiGeneration = -1, Int aiDamageSlot = -1)
+Int Function NoteDamageElement(Actor akTarget, Int aiElement, Int aiDamageSlot = -1)
 	If !akTarget || !DamageActor
 		Return -1
-	EndIf
-	Int slot = aiSlot
-	If slot >= 0 && (RegActor[slot] != akTarget || RegGeneration[slot] != aiGeneration)
-		slot = -1
-	EndIf
-	If slot < 0
-		slot = FindSlotInternal(akTarget)
-	EndIf
-	If slot >= 0 && aiElement >= 0
-		RegLastDamage[slot] = aiElement
 	EndIf
 	If aiDamageSlot >= 0 && DamageActor[aiDamageSlot] == akTarget
 		If aiElement >= 0
@@ -5796,7 +4193,7 @@ Int Function NoteDamageElement(Actor akTarget, Int aiElement, Int aiSlot = -1, I
 	Int assigned = DamageNext
 	DamageActor[DamageNext] = akTarget
 	DamageElement[DamageNext] = 0
-	SwapFloats[DamageNext] = -1.0
+	DamageTime[DamageNext] = -1.0
 	If aiElement >= 0
 		DamageElement[DamageNext] = aiElement
 	EndIf
@@ -5807,7 +4204,7 @@ EndFunction
 ; All damaging spells are instant contact/self delivery (DELIVERY build gate).
 ; FIX14: publish before native delivery for lethal callback ordering; keep nonlethal damage.
 ; No health loss rolls back the provisional record. Never infer an element from form.
-Function ApplyTrackedDamage(Actor player, Spell akSpell, Actor akTarget, Int aiElement, Int aiSlot = -1, Int aiGeneration = -1)
+Function ApplyTrackedDamage(Actor player, Spell akSpell, Actor akTarget, Int aiElement)
 	If StateBroken || !Ready || !player || !akSpell || !akTarget
 		Return
 	EndIf
@@ -5815,19 +4212,19 @@ Function ApplyTrackedDamage(Actor player, Spell akSpell, Actor akTarget, Int aiE
 	If akTarget.IsDead() || beforeHealth <= 0.0 || !IsOperational()
 		Return
 	EndIf
-	Int damageSlot = NoteDamageElement(akTarget, -1, aiSlot, aiGeneration)
+	Int damageSlot = NoteDamageElement(akTarget, -1)
 	If damageSlot < 0
 		Return
 	EndIf
 	Int previous = DamageElement[damageSlot]
-	Float previousTime = SwapFloats[damageSlot]
+	Float previousTime = DamageTime[damageSlot]
 	Float now = Utility.GetCurrentRealTime()
 	DamageElement[damageSlot] = aiElement
-	SwapFloats[damageSlot] = now
+	DamageTime[damageSlot] = now
 	player.DoCombatSpellApply(akSpell, akTarget)
-	If akTarget.GetActorValue("Health") >= beforeHealth && DamageActor[damageSlot] == akTarget && SwapFloats[damageSlot] == now && DamageElement[damageSlot] == aiElement
+	If akTarget.GetActorValue("Health") >= beforeHealth && DamageActor[damageSlot] == akTarget && DamageTime[damageSlot] == now && DamageElement[damageSlot] == aiElement
 		DamageElement[damageSlot] = previous
-		SwapFloats[damageSlot] = previousTime
+		DamageTime[damageSlot] = previousTime
 	EndIf
 EndFunction
 
@@ -5900,68 +4297,77 @@ Bool Function IsNecromancer(Actor akTarget)
 	Return thralls && thralls.Length > 0
 EndFunction
 
-; ---- 擊殺事件（ESSBGuard 的 OnActorKilled）
-; FIX14: called only at death/capture. Real marks exclude virtual residual/ocean marks.
-Int Function KillElementFor(Actor akVictim, Int aiSlot = -1)
+; ---- 擊殺事件
+; 致死元素：最近 3 秒內的本模組傷害優先；沒有時取死亡快照裡的印記（形態元素的印記優先，其次元素序最小的）。
+Int Function KillElementFor(Actor akVictim, Int aiMarks)
 	Int recent = LastDamageFor(akVictim)
 	If recent >= 1
 		Return recent
 	EndIf
-	If aiSlot < 0 || RegActor[aiSlot] != akVictim
+	If aiMarks == 0
 		Return 0
 	EndIf
-	Float now = Utility.GetCurrentRealTime()
-	Int element = 0
-	Int sequence = -1
-	If RegElem[aiSlot] >= 1 && RegUntil[aiSlot] > now && (RegMark[aiSlot] || (MarkSpells && akVictim.HasMagicEffect(MarkSpells[RegElem[aiSlot] - 1].GetNthEffectMagicEffect(0))))
-		element = RegElem[aiSlot]
-		sequence = RegSeq[aiSlot]
+	Int current = CurrentElement.GetValueInt()
+	If FormActive.GetValueInt() == 1 && HasMarkBit(aiMarks, current)
+		Return current
 	EndIf
-	If RegElem2[aiSlot] >= 1 && RegSecondReal[aiSlot] && RegSecondUntil[aiSlot] > now && RegSeq2[aiSlot] > sequence && (RegMark2[aiSlot] || (MarkSpells && akVictim.HasMagicEffect(MarkSpells[RegElem2[aiSlot] - 1].GetNthEffectMagicEffect(0))))
-		element = RegElem2[aiSlot]
-	EndIf
-	Return element
-EndFunction
-
-Function CaptureDeath(Int aiSlot)
-	Actor victim = RegActor[aiSlot]
-	Int index = 0
-	While index < 8
-		If DeadActor[index] == victim || SettledDead[index] == victim
-			Return
+	Int element = 1
+	While element <= 11
+		If HasMarkBit(aiMarks, element)
+			Return element
 		EndIf
-		index += 1
+		element += 1
 	EndWhile
-	Int element = KillElementFor(victim, aiSlot)
-	Int freeze = GetStack(victim, 2)
-	Int bleed = GetStack(victim, 5)
-	Int poison = GetStack(victim, 7)
-	Int curse = GetStack(victim, 10)
-	Int heat = GetStack(victim, 1)
-	Int holy = GetStack(victim, 6)
-	DeadActor[DeadNext] = victim
-	DeadElement[DeadNext] = element
-	DeadFreeze[DeadNext] = freeze
-	DeadBleed[DeadNext] = bleed
-	DeadPoison[DeadNext] = poison
-	DeadCurse[DeadNext] = curse
-	DeadHeat[DeadNext] = heat
-	DeadHoly[DeadNext] = holy
-	DeadNext = (DeadNext + 1) % 8
-	SettleDeadCurse(aiSlot)
+	Return 0
 EndFunction
 
+Bool Function HasMarkBit(Int aiMarks, Int aiElement)
+	Return aiElement >= 1 && aiElement <= 11 && Math.LogicalAnd(aiMarks, Math.LeftShift(1, aiElement)) != 0
+EndFunction
+
+; PO3 的擊殺回報（ESSBGuard 的 OnActorKilled）。DLL 的死亡快照已經到了就立刻結算，否則等快照（OnESSBDeath），
+; 1 秒內都沒來就以空快照結算（SettleStaleKills）。
 Function OnKillEvent(Actor akVictim, Actor akKiller = None)
 	If !IsOperational()
 		Return
 	EndIf
-	InitRegistry()
+	InitFixState()
 	If !IsCurrentController() || StateBroken
 		Return
 	EndIf
 	If !akVictim || akKiller != ThePlayer()
 		Return
 	EndIf
+	If NativeHit.GetValueInt() != 1 || HasDeathSnapshot(akVictim)
+		SettleKill(akVictim)
+		Return
+	EndIf
+	Int i = 0
+	While i < 4
+		If PendingKillActor[i] == akVictim
+			Return
+		EndIf
+		i += 1
+	EndWhile
+	PendingKillActor[PendingKillNext] = akVictim
+	PendingKillAt[PendingKillNext] = Utility.GetCurrentRealTime()
+	PendingKillNext = (PendingKillNext + 1) % 4
+	ScheduleTick(1.0)
+EndFunction
+
+Bool Function HasDeathSnapshot(Actor akVictim)
+	Int i = 0
+	While i < 8
+		If DeadActor[i] == akVictim
+			Return True
+		EndIf
+		i += 1
+	EndWhile
+	Return False
+EndFunction
+
+; 擊殺掛勾（連鎖冰封、飲血、血承、化灰、連殺、焚化、噬魂）：每個死者只結算一次。
+Function SettleKill(Actor akVictim)
 	Int index = 0
 	While index < 8
 		If SettledDead[index] == akVictim
@@ -5969,54 +4375,314 @@ Function OnKillEvent(Actor akVictim, Actor akKiller = None)
 		EndIf
 		index += 1
 	EndWhile
-	Int captureSlot = FindSlot(akVictim)
-	If captureSlot >= 0
-		CaptureDeath(captureSlot)
-	EndIf
 	; Claim before calling any other script: repeated events cannot grant twice.
 	Int settlement = SettledNext
 	SettledElement[settlement] = 0
-	SettledDead[SettledNext] = akVictim
+	SettledDead[settlement] = akVictim
 	SettledNext = (SettledNext + 1) % 8
-	Int slot = FindSlot(akVictim)
-	Int element = KillElementFor(akVictim, slot)
+	index = 0
+	While index < 4
+		If PendingKillActor[index] == akVictim
+			PendingKillActor[index] = None
+		EndIf
+		index += 1
+	EndWhile
+	Int element = LastDamageFor(akVictim)
+	Int marks = 0
 	Int freeze = 0
 	Int bleed = 0
-	Int poison = 0
-	Int curse = 0
-	If slot >= 0
-		freeze = GetStack(akVictim, 2)
-		bleed = GetStack(akVictim, 5)
-		poison = GetStack(akVictim, 7)
-		curse = GetStack(akVictim, 10)
-	EndIf
 	index = 0
 	While index < 8
 		If DeadActor[index] == akVictim
 			element = DeadElement[index]
+			marks = DeadMarks[index]
 			freeze = DeadFreeze[index]
 			bleed = DeadBleed[index]
-			poison = DeadPoison[index]
-			curse = DeadCurse[index]
 			DeadActor[index] = None
 		EndIf
 		index += 1
 	EndWhile
-	Int killingElement = element
-	SettledElement[settlement] = killingElement
-	Bool ash = ESSBElem2.ShouldAsh(Self, killingElement)
+	SettledElement[settlement] = element
+	; v0.4 5.9：帶神聖印記死亡即化灰，不看致死元素；其餘照致死元素（ShouldAsh，含淨土）。
+	Bool ash = ESSBElem2.ShouldAsh(Self, element) || HasMarkBit(marks, 7)
 	ESSBElem.OnKill(Self, element, akVictim, freeze)
-	ESSBElem2.OnKill(Self, element, akVictim, bleed, killingElement, ash)
+	ESSBElem2.OnKill(Self, element, akVictim, bleed, element, ash)
 	; v0.3 的毒「蔓延」、暗「收割」「亡者歸來」、無元素「無魔」擊殺掛勾在 v0.4 是死亡處理（DLL N5）或已移除。
-	SettleSneakKill(akVictim, killingElement)
+	SettleSneakKill(akVictim, element)
 	SettleKillProc(akVictim)
-	If slot >= 0 && RegActor[slot] == akVictim
-		ClearSlot(slot)
-	EndIf
 	If CachedDebugLevel >= 1
-		LogThrottled(1, "kill", akVictim.GetFormID() + " element=" + element)
+		LogThrottled(1, "kill", akVictim.GetFormID() + " element=" + element + " marks=" + marks)
 	EndIf
 EndFunction
+
+; PO3 回報了擊殺、DLL 的快照 1 秒內沒來（目標身上沒有任何本模組狀態）：以空快照結算。
+Function SettleStaleKills(Float afNow)
+	Int i = 0
+	While i < 4
+		Actor victim = PendingKillActor[i]
+		If victim && afNow - PendingKillAt[i] >= 1.0
+			PendingKillActor[i] = None
+			SettleKill(victim)
+		EndIf
+		i += 1
+	EndWhile
+EndFunction
+
+Bool Function KillPending()
+	Int i = 0
+	While i < 4
+		If PendingKillActor[i]
+			Return True
+		EndIf
+		i += 1
+	EndWhile
+	Return False
+EndFunction
+
+; ================================================================ DLL → 反應本體（ModEvent）
+; strArg 是 DLL 把各值以 "|" 串起來的字串（Plugin.cpp SendEvent，順序見 native/include/Status.h 的 enum Event），
+; sender 是目標。每個處理函式先驗控制器，再把值交給反應本體；目標狀態已由 DLL 在送出前改好。
+
+Float Function EventArg(String[] akArgs, Int aiIndex)
+	If !akArgs || aiIndex < 0 || aiIndex >= akArgs.Length
+		Return 0.0
+	EndIf
+	Return akArgs[aiIndex] as Float
+EndFunction
+
+; DLL 送來的秒數已乘過 MultDuration；ApplyUtil 會再乘一次，先換回未乘的秒數。
+Int Function UnscaledSeconds(Float afSeconds)
+	Float scale = CachedDuration
+	If !RuntimeCacheReady
+		scale = MultDuration.GetValue()
+	EndIf
+	If scale <= 0.0
+		scale = 1.0
+	EndIf
+	Int seconds = (afSeconds / scale + 0.5) as Int
+	If seconds < 1
+		seconds = 1
+	EndIf
+	Return seconds
+EndFunction
+
+; ESSB_Open：元素、開印倍率、這一擊切掉的元素（0 = 沒有）、1 = 命中開的印（ForceOpen 是 0）。
+Event OnESSBOpen(String asEventName, String asArgs, Float afElement, Form akSender)
+	Actor target = akSender as Actor
+	If !IsOperational() || !target || target.IsDead()
+		Return
+	EndIf
+	String[] args = StringUtil.Split(asArgs, "|")
+	Int element = EventArg(args, 0) as Int
+	If element < 1 || element > 11
+		Return
+	EndIf
+	If Trees
+		; 規劃 4：開印給新印記元素樹 + 通用樹。
+		Trees.OnOpenXP(element)
+	EndIf
+	ESSBReactions.Open(Self, element, target, EventArg(args, 1), EventArg(args, 2) as Int, EventArg(args, 3) > 0.5)
+EndEvent
+
+; ESSB_End：元素、理由（0 被切 1 融斷 2 過期）、終焉倍率、1 = 連鎖終焉、三個 DLL 算好的值（ESSBReactions.End）。
+Event OnESSBEnd(String asEventName, String asArgs, Float afElement, Form akSender)
+	Actor target = akSender as Actor
+	If !IsOperational() || !target || target.IsDead()
+		Return
+	EndIf
+	String[] args = StringUtil.Split(asArgs, "|")
+	Int element = EventArg(args, 0) as Int
+	If element < 1 || element > 11
+		Return
+	EndIf
+	ESSBReactions.End(Self, element, target, EventArg(args, 1) as Int, EventArg(args, 2), EventArg(args, 3) > 0.5, \
+		EventArg(args, 4), EventArg(args, 5), EventArg(args, 6))
+EndEvent
+
+; ESSB_Frozen：冰封秒數（冰封期間的強減速與深寒）。
+Event OnESSBFrozen(String asEventName, String asArgs, Float afSeconds, Form akSender)
+	Actor target = akSender as Actor
+	If !IsOperational() || !target || target.IsDead()
+		Return
+	EndIf
+	ESSBElem.OnFrozen(Self, target, UnscaledSeconds(afSeconds))
+	; 5.4 開啟大師分支「霜爆」：目標進入冰封的那一刻，3 公尺內其他凍結量表 ≥1 的敵人凍結 +2（掃描 N5 前在這裡）。
+	If ESSBNodes.Br(Self, 1, 1, 3, 2) ; @node 霜爆
+		Actor[] near = ScanTargets(target, 210.0, 5, target)
+		Int index = 0
+		While index < near.Length
+			If near[index] && ESSBNative.GetStatus(near[index], 2) >= 1
+				AddStackTo(near[index], 2, 2)
+			EndIf
+			index += 1
+		EndWhile
+	EndIf
+EndEvent
+
+; ESSB_Hallucinate：1 恐懼 / 2 瘋狂、秒數（DLL 已比過詛咒門檻與冷卻）。控不到的目標改為 3 秒幻視：攻擊 -20%（v0.4 5.12）。
+Event OnESSBHallucinate(String asEventName, String asArgs, Float afKind, Form akSender)
+	Actor target = akSender as Actor
+	If !IsOperational() || !target || target.IsDead()
+		Return
+	EndIf
+	String[] args = StringUtil.Split(asArgs, "|")
+	Int kind = EventArg(args, 0) as Int
+	Float seconds = EventArg(args, 1)
+	If !CanCharm(target)
+		; v0.4 第 1380 行：幻視 3 秒、攻擊 -20%＝攻擊傷害倍率 ×0.8（AttackDamageMult -0.2），不是平減 MeleeDamage。
+		Actor visionCaster = ThePlayer()
+		If VisionSpell && visionCaster
+			visionCaster.DoCombatSpellApply(VisionSpell, target)
+		EndIf
+		If CachedDebugLevel >= 1
+			LogThrottled(1, "illusion", target.GetFormID() + " vision kind=" + kind)
+		EndIf
+		Return
+	EndIf
+	Int whole = (seconds + 0.5) as Int
+	If whole < 1
+		whole = 1
+	EndIf
+	If kind == 2
+		ApplyFrenzy(target, whole, True)
+		; 5.12 開啟傳奇分支「群魔」：同調三段時，目標達到瘋狂門檻那一刻，4 公尺內所有詛咒 ≥3 層的敵人一起瘋狂 3 秒
+		;（各自的瘋狂冷卻照算；掃描 N5 前在這裡）。
+		If ESSBNodes.Br(Self, 9, 1, 4, 0) && SyncStage() >= 3 ; @node 群魔
+			Actor[] crowd = ScanTargets(target, 280.0, 5, target)
+			Int index = 0
+			While index < crowd.Length
+				Actor other = crowd[index]
+				If other && ESSBNative.GetStatus(other, 10) >= 3 && ESSBNative.GetStatus(other, 24) == 0 && CanCharm(other)
+					ApplyFrenzy(other, 3)
+					ESSBNative.SetWindow(other, 37, 20.0, 0.0)
+				EndIf
+				index += 1
+			EndWhile
+		EndIf
+	Else
+		ApplyFear(target, whole, True)
+		; 5.12 開啟新手分支「夢魘」：目標恐懼時，3 公尺內其他敵人詛咒 +1（每次恐懼一次；掃描 N5 前在這裡）。
+		If ESSBNodes.Br(Self, 9, 1, 0, 0) ; @node 夢魘
+			Actor[] near = ScanTargets(target, 210.0, 5, target)
+			Int index = 0
+			While index < near.Length
+				If near[index]
+					AddStackTo(near[index], 10, 1)
+				EndIf
+				index += 1
+			EndWhile
+		EndIf
+	EndIf
+EndEvent
+
+; ESSB_Judgment：聖裁在聖佑 II／III 時的破防：目標護甲 -60、魔抗 -10%，5 秒（v0.4 5.9；III 的 3 公尺聖光爆是範圍掃描，N5）。
+Event OnESSBJudgment(String asEventName, String asArgs, Float afTier, Form akSender)
+	Actor target = akSender as Actor
+	If !IsOperational() || !target || target.IsDead()
+		Return
+	EndIf
+	ApplyUtil(1, 60.0, 5, target)
+	ApplyUtil(16, 10.0, 5, target)
+	If CachedDebugLevel >= 1
+		LogThrottled(1, "judgment", target.GetFormID() + " tier=" + (afTier as Int))
+	EndIf
+EndEvent
+
+; ESSB_Splash：往下越線的濺血（v0.4 5.8）：15 公尺內所有流血目標（最多 5）立即結算一次 ×0.5 血潮，不清除血痕
+;（掃描 N5 前在這裡）。
+Event OnESSBSplash(String asEventName, String asArgs, Float afRemaining, Form akSender)
+	If !IsOperational()
+		Return
+	EndIf
+	Splash()
+EndEvent
+
+Function Splash()
+	Actor player = ThePlayer()
+	If !player
+		Return
+	EndIf
+	Actor[] bleeding = ScanTargets(player, 1050.0, 5, None)
+	Int index = 0
+	While index < bleeding.Length
+		If bleeding[index] && ESSBNative.GetStatus(bleeding[index], 5) > 0
+			ESSBReactions.SurgeOn(Self, bleeding[index], 0.5, False)
+		EndIf
+		index += 1
+	EndWhile
+EndFunction
+
+; ESSB_Rise：往上越線（回湧本身是 N4）。5.8 關閉專精分支「血約」：15 公尺內所有流血目標血痕 +2 層（掃描 N5 前在這裡）。
+Event OnESSBRise(String asEventName, String asArgs, Float afUnused, Form akSender)
+	Actor player = ThePlayer()
+	If !IsOperational() || !player || !ESSBNodes.Br(Self, 5, 2, 2, 0) ; @node 血約
+		Return
+	EndIf
+	Actor[] bleeding = ScanTargets(player, 1050.0, 5, None)
+	Int index = 0
+	While index < bleeding.Length
+		If bleeding[index] && ESSBNative.GetStatus(bleeding[index], 5) > 0
+			AddStackTo(bleeding[index], 5, 2)
+		EndIf
+		index += 1
+	EndWhile
+EndEvent
+
+; ESSB_Shatter：碎冰之後的碎甲（1 命中碎冰、2 冰終焉碎冰；DLL 已結算真傷並結束冰封）。
+Event OnESSBShatter(String asEventName, String asArgs, Float afSource, Form akSender)
+	Actor target = akSender as Actor
+	If !IsOperational() || !target || target.IsDead()
+		Return
+	EndIf
+	ESSBElem.OnShatter(Self, target)
+EndEvent
+
+; ESSB_Landing：浮空到期，落地傷害。
+Event OnESSBLanding(String asEventName, String asArgs, Float afDamage, Form akSender)
+	Actor target = akSender as Actor
+	If !IsOperational() || !target || target.IsDead()
+		Return
+	EndIf
+	OnLanding(target, afDamage)
+EndEvent
+
+; ESSB_Death：DLL 在目標死亡、屍體還帶著效果時送出的快照：印記位元、凍結、血痕層、毒劑、詛咒、1 = 冰封中、
+; 1 = 冥蝕、1 = 玩家擊殺。玩家擊殺就結算擊殺掛勾；否則留給稍後到的 PO3 擊殺回報（OnKillEvent）。
+Event OnESSBDeath(String asEventName, String asArgs, Float afMarks, Form akSender)
+	Actor victim = akSender as Actor
+	If !IsOperational() || !victim
+		Return
+	EndIf
+	InitFixState()
+	If !IsCurrentController() || StateBroken
+		Return
+	EndIf
+	String[] args = StringUtil.Split(asArgs, "|")
+	Int marks = EventArg(args, 0) as Int
+	Int freeze = EventArg(args, 1) as Int
+	If EventArg(args, 5) > 0.5
+		; 冰封中死亡＝量表滿（連鎖冰封讀 5）。
+		freeze = 5
+	EndIf
+	Int slot = DeadNext
+	DeadActor[slot] = victim
+	DeadMarks[slot] = marks
+	DeadElement[slot] = KillElementFor(victim, marks)
+	DeadFreeze[slot] = freeze
+	DeadBleed[slot] = EventArg(args, 2) as Int
+	DeadNext = (DeadNext + 1) % 8
+	Bool pending = False
+	Int i = 0
+	While i < 4
+		If PendingKillActor[i] == victim
+			pending = True
+		EndIf
+		i += 1
+	EndWhile
+	If pending || EventArg(args, 7) > 0.5
+		SettleKill(victim)
+	EndIf
+EndEvent
 
 ; ---- 同伴掃描（祝福、聖光、聖臨強化）。ScanTargets 刻意排除同伴，所以另走這一條。
 Actor[] Function ScanAllies(Float afRadius)
@@ -6097,46 +4763,56 @@ Function RefreshSpeed()
 	EndIf
 EndFunction
 
-; ---------------------------------------------------------------- 除錯：印出目標表
+; ---------------------------------------------------------------- 除錯：印出附近目標的狀態（DLL 的引擎效果）
 
-Function DumpRegistry()
-	If !IsOperational()
-		Return
-	EndIf
-	InitRegistry()
-	If !IsCurrentController() || StateBroken
+Function DumpStatus()
+	If !IsReadyUI()
 		Return
 	EndIf
 	Actor player = ThePlayer()
-	Int live = 0
-	Debug.Trace("[ESSB][dump][L0] registry element=" + CurrentElement.GetValueInt() \
+	If !player
+		Return
+	EndIf
+	Debug.Trace("[ESSB][dump][L0] status element=" + CurrentElement.GetValueInt() \
 		+ " active=" + FormActive.GetValueInt() + " sync=" + Sync.GetValueInt() + " stage=" + SyncStage() \
-		+ " charge=" + SelfCharge + " rock=" + SelfRockArmor + " wind=" + SelfWind + " overheat=" + SelfOverheat \
+		+ " charge=" + SelfCharge + " rock=" + SelfRockArmor + " wind=" + SelfWind \
+		+ " heat=" + ESSBNative.GetStatus(player, 20) + " holy=" + ESSBNative.GetStatus(player, 21) \
+		+ " molten=" + ESSBNative.GetStatus(player, 22) \
 		+ " wet=" + IsEnvWet() + " stormy=" + IsEnvStormy() + " night=" + IsEnvNight())
+	Actor[] marked = ESSBNative.MarkedNear(player, 3500.0, 16, 0)
+	Int count = 0
 	Int index = 0
-	While index < 8
-		Actor target = RegActor[index]
+	While marked && index < marked.Length
+		Actor target = marked[index]
 		If target
-			live += 1
-			Float distance = -1.0
-			If player
-				distance = target.GetDistance(player)
-			EndIf
-			String line = "[ESSB][dump][L0] slot=" + index + " target=" + target.GetFormID() \
-				+ " element=" + RegElem[index] + " seq=" + RegSeq[index] + " dist=" + distance \
-				+ " pend=" + RegPendElem[index] + "/" + RegPendAmt[index]
-			ESSBStatus status = RegStatus[index]
-			If status
-				line = line + " " + status.Describe()
-			Else
-				line = line + " status=none"
-			EndIf
+			count += 1
+			String line = "[ESSB][dump][L0] target=" + target.GetFormID() + " marks=" + ESSBNative.MarksOn(target) \
+				+ " dist=" + target.GetDistance(player)
+			Int code = 2
+			While code <= 19
+				Int value = ESSBNative.GetStatus(target, code)
+				If value != 0
+					line = line + " s" + code + "=" + value
+				EndIf
+				code += 1
+			EndWhile
 			Debug.Trace(line)
 		EndIf
 		index += 1
 	EndWhile
-	Debug.Trace("[ESSB][dump][L0] registry end live=" + live + "/8")
-	Debug.Notification("元素魔戰士：目標表 " + live + "/8 已寫入 Papyrus 紀錄")
+	Debug.Trace("[ESSB][dump][L0] status end marked=" + count)
+	; 探針卡「新來的 NPC 沒有殘留狀態」（審查修正 7）：最近一個可打的目標，狀態碼 2～19 全部列在畫面上。
+	Actor nearest = ScanTargets(player, 2100.0, 1, player)[0]
+	String shown = "（附近沒有目標）"
+	If nearest
+		shown = nearest.GetDisplayName() + "：印記 " + ESSBNative.MarksOn(nearest)
+		Int c = 2
+		While c <= 19
+			shown = shown + " s" + c + "=" + ESSBNative.GetStatus(nearest, c)
+			c += 1
+		EndWhile
+	EndIf
+	Debug.MessageBox("元素魔戰士：附近帶印記的目標 " + count + " 個\n最近的目標 " + shown)
 EndFunction
 
 ; ---------------------------------------------------------------- 節流紀錄
@@ -6169,345 +4845,32 @@ Function LogThrottled(Int aiLevel, String asMechanism, String asMessage)
 	Debug.Trace("[ESSB][" + asMechanism + "][L" + aiLevel + "] " + asMessage)
 EndFunction
 
-Function AddAstral(Actor akTarget, Int aiLayers, Float afMult)
-	Int slot = FindSlot(akTarget)
-	If slot < 0
+; 雷終焉用哪一份電荷：被切＝切換當下存起來的（TakeSwitchCharge）、融斷＝融斷當下的（BurstCharge）、過期＝現在的。
+Int Function EndCharge(Int aiReason)
+	If aiReason == 0
+		Return TakeSwitchCharge()
+	ElseIf aiReason == 1
+		Return BurstCharge
+	EndIf
+	Return SelfCharge
+EndFunction
+
+Function ConsumeEndCharge(Int aiCharge, Int aiReason = 2)
+	If aiCharge <= 0 || ESSBNodes.Br(Self, 2, 2, 1, 0) ; @node 蓄餘
 		Return
 	EndIf
-	ESSBStatus status = RegStatus[slot]
-	If status
-		status.AddAstral(aiLayers, afMult)
+	If aiReason == 1
+		BurstCharge -= aiCharge
+		If BurstCharge < 0
+			BurstCharge = 0
+		EndIf
 		Return
 	EndIf
-	Int room = StackCap(11) - PendingAstral[slot]
-	If aiLayers < room
-		room = aiLayers
+	SelfCharge -= aiCharge
+	If SelfCharge < 0
+		SelfCharge = 0
 	EndIf
-	If room > 0
-		PendingAstral[slot] = PendingAstral[slot] + room
-		PendingAstralWeight[slot] = PendingAstralWeight[slot] + room * afMult
-	EndIf
-	EnsureStatus(slot, akTarget)
-EndFunction
-
-Function DetonateAstralNow(Actor akTarget, Float afMult)
-	Int slot = FindSlot(akTarget)
-	If slot < 0
-		Return
-	EndIf
-	ESSBStatus status = RegStatus[slot]
-	If status
-		status.DetonateAstralNow(afMult)
-	Else
-		PendingRadiance[slot] = afMult
-		EnsureStatus(slot, akTarget)
-	EndIf
-EndFunction
-
-Function SetFrozen(Actor akTarget, Float afSeconds)
-	Int slot = FindSlot(akTarget)
-	If slot < 0
-		Return
-	EndIf
-	ESSBStatus status = RegStatus[slot]
-	If status
-		status.SetFrozen(afSeconds)
-	Else
-		PendingFrozen[slot] = Utility.GetCurrentRealTime() + DurationSeconds(afSeconds)
-		SetStack(akTarget, 2, 5)
-		EnsureStatus(slot, akTarget)
-	EndIf
-EndFunction
-
-Function ConsumeEndCharge(Int aiCharge)
-	If aiCharge > 0 && !ESSBNodes.Br(Self, 2, 2, 1, 0) ; @node 蓄餘
-		SelfCharge -= aiCharge
-		If SelfCharge < 0
-			SelfCharge = 0
-		EndIf
-		GCharge.SetValueInt(SelfCharge)
-	EndIf
-EndFunction
-
-Function SetCatalyzeOn(Actor akTarget, Int aiSeconds, Float afMult)
-	Int slot = FindSlot(akTarget)
-	If slot < 0
-		Return
-	EndIf
-	ESSBStatus status = RegStatus[slot]
-	If status
-		status.SetCatalyze(aiSeconds, afMult)
-	Else
-		PendingCatalyze[slot] = Utility.GetCurrentRealTime() + DurationSeconds(aiSeconds)
-		PendingCatalyzeMult[slot] = afMult
-		EnsureStatus(slot, akTarget)
-	EndIf
-EndFunction
-
-Function SetDeathCurseOn(Actor akTarget, Int aiSeconds, Float afBase, Float afMult)
-	If akTarget && akTarget.IsDead()
-		ESSBElem3.AfterDeathCurse(Self, akTarget, afBase * afMult)
-		Return
-	EndIf
-	Int slot = FindSlot(akTarget)
-	If slot < 0
-		Return
-	EndIf
-	ESSBStatus status = RegStatus[slot]
-	If status
-		status.SetDeathCurse(aiSeconds, afBase, afMult)
-	Else
-		PendingCurse[slot] = Utility.GetCurrentRealTime() + DurationSeconds(aiSeconds)
-		PendingCurseBase[slot] = afBase
-		PendingCurseMult[slot] = afMult
-		EnsureStatus(slot, akTarget)
-	EndIf
-EndFunction
-
-Function ClearPendingState(Int aiSlot)
-	Int kind = 0
-	While kind < 12
-		PendingStacks[aiSlot * 12 + kind] = 0
-		PendingSet[aiSlot * 12 + kind] = False
-		kind += 1
-	EndWhile
-	PendingAstral[aiSlot] = 0
-	PendingAstralWeight[aiSlot] = 0.0
-	PendingRadiance[aiSlot] = 0.0
-	PendingFrozen[aiSlot] = 0.0
-	PendingCatalyze[aiSlot] = 0
-	PendingCurse[aiSlot] = 0
-	PendingNextEnd[aiSlot] = 0.0
-	PendingNextOpen[aiSlot] = 0.0
-	PendingAir[aiSlot] = 0
-	PendingAirDamage[aiSlot] = 0.0
-EndFunction
-
-Function FlushPendingState(Int aiSlot, ESSBStatus akStatus)
-	; Claim all pending fields before invoking the new host.
-	Int[] amounts = new Int[12]
-	Bool[] absolute = new Bool[12]
-	Int kind = 1
-	While kind <= 11
-		amounts[kind] = PendingStacks[aiSlot * 12 + kind]
-		absolute[kind] = PendingSet[aiSlot * 12 + kind]
-		kind += 1
-	EndWhile
-	Int stars = PendingAstral[aiSlot]
-	Float weight = PendingAstralWeight[aiSlot]
-	Float radiance = PendingRadiance[aiSlot]
-	Float frozen = PendingFrozen[aiSlot]
-	Float catalyst = PendingCatalyze[aiSlot]
-	Float catalystMult = PendingCatalyzeMult[aiSlot]
-	Float curse = PendingCurse[aiSlot]
-	Float curseBase = PendingCurseBase[aiSlot]
-	Float curseMult = PendingCurseMult[aiSlot]
-	Float nextEnd = PendingNextEnd[aiSlot]
-	Float nextOpen = PendingNextOpen[aiSlot]
-	Float air = PendingAir[aiSlot]
-	Float airDamage = PendingAirDamage[aiSlot]
-	ClearPendingState(aiSlot)
-	kind = 1
-	While kind <= 10
-		If absolute[kind]
-			akStatus.SetStack(kind, amounts[kind])
-		ElseIf amounts[kind] > 0
-			akStatus.AddStack(kind, amounts[kind])
-		EndIf
-		kind += 1
-	EndWhile
-	If air > 0
-		akStatus.SetAirborne(0, airDamage, air)
-	EndIf
-	If nextEnd > 0.0
-		akStatus.SetNextEndMult(nextEnd)
-	EndIf
-	If nextOpen > 0.0
-		akStatus.SetNextOpenMult(nextOpen)
-	EndIf
-	If stars > 0
-		akStatus.AddAstral(stars, weight / stars)
-	EndIf
-	If radiance > 0.0
-		akStatus.DetonateAstralNow(radiance)
-	EndIf
-	If frozen > 0.0
-		akStatus.SetFrozen(0.0, frozen)
-	EndIf
-	If catalyst > 0
-		akStatus.SetCatalyze(0, catalystMult, catalyst)
-	EndIf
-	If curse > 0
-		akStatus.SetDeathCurse(0, curseBase, curseMult, curse)
-	EndIf
-EndFunction
-
-; Per-slot backups survive a delayed callback after the global migration lock times out.
-Function InitBackupInts()
-	; Four banks of two slots: 2 * 38 = 76, below Papyrus' 128 limit.
-	If BackupIntsA && BackupIntsA.Length == 108
-		Int[] oldA = BackupIntsA
-		Int[] oldB = BackupIntsB
-		BackupIntsA = ESSBState.NewBackup()
-		If !BackupIntsA
-			BreakState()
-			Return
-		EndIf
-		BackupIntsB = ESSBState.NewBackup()
-		If !BackupIntsB
-			BreakState()
-			Return
-		EndIf
-		BackupIntsC = ESSBState.NewBackup()
-		If !BackupIntsC
-			BreakState()
-			Return
-		EndIf
-		BackupIntsD = ESSBState.NewBackup()
-		If !BackupIntsD
-			BreakState()
-			Return
-		EndIf
-		Int slot = 0
-		While slot < 8
-			Int[] oldBank = oldA
-			If slot >= 4
-				oldBank = oldB
-			EndIf
-			If oldBank
-				Int[] oldState = new Int[27]
-				Int i = 0
-				While i < 27
-					oldState[i] = oldBank[(slot % 4) * 27 + i]
-					i += 1
-				EndWhile
-				StoreSwapInts(slot, ESSBState.UpgradeInts(oldState))
-			EndIf
-			slot += 1
-		EndWhile
-	EndIf
-	If !BackupIntsA
-		BackupIntsA = ESSBState.NewBackup()
-		If !BackupIntsA
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !BackupIntsB
-		BackupIntsB = ESSBState.NewBackup()
-		If !BackupIntsB
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !BackupIntsC
-		BackupIntsC = ESSBState.NewBackup()
-		If !BackupIntsC
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !BackupIntsD
-		BackupIntsD = ESSBState.NewBackup()
-		If !BackupIntsD
-			BreakState()
-			Return
-		EndIf
-	EndIf
-EndFunction
-
-Int[] Function SwapIntBank(Int aiSlot)
-	If aiSlot < 2
-		Return BackupIntsA
-	ElseIf aiSlot < 4
-		Return BackupIntsB
-	ElseIf aiSlot < 6
-		Return BackupIntsC
-	EndIf
-	Return BackupIntsD
-EndFunction
-
-Function StoreSwapInts(Int aiSlot, Int[] aiInts)
-	Int[] ints = SwapIntBank(aiSlot)
-	Int count = ESSBState.IntCount()
-	Int index = 0
-	While index < count
-		ints[(aiSlot % 2) * count + index] = aiInts[index]
-		index += 1
-	EndWhile
-EndFunction
-
-Function SaveSwapData(Int aiSlot, Int[] aiInts, Float[] afFloats)
-	StoreSwapInts(aiSlot, ESSBState.UpgradeInts(aiInts))
-	Float[] floats = BackupFloatsA
-	If aiSlot >= 4
-		floats = BackupFloatsB
-	EndIf
-	Int index = 0
-	While index < 24
-		floats[(aiSlot % 4) * 24 + index] = afFloats[index]
-		index += 1
-	EndWhile
-	BackupValid[aiSlot] = True
-EndFunction
-
-Int[] Function ReadSwapInts(Int aiSlot)
-	Int[] source = SwapIntBank(aiSlot)
-	Int[] result = ESSBState.NewInts()
-	Int index = 0
-	While index < result.Length
-		result[index] = source[(aiSlot % 2) * result.Length + index]
-		index += 1
-	EndWhile
-	Return result
-EndFunction
-
-Float[] Function ReadSwapFloats(Int aiSlot)
-	Float[] source = BackupFloatsA
-	If aiSlot >= 4
-		source = BackupFloatsB
-	EndIf
-	Float[] result = new Float[24]
-	Int index = 0
-	While index < 24
-		result[index] = source[(aiSlot % 4) * 24 + index]
-		index += 1
-	EndWhile
-	Return result
-EndFunction
-
-Float Function TakeNextEndMultOn(Actor akTarget)
-	Int slot = FindSlot(akTarget)
-	If slot < 0
-		Return 1.0
-	EndIf
-	ESSBStatus status = RegStatus[slot]
-	If status
-		Return status.TakeNextEndMult()
-	EndIf
-	Float value = PendingNextEnd[slot]
-	PendingNextEnd[slot] = 0.0
-	If value <= 0.0
-		value = 1.0
-	EndIf
-	Return value
-EndFunction
-
-Float Function TakeNextOpenMultOn(Actor akTarget)
-	Int slot = FindSlot(akTarget)
-	If slot < 0
-		Return 1.0
-	EndIf
-	ESSBStatus status = RegStatus[slot]
-	If status
-		Return status.TakeNextOpenMult()
-	EndIf
-	Float value = PendingNextOpen[slot]
-	PendingNextOpen[slot] = 0.0
-	If value <= 0.0
-		value = 1.0
-	EndIf
-	Return value
+	GCharge.SetValueInt(SelfCharge)
 EndFunction
 
 ; FIX10: compare with the current alias; never call a native on an orphan alias.
@@ -6521,7 +4884,14 @@ Bool Function IsCurrentController()
 EndFunction
 
 ; FIX9: the failure latch is persistent; there is no retry/reset path.
+; 審查修正 3：總開關（ESSB_Enabled）關掉時，所有遊戲路徑（命中、狀態、每秒、結算、ModEvent 反應）都不做事。
 Bool Function IsOperational()
+	Return IsReadyUI() && Enabled && Enabled.GetValueInt() == 1
+EndFunction
+
+; 指揮官裁定（審查修正後）：MCM 與選單動作（狀態按鈕、技能樹選單、洗點、恢復預設、設定、關閉形態）不看總開關，
+; 只要控制器就緒就能用；遊戲效果另看 IsOperational。
+Bool Function IsReadyUI()
 	Return IsCurrentController() && !StateBroken && Ready
 EndFunction
 
@@ -6662,9 +5032,6 @@ Bool Function ValidateBindings()
 	If !FormRulesAbility
 		Return False
 	EndIf
-	If !StatusHostSpell
-		Return False
-	EndIf
 	If !EngagedSpell
 		Return False
 	EndIf
@@ -6707,16 +5074,6 @@ Bool Function ValidateBindings()
 			Return False
 		EndIf
 		checkHitPowerSpells += 1
-	EndWhile
-	If !MarkSpells
-		Return False
-	EndIf
-	Int checkMarkSpells = 0
-	While checkMarkSpells < MarkSpells.Length
-		If !MarkSpells[checkMarkSpells]
-			Return False
-		EndIf
-		checkMarkSpells += 1
 	EndWhile
 	If !ReactSpells
 		Return False
@@ -6807,9 +5164,6 @@ Bool Function ValidateBindings()
 		Return False
 	EndIf
 	If !PurgeSpell
-		Return False
-	EndIf
-	If !StripSpell
 		Return False
 	EndIf
 	If !PoisonResistAbility
@@ -6992,7 +5346,7 @@ Bool Function ValidateBindings()
 	If !HitProcPerk
 		Return False
 	EndIf
-	If !HitBonusSpells || !BloodGuardSpell || !EchoPendingSpell || !TwinWindowSpell
+	If !BloodGuardSpell || !EchoPendingSpell || !TwinWindowSpell
 		Return False
 	EndIf
 	If !RiposteWindowSpell
@@ -7019,16 +5373,6 @@ Bool Function ValidateBindings()
 	If !InputLayer
 		Return False
 	EndIf
-	If HitBonusSpells.Length != 11
-		Return False
-	EndIf
-	Int checkProc = 0
-	While checkProc < HitBonusSpells.Length
-		If !HitBonusSpells[checkProc]
-			Return False
-		EndIf
-		checkProc += 1
-	EndWhile
 	Return True
 EndFunction
 
@@ -7103,7 +5447,7 @@ Function RefreshRuntimeValues()
 EndFunction
 
 Event OnMenuClose(String asMenuName)
-	If !IsOperational() || asMenuName != "Journal Menu"
+	If !IsReadyUI() || asMenuName != "Journal Menu"
 		Return
 	EndIf
 	RefreshRuntimeValues()
@@ -7118,7 +5462,7 @@ Function ResetLoadClock()
 		Return
 	EndIf
 	Float now = Utility.GetCurrentRealTime()
-	InitRegistry()
+	InitTables()
 	ChargeDecayAt = now
 	StormCharge = 0.0
 	SwitchCharge = 0
@@ -7137,10 +5481,9 @@ Function ResetLoadClock()
 	SetGlobal(GNoBloodCost, 0)
 	SetGlobal(GQuench, 0)
 	SetGlobal(GShockRecent, 0)
-	If KillStreakReady || KeepSneakLeft > 0
+	If KeepSneakLeft > 0
 		PO3_SKSEFunctions.ResetActorDetection(ThePlayer())
 	EndIf
-	KillStreakReady = False
 	SetGlobal(GDomainFire, 0)
 	SetGlobal(GDomainFrost, 0)
 	SetGlobal(GDomainEarth, 0)
@@ -7150,7 +5493,6 @@ Function ResetLoadClock()
 	SetGlobal(GDomainWater, 0)
 	SetGlobal(GDomainDark, 0)
 	SetGlobal(GDomainAstral, 0)
-	MoltenLeft = 0.0
 	EmberLeft = 0.0
 	QuenchLeft = 0.0
 	ShockLeft = 0.0
@@ -7167,17 +5509,10 @@ Function ResetLoadClock()
 	NoBloodCostLeft = 0.0
 	WindFollowLeft = 0.0
 	KeepSneakLeft = 0.0
-	EndBoostLeft = 0.0
 	GuardDarkLeft = 0.0
 	GuardAstralLeft = 0.0
 	GuardStarLeft = 0.0
 	Int timerIndex = 0
-	While timerIndex < 12
-		OpenBoost[timerIndex] = 0.0
-		EndBoost[timerIndex] = 0.0
-		timerIndex += 1
-	EndWhile
-	timerIndex = 0
 	While timerIndex < 3
 		DomainLeft[timerIndex] = 0.0
 		ClearDomainResidents(timerIndex)
@@ -7203,62 +5538,34 @@ Function ResetLoadClock()
 	LogCount = 0
 	LogDropped = 0
 	LogLastKey = ""
-	InitRegistry()
 	If StateBroken
 		Return
-	EndIf
-	If !SwapFloats || SwapFloats.Length != 128
-		SwapFloats = new Float[128]
-		If !SwapFloats
-			BreakState()
-			Return
-		EndIf
 	EndIf
 	Int damageIndex = 0
 	While damageIndex < 128
 		DamageActor[damageIndex] = None
 		DamageElement[damageIndex] = 0
-		SwapFloats[damageIndex] = -1.0
+		DamageTime[damageIndex] = -1.0
 		damageIndex += 1
 	EndWhile
 	LiftQueued = False
 	Int i = 0
 	While i < 8
-		If PendingAir[i] > 0
-			PendingAir[i] = now + 1.0
-		EndIf
-		If PendingCurse[i] > 0
-			PendingCurse[i] = now + 1.0
-		EndIf
-		If PendingCatalyze[i] > 0
-			PendingCatalyze[i] = now + 1.0
-		EndIf
-		If RegPendStarLock[i] > 0
-			RegPendStarLock[i] = now + 1.0
-		EndIf
-		If PendingFrozen[i] > 0
-			PendingFrozen[i] = now + 1.0
-		EndIf
 		HitActor[i] = None
 		CastActor[i] = None
 		KillProcActor[i] = None
 		DeadActor[i] = None
-		RegLastDamage[i] = 0
-		RegLastOpen[i] = -1000000.0
-		RegLastEnd[i] = -1000000.0
-		RegUntil[i] = now + 1.0
-		RegSecondUntil[i] = now + 1.0
-		RegHostRequest[i] = now - 3.0
 		KnockTime[i] = -1000000.0
 		PullTime[i] = -1000000.0
 		WashTime[i] = -1000000.0
 		LiftActor[i] = None
-		If RegStatus[i]
-			RegStatus[i].ResetLoadClock()
-		EndIf
 		i += 1
 	EndWhile
-	CancelSwap()
+	i = 0
+	While i < 4
+		PendingKillActor[i] = None
+		i += 1
+	EndWhile
 	i = 0
 	While i < PendingServantDue.Length
 		PendingServantDue[i] = now + 5.0
@@ -7269,14 +5576,6 @@ Function ResetLoadClock()
 		TrioTimes[i] = -1000000.0
 		i += 1
 	EndWhile
-EndFunction
-
-; Internal only: caller is an already guarded event/transaction. Never a saved authorization.
-Function InitRegistryInternal()
-	If StateBroken || RegistryInitialised
-		Return
-	EndIf
-	InitRegistry()
 EndFunction
 
 ; Internal only: caller is an already guarded event/transaction. Never a saved authorization.
@@ -7324,64 +5623,25 @@ Function ScheduleTickInternal(Float afDelay)
 	ArmUpdateInternal()
 EndFunction
 
+; 每次有效命中（Papyrus 那一半）：已交戰標記、自身資源的「命中 +1」、各樹命中掛勾、同調與經驗。
+; 印記與目標狀態在 DLL（見 OnWeaponHit）；開印那一擊的「開印 +2」由 ESSB_Open 補足（ESSBReactions.Open）。
 ; Internal only: caller is an already guarded event/transaction. Never a saved authorization.
-Int Function FindSlotInternal(Actor akTarget)
-	InitRegistryInternal()
-	If StateBroken
-		Return -1
-	EndIf
-	Int index = 0
-	While index < 8
-		If RegActor[index] == akTarget
-			Return index
-		EndIf
-		index += 1
-	EndWhile
-	Return -1
-EndFunction
-
-; Internal only: caller is an already guarded event/transaction. Never a saved authorization.
-Bool Function WillOpenInternal(Actor akTarget, Int aiElement, Int aiSlot = -1)
-	InitRegistryInternal()
-	If StateBroken
-		Return False
-	EndIf
-	Int slot = aiSlot
-	If slot < 0
-		Return True
-	EndIf
-	Return RegElem[slot] != aiElement && !(RegElem2[slot] == aiElement && RegSecondReal[slot])
-EndFunction
-
-; Internal only: caller is an already guarded event/transaction. Never a saved authorization.
-Function OnValidHitInternal(Actor akTarget, Int aiElement, Bool abPower, Int aiSlot = -1, Int aiGeneration = -1)
-	InitRegistryInternal()
-	If StateBroken
-		Return
-	EndIf
+Function OnValidHitInternal(Actor akTarget, Int aiElement, Bool abPower)
 	Actor player = ThePlayer()
 	If !player
 		Return
 	EndIf
 	SelfLastHit = Utility.GetCurrentRealTime()
 	MarkEngaged(akTarget)
-	Int slot = aiSlot
-	If slot < 0
-		slot = AcquireSlot(akTarget)
-	ElseIf RegActor[slot] != akTarget || RegGeneration[slot] != aiGeneration
-		slot = AcquireSlot(akTarget)
+	; 電荷／岩甲／風勢：命中 +1（v0.4 2.3；N4 前在 Papyrus）。
+	If aiElement == 3
+		AddSelf(1, 1)
+	ElseIf aiElement == 4
+		AddSelf(2, 1)
+	ElseIf aiElement == 5
+		AddSelf(3, 1)
 	EndIf
-	If slot < 0
-		Return
-	EndIf
-	EnsureStatus(slot, akTarget)
-	If RegElem[slot] == aiElement || (RegElem2[slot] == aiElement && RegSecondReal[slot])
-		ApplyMark(akTarget, aiElement, slot)
-		HitStacks(akTarget, aiElement, abPower)
-	Else
-		InstallMark(slot, aiElement, akTarget)
-	EndIf
-	; 5.3 持續專精主線：帶熱度目標火抗 -1%／點。
+	; 5.3 持續專精主線：帶火印記目標火抗 -1%／點。
 	If aiElement == 1
 		ESSBElem.ApplyFireResistShred(Self, akTarget)
 	EndIf
@@ -7391,9 +5651,7 @@ Function OnValidHitInternal(Actor akTarget, Int aiElement, Bool abPower, Int aiS
 		; 規劃 4：開形態的有效命中給當前元素樹 + 通用樹。
 		Trees.AwardInternal(aiElement)
 	EndIf
-	If True
-		ScheduleTickInternal(1.0)
-	EndIf
+	ScheduleTickInternal(1.0)
 EndFunction
 
 ; Same L1 output as ESSBLog, using the init/load/MCM cache; intentionally unthrottled.
@@ -7407,20 +5665,6 @@ Int Function TakeSwitchCharge()
 	Int value = SwitchCharge
 	SwitchCharge = 0
 	Return value
-EndFunction
-
-Function SettleDeadCurse(Int aiSlot)
-	If RegStatus[aiSlot]
-		RegStatus[aiSlot].ResolveDeathCurse(True)
-	EndIf
-	If PendingCurse[aiSlot] > 0
-		Float amount = PendingCurseBase[aiSlot] * PendingCurseMult[aiSlot]
-		PendingCurse[aiSlot] = 0
-		ESSBElem3.AfterDeathCurse(Self, RegActor[aiSlot], amount)
-		If CachedDebugLevel >= 1
-			LogEvent(1, "deathcurse", "settled pending on death")
-		EndIf
-	EndIf
 EndFunction
 
 Function SettleSneakKill(Actor akVictim, Int aiElement)
@@ -7541,13 +5785,6 @@ Function RefreshDivineProtection()
 		DivineArmed = False
 		SetGlobal(GDivineArmed, 0)
 		player.EndDeferredKill()
-	EndIf
-EndFunction
-
-Function CaptureStatusDeath(Actor akTarget)
-	Int slot = FindSlot(akTarget)
-	If slot >= 0
-		CaptureDeath(slot)
 	EndIf
 EndFunction
 

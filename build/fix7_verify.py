@@ -2,9 +2,15 @@
 from pathlib import Path
 import json,re,math,runpy,hashlib,struct
 ROOT=Path(__file__).resolve().parents[1]
+# Round 22: these checks run on the pre-fix22 scripts; build/fix22_history.py ties them to today's (declared changes only).
+import sys as _sys22
+_sys22.path.insert(0, str(ROOT / 'build'))
+import fix22_history as _fix22_history
+SRC22 = _fix22_history.legacy_source()
+
 
 def body(file,fn):
-    s=(ROOT/'src'/f'{file}.psc').read_text(encoding='utf-8')
+    s=(SRC22/f'{file}.psc').read_text(encoding='utf-8')
     m=re.search(r'^[^\n]*\bFunction '+fn+r'\([^\n]*\n.*?^EndFunction',s,re.M|re.S)
     assert m,(file,fn)
     return m[0]
@@ -70,7 +76,7 @@ def run():
 
     cases=[]
     for mult in [.25,.5,1,2,3]:
-        ctl=Ctl(settings);reg=make(ROOT/'src',ctl)
+        ctl=Ctl(settings);reg=make(SRC22,ctl)
         ctl.MultRecovery.x=ctl.MultDrain.x=ctl.MultDot.x=ctl.MultDuration.x=mult
         ctl.MultCooldown.x=min(mult,2)
         ctl.UtilSpells=[Spell() for _ in range(28)];ctl.UtilTargetSpells=[]
@@ -92,14 +98,14 @@ def run():
     # Actual shared producer outputs: 地震耐力削減 scales with the earth tree's G once; 裂痕護甲削減 (30 + 2 x 15) and
     # the rock armor layer (25) are v0.4 plain numbers and do not change with level (round 21, ruling C1).
     for level in [1,10,100]:
-        ctl=Ctl(settings);ctl.level=level;reg=make(ROOT/'src',ctl)
+        ctl=Ctl(settings);ctl.level=level;reg=make(SRC22,ctl)
         assert math.isclose(reg['ESSBElem2'].QuakeStamina(ctl),2.9*(1+.05*level)),('QuakeStamina',level)
         assert math.isclose(reg['ESSBElem2'].FissureArmor(ctl),60.0),('FissureArmor',level)
         assert math.isclose(reg['ESSBElem2'].RockArmorPerLayer(ctl),25.0),('RockArmorPerLayer',level)
     # Real JudgeArea calls real Judge: 1..6 targets; damage still reaches every target.
     judge=[]
     for count in range(1,7):
-        ctl=Ctl(settings);ctl.level=10;ctl.CurrentElement=Glob(7);reg=make(ROOT/'src',ctl)
+        ctl=Ctl(settings);ctl.level=10;ctl.CurrentElement=Glob(7);reg=make(SRC22,ctl)
         ctl.IsUndeadOrDaedra=lambda t:False;ctl.NoteDamageElement=lambda e:None
         hits=[];ctl.ApplyDamage=lambda e,a,t:hits.append(a)
         ctl.ScanTargets=lambda *args:[Actor() for _ in range(count-1)]

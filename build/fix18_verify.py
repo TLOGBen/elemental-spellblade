@@ -10,13 +10,19 @@ from types import SimpleNamespace as NS
 import json,math,struct,itertools,sys,hashlib
 sys.dont_write_bytecode=True
 ROOT=Path(__file__).resolve().parents[1]
+# Round 22: these checks run on the pre-fix22 scripts; build/fix22_history.py ties them to today's (declared changes only).
+import sys as _sys22
+_sys22.path.insert(0, str(ROOT / 'build'))
+import fix22_history as _fix22_history
+SRC22 = _fix22_history.legacy_source()
+
 sys.path[:0]=[str(ROOT/'build'),str(ROOT)]
 from fix12_cost import scenario,Measured
 from papyrus_harness import Array
 import build_v03 as b
 import fix18_records as r18
 OLD=ROOT/'.codex/pre-fix18-snapshot/src'
-NEW=ROOT/'src'
+NEW = SRC22
 
 def fixture(folder=NEW):
     c,t,p,v,w,clock,m,env,G=scenario(folder,prepare_only=True)

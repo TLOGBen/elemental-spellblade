@@ -22,9 +22,15 @@ from types import SimpleNamespace as NS
 import copy, json, re, runpy, struct, sys
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
+# Round 22: these checks run on the pre-fix22 scripts; build/fix22_history.py ties them to today's (declared changes only).
+import sys as _sys22
+_sys22.path.insert(0, str(ROOT / 'build'))
+import fix22_history as _fix22_history
+SRC22 = _fix22_history.legacy_source()
+
 sys.path[:0] = [str(ROOT / 'build'), str(ROOT)]
 
-NEW = ROOT / 'src'
+NEW = SRC22
 R20 = ROOT / '.codex/pre-fix21-snapshot/src'
 TAKEOVER = '終焉後 5 秒內接管元素附傷'
 PLUGIN_KEY = 'Elements Spellblade.esp'
@@ -180,7 +186,9 @@ def check_records(records, hit21):
         assert abs(struct.unpack('<fII', a.d['EFIT'])[0] - feet) < 1e-6, ('RECORDS: cloak radius', a.edid)
         c = keys[key(chill)]
         assert struct.unpack_from('<I', c.d['SPIT'], 20)[0] == 2, ('RECORDS: cloak payload must be aimed', c.edid)
-        assert abs(struct.unpack('<fII', c.d['EFIT'])[0] - pct) < 1e-6, ('RECORDS: chill percent', c.edid)
+        # Round 22 added a second effect (the freeze-gauge variant, build/fix22_records.py); the round-21 chill is the first.
+        first_efit = next(v for s, v in c.ss if s == 'EFIT')
+        assert abs(struct.unpack('<fII', first_efit)[0] - pct) < 1e-6, ('RECORDS: chill percent', c.edid)
         effect = keys[c.refs('EFID')[0].lower()]
         assert effect.d.get('CTDA') == hit21.HOSTILE_CTDA, ('RECORDS: chill must be hostile-only', effect.edid)
     for edid, delivery in (('ESSB_Hush', 1), ('ESSB_HushSpent', 1), ('ESSB_RiposteWindow', 0)):

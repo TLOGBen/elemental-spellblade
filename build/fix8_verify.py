@@ -3,8 +3,19 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 import json, math, re, runpy, hashlib, struct
 ROOT = Path(__file__).resolve().parents[1]
+# Round 22: these checks run on the pre-fix22 scripts; build/fix22_history.py ties them to today's (declared changes only).
+import sys as _sys22
+_sys22.path.insert(0, str(ROOT / 'build'))
+import fix22_history as _fix22_history
+SRC22 = _fix22_history.legacy_source()
+def CUR22(rel):  # a repo path as the older rounds knew it: src/* comes from the pre-fix22 snapshot
+    rel = str(rel).replace(chr(92), '/')
+    return SRC22 / rel[4:] if rel.startswith('src/') else ROOT / rel
+
 
 def text(name):
+    if name.startswith('src/'):
+        return (SRC22 / name[4:]).read_text(encoding='utf-8-sig')
     return (ROOT / name).read_text(encoding='utf-8-sig')
 
 def body(name, fn):
@@ -100,7 +111,7 @@ def run():
         for mult in (0.25, 1, 1.7, 3):
             ctl = Ctl(cfg); ctl.level = level; ctl.BaseDamageMult.x = mult
             ctl.rank_default = 15  # Low target magicka activates TrueMult for the node damage that stays in Papyrus.
-            reg = make(ROOT / 'src', ctl); target = Actor(100); target.mag = 1
+            reg = make(SRC22, ctl); target = Actor(100); target.mag = 1
             # Existing Papyrus node true damage (純武藝, 反咒) still receives G once and TrueMult.
             reg['ESSBController'].ApplyTrueDamage(5, target, 11, False)
             assert math.isclose(target.true[-1], 5 * (1 + .05 * level) * mult * (1 + .03 * 15 * cfg['node_percent_scale']))
@@ -110,7 +121,7 @@ def run():
     node_cases = 0
     for scale in (0.25, 1, 1.7, 3):
         for rank in (0, 1, 15):
-            ctl = Ctl(cfg); ctl.NodeScale.x = scale; ctl.rank_default = rank; reg = make(ROOT / 'src', ctl)
+            ctl = Ctl(cfg); ctl.NodeScale.x = scale; ctl.rank_default = rank; reg = make(SRC22, ctl)
             for element in range(1, 12):
                 assert math.isclose(reg['ESSBElem'].OpenMult(ctl, element), 1 + .03 * rank * scale)
                 node_cases += 1
@@ -129,7 +140,7 @@ def run():
     active = Glob(1); element = Glob(1); state = NS(MagickaEmptySince=-1.0)
     env = NS(Ctl=ctl,Holder=holder,FormActive=active,CurrentElement=element,
              UpkeepBasePct=cfg['upkeep_base_pct'],UpkeepDarkPct=cfg['upkeep_dark_pct'],UpkeepLevelRelief=cfg['upkeep_level_relief'])
-    reg = {}; script = Script(ROOT/'src/ESSBFormRules.psc', reg, env)
+    reg = {}; script = Script(SRC22/'ESSBFormRules.psc', reg, env)
     script.source = re.sub(r'(?m)^Event ', 'Function ', script.source).replace('EndEvent', 'EndFunction')
     script.source = script.source.replace(' as ESSBController', '')
     script.source = script.source.replace('MagickaEmptySince', 'State.MagickaEmptySince')
@@ -216,14 +227,14 @@ def run():
     for name,digest in hashes.items():
         if name.startswith('.strategic-advance/'): continue  # commander's campaign ledger is append-only by design
         if '__pycache__/' in name: continue  # git-ignored bytecode caches are not sources; any python run may rewrite them
-        data=(ROOT/name).read_bytes()
+        data=CUR22(name).read_bytes()
         if hashlib.sha256(data).hexdigest()!=digest:
             # Round 21 rebuilt the parser for v0.4 (plan_trees.py is in its write set).
             assert name in ('build_v03.py','settings.json','plan_coverage.py','plan_trees.py','實作紀錄.md') or (name.startswith('src/') and name.endswith('.psc')),name
             changed.append(name)
     for p in (ROOT/'build/fix8-before').rglob('*'):
         if not p.is_file(): continue
-        name=p.relative_to(ROOT/'build/fix8-before'); q=ROOT/name
+        name=p.relative_to(ROOT/'build/fix8-before'); q=CUR22(name)
         old=p.read_bytes(); new=q.read_bytes()
         if str(name)=='實作紀錄.md':
             # Round18 already normalized this older mixed-newline ledger.
@@ -250,7 +261,7 @@ def run():
     # implementation output: allow what HEAD tracks, so only untracked stray files still fail (round 20).
     tracked = set(subprocess.run(['git', '-C', str(ROOT), '-c', 'core.quotepath=off', 'ls-files'], capture_output=True, text=True, encoding='utf-8', check=True).stdout.splitlines())
     new_paths -= tracked
-    assert new_paths <= set(protected) | set(round18_specs) | {'README.md', '.gitignore', '.gitattributes', 'src/ESSBNative.psc', 'design-compromises-2026-09-22.md', 'src/ESSBInput.psc', 'src/ESSBProbeMeter.psc', 'src/ESSBProbeSegment.psc', 'src/ESSBProbeSetup.psc', 'src/ESSBProbePower.psc'} | {'.codex/impl-fix-round8.html', '.codex/impl-fix-round9.html', 'state-schema.lock.json', 'review-2026-09-18.md', 'review-fable-2026-09-19.md', 'review-fable-2026-09-19-r15.md'} | {p.relative_to(ROOT).as_posix() for p in (ROOT/'.codex/pre-fix9-snapshot').rglob('*') if p.is_file()} | {'.codex/fix-round9-briefing.md', '.codex/smoke2-essb-excerpt.log'} | {'tree_v04.py'}, new_paths   # round 21: v0.4 slot data module
+    assert new_paths <= set(protected) | set(round18_specs) | {'README.md', '.gitignore', '.gitattributes', 'src/ESSBNative.psc', 'design-compromises-2026-09-22.md', 'src/ESSBInput.psc', 'src/ESSBProbeMeter.psc', 'src/ESSBProbeSegment.psc', 'src/ESSBProbeSetup.psc', 'src/ESSBProbePower.psc'} | {'.codex/impl-fix-round8.html', '.codex/impl-fix-round9.html', 'state-schema.lock.json', 'review-2026-09-18.md', 'review-fable-2026-09-19.md', 'review-fable-2026-09-19-r15.md'} | {p.relative_to(ROOT).as_posix() for p in (ROOT/'.codex/pre-fix9-snapshot').rglob('*') if p.is_file()} | {'.codex/fix-round9-briefing.md', '.codex/smoke2-essb-excerpt.log'} | {'tree_v04.py'} | {n for n, d in _fix22_history.FILES.items() if d[2] == 'added' for n in ['src/' + n]}, new_paths   # round 21: v0.4 slot data module; round 22: scripts declared added in build/fix22_history.FILES
     report=dict(existing_unchanged=len(before),appended=added,masters=meta['masters'],upkeep_300=upkeep,
                 damage_cases=damage_cases,node_cases=node_cases,decisions_resolved=14,
                 grace_scenarios=['depletion at t10 -> close at t12 once','recovery cancels; new depletion t22 -> close t24','empty switch retains grace','manual close clears grace','blood/free upkeep'],

@@ -45,7 +45,9 @@ RESISTS = [41, 43, 42, 44, 44, 44, 44, 40, 44, 44, 44]
 # 原版元素關鍵字，只有火冰雷有；星界刻意不掛。
 VANILLA_ELEMENT_KEYWORD = {0: 0x1CEAD, 1: 0x1CEAE, 2: 0x1CEAF}
 
-SCRIPTS = ['ESSBLog', 'ESSBStatus', 'ESSBReactions', 'ESSBMark', 'ESSBTrees', 'ESSBNodes',
+# Round 22 (N3): ESSBStatus (status container) and ESSBMark (mark AME) are gone -- the status layer is DLL-applied
+# engine effects; ESSBStub is the empty script on the effects whose expiry the DLL settles (build/fix22_records.py).
+SCRIPTS = ['ESSBLog', 'ESSBStub', 'ESSBReactions', 'ESSBTrees', 'ESSBNodes',
            'ESSBNoForm', 'ESSBElem', 'ESSBElem2', 'ESSBElem3', 'ESSBCounter', 'ESSBSilence',
            'ESSBController', 'ESSBGuard', 'ESSBFormPowerEffect', 'ESSBFormRules',
            'ESSBSettingsEffect', 'ESSBState', 'ESSBMCM', 'ESSBInput', 'ESSBNative']
@@ -733,6 +735,8 @@ def sndd(pairs):
 # 型別高 3 位是運算子：0 等於、1 不等於、2 大於、3 大於等於、4 小於、5 小於等於。
 CTDA_GE = 0x60
 CTDA_EQ = 0x00
+CTDA_LT = 0x80
+FUNC_GET_RANDOM_PERCENT = 77
 FUNC_GET_GLOBAL_VALUE = 74
 FUNC_HAS_PERK = 448
 
@@ -846,8 +850,25 @@ def mountain_entries():
     return out
 
 
+def holy_weapon_entries(rank, gate):
+    """5.9 持續新手主線「聖佑各階武器傷害與聖傷加成 +3%／點 × 階數」的武器那一份（聖傷那一份在 DLL）。聖佑階效果
+    本身已給武器傷害 +10／20／30%（AttackDamageMult，build/fix22_records.py），這裡再乘
+    (1 + 0.1t + 0.01·NodeScale·r·t) ÷ (1 + 0.1t)，讓兩者合起來是加法。條件：你身上有 DLL 的聖佑 t 階效果。
+    ESP 讀不到 MCM 的節點倍率，取 settings.json 的預設（node_percent_scale）。"""
+    import fix22_records as hit22
+    scale = float(json.loads((WORK / 'settings.json').read_text(encoding='utf-8'))['node_percent_scale'])
+    out = []
+    for tier in (1, 2, 3):
+        base = 1.0 + hit22.HOLY_WEAPON[tier - 1]
+        value = (base + 0.01 * scale * rank * tier) / base
+        out += entry(EP_ATTACK_DAMAGE, value,
+                     gate + [(0, ctda(CTDA_EQ, 1.0, 214, param1=own(hit22.effect_id(f'kHoly{tier}'))))])
+    return out
+
+
 MAIN_ENTRY_NODES = {
-    # v0.4 沒有需要 PERK 進入點、且負責不在後續切片的主線（聖佑各階的武器傷害等在 N3、法盾分擔在 N4）。
+    # round 22：聖佑各階的武器傷害加成（主線每一階的 perk 各帶自己那一點的進入點，只有最高那一階生效）。
+    ('divine', '聖佑各階武器傷害與聖傷加成'): holy_weapon_entries,
 }
 
 BRANCH_ENTRY_NODES = {
@@ -871,11 +892,25 @@ BRANCH_ENTRY_NODES = {
     # 5.9 聖域／神聖領域：其中敵人傷害 -20%（＝你在聖域內受傷 -20%），共用 ESSB_DomainDivine。
     ('divine', '聖域'): lambda: entry(EP_INCOMING_DAMAGE, 0.8, [(0, gv_ge(mech2(8), 1))]),
     ('divine', '神聖領域'): lambda: entry(EP_INCOMING_DAMAGE, 0.8, [(0, gv_ge(mech2(8), 1))]),
+    # round 22 (N3) -- 5.9 聖盾：聖佑各階另給受法術傷害 -10%／-20%／-30%（受到的法術強度 ×0.9／0.8／0.7，條件是你身上的
+    # 聖佑階效果，DLL 掛的 ESSB_N3_Holy<n>Effect）。
+    ('divine', '聖盾'): lambda: sum((entry(EP_INCOMING_SPELL, 1.0 - 0.1 * tier,
+                                          [(0, ctda(CTDA_EQ, 1.0, 214, param1=own(hit22.effect_id(f'kHoly{tier}'))))], tabs=2)
+                                    for tier in (1, 2, 3)), []),
+    # round 22 (N3) -- 5.7 御風：失衡目標受你所有傷害 +30%「含武器傷害」：武器那一份是這個進入點（武器傷害 ×1.3，
+    # 條件：對手身上有 DLL 的失衡效果）；附傷與反應那一份在 DLL／Papyrus。v0.4 第 1091 行：只有「免疫減速」看同調三段
+    # （審查修正：原本這裡也要同調三段）。
+    ('wind', '御風'): lambda: entry(EP_ATTACK_DAMAGE, 1.3, [(2, ctda(CTDA_EQ, 1.0, 214, param1=own(hit22.effect_id('kUnbalance'))))]),
+    # 審查修正（指揮官裁定 (c)）-- 5.12 幻影：開印後 3 秒目標對你的命中 30% 落空。受到的傷害 ×0，條件在攻擊者分頁：
+    # 攻擊者帶 DLL 的幻影效果（ESSB_N3_PhantomEffect），且 GetRandomPercent < 30——條件每一擊各評估一次，所以每擊各擲一次。
+    ('darkness', '幻影'): lambda: entry(EP_INCOMING_DAMAGE, 0.0,
+                                      [(1, ctda(CTDA_EQ, 1.0, 214, param1=own(hit22.effect_id('kPhantom')))),
+                                       (1, ctda(CTDA_LT, 30.0, FUNC_GET_RANDOM_PERCENT))]),
 }
 
 
 def main_entries(tree_id, label, rank, base):
-    """v0.4 主線第 rank 階（1 起算）要加的進入點；目前沒有（見 MAIN_ENTRY_NODES）。"""
+    """v0.4 主線第 rank 階（1 起算）要加的進入點（見 MAIN_ENTRY_NODES）。"""
     build = MAIN_ENTRY_NODES.get((tree_id, label))
     if build is None:
         return []
@@ -1272,6 +1307,7 @@ import fix19_native as hit19
 import fix20_records as hit20
 import fix21_records as hit21
 import fix21_identity
+import fix22_records as hit22
 import tree_v04
 
 
@@ -1375,6 +1411,7 @@ def build_esp(plan):
     hit18.add_records(sys.modules[__name__], add, settings, casting_perks)
     hit20.add_records(sys.modules[__name__], add)
     hit21.add_records(sys.modules[__name__], add)
+    hit22.add_records(sys.modules[__name__], add, fx, settings)   # round 22 (N3): the status layer's effects
 
     # -------------------------------------------------------------- KYWD
     add('KYWD', ID_KW_PROC, 'ESSB_Proc', [])
@@ -1550,15 +1587,13 @@ def build_esp(plan):
                 ('EFID', I(own(ID_ENGAGED_EFFECT))), ('EFIT', struct.pack('<fII', 0.0, 0, 30))])
 
     # -------------------------------------------------------------- 印記（規劃 2.2）
-    # Script 原型、隱藏無傷。8 秒；水元素印記由控制器在套用前改成 10 秒
-    # （SetNthEffectDuration，只動本模組自有、玩家專用的 record）。
+    # Script 原型、隱藏無傷。記錄 8 秒；round 22 起 DLL 以 effectiveness 把時長換成當下的印記秒數（水 10 秒、
+    # 印記持續節點、MultDuration），No Magnitude 讓 effectiveness 只動時長（build/native-verification-2.md 決定 1）。
+    # 空的 ESSBStub 讓引擎送出效果移除事件，DLL 以時長判定自然過期並結算過期終焉。
     for ix, name in enumerate(ELEMENTS):
         kws = [own(ID_KW_MARK + ix), own(ID_KW_ELEMENT + ix)]
         add('MGEF', ID_MARK_EFFECT + ix, f'ESSB_MarkEffect_{name}', [
-            ('VMAD', vmad('ESSBMark', {
-                'ElementIndex': (3, ix + 1),
-                'Controller': (1, own(ID_QUEST)),
-            })),
+            ('VMAD', vmad(hit22.STUB_SCRIPT, {})),
             ('FULL', Z(f'{ZH[ix]}印記')),
             ('KSIZ', I(len(kws))), ('KWDA', b''.join(I(x) for x in kws)),
             # 規劃 2.12「開印」：目標身上一次 ZZArt_<X> 閃現（Hit Effect Art）+ Charge_<X> 音效，
@@ -1618,10 +1653,10 @@ def build_esp(plan):
         ('EFID', I(own(0x005156))), ('EFIT', struct.pack('<fII', 0.0, 0, 0)),
     ])
 
-    # -------------------------------------------------------------- 狀態容器與已交戰標記
+    # -------------------------------------------------------------- 狀態容器（退役）與已交戰標記
+    # Round 22：狀態容器（ESSBStatus）已刪除，這兩筆只為了讓 FormID 永不重用而留著：沒有腳本、沒有人施放。
+    # 舊存檔身上殘留的實體在載入時沒有腳本可跑，30 秒內自然消失（裁定 R1：不做存檔遷移）。
     add('MGEF', ID_STATUS_EFFECT, 'ESSB_StatusHostEffect', [
-        ('VMAD', vmad('ESSBStatus', {'Controller': (1, own(ID_QUEST)),
-                                  'FrozenShader': (1, fx[FX_STATUS_FROZEN])})),
         ('FULL', Z('元素狀態')),
         ('KSIZ', I(1)), ('KWDA', I(own(ID_KW_STATUS))),
         ('DATA', mgef_data(MGEF_MARKER_FLAGS | 0x00200000, 1, casting=1, delivery=1)),
@@ -1831,6 +1866,7 @@ def build_esp(plan):
     # skill 21 讓幻術天賦照常加成，magnitude 就是可影響的最高等級（腳本在施放前設定），
     # 免疫判定（首領、龍、亡靈魔族）在 ESSBController.CanCharm。
     add('MGEF', ID_FEAR_EFFECT, 'ESSB_FearEffect', [
+        ('VMAD', vmad(hit22.STUB_SCRIPT, {})),   # round 22：結束時 DLL 結算回魘（詛咒 +2）
         ('FULL', Z('元素魔戰士：恐懼')),
         ('KSIZ', I(2)), ('KWDA', I(ref('Skyrim.esm', FID_KW_INFLUENCE))
                                  + I(ref('Skyrim.esm', FID_KW_INFLUENCE_FEAR))),
@@ -1850,6 +1886,7 @@ def build_esp(plan):
         ('EFID', I(own(ID_FEAR_EFFECT))), ('EFIT', struct.pack('<fII', 10.0, 0, 2)),
     ])
     add('MGEF', ID_FRENZY_EFFECT, 'ESSB_FrenzyEffect', [
+        ('VMAD', vmad(hit22.STUB_SCRIPT, {})),   # round 22：結束時 DLL 結算回魘（詛咒 +2）
         ('FULL', Z('元素魔戰士：瘋狂')),
         ('KSIZ', I(2)), ('KWDA', I(ref('Skyrim.esm', FID_KW_INFLUENCE))
                                  + I(ref('Skyrim.esm', FID_KW_INFLUENCE_FRENZY))),
@@ -2066,12 +2103,10 @@ def build_esp(plan):
         'EnvStormy': (1, own(ID_GLOB_ENGINE['ESSB_EnvStormy'])),
         'EnvNight': (1, own(ID_GLOB_ENGINE['ESSB_EnvNight'])),
         'GameHour': (1, ref('Skyrim.esm', FID_GAME_HOUR)),
-        'StatusHostSpell': (1, own(ID_STATUS_SPELL)),
         'EngagedSpell': (1, own(ID_ENGAGED_SPELL)),
         'EngagedKeyword': (1, own(ID_KW_ENGAGED)),
         'UndeadKeyword': (1, ref('Skyrim.esm', FID_KW_UNDEAD)),
         'DaedraKeyword': (1, ref('Skyrim.esm', FID_KW_DAEDRA)),
-        'MarkSpells': (11, [own(ID_MARK_SPELL + n) for n in range(11)]),
         'ReactSpells': (11, [own(ID_REACT_SPELL + n) for n in range(11)]),
         'UtilTargetSpells': (11, [own(0x005151), own(0x005153), own(0x005155)]),
         'UtilSpells': (11, [own(util_spell_id(n)) for n in range(len(UTILS))]),
@@ -2104,10 +2139,11 @@ def build_esp(plan):
         # ---- 機制前線 round 3
         'FearSpell': (1, own(ID_FEAR_SPELL)),
         'FrenzySpell': (1, own(ID_FRENZY_SPELL)),
+        'FrenzyBladeSpell': (1, own(hit22.frenzy_blade_spell_id())),
+        'VisionSpell': (1, own(hit22.vision_spell_id())),
         'ReanimateSpell': (1, own(ID_REANIMATE_SPELL)),
         'CleanseSpell': (1, own(ID_CLEANSE_SPELL)),
         'PurgeSpell': (1, own(ID_PURGE_SPELL)),
-        'StripSpell': (1, own(ID_STRIP_SPELL)),
         'PoisonResistAbility': (1, own(ID_ABILITY_SPELL + 5)),
         'NoReanimateKeyword': (1, ref('Skyrim.esm', FID_KW_NO_REANIMATE)),
         'HarmfulKeyword': (1, ref('Skyrim.esm', FID_KW_ALCH_HARMFUL)),
@@ -2133,7 +2169,6 @@ def build_esp(plan):
         'RiposteWindowSpell': (1, own(hit21.RIPOSTE)),
         'IceArmorAbility': (1, own(hit21.ICE_ARMOR)),
         'IceArmorWideAbility': (1, own(hit21.ICE_ARMOR_WIDE)),
-        'HitBonusSpells': (11, [own(hit18.BONUS_SPELL+i) for i in range(11)]),
         'NativeHit': (1, own(hit19.NATIVE_HIT)), 'NativeWanted': (1, own(hit19.NATIVE_WANTED)),
     })
     for ix, (name, _default) in enumerate(MECH_GLOBALS):
@@ -2261,9 +2296,9 @@ def build_esp(plan):
             {'what': '破魔印／沉默持續白邊',
              'records': ['ESSB_ManaBreakEffect', 'ESSB_SilenceEffect'],
              'shader': [FX_STATUS_WHITE], 'condition': '-', 'attached_to': 'Hit Shader + FX Persist'},
-            {'what': '冰封', 'records': ['ESSB_StatusHostEffect', 'ESSBStatus.SyncFrozenFx'],
-             'shader': [FX_STATUS_FROZEN], 'condition': 'Freeze >= 5; alive; active host',
-             'attached_to': 'FrozenShader.Play/Stop on state transitions; existing single update'},
+            {'what': '冰封', 'records': [hit22.edid_effect('Frozen')],
+             'shader': [FX_STATUS_FROZEN], 'condition': 'DLL 在凍結滿 5 時掛上，3 秒（永凍、寒核等節點照 v0.4 延長）',
+             'attached_to': 'Hit Shader + FX Persist（效果在就有，效果結束就沒有）'},
             {'what': '化灰', 'records': ['ESSB_AshEffect'], 'shader': [FX_ELEMENT[6][3]],
              'condition': '-', 'attached_to': '原版崩解行為不動，只補 2.11 神聖列的化灰著色器'},
             {'what': '復生／恐懼／瘋狂／治病／解毒（原版既有，不複製）',
@@ -2276,7 +2311,7 @@ def build_esp(plan):
              'shader': ['ESSBFX_ZZExplosion_<元素>Hand1'],
              'condition': '每 0.5 秒最多 5 次（ESSBController.PlaceFx 的預算）',
              'attached_to': 'PlaceAtMe 於領域中心，一次性；判定不變'},
-            {'what': '終焉／融斷', 'records': ['ESSBController.EndMark / EndSecondMark'],
+            {'what': '終焉／融斷', 'records': ['ESSBReactions.End（ESSB_End）'],
              'shader': ['ESSBFX_ZZExplosion_<元素>Hand1'],
              'condition': '同上預算；普通命中絕不放爆炸（2.12 效能守則）',
              'attached_to': 'PlaceAtMe 於目標'},
@@ -2599,7 +2634,7 @@ def write_coverage():
 # ------------------------------------------------------------------ 規劃覆蓋表（v0.4 的 493 個節點 + 共通機制）
 # round 21：節點狀態改成 v0.4 的 DONE／KEPT-Nx／PARTIAL-Nx／LATER-Nx（見 plan_coverage.STATUS_LEGEND）；
 # 共通機制列沿用 IMPLEMENTED／DEFERRED。
-NODE_STATUS = re.compile(r'(DONE|KEPT-(N[3-6]|待決)|PARTIAL-(N[3-6]|基礎)|LATER-(N[3-6]|待決))')
+NODE_STATUS = re.compile(r'(DONE|KEPT-(N[3-6]|待決)|PARTIAL-(N[3-6]|基礎|待決)|LATER-(N[3-6]|待決))')
 MECHANISM_STATUS = ['IMPLEMENTED', 'DEFERRED', 'REMOVED', 'LATER-N5']
 
 
@@ -2914,19 +2949,22 @@ def compile_scripts():
 
 
 def write_state_helpers():
-    """Papyrus requires literal array lengths; derive them all from the two lifetimes."""
-    funcs = [('BleedSeconds', BLEED_LAYER_SECONDS), ('PoisonSeconds', POISON_LAYER_SECONDS),
-             ('IntCount', STATE_INTS), ('PoisonOffset', 8 + BLEED_LAYER_SECONDS),
-             ('TailOffset', 8 + BLEED_LAYER_SECONDS + POISON_LAYER_SECONDS)]
+    """ESSBState.psc: the controller quest lookup and generated constants. Round 22 removed the status rings and
+    the swap backups (and with them every ring/backup helper); bleed and poison are engine DoTs the DLL applies."""
     lines = ['Scriptname ESSBState Hidden',
-             '; Generated by build_v03.py. Change lifetime constants there only.', '']
+             '; Generated by build_v03.py. Change the constants there only.', '']
     lines += ['Quest Function ControllerQuest() Global',
               f'\tReturn Game.GetFormFromFile(0x{ID_QUEST:06X}, \"Elements Spellblade.esp\") as Quest',
               'EndFunction', '',
               'Bool Function Operational() Global', '\tQuest currentQuest = ControllerQuest()',
               '\tIf !currentQuest', '\t\tReturn False', '\tEndIf',
               '\tESSBController ctl = currentQuest.GetAlias(0) as ESSBController',
-              '\tReturn ctl && ctl.IsOperational()', 'EndFunction', '']
+              '\tReturn ctl && ctl.IsOperational()', 'EndFunction', '',
+              # MCM / menus (commander ruling): the controller is ready, whatever the master switch says.
+              'Bool Function ReadyUI() Global', '\tQuest currentQuest = ControllerQuest()',
+              '\tIf !currentQuest', '\t\tReturn False', '\tEndIf',
+              '\tESSBController ctl = currentQuest.GetAlias(0) as ESSBController',
+              '\tReturn ctl && ctl.IsReadyUI()', 'EndFunction', '']
     attribution = json.loads((WORK / 'settings.json').read_text(encoding='utf8')).get('kill_attribution_seconds', 3.0)
     assert isinstance(attribution, (int, float)) and not isinstance(attribution, bool) and math.isfinite(attribution) and attribution >= 0, 'invalid kill_attribution_seconds'
     lines += ['Float Function KillAttributionSeconds() Global', f'\tReturn {float(attribution)}', 'EndFunction', '']
@@ -2934,162 +2972,32 @@ def write_state_helpers():
               '\tIf aiIndex < 0 || aiIndex >= 9', '\t\tReturn None', '\tEndIf',
               f'\tReturn Game.GetFormFromFile(0x{ID_GUARD_WINDOW + 1:06X} + aiIndex * 2, "Elements Spellblade.esp") as Spell',
               'EndFunction', '']
-    for name, value in funcs:
-        lines += [f'Int Function {name}() Global', f'\tReturn {value}', 'EndFunction', '']
-    for name, size in [('NewBleed', BLEED_LAYER_SECONDS), ('NewPoison', POISON_LAYER_SECONDS),
-                       ('NewInts', STATE_INTS), ('NewBackup', BACKUP_SLOTS * STATE_INTS)]:
-        assert 0 < size <= 128
-        lines += [f'Int[] Function {name}() Global', f'\tInt[] result = new Int[{size}]',
-                  '\tReturn result', 'EndFunction', '']
-    lines += ['Int[] Function UpgradeInts(Int[] old) Global',
-              '\tIf !old || old.Length != 27', '\t\tReturn old', '\tEndIf',
-              '\tInt[] result = NewInts()', '\tInt i = 0', '\tWhile i < 13',
-              '\t\tresult[i] = old[i]', '\t\ti += 1', '\tEndWhile',
-              '\ti = 0', '\tWhile i < 6', '\t\tresult[PoisonOffset() + i] = old[13 + i]',
-              '\t\ti += 1', '\tEndWhile', '\ti = 0', '\tWhile i < 8',
-              '\t\tresult[TailOffset() + i] = old[19 + i]', '\t\ti += 1', '\tEndWhile',
-              '\tReturn result', 'EndFunction', '']
     (WORK / 'src/ESSBState.psc').write_bytes('\r\n'.join(lines).encode('utf-8'))
 
 
-def validate_dot_state():
-    """Execute the actual serialization/ring Papyrus subset offline, not a duplicate model."""
-    import types
-
-    class Returned(Exception):
-        pass
-
-    def body(source, name):
-        match = re.search(r'(?im)^.*\bFunction ' + name + r'\([^\n]*\)\s*(?:Global)?\s*\n(.*?)^EndFunction',
-                          source, re.S | re.M)
-        assert match, name
-        return match[1]
-
-    def execute(source, name, env, fragment=None):
-        text = fragment if fragment is not None else body(source, name)
-        lines, depth = [], 0
-        for raw in text.splitlines():
-            line = raw.split(';', 1)[0].strip()
-            if not line:
-                continue
-            line = re.sub(r'\bnew (?:Int|Float|Bool)\[(\d+)\]', r'[0] * \1', line)
-            line = re.sub(r'^(?:Int|Float|Bool|String)(?:\[\])?\s+', '', line)
-            line = re.sub(r'\b([A-Za-z_]\w*)\.Length\b', r'len(\1)', line)
-            line = line.replace('&&', ' and ').replace('||', ' or ')
-            line = re.sub(r'!(?!=)', 'not ', line)
-            line = re.sub(r'\s+as Float\b', '', line)
-            if line in ('EndIf', 'EndWhile'):
-                depth -= 1
-                continue
-            if line.startswith('ElseIf '):
-                depth -= 1
-                line = 'elif ' + line[7:] + ':'
-            elif line == 'Else':
-                depth -= 1
-                line = 'else:'
-            elif line.startswith('If '):
-                line = 'if ' + line[3:] + ':'
-            elif line.startswith('While '):
-                line = 'while ' + line[6:] + ':'
-            elif line.startswith('Return'):
-                line = 'raise Returned(' + line[6:].strip() + ')'
-            lines.append('    ' * depth + line)
-            if line.endswith(':'):
-                depth += 1
-        assert depth == 0, (name, depth)
-        env.update(Returned=Returned)
-        try:
-            exec('\n'.join(lines), env)
-        except Returned as result:
-            return result.args[0] if result.args else None
-
-    status = (WORK / 'src/ESSBStatus.psc').read_text(encoding='utf-8')
-    controller = (WORK / 'src/ESSBController.psc').read_text(encoding='utf-8')
-    helper = (WORK / 'src/ESSBState.psc').read_text(encoding='utf-8')
-    state = types.SimpleNamespace()
-    names = re.findall(r'(?im)^.*\bFunction (\w+)\(', helper)
-    def helper_call(name, *args):
-        env = {n: getattr(state, n) for n in names}
-        if args:
-            env['old'] = args[0]
-        return execute(helper, name, env)
-    for name in names:
-        setattr(state, name, lambda *args, n=name: helper_call(n, *args))
-    base = dict(ESSBState=state, InitRings=lambda: None, SyncFrozenFx=lambda: None, Ctl=types.SimpleNamespace(StateBroken=False))
-    fields = ['Heat', 'Freeze', 'Fissure', 'Unbalance', 'HolyStack', 'Wet', 'Pressure', 'Curse',
-              'CatalyzeLeft', 'DeathCurseLeft', 'SpreadCounter', 'AirLeft', 'StarLockLeft', 'WetLock']
-    original = dict(base, **{n: i + 101 for i, n in enumerate(fields)},
-                    BleedRing=list(range(1, BLEED_LAYER_SECONDS + 1)),
-                    PoisonRing=list(range(21, 21 + POISON_LAYER_SECONDS)), AstralRing=[71, 72])
-    packed = execute(status, 'ExportInts', original.copy())
-    assert len(packed) == STATE_INTS and len(set(packed[:state.TailOffset()+2])) == state.TailOffset()+2
-    restored = dict(base, BleedRing=state.NewBleed(), PoisonRing=state.NewPoison(), AstralRing=[0, 0],
-                    aiInts=packed, afFloats=None, AstralWeight=[0.0, 0.0])
-    execute(status, 'ImportState', restored)
-    for key in [n for n in fields if n not in ('CatalyzeLeft','DeathCurseLeft','SpreadCounter','AirLeft','StarLockLeft')] + ['BleedRing', 'PoisonRing', 'AstralRing']:
-        assert restored[key] == original[key], key
-    assert execute(status, 'ExportInts', restored.copy()) == packed
-
-    banks = dict(base, **{f'BackupInts{n}': state.NewBackup() for n in 'ABCD'},
-                 BackupFloatsA=[0.0] * 96, BackupFloatsB=[0.0] * 96, BackupValid=[False] * 8)
-    banks['SwapIntBank'] = lambda slot: execute(controller, 'SwapIntBank', dict(banks, aiSlot=slot))
-    banks['StoreSwapInts'] = lambda slot, data: execute(controller, 'StoreSwapInts', dict(banks, aiSlot=slot, aiInts=data))
-    for slot in range(8):
-        execute(controller, 'SaveSwapData', dict(banks, aiSlot=slot,
-                aiInts=[v + slot * 1000 for v in packed], afFloats=[slot * 100 + i + 0.25 for i in range(24)]))
-    for slot in range(8):
-        assert execute(controller, 'ReadSwapInts', dict(banks, aiSlot=slot)) == [v + slot * 1000 for v in packed]
-        assert execute(controller, 'ReadSwapFloats', dict(banks, aiSlot=slot)) == [slot * 100 + i + 0.25 for i in range(24)]
-    # Legacy saved backup banks are converted through the real initialization path.
-    legacy = dict(banks, BackupIntsA=list(range(108)), BackupIntsB=list(range(108, 216)),
-                  BackupIntsC=None, BackupIntsD=None)
-    legacy['SwapIntBank'] = lambda slot: execute(controller, 'SwapIntBank', dict(legacy, aiSlot=slot))
-    legacy['StoreSwapInts'] = lambda slot, data: execute(controller, 'StoreSwapInts', dict(legacy, aiSlot=slot, aiInts=data))
-    execute(controller, 'InitBackupInts', legacy)
-    for slot in range(8):
-        assert execute(controller, 'ReadSwapInts', dict(legacy, aiSlot=slot)) == state.UpgradeInts(list(range(slot * 27, (slot + 1) * 27)))
-    old = list(range(101, 128))
-    upgraded = state.UpgradeInts(old)
-    assert upgraded[:13] == old[:13]
-    assert upgraded[13:state.PoisonOffset()] == [0] * (BLEED_LAYER_SECONDS - 5)
-    assert upgraded[state.PoisonOffset():state.PoisonOffset() + 6] == old[13:19]
-    assert upgraded[state.TailOffset():] == old[19:]
-
-    # Each bucket survives exactly its remaining number of one-second ticks.
-    cases = 0
-    for lifetime in (BLEED_LAYER_SECONDS, POISON_LAYER_SECONDS):
-        for age in range(lifetime):
-            ring = [0] * lifetime
-            execute(status, 'RingAdd', dict(aiRing=ring, aiAmount=1, aiCap=0, RingSum=sum))
-            for _ in range(age):
-                execute(status, 'RingAge', dict(aiRing=ring))
-            for tick in range(1, lifetime - age + 1):
-                expired = execute(status, 'RingAge', dict(aiRing=ring))
-                assert expired == int(tick == lifetime - age)
-                assert sum(ring) == int(tick < lifetime - age)
-            cases += 1
-    remaining = execute(status, 'BleedRemaining', dict(base, BleedRing=original['BleedRing'], afPerLayerPerSecond=1.2))
-    assert math.isclose(remaining, sum(v * (BLEED_LAYER_SECONDS - i) * 1.2 for i, v in enumerate(original['BleedRing'])))
-    assert 'PendingStacks = new Int[96]' in controller and 'PendingSet = new Bool[96]' in controller
+def validate_status_arrays():
+    """Round 22 retired validate_dot_state (it executed ESSBStatus' rings and the controller's swap banks, both
+    deleted with the status container). What stays checkable offline: every Papyrus array literal is <= 128, no
+    script still carries the container, and the round-4 settings are unchanged. The status layer itself is checked
+    by the native tests (native/tests, build/fix22_reference.py) and build/fix22_verify.py."""
     arrays = []
     for name in SCRIPTS:
         source = (WORK / 'src' / (name + '.psc')).read_text(encoding='utf-8')
         for size in re.findall(r'(?i)\bnew\s+\w+\[(\d+)\]', source):
             assert 0 < int(size) <= 128, (name, size)
             arrays.append({'script': name, 'size': int(size)})
+        for stale in ('ESSBStatus', 'ESSBMark', 'RegStatus', 'PendingStacks', 'BackupInts', 'SwapHosts'):
+            assert not re.search(r'\b' + stale + r'\b', source), (name, stale)
+    assert not (WORK / 'src/ESSBStatus.psc').exists() and not (WORK / 'src/ESSBMark.psc').exists()
     settings = json.loads((WORK / 'settings.json').read_text(encoding='utf-8'))
     previous = json.loads((WORK / '.codex/pre-fix5-snapshot/settings.json').read_text(encoding='utf-8'))
     assert all(settings.get(k) == v for k, v in previous.items()), 'round 4 settings must remain unchanged'
-    dump(WORK / 'build/fix5-dot-check.json', {
-        'poison_seconds': POISON_LAYER_SECONDS, 'bleed_seconds': BLEED_LAYER_SECONDS,
-        'state_ints': STATE_INTS, 'backup_banks': 4, 'ints_per_bank': BACKUP_SLOTS * STATE_INTS,
-        'round_trip_every_bucket': True, 'all_eight_backup_slots': True, 'legacy_27_upgrade': True,
-        'expiry_cases': cases, 'bleed_remaining': remaining, 'pending_by_kind': 96,
+    dump(WORK / 'build/fix22-array-check.json', {
+        'retired': 'validate_dot_state (status rings and swap banks deleted in round 22)',
         'array_allocations': arrays, 'max_array': max(a['size'] for a in arrays),
-        'timing_scope': 'one-second ring ticks; Papyrus scheduling and swap latency need in-game measurement',
     })
-    print(f'DOT ok: poison={POISON_LAYER_SECONDS}s bleed={BLEED_LAYER_SECONDS}s ints={STATE_INTS}; '
-          f'roundtrip + 8 slots + legacy + {cases} expiry cases; all arrays <=128; round4 DPS unchanged')
+    print(f'ARRAYS ok: {len(arrays)} Papyrus array literals, max {max(a["size"] for a in arrays)} <= 128; '
+          'no status container left in any script')
 
 
 NODE_SCALE_RANGE = (1.0, 5.0)   # 裁決 R3：MCM 節點倍率 1–5，預設 3（settings.json node_percent_scale）
@@ -3167,8 +3075,8 @@ def write_mcm(manifest):
                      '確認後呼叫既有全部洗點；需脫戰、關閉形態，冷卻中的樹略過。')]
     debug = [control('ESSB_DebugLevel', '除錯等級', 'enum',
                      options=['0：關閉', '1：事件', '2：命中', '3：詳細'], defaultValue=settings['debug_level']),
-             button('ESSB_DumpRegistry', '印出目標表', 'DumpRegistry',
-                    '將目前最多 8 個目標的狀態寫入 Papyrus 紀錄；遊戲需啟用 Papyrus logging 才會產生檔案。')]
+             button('ESSB_DumpRegistry', '印出目標狀態', 'DumpRegistry',
+                    '將附近帶印記的目標與你身上的狀態寫入 Papyrus 紀錄；遊戲需啟用 Papyrus logging 才會產生檔案。')]
     hotkeys = [control('ESSB_HotkeysEnabled', '直接切換熱鍵', 'toggle', defaultValue=1),
                control('ESSB_FormNotify', '切換文字提示', 'toggle', defaultValue=1),
                control('ESSB_FormSound', '切換音效', 'toggle', defaultValue=1)]
@@ -3301,7 +3209,7 @@ def validate_mcm(records, written):
     for name in functions:
         assert f'Function {name}()' in bridge
     assert bridge.count('ShowMessage(') == 5 and 'trees.Respec(tree)' in bridge and 'trees.RespecAll()' in bridge
-    assert 'ctl.DumpRegistry()' in bridge and 'OpenTree(' not in bridge
+    assert 'ctl.DumpStatus()' in bridge and 'OpenTree(' not in bridge   # round 22: no registry, the DLL's statuses
     assert bridge.index('Int tree = trees.CurrentTree()') < bridge.index('ctl.CloseForm()') < bridge.index('trees.Respec(tree)')
     assert 'If tree < 11 && !Game.GetPlayer().IsInCombat() && trees.RespecReady(tree)' in bridge
     assert all('ESSBMCM' not in (WORK / 'src' / f'{name}.psc').read_text(encoding='utf-8') for name in SCRIPTS if name != 'ESSBMCM')
@@ -3356,7 +3264,7 @@ def main():
     hit19.require_fresh(sys.modules[__name__])  # fail before touching the release when native is missing/stale
     state_schema.preflight()
     write_state_helpers()
-    validate_dot_state()
+    validate_status_arrays()
     plan = apply_fix8_decisions(plan_trees.build())
     dump(WORK / 'build/plan-tree-nodes.json', plan)
     plan_totals = plan['totals']
@@ -3418,6 +3326,7 @@ def main():
     hit19.verify(sys.modules[__name__])
     runpy.run_path(str(WORK / 'build/fix20_verify.py'))['run']()
     runpy.run_path(str(WORK / 'build/fix21_verify.py'))['run'](sys.modules[__name__])   # round 21: R2, entries, retired, R3
+    runpy.run_path(str(WORK / 'build/fix22_verify.py'))['run'](sys.modules[__name__])   # round 22: seam, removals, records, guards, faults
     runpy.run_path(str(WORK / 'build/fix18_probes.py'))['run'](sys.modules[__name__])
     perks = sum(1 for r in check if r.sig == 'PERK')
     print(f'READBACK ok: masters={meta["masters"]} records={len(check)} manifest={written["record_count"]} '
@@ -3520,8 +3429,12 @@ def validate_fix3(records, written, bindings):
         visibility.append({'host': host, 'shader': shader.edid, **audit})
     frozen = by_edid['ESSBFX_Status_Frozen']
     assert efsh_visibility(frozen.ss)['persistent_edge_visible']
-    status_host = by_edid['ESSB_StatusHostEffect']
-    assert b'FrozenShader' in status_host.d['VMAD'] and I(own(int(frozen.key.split('|')[1], 16))) in status_host.d['VMAD']
+    # Round 22: the frozen film is the Hit Shader (+ FX Persist) of the DLL's 冰封 effect, not a status-container
+    # script property; the retired container carries no script at all.
+    frozen_effect = by_edid[hit22.edid_effect('Frozen')]
+    assert struct.unpack_from('<I', frozen_effect.d['DATA'])[0] & 0x1000
+    assert struct.unpack_from('<I', frozen_effect.d['DATA'], 32)[0] == own(int(frozen.key.split('|')[1], 16))
+    assert 'VMAD' not in by_edid['ESSB_StatusHostEffect'].d
     for r in records:
         if r.edid.startswith('ESSBFX_'):
             for _, _, fid, label in fx_extract.slots(r):
@@ -3552,6 +3465,10 @@ def validate_delivery(records):
     contact_names.update({hit21.soak_edid(s) for s in range(1, hit21.SOAK_MAX_SECONDS + 1)} | {'ESSB_Hush', 'ESSB_HushSpent'})
     # 冰甲's cloak payload is aimed (2), as every vanilla cloak payload; the cloak ability itself is self (0).
     aimed_names = {'ESSB_IceArmorChill', 'ESSB_IceArmorChillWide'}
+    # Round 22: the status layer's target effects, the DoTs and 狂刃 are contact casts on the target (the miasma
+    # cloak and its aimed payload went in the review fix); the player's ladders and windows are self casts.
+    contact_names.update(hit22.contact_edids())
+    aimed_names |= hit22.aimed_edids()
     groups = {0: [], 1: []}
     rows = []
     for record in records:

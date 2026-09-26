@@ -8,6 +8,15 @@ from types import SimpleNamespace as NS
 import collections, hashlib, json, re, sys
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
+# Round 22: these checks run on the pre-fix22 scripts; build/fix22_history.py ties them to today's (declared changes only).
+import sys as _sys22
+_sys22.path.insert(0, str(ROOT / 'build'))
+import fix22_history as _fix22_history
+SRC22 = _fix22_history.legacy_source()
+def CUR22(rel):  # a repo path as the older rounds knew it: src/* comes from the pre-fix22 snapshot
+    rel = str(rel).replace(chr(92), '/')
+    return SRC22 / rel[4:] if rel.startswith('src/') else ROOT / rel
+
 sys.path.insert(0, str(ROOT)); sys.path.insert(0, str(ROOT/'build'))
 from papyrus_harness import Script, Array
 
@@ -36,7 +45,7 @@ class Spell:
 
 def controller(folder, current=None):
     player=Actor()
-    helper=Script(ROOT/'src/ESSBState.psc')
+    helper=Script(SRC22/'ESSBState.psc')
     c=Script(folder/'ESSBController.psc',dict(ESSBState=helper,Utility=NS(GetCurrentRealTime=lambda:100.0)))
     helper.overrides['ControllerQuest']=lambda:NS(GetAlias=lambda i:current or c)
     # Init real arrays; Ready represents a serialized running instance.
@@ -243,9 +252,9 @@ def run():
     assert baseline.is_dir()
     cases={};negatives={}
     oldesp=ROOT/'build/fix10-before/Elements Spellblade.esp'
-    for name,fn,old,new in [('A',regression_a,baseline,ROOT/'src'),('B',regression_b,baseline,ROOT/'src'),
+    for name,fn,old,new in [('A',regression_a,baseline,SRC22),('B',regression_b,baseline,SRC22),
                             ('C',regression_c,oldesp,ROOT/'package/Elements Spellblade/Elements Spellblade.esp'),
-                            ('D',regression_d,baseline,ROOT/'src')]:
+                            ('D',regression_d,baseline,SRC22)]:
         try:fn(old)
         except AssertionError as ex:negatives[name]=str(ex)
         else:raise AssertionError(name+' pre-fix incorrectly passed')
@@ -281,7 +290,7 @@ def run():
     for old in (ROOT/'build/fix10-before').rglob('*'):
         rel=old.relative_to(ROOT/'build/fix10-before')
         if not old.is_file() or old.suffix=='.esp':continue
-        a=old.read_bytes();b=(ROOT/rel).read_bytes()
+        a=old.read_bytes();b=CUR22(rel).read_bytes()
         if rel.as_posix()=='實作紀錄.md':
             prior=a
             a=(ROOT/'.codex/pre-fix18b-snapshot/實作紀錄.md').read_bytes()

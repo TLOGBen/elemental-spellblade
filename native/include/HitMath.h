@@ -11,8 +11,8 @@
 // and the soaked slow's duration node (fixed-duration spells, ruling R6); every node is looked up by v0.4 name.
 // Formula (v0.4 2.7):  D_hit = B x R x G(L) x BaseDamageMult x M_mod x T x C   (M_ext and Res: engine)
 //   M_mod = (1 + sum of node percentages) x blood curve x blood rage x environment x undead x exorcism x wind sneak
-// Target-side and script-state terms (heat, open boost, frozen, holy vulnerability, ...) are still added by
-// the Papyrus difference patch until N3; see ESSBController.ApplyProc.
+// Round 22 (N3): the target-side and status terms (heat, open boost, frozen, holy vulnerability, pressure, ...) come
+// from Status.h ProcTerms as StatusTerms; the Papyrus difference patch (ESSBController.ApplyProc) is gone.
 #include "ManifestData.h"
 #include "NodeIds.h"
 
@@ -83,6 +83,20 @@ struct Tuning {
     bool envNight = false;           // ESSB_EnvNight (20:00-6:00)
     int prevElement = 0;             // ESSB_PrevElement
     int twinElement = 0;             // ESSB_TwinElement
+    float multCooldown = 1.0f;       // ESSB_MultCooldown (round 22: the per-target reaction cooldowns)
+    bool envStormy = false;          // ESSB_EnvStormy (round 22: 暴風雪 doubles freeze)
+    float multDot = 1.0f;            // ESSB_MultDot (round 22: the DoTs are the DLL's now)
+    float poisonDotK = 0.2116f;      // ESSB_PoisonDotK (2.7 k_dot, MCM)
+    float bleedDotK = 0.1143f;       // ESSB_BleedDotK
+};
+
+// Round 22 (N3): what the statuses on the target and the player do to each element's proc this hit (Status.h
+// ProcTerms). `add` joins the node sum of M_mod, `mult` is v0.4 2.7's T; `windSneak` is 暗風 / 連殺 on top of the ×3.
+// All neutral by default, so the N2 formula is unchanged when no status applies.
+struct StatusTerms {
+    std::array<float, kElementCount + 1> add{};
+    std::array<float, kElementCount + 1> mult{ 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
+    float windSneak = 1.0f;
 };
 
 struct Attack {
@@ -276,7 +290,7 @@ constexpr float NodeSum(int element, bool power, const Tuning& t, const Nodes& n
 // Categorical multipliers the DLL knows at hit time (each x1 when it does not apply).
 template <NodeReader Nodes>
 constexpr float ElementMultiplier(int element, const Attack& a, const Tuning& t, const PlayerFacts& p,
-    const TargetFacts& target, const Nodes& nodes)
+    const TargetFacts& target, const Nodes& nodes, const StatusTerms& terms)
 {
     float mult = 1.0f;
     if (element == kBlood) {
@@ -300,9 +314,9 @@ constexpr float ElementMultiplier(int element, const Attack& a, const Tuning& t,
         mult *= 1.5f;
     }
     if (element == kWind && a.sneakAttack) {
-        mult *= 3.0f;
+        mult *= 3.0f * terms.windSneak;
     }
-    return mult;
+    return mult * terms.mult[element];
 }
 
 // v0.4 2.1: lightning rolls its range (settings 1..25) N times and keeps the highest (N = 1 + charges;
@@ -344,7 +358,7 @@ struct Proc {
 // One element proc: rolls B (and the crit for lightning) and returns D_hit before M_ext / Res.
 template <NodeReader Nodes, RandomSource Rng>
 constexpr Proc RollProc(int element, const Attack& a, const Config& c, const Tuning& t, const PlayerFacts& p,
-    const TargetFacts& target, const Nodes& nodes, Rng& rng)
+    const TargetFacts& target, const Nodes& nodes, Rng& rng, const StatusTerms& terms)
 {
     float b = 0.0f;
     if (element == kLightning) {
@@ -355,8 +369,8 @@ constexpr Proc RollProc(int element, const Attack& a, const Config& c, const Tun
     }
     const float r = a.power ? 1.5f : 1.0f;
     Proc proc;
-    proc.magnitude = b * r * TreeG(t, TreeOf(element)) * t.baseDamageMult * NodeSum(element, a.power, t, nodes) *
-                     ElementMultiplier(element, a, t, p, target, nodes);
+    proc.magnitude = b * r * TreeG(t, TreeOf(element)) * t.baseDamageMult * (NodeSum(element, a.power, t, nodes) + terms.add[element]) *
+                     ElementMultiplier(element, a, t, p, target, nodes, terms);
     if (element == kLightning && rng.Chance(LightningCritChance(kChargesUntilN4))) {
         proc.crit = true;
         proc.magnitude *= CritMultiplier(a.power);
@@ -455,10 +469,10 @@ constexpr float EchoRatio(const Tuning& t, const Nodes& nodes)
 
 template <NodeReader Nodes, RandomSource Rng>
 constexpr void PlanElementHit(Plan& plan, const Attack& a, const Config& c, const Tuning& t, const PlayerFacts& p,
-    const TargetFacts& target, const Nodes& nodes, Rng& rng)
+    const TargetFacts& target, const Nodes& nodes, Rng& rng, const StatusTerms& terms)
 {
     const int element = a.element;
-    const Proc proc = RollProc(element, a, c, t, p, target, nodes, rng);
+    const Proc proc = RollProc(element, a, c, t, p, target, nodes, rng, terms);
     plan.element = element;
     plan.magnitude = proc.magnitude;
     plan.crit = proc.crit;
@@ -480,7 +494,7 @@ constexpr void PlanElementHit(Plan& plan, const Attack& a, const Config& c, cons
 
     // 雙生: the left-hand weapon also carries the previous form's element for 30 s.
     if (a.leftHand && p.twinWindow && IsElement(t.twinElement) && t.twinElement != element) {
-        const Proc twin = RollProc(t.twinElement, a, c, t, p, target, nodes, rng);
+        const Proc twin = RollProc(t.twinElement, a, c, t, p, target, nodes, rng, terms);
         plan.Add({ Cast::kProc, twin.magnitude, t.twinElement, a.power });
         if (t.twinElement == kLightning) {
             plan.Add({ Cast::kDrainMagicka, twin.magnitude * 0.5f * t.multDrain });
@@ -491,7 +505,7 @@ constexpr void PlanElementHit(Plan& plan, const Attack& a, const Config& c, cons
         plan.consumeEcho = true;
         const float ratio = EchoRatio(t, nodes);
         if (ratio > 0.0f) {
-            const Proc echo = RollProc(t.prevElement, a, c, t, p, target, nodes, rng);
+            const Proc echo = RollProc(t.prevElement, a, c, t, p, target, nodes, rng, terms);
             plan.Add({ Cast::kProc, echo.magnitude * ratio, t.prevElement, a.power });
         }
     }
@@ -656,11 +670,11 @@ constexpr void PlanNoFormHit(Plan& plan, const Attack& a, const Config& c, const
 // The whole hit. Element hits need a form; no-form hits are element 0.
 template <NodeReader Nodes, RandomSource Rng>
 constexpr Plan PlanHit(const Attack& a, const Config& c, const Tuning& t, const PlayerFacts& p,
-    const TargetFacts& target, const Nodes& nodes, Rng& rng)
+    const TargetFacts& target, const Nodes& nodes, Rng& rng, const StatusTerms& terms = StatusTerms{})
 {
     Plan plan;
     if (IsElement(a.element)) {
-        PlanElementHit(plan, a, c, t, p, target, nodes, rng);
+        PlanElementHit(plan, a, c, t, p, target, nodes, rng, terms);
     } else if (a.element == kNoElement) {
         PlanNoFormHit(plan, a, c, t, p, target, nodes);
     }

@@ -137,3 +137,41 @@ snapshot 的 74 段中，R5→R1 priority 遞減；按 smoke 證實的最低 pri
 - 反擊視窗的驅散時序（同一幀兩刀時，第二刀是否還看得到視窗；設計上 `riposteDispelQueued` 讓它看不到）。
 - 冰甲斗篷（原型 35，magnitude＝半徑呎）在 1.5.97 的實際半徑與只對敵對者生效（沿用原版斗篷的 hostile 條件）。
 - 寂在 N5 之前遊戲內不會出現，寂滅的遊戲內效果要等 N5；本輪只有離線測試。
+
+## Round 22（N3）：目標狀態層搬進 DLL（0.22.0）
+
+這一輪沒有新的逆向；用到的引擎行為都出自 `build/native-verification-3.md`（第 2、4、5、6、10、12、15、16 節）與 round 19／`native-verification-2.md` 已查證的施放路徑。下面只寫「怎麼用」與本輪額外反組譯確認的一點。
+
+| 項目 | 依據 | 本輪做法 |
+|---|---|---|
+| 狀態存在哪 | nv3 §4（`ActiveEffect::magnitude`、`duration`、`elapsedSeconds` 可讀） | 每種目標狀態與你身上的階（熱度、聖佑、懲戒……）各一顆自有 MGEF（`build/fix22_records.py`，0x005400 起），層數＝`ActiveEffect::magnitude`、剩餘時間＝`duration − elapsedSeconds`。DLL 不存任何設計狀態、不做存檔序列化。 |
+| 時長要連續值 | 本輪反組譯（08:28）：套用 visitor 0x140551980 先寫強度覆寫，再經 0x14053DEB0 → 0x140540360；後者在 effectiveness ≠ 1 且 MGEF 帶 NoMagnitude（0x400）時只把 duration 乘 effectiveness | 狀態 MGEF 全部 Script 原型＋NoMagnitude；DLL 以「強度覆寫＝層數、effectiveness＝想要秒數 ÷ 記錄秒數」施放。記錄秒數＝v0.4 預設，實機若不是這樣會退化成預設時長。**未實測**（探針卡 A 段的印記 15 秒消失間接看得到）。 |
+| 重套 | nv3 §5、§6 | 一律先 `Dispel(true)` 舊的一顆再 `CastSpellImmediate`（R3）；驅散期間移除 sink 以 `selfDispel` 略過自己造成的移除。 |
+| 強度覆寫會寫進每個效果 | nv2（visitor 0x140551980） | 聖佑三階的法術同時帶武器傷害（AV 154 `AttackDamageMult`，round 21 誤用 34 `MeleeDamage`）與護甲效果，所以以覆寫 0（不覆寫）施放，記錄值照用。 |
+| 到期／驅散／死亡 | nv3 §2 | 只有要結算的效果（印記、白熱引信、熔燒、星痕引信、死咒、浮空、冰封、恐懼／瘋狂）掛空的 `ESSBStub` 腳本讓移除事件出現。sink 只讀：`elapsed ≥ duration` 且沒死＝到期，丟 `AddTask` 結算；其他（驅散、死亡）不結算。除錯等級 3 時寫 `[ESSB][N3-1]`。 |
+| 死亡快照 | nv3 §10（`dead=false` 時效果還在） | `TESDeathEvent dead=false` 讀屍體的印記與層數，送 `ESSB_Death`（8 個值，含是否玩家擊殺）給 Papyrus 的擊殺掛勾（N5 前）。 |
+| 反應本體 | SKSE `ModCallbackEvent`；Papyrus `StringUtil.Split`（本機 skse64 2.0.20 有） | DLL 送 `ESSB_Open／End／Frozen／Hallucinate／Judgment／Splash／Shatter／Landing／Rise`，strArg＝8 個值以 `|` 串接、定點 `%.5f`（Papyrus 字串轉 Float 不認指數）。 |
+| 每秒點 | nv3 §12 | 既有 100 ms 計時執行緒每 tick 一個主執行緒 task：熱度／聖佑退階、白熱火源、放血與瘟疫的每秒傷害（`TargetSecond`）。 |
+| 沖刷（R5） | nv3 §15 | `Executor::Wash`：法術類型為 spell／scroll／staff、`castingSource` 為左右手、有剩餘時間、非 hostile 非 detrimental、不是本模組、不是召喚／綁定武器／復活。除錯等級 3 寫 `[ESSB][N3-3]`。 |
+| 執行緒（X1） | nv3 §16、§18 | 命中、效果移除、死亡、計時 task、Papyrus 原生函式各第一次觸發時寫 `[ESSB][X1] … same／DIFFERENT`。輸入與施法事件 sink 本輪不存在（N4／N6）。 |
+| 防護 | — | 每個 sink 與 task 都是 SEH 外框＋C++ catch；本輪起每個 `ESSBNative` 原生函式也經 `Guard`（C++ catch＋`SehInvoke` 的 SEH 外框，C++ 例外 0xE06D7363 放行給 catch 保留訊息）。 |
+
+測試：原生 A0 10、A 814、B 939、C 8442、D 1,140,000 照過；新增 `native/tests/status_test.cpp`：S 組 78 個情境（133 個預期操作，每一列後比對兩邊 board，對 `build/fix22_reference.py` 另寫的 Python 模型）、W 組 489 筆記錄對照（TagOf、Settles、Read、Lower 對 `build/fix22_records.py`）；`build/fix22_verify.py` 對測試注入 7 個錯誤全部失敗。參考模型與 C++ 是同一個實作者寫的，可能有同一個理解錯誤；手算核對了 5 個情境。
+
+### 仍未實測（探針卡 `build/fix22-probes.md`）
+
+- effectiveness 縮放時長（上面第二列）與 NoMagnitude 的組合。
+- X1、N3-1、N3-2（本模組沒有 DLL 測試熱鍵，改看鮮血持續傷的掉血速度）、N3-3。
+- 聖佑的 `AttackDamageMult` 數字、冰甲寒氣的第二顆互斥效果（條件讀 DLL 的凍結效果）。
+
+### Round 22 審查修正：引擎端可測、總開關、放血法術
+
+| 項目 | 做法 |
+|---|---|
+| 引擎端抽出 | `native/include/StatusEngine.h`：ReadBoard、DispelWhere（先收集再驅散、self-dispel 旗標）、RunPlan（Lower → 先驅散舊的再施放；死掉的目標不施放傷害）、Washes／Wash（裁定 R5）、OnRemoved（到期／驅散／死亡＋同一幀的冰晶）、PlanSettle、CastSpells／TaggedEffects。`Plugin.cpp` 只剩轉接：`EffectLists`（ForEach 跑中的效果、ForEachIncludingEnding 含正在結束的那一顆）與 `RealEngine`（Dispel(true)、CastSpellImmediate、付血、ModEvent）。沖刷用到的 SpellType／CastingSource 數字以 `static_assert` 釘在 CommonLib 的列舉上。 |
+| 放血法術 | `ResolveStatus` 改成解析 `CastSpells()` 整份清單；`engine_test` 把每一種 op 降階後的法術都對這份清單（原本漏了 `ESSB_Util_BleedTick`，第一次放血 tick 會讓 `SpellById` 丟例外、DLL 故障停用）。 |
+| 總開關 | `Enabled()`＝`Active()` 且 `ESSB_Enabled == 1`：結算 task、效果移除 sink、死亡 sink、每秒 task、每個原生函式（`Guard`）。命中路徑本來就由 `HitPipeline.h Filter` 擋。 |
+| 探針 log | 除錯等級 3：`[ESSB][N3-1][L3]`（加 `crystals=`）、`[ESSB][N3-2][L3] dot=… dispelled=N`（每次重套 DoT 先驅散了幾顆）、`[ESSB][N3-3][L3]`（沖刷逐效果）。 |
+| 瘴氣／瘟疫 | 披風記錄與 `Op::kMiasma` 拿掉；`TargetSecond` 每秒讀每個中毒敵人（`MiasmaDoses`／`PlagueChance`），對 3 公尺內的敵人 `SpreadDoses`（讀—長—先驅散再重套，同 R3）。 |
+
+測試：E 組（假引擎）與 C++ 突變 10 個見 `native/out/build-receipt.json` 的 `mutants`。仍未實測：上面全部的遊戲內行為（探針卡 `build/fix22-probes.md`）。

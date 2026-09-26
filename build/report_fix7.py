@@ -1,6 +1,11 @@
 from pathlib import Path
 import re,json,hashlib,html
 ROOT=Path(__file__).resolve().parents[1]
+# Round 22: the round-7 proof reads the pre-fix22 scripts; build/fix22_history.py ties them to today's.
+import sys as _sys22
+_sys22.path.insert(0,str(ROOT/'build'))
+import fix22_history as _fix22_history
+SRC22=_fix22_history.legacy_source()
 audit=(ROOT/'build/flat-values-audit.md').read_text(encoding='utf-8')
 rows=[[v.strip() for v in line.strip('|').split('|')] for line in audit.splitlines() if line.startswith('| ')][1:]
 assert len(rows)==60
@@ -170,7 +175,7 @@ for i,(row,sp) in enumerate(zip(rows,spec),1):
     if i in C1_21:
         if i in MOVED and not MOVED[i][0].startswith('native/'):
             file,fn=MOVED[i][0].removeprefix('src/'),MOVED[i][1]
-        s=(ROOT/'src'/file).read_text(encoding='utf-8')
+        s=(SRC22/file).read_text(encoding='utf-8')
         m=re.search(r'^[^\n]*\b(?:Function|Event) '+fn+r'\([^\n]*\n.*?^End(?:Function|Event)',s,re.M|re.S)
         assert m,(i,file,fn)
         needle,why=C1_21[i]
@@ -200,7 +205,7 @@ for i,(row,sp) in enumerate(zip(rows,spec),1):
     if i in MOVED:
         path,fn,needle,tree,sink=MOVED[i];file=path.removeprefix('src/')
         spec[i-1]=(needle,tree,sink)
-    s=(ROOT/'src'/file).read_text(encoding='utf-8')
+    s=(SRC22/file).read_text(encoding='utf-8')
     m=re.search(r'^[^\n]*\b(?:Function|Event) '+fn+r'\([^\n]*\n.*?^End(?:Function|Event)',s,re.M|re.S)
     assert m,(i,file,fn)
     needle,tree,sink=spec[i-1]

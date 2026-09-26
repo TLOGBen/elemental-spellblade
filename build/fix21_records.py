@@ -103,12 +103,21 @@ def add_records(b, add):
         ('DNAM', Z('寒氣減速 <mag>%。')),
         ('CTDA', HOSTILE_CTDA),
     ])
-    for spell, edid, pct in [(ICE_CHILL, 'ESSB_IceArmorChill', ICE_CHILL_PCT),
-                             (ICE_CHILL_WIDE, 'ESSB_IceArmorChillWide', ICE_CHILL_WIDE_PCT)]:
+    # Round 22: the freeze gauge is the DLL's effect, so "gauge >= 1 -> 35%" is a second, mutually exclusive effect
+    # (HasMagicEffect on the gauge effect; build/fix22_records.py).
+    import fix22_records as hit22
+    gauge = own(hit22.effect_id('kFreeze'))
+    no_gauge = b.ctda(b.CTDA_EQ, 0.0, 214, param1=gauge)
+    has_gauge = b.ctda(b.CTDA_EQ, 1.0, 214, param1=gauge)
+    for spell, edid, pct, gauge_pct in [
+            (ICE_CHILL, 'ESSB_IceArmorChill', ICE_CHILL_PCT, hit22.ICE_CHILL_GAUGE_PCT),
+            (ICE_CHILL_WIDE, 'ESSB_IceArmorChillWide', ICE_CHILL_WIDE_PCT, hit22.ICE_CHILL_GAUGE_WIDE_PCT)]:
         add('SPEL', spell, edid, [
             ('OBND', bytes(12)), ('FULL', Z('冰甲寒氣')), etyp, ('DESC', Z('')),
             ('SPIT', b.spit(0, 2, 2)),
-            ('EFID', I(own(ICE_CHILL_EFFECT))), ('EFIT', struct.pack('<fII', pct, 0, 1)),
+            ('EFID', I(own(ICE_CHILL_EFFECT))), ('EFIT', struct.pack('<fII', pct, 0, 1)), ('CTDA', no_gauge),
+            ('EFID', I(own(hit22.ice_chill_gauge_effect_id()))), ('EFIT', struct.pack('<fII', gauge_pct, 0, 1)),
+            ('CTDA', has_gauge),
         ])
     for effect, payload, ability, edid, label, feet in [
             (ICE_CLOAK_EFFECT, ICE_CHILL, ICE_ARMOR, 'ESSB_IceArmor', '冰甲', ICE_RADIUS_FEET),

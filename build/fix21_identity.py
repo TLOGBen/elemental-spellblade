@@ -60,7 +60,7 @@ INFRA = {
 }
 ELEMENTS_TAG = 'elements'
 WORKING = ('DONE', 'KEPT', 'PARTIAL')
-STATUS_RE = re.compile(r'^(DONE|KEPT-(N[3-6]|待決)|PARTIAL-(N[3-6]|基礎)|LATER-(N[3-6]|待決))$')
+STATUS_RE = re.compile(r'^(DONE|KEPT-(N[3-6]|待決)|PARTIAL-(N[3-6]|基礎|待決)|LATER-(N[3-6]|待決))$')
 
 
 # ---------------------------------------------------------------- identity table
@@ -553,9 +553,21 @@ def check_bases(sources):
 # ---------------------------------------------------------------- DLL
 
 
-def check_dll(identity, by_name, table, tree_ids, native_sources):
-    """identity: {constant: (tree id, v0.4 name)} (fix19_native.NODE_IDENTITY). Returns (slots, readers, errors)."""
+ELEMENT_CONSTANTS = {name: i for i, name in enumerate(
+    ['kFire', 'kFrost', 'kLightning', 'kEarth', 'kWind', 'kBlood', 'kDivine', 'kPoison', 'kWater', 'kDarkness', 'kAstral'],
+    1)}
+
+
+def check_dll(identity, by_name, table, tree_ids, native_sources, arrays=None):
+    """identity: {constant: (tree id, v0.4 name)} (fix19_native.NODE_IDENTITY); arrays: {table: [element] (tree id,
+    v0.4 name) or None} (fix19_native.ARRAY_IDENTITY, round 22). A C++ read node::kTable[kElement] registers that
+    element's node; node::kTable[anything else] registers every element's. Returns (slots, readers, errors)."""
     errors, slots, readers = [], {}, collections.defaultdict(list)
+    arrays = arrays or {}
+    for table_name, cells in arrays.items():
+        for cell in cells:
+            if cell is not None and by_name.get(cell) is None:
+                errors.append(f'DLL node::{table_name}: {cell[0]} has no v0.4 node {cell[1]!r}')
     for constant, (tree, name) in identity.items():
         node = by_name.get((tree, name))
         if node is None:
@@ -583,8 +595,26 @@ def check_dll(identity, by_name, table, tree_ids, native_sources):
                 errors.append(f'{path}:{number}: node position / perk array indexed in C++ outside the reviewed sites: '
                               f'{line.strip()}')
         for m in re.finditer(r'node::(k\w+)', text):
-            if m.group(1) not in identity and m.group(1) not in ('kProcAdept', 'kProcMaster', 'kNoNode'):
-                errors.append(f'{path}: node::{m.group(1)} is not in NODE_IDENTITY')
+            if m.group(1) not in identity and m.group(1) not in arrays and m.group(1) != 'kNoNode':
+                errors.append(f'{path}: node::{m.group(1)} is not in NODE_IDENTITY or ARRAY_IDENTITY')
+        for m in re.finditer(r'node::(k\w+)\[\s*(?:essb::)?(\w+)\s*\]', text):
+            cells = arrays.get(m.group(1))
+            if cells is None:
+                continue
+            element = ELEMENT_CONSTANTS.get(m.group(2))
+            hit = [cells[element]] if element is not None else cells
+            for cell in hit:
+                if cell is None:
+                    if element is not None:
+                        errors.append(f'{path}: node::{m.group(1)}[{m.group(2)}] reads a tree without that line')
+                    continue
+                status = table.get(cell, ('?',))[0]
+                if not working(status):
+                    errors.append(f'DLL node::{m.group(1)}[{m.group(2)}] reads {cell[0]} {cell[1]!r} whose status is '
+                                  f'{status}')
+                where = f'DLL node::{m.group(1)}[{m.group(2)}]'
+                if where not in readers[cell]:
+                    readers[cell].append(where)
     return slots, readers, errors
 
 
@@ -651,7 +681,7 @@ def native_sources():
     return out
 
 
-def run_checks(plan, sources, identity, esp_main, esp_branch, native, **_helpers):
+def run_checks(plan, sources, identity, esp_main, esp_branch, native, arrays=None, **_helpers):
     """_helpers: lookup tables self_test carries next to the inputs; not inputs of the check."""
     tree_ids = [t['id'] for t in plan['trees']]
     by_pos, by_name = index(plan)
@@ -659,7 +689,7 @@ def run_checks(plan, sources, identity, esp_main, esp_branch, native, **_helpers
     reads, errs = check_papyrus(sources, by_pos, by_name, table, tree_ids)
     errors += errs
     errors += check_bases(sources)
-    _slots, dll_readers, errs = check_dll(identity, by_name, table, tree_ids, native)
+    _slots, dll_readers, errs = check_dll(identity, by_name, table, tree_ids, native, arrays)
     errors += errs
     esp_readers, errs = check_esp(esp_main, esp_branch, by_name, table)
     errors += errs
@@ -681,7 +711,8 @@ def current(b=None):
     if b is None:
         import build_v03 as b
     return dict(plan=load_plan(), sources=scripts(), identity=fix19_native.NODE_IDENTITY,
-                esp_main=list(b.MAIN_ENTRY_NODES), esp_branch=list(b.BRANCH_ENTRY_NODES), native=native_sources())
+                esp_main=list(b.MAIN_ENTRY_NODES), esp_branch=list(b.BRANCH_ENTRY_NODES), native=native_sources(),
+                arrays=fix19_native.ARRAY_IDENTITY)
 
 
 def self_test(inputs):
@@ -731,14 +762,16 @@ def self_test(inputs):
 
     def skeleton_list(data):   # skeleton read claims a tree that has another node there
         text = data['sources']['ESSBElem.psc']
-        m = re.search(r'@node 終焉後 5 秒內接管元素附傷\{([^}]*)\}', text)
-        data['sources']['ESSBElem.psc'] = text[:m.start(1)] + m.group(1) + ' fire' + text[m.end(1):]
-    expect('skeleton tree list includes a tree with a different node', skeleton_list, "fire (tree")
+        # round 22: the takeover line moved to the DLL; the signature list is a Papyrus skeleton read left (wind's slot
+        # there is 落地傷害)
+        m = re.search(r'@node 爆燃\{([^}]*)\}', text)
+        data['sources']['ESSBElem.psc'] = text[:m.start(1)] + m.group(1) + ' wind' + text[m.end(1):]
+    expect('skeleton tree list includes a tree with a different node', skeleton_list, "wind (tree")
 
     def skeleton_missing(data):   # skeleton list omits a tree that has the node
         text = data['sources']['ESSBElem.psc']
-        m = re.search(r'@node 終焉後 5 秒內接管元素附傷\{([^}]*)\}', text)
-        data['sources']['ESSBElem.psc'] = text[:m.start(1)] + m.group(1).replace('frost', '').strip() + text[m.end(1):]
+        m = re.search(r'@node \*臨\{([^}]*)\}', text)
+        data['sources']['ESSBElem.psc'] = text[:m.start(1)] + m.group(1).replace('frost ', '').strip() + text[m.end(1):]
     expect('skeleton tree list omits a tree', skeleton_missing, 'but is not listed')
 
     def dll_wrong(data):
@@ -751,6 +784,13 @@ def self_test(inputs):
         path = next(p for p in data['native'] if p.endswith('HitMath.h'))
         data['native'][path] += '\ninline constexpr NodeId kSneaky{11, 1, 0};\n'
     expect('C++ spells a slot literal', dll_literal, 'built in C++')
+
+    def dll_array_later(data):   # round 22: a per-element table read reaches a node whose slice is not live
+        key = next(k for k, v in data['plan_status'].items() if v.startswith('LATER') and data['trees'].index(k[0]) < 11)
+        data['arrays'] = dict(data['arrays'] or {}, kProbe22=[None, key] + [None] * 10)
+        path = next(p for p in data['native'] if p.endswith('HitMath.h'))
+        data['native'][path] += '\nconst auto probe22 = node::kProbe22[kFire];\n'
+    expect('DLL table read of a LATER node', dll_array_later, 'node::kProbe22[kFire] reads')
 
     def esp_later(data):
         key = next(k for k, v in data['plan_status'].items() if v.startswith('LATER') and data['kinds'][k] == 'branch')
@@ -808,25 +848,34 @@ def self_test(inputs):
         add(data, 'ESSBElem.psc', '\tInt[] ts = new Int[2]\n\tInt x = ESSBNodes.Rank(akCtl, ts[1], 1, 4) ; @node 開印效果{elements}')
     expect('array tree argument', skeleton_array, 'must be aiElement - 1')
 
+    # Round 22 moved the guarded skeleton reads these three cases mutated (印記持續 / 開印效果) into the DLL, so they
+    # now inject a probe that has the same shape as the production reads (a subset list behind an aiElement guard,
+    # the tree from ESSBNodes.TreeOf) and break it the same way.
+    probe_guard = 'If aiElement == 2 || aiElement == 3'
+    probe = ('\nFloat Function Probe22(ESSBController akCtl, Int aiElement) Global\n'
+             '\tIf aiElement == 2 || aiElement == 3\n'
+             '\t\tReturn ESSBNodes.Rank(akCtl, aiElement - 1, 2, 4) ; @node 碎冰{frost} / 放電{lightning}\n'
+             '\tEndIf\n\tReturn 0.0\nEndFunction\n')
+    probe_tree = ('\nFloat Function Probe22Tree(ESSBController akCtl, Int aiElement) Global\n'
+                  '\tInt tree = ESSBNodes.TreeOf(aiElement)\n'
+                  '\tReturn 1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, tree, 2, 0), 0.02) ; @node 終焉{elements}\n'
+                  'EndFunction\n')
+
+    def probe_clean(data):   # the probes as written are accepted (so the three faults below are the only errors)
+        data['sources']['ESSBElem.psc'] += probe + probe_tree
+    _, clean = run_checks(**(lambda d: (probe_clean(d), d)[1])(copy.deepcopy(inputs)))
+    assert not [e for e in clean if 'Probe22' in e], clean
+
     def skeleton_guard(data):  # R2-style: the subset list is right but the aiElement guard is gone
-        text = data['sources']['ESSBElem.psc']
-        guard = 'If aiElement == 2 || aiElement == 3 || aiElement == 7 || aiElement == 8 || aiElement == 9 || aiElement == 11'
-        assert guard in text
-        data['sources']['ESSBElem.psc'] = text.replace(guard, 'If aiElement > 0', 1)
+        data['sources']['ESSBElem.psc'] += probe.replace(probe_guard, 'If aiElement > 0', 1)
     expect('skeleton subset read without its aiElement guard (the R2 bug)', skeleton_guard, 'can run for element(s)')
 
     def compound_element(data):   # aiElement changed inside the guard (review round 21 escape)
-        text = data['sources']['ESSBElem.psc']
-        guard = 'If aiElement == 2 || aiElement == 3 || aiElement == 7 || aiElement == 8 || aiElement == 9 || aiElement == 11'
-        assert guard in text
-        data['sources']['ESSBElem.psc'] = text.replace(guard, guard + '\n\t\taiElement += 1', 1)
+        data['sources']['ESSBElem.psc'] += probe.replace(probe_guard, probe_guard + '\n\t\taiElement += 1', 1)
     expect('aiElement += 1 inside the skeleton guard', compound_element, 'reassigns aiElement')
 
     def compound_tree(data):      # the local tree variable bumped after its single assignment
-        text = data['sources']['ESSBElem.psc'].replace('\r\n', '\n')
-        a = '\tInt tree = ESSBNodes.TreeOf(aiElement)\n\tReturn 1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, tree, 1, 4), 0.03)'
-        assert a in text
-        data['sources']['ESSBElem.psc'] = text.replace(a, a.replace('TreeOf(aiElement)\n', 'TreeOf(aiElement)\n\ttree += 1\n'), 1)
+        data['sources']['ESSBElem.psc'] += probe_tree.replace('TreeOf(aiElement)\n', 'TreeOf(aiElement)\n\ttree += 1\n', 1)
     expect('t += 1 on the skeleton tree variable', compound_tree, 'assigned exactly once')
 
     def cpp_init(data):        # C++ builds a slot by aggregate initialisation

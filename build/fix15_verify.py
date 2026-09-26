@@ -4,12 +4,21 @@ from types import SimpleNamespace as NS
 import json,sys,math,re,hashlib
 sys.dont_write_bytecode=True
 ROOT=Path(__file__).resolve().parents[1]
+# Round 22: these checks run on the pre-fix22 scripts; build/fix22_history.py ties them to today's (declared changes only).
+import sys as _sys22
+_sys22.path.insert(0, str(ROOT / 'build'))
+import fix22_history as _fix22_history
+SRC22 = _fix22_history.legacy_source()
+def CUR22(rel):  # a repo path as the older rounds knew it: src/* comes from the pre-fix22 snapshot
+    rel = str(rel).replace(chr(92), '/')
+    return SRC22 / rel[4:] if rel.startswith('src/') else ROOT / rel
+
 sys.path[:0]=[str(ROOT/'build'),str(ROOT)]
 from papyrus_harness import Script,Array
 from fix12_cost import Measured,scenario
 from fix14_verify import fixture
 OLD=ROOT/'.codex/pre-fix15-snapshot/src'
-NEW=ROOT/'src'
+NEW = SRC22
 
 def setup(folder):
  f=fixture(folder);f.env['Math'].Ceiling=math.ceil
@@ -225,7 +234,7 @@ def run():
   if n=='實作紀錄.md':
    baseline=(ROOT/'.codex/pre-fix18b-snapshot/實作紀錄.md').read_bytes()
    info=dict(sha256=hashlib.sha256(baseline).hexdigest(),length=len(baseline),bom=baseline.startswith(b'\xef\xbb\xbf'),crlf=baseline.count(b'\r\n'),lf=baseline.count(b'\n'))
-  raw=(ROOT/n).read_bytes();assert raw.startswith(b'\xef\xbb\xbf')==info['bom'],n
+  raw=CUR22(n).read_bytes();assert raw.startswith(b'\xef\xbb\xbf')==info['bom'],n
   assert (raw.count(b'\r\n')==raw.count(b'\n'))==(info['crlf']==info['lf']),n
   if n=='實作紀錄.md':assert hashlib.sha256(raw[:info['length']]).hexdigest()==info['sha256']
  report=dict(negative_controls=negatives,cases=cases,cost=cost,schema=lock['state_schema_version'],identity_changes={k:[v,new.get(k)] for k,v in old.items() if new.get(k)!=v},runtime_tested=False)

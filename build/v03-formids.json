@@ -4,8 +4,8 @@
     "Skyrim.esm"
   ],
   "esl_flagged": false,
-  "record_count": 4161,
-  "next_object_id": "006012",
+  "record_count": 4362,
+  "next_object_id": "006014",
   "allocation": [
     {
       "range": "0x000800-0x00080F",
@@ -2433,6 +2433,1001 @@
     "ESSB_IceArmorWide": {
       "id": "00534C",
       "formid": "0100534C",
+      "type": "SPEL"
+    },
+    "ESSB_N3_FreezeEffect": {
+      "id": "005400",
+      "formid": "01005400",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Freeze": {
+      "id": "005401",
+      "formid": "01005401",
+      "type": "SPEL"
+    },
+    "ESSB_N3_FrozenEffect": {
+      "id": "005402",
+      "formid": "01005402",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Frozen": {
+      "id": "005403",
+      "formid": "01005403",
+      "type": "SPEL"
+    },
+    "ESSB_N3_CrystalEffect": {
+      "id": "005404",
+      "formid": "01005404",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Crystal": {
+      "id": "005405",
+      "formid": "01005405",
+      "type": "SPEL"
+    },
+    "ESSB_N3_FissureEffect": {
+      "id": "005406",
+      "formid": "01005406",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Fissure": {
+      "id": "005407",
+      "formid": "01005407",
+      "type": "SPEL"
+    },
+    "ESSB_N3_DownedEffect": {
+      "id": "005408",
+      "formid": "01005408",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Downed": {
+      "id": "005409",
+      "formid": "01005409",
+      "type": "SPEL"
+    },
+    "ESSB_N3_UnbalanceEffect": {
+      "id": "00540A",
+      "formid": "0100540A",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Unbalance": {
+      "id": "00540B",
+      "formid": "0100540B",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedEffect": {
+      "id": "00540C",
+      "formid": "0100540C",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Bleed": {
+      "id": "00540D",
+      "formid": "0100540D",
+      "type": "SPEL"
+    },
+    "ESSB_N3_JudgeEffect": {
+      "id": "00540E",
+      "formid": "0100540E",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Judge": {
+      "id": "00540F",
+      "formid": "0100540F",
+      "type": "SPEL"
+    },
+    "ESSB_N3_CatalyzedEffect": {
+      "id": "005410",
+      "formid": "01005410",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Catalyzed": {
+      "id": "005411",
+      "formid": "01005411",
+      "type": "SPEL"
+    },
+    "ESSB_N3_SoakEffect": {
+      "id": "005412",
+      "formid": "01005412",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Soak": {
+      "id": "005413",
+      "formid": "01005413",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PressureEffect": {
+      "id": "005414",
+      "formid": "01005414",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Pressure": {
+      "id": "005415",
+      "formid": "01005415",
+      "type": "SPEL"
+    },
+    "ESSB_N3_CurseEffect": {
+      "id": "005416",
+      "formid": "01005416",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Curse": {
+      "id": "005417",
+      "formid": "01005417",
+      "type": "SPEL"
+    },
+    "ESSB_N3_FearCooldownEffect": {
+      "id": "005418",
+      "formid": "01005418",
+      "type": "MGEF"
+    },
+    "ESSB_N3_FearCooldown": {
+      "id": "005419",
+      "formid": "01005419",
+      "type": "SPEL"
+    },
+    "ESSB_N3_FrenzyCooldownEffect": {
+      "id": "00541A",
+      "formid": "0100541A",
+      "type": "MGEF"
+    },
+    "ESSB_N3_FrenzyCooldown": {
+      "id": "00541B",
+      "formid": "0100541B",
+      "type": "SPEL"
+    },
+    "ESSB_N3_StarEffect": {
+      "id": "00541C",
+      "formid": "0100541C",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Star": {
+      "id": "00541D",
+      "formid": "0100541D",
+      "type": "SPEL"
+    },
+    "ESSB_N3_StarFuseEffect": {
+      "id": "00541E",
+      "formid": "0100541E",
+      "type": "MGEF"
+    },
+    "ESSB_N3_StarFuse": {
+      "id": "00541F",
+      "formid": "0100541F",
+      "type": "SPEL"
+    },
+    "ESSB_N3_AirborneEffect": {
+      "id": "005420",
+      "formid": "01005420",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Airborne": {
+      "id": "005421",
+      "formid": "01005421",
+      "type": "SPEL"
+    },
+    "ESSB_N3_StarLockEffect": {
+      "id": "005422",
+      "formid": "01005422",
+      "type": "MGEF"
+    },
+    "ESSB_N3_StarLock": {
+      "id": "005423",
+      "formid": "01005423",
+      "type": "SPEL"
+    },
+    "ESSB_N3_OpenCooldownEffect": {
+      "id": "005424",
+      "formid": "01005424",
+      "type": "MGEF"
+    },
+    "ESSB_N3_OpenCooldown": {
+      "id": "005425",
+      "formid": "01005425",
+      "type": "SPEL"
+    },
+    "ESSB_N3_EndCooldownEffect": {
+      "id": "005426",
+      "formid": "01005426",
+      "type": "MGEF"
+    },
+    "ESSB_N3_EndCooldown": {
+      "id": "005427",
+      "formid": "01005427",
+      "type": "SPEL"
+    },
+    "ESSB_N3_GuidedEffect": {
+      "id": "005428",
+      "formid": "01005428",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Guided": {
+      "id": "005429",
+      "formid": "01005429",
+      "type": "SPEL"
+    },
+    "ESSB_N3_DeathCurseEffect": {
+      "id": "00542A",
+      "formid": "0100542A",
+      "type": "MGEF"
+    },
+    "ESSB_N3_DeathCurse": {
+      "id": "00542B",
+      "formid": "0100542B",
+      "type": "SPEL"
+    },
+    "ESSB_N3_NetherEffect": {
+      "id": "00542C",
+      "formid": "0100542C",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Nether": {
+      "id": "00542D",
+      "formid": "0100542D",
+      "type": "SPEL"
+    },
+    "ESSB_N3_ResidualEffect": {
+      "id": "00542E",
+      "formid": "0100542E",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Residual": {
+      "id": "00542F",
+      "formid": "0100542F",
+      "type": "SPEL"
+    },
+    "ESSB_N3_WashCooldownEffect": {
+      "id": "005430",
+      "formid": "01005430",
+      "type": "MGEF"
+    },
+    "ESSB_N3_WashCooldown": {
+      "id": "005431",
+      "formid": "01005431",
+      "type": "SPEL"
+    },
+    "ESSB_N3_DomainFireEffect": {
+      "id": "005432",
+      "formid": "01005432",
+      "type": "MGEF"
+    },
+    "ESSB_N3_DomainFire": {
+      "id": "005433",
+      "formid": "01005433",
+      "type": "SPEL"
+    },
+    "ESSB_N3_DomainFrostEffect": {
+      "id": "005434",
+      "formid": "01005434",
+      "type": "MGEF"
+    },
+    "ESSB_N3_DomainFrost": {
+      "id": "005435",
+      "formid": "01005435",
+      "type": "SPEL"
+    },
+    "ESSB_N3_DomainAstralEffect": {
+      "id": "005436",
+      "formid": "01005436",
+      "type": "MGEF"
+    },
+    "ESSB_N3_DomainAstral": {
+      "id": "005437",
+      "formid": "01005437",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PhantomEffect": {
+      "id": "005438",
+      "formid": "01005438",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Phantom": {
+      "id": "005439",
+      "formid": "01005439",
+      "type": "SPEL"
+    },
+    "ESSB_N3_Heat1Effect": {
+      "id": "00543A",
+      "formid": "0100543A",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Heat1": {
+      "id": "00543B",
+      "formid": "0100543B",
+      "type": "SPEL"
+    },
+    "ESSB_N3_Heat2Effect": {
+      "id": "00543C",
+      "formid": "0100543C",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Heat2": {
+      "id": "00543D",
+      "formid": "0100543D",
+      "type": "SPEL"
+    },
+    "ESSB_N3_Heat3Effect": {
+      "id": "00543E",
+      "formid": "0100543E",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Heat3": {
+      "id": "00543F",
+      "formid": "0100543F",
+      "type": "SPEL"
+    },
+    "ESSB_N3_Heat4Effect": {
+      "id": "005440",
+      "formid": "01005440",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Heat4": {
+      "id": "005441",
+      "formid": "01005441",
+      "type": "SPEL"
+    },
+    "ESSB_N3_HeatDecayEffect": {
+      "id": "005442",
+      "formid": "01005442",
+      "type": "MGEF"
+    },
+    "ESSB_N3_HeatDecay": {
+      "id": "005443",
+      "formid": "01005443",
+      "type": "SPEL"
+    },
+    "ESSB_N3_VentedHeatEffect": {
+      "id": "005444",
+      "formid": "01005444",
+      "type": "MGEF"
+    },
+    "ESSB_N3_VentedHeat": {
+      "id": "005445",
+      "formid": "01005445",
+      "type": "SPEL"
+    },
+    "ESSB_N3_MoltenBodyEffect": {
+      "id": "005446",
+      "formid": "01005446",
+      "type": "MGEF"
+    },
+    "ESSB_N3_MoltenBody": {
+      "id": "005447",
+      "formid": "01005447",
+      "type": "SPEL"
+    },
+    "ESSB_N3_FireBathEffect": {
+      "id": "005448",
+      "formid": "01005448",
+      "type": "MGEF"
+    },
+    "ESSB_N3_FireBath": {
+      "id": "005449",
+      "formid": "01005449",
+      "type": "SPEL"
+    },
+    "ESSB_N3_SourceLingerEffect": {
+      "id": "00544A",
+      "formid": "0100544A",
+      "type": "MGEF"
+    },
+    "ESSB_N3_SourceLinger": {
+      "id": "00544B",
+      "formid": "0100544B",
+      "type": "SPEL"
+    },
+    "ESSB_N3_Holy1Effect": {
+      "id": "00544C",
+      "formid": "0100544C",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Holy1": {
+      "id": "00544D",
+      "formid": "0100544D",
+      "type": "SPEL"
+    },
+    "ESSB_N3_Holy2Effect": {
+      "id": "00544E",
+      "formid": "0100544E",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Holy2": {
+      "id": "00544F",
+      "formid": "0100544F",
+      "type": "SPEL"
+    },
+    "ESSB_N3_Holy3Effect": {
+      "id": "005450",
+      "formid": "01005450",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Holy3": {
+      "id": "005451",
+      "formid": "01005451",
+      "type": "SPEL"
+    },
+    "ESSB_N3_HolyDecayEffect": {
+      "id": "005452",
+      "formid": "01005452",
+      "type": "MGEF"
+    },
+    "ESSB_N3_HolyDecay": {
+      "id": "005453",
+      "formid": "01005453",
+      "type": "SPEL"
+    },
+    "ESSB_N3_OpenBoostEffect": {
+      "id": "005454",
+      "formid": "01005454",
+      "type": "MGEF"
+    },
+    "ESSB_N3_OpenBoost": {
+      "id": "005455",
+      "formid": "01005455",
+      "type": "SPEL"
+    },
+    "ESSB_N3_EndBoostEffect": {
+      "id": "005456",
+      "formid": "01005456",
+      "type": "MGEF"
+    },
+    "ESSB_N3_EndBoost": {
+      "id": "005457",
+      "formid": "01005457",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BloodthirstEffect": {
+      "id": "005458",
+      "formid": "01005458",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Bloodthirst": {
+      "id": "005459",
+      "formid": "01005459",
+      "type": "SPEL"
+    },
+    "ESSB_N3_KillStreakEffect": {
+      "id": "00545A",
+      "formid": "0100545A",
+      "type": "MGEF"
+    },
+    "ESSB_N3_KillStreak": {
+      "id": "00545B",
+      "formid": "0100545B",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BloodZoneEffect": {
+      "id": "00545C",
+      "formid": "0100545C",
+      "type": "MGEF"
+    },
+    "ESSB_N3_BloodZone": {
+      "id": "00545D",
+      "formid": "0100545D",
+      "type": "SPEL"
+    },
+    "ESSB_N3_CrossCooldownEffect": {
+      "id": "00545E",
+      "formid": "0100545E",
+      "type": "MGEF"
+    },
+    "ESSB_N3_CrossCooldown": {
+      "id": "00545F",
+      "formid": "0100545F",
+      "type": "SPEL"
+    },
+    "ESSB_N3_FireDomainPlayerEffect": {
+      "id": "005460",
+      "formid": "01005460",
+      "type": "MGEF"
+    },
+    "ESSB_N3_FireDomainPlayer": {
+      "id": "005461",
+      "formid": "01005461",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PunishEffect": {
+      "id": "005462",
+      "formid": "01005462",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Punish": {
+      "id": "005463",
+      "formid": "01005463",
+      "type": "SPEL"
+    },
+    "ESSB_N3_HolyWeaponEffect": {
+      "id": "0054C0",
+      "formid": "010054C0",
+      "type": "MGEF"
+    },
+    "ESSB_N3_HolyArmorEffect": {
+      "id": "0054C1",
+      "formid": "010054C1",
+      "type": "MGEF"
+    },
+    "ESSB_N3_BleedDotEffect": {
+      "id": "005464",
+      "formid": "01005464",
+      "type": "MGEF"
+    },
+    "ESSB_N3_BleedDot_1": {
+      "id": "005465",
+      "formid": "01005465",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_2": {
+      "id": "005466",
+      "formid": "01005466",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_3": {
+      "id": "005467",
+      "formid": "01005467",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_4": {
+      "id": "005468",
+      "formid": "01005468",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_5": {
+      "id": "005469",
+      "formid": "01005469",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_6": {
+      "id": "00546A",
+      "formid": "0100546A",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_7": {
+      "id": "00546B",
+      "formid": "0100546B",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_8": {
+      "id": "00546C",
+      "formid": "0100546C",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_9": {
+      "id": "00546D",
+      "formid": "0100546D",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_10": {
+      "id": "00546E",
+      "formid": "0100546E",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_11": {
+      "id": "00546F",
+      "formid": "0100546F",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_12": {
+      "id": "005470",
+      "formid": "01005470",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_13": {
+      "id": "005471",
+      "formid": "01005471",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_14": {
+      "id": "005472",
+      "formid": "01005472",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_15": {
+      "id": "005473",
+      "formid": "01005473",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_16": {
+      "id": "005474",
+      "formid": "01005474",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_17": {
+      "id": "005475",
+      "formid": "01005475",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_18": {
+      "id": "005476",
+      "formid": "01005476",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_19": {
+      "id": "005477",
+      "formid": "01005477",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_20": {
+      "id": "005478",
+      "formid": "01005478",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_21": {
+      "id": "005479",
+      "formid": "01005479",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_22": {
+      "id": "00547A",
+      "formid": "0100547A",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_23": {
+      "id": "00547B",
+      "formid": "0100547B",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_24": {
+      "id": "00547C",
+      "formid": "0100547C",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_25": {
+      "id": "00547D",
+      "formid": "0100547D",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_26": {
+      "id": "00547E",
+      "formid": "0100547E",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_27": {
+      "id": "00547F",
+      "formid": "0100547F",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_28": {
+      "id": "005480",
+      "formid": "01005480",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_29": {
+      "id": "005481",
+      "formid": "01005481",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_30": {
+      "id": "005482",
+      "formid": "01005482",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_31": {
+      "id": "005483",
+      "formid": "01005483",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_32": {
+      "id": "005484",
+      "formid": "01005484",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_33": {
+      "id": "005485",
+      "formid": "01005485",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_34": {
+      "id": "005486",
+      "formid": "01005486",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_35": {
+      "id": "005487",
+      "formid": "01005487",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_36": {
+      "id": "005488",
+      "formid": "01005488",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_37": {
+      "id": "005489",
+      "formid": "01005489",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_38": {
+      "id": "00548A",
+      "formid": "0100548A",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_39": {
+      "id": "00548B",
+      "formid": "0100548B",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_40": {
+      "id": "00548C",
+      "formid": "0100548C",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_41": {
+      "id": "00548D",
+      "formid": "0100548D",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_42": {
+      "id": "00548E",
+      "formid": "0100548E",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_43": {
+      "id": "00548F",
+      "formid": "0100548F",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_44": {
+      "id": "005490",
+      "formid": "01005490",
+      "type": "SPEL"
+    },
+    "ESSB_N3_BleedDot_45": {
+      "id": "005491",
+      "formid": "01005491",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDotEffect": {
+      "id": "005492",
+      "formid": "01005492",
+      "type": "MGEF"
+    },
+    "ESSB_N3_PoisonDot_1": {
+      "id": "005493",
+      "formid": "01005493",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_2": {
+      "id": "005494",
+      "formid": "01005494",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_3": {
+      "id": "005495",
+      "formid": "01005495",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_4": {
+      "id": "005496",
+      "formid": "01005496",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_5": {
+      "id": "005497",
+      "formid": "01005497",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_6": {
+      "id": "005498",
+      "formid": "01005498",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_7": {
+      "id": "005499",
+      "formid": "01005499",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_8": {
+      "id": "00549A",
+      "formid": "0100549A",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_9": {
+      "id": "00549B",
+      "formid": "0100549B",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_10": {
+      "id": "00549C",
+      "formid": "0100549C",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_11": {
+      "id": "00549D",
+      "formid": "0100549D",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_12": {
+      "id": "00549E",
+      "formid": "0100549E",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_13": {
+      "id": "00549F",
+      "formid": "0100549F",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_14": {
+      "id": "0054A0",
+      "formid": "010054A0",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_15": {
+      "id": "0054A1",
+      "formid": "010054A1",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_16": {
+      "id": "0054A2",
+      "formid": "010054A2",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_17": {
+      "id": "0054A3",
+      "formid": "010054A3",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_18": {
+      "id": "0054A4",
+      "formid": "010054A4",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_19": {
+      "id": "0054A5",
+      "formid": "010054A5",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_20": {
+      "id": "0054A6",
+      "formid": "010054A6",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_21": {
+      "id": "0054A7",
+      "formid": "010054A7",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_22": {
+      "id": "0054A8",
+      "formid": "010054A8",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_23": {
+      "id": "0054A9",
+      "formid": "010054A9",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_24": {
+      "id": "0054AA",
+      "formid": "010054AA",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_25": {
+      "id": "0054AB",
+      "formid": "010054AB",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_26": {
+      "id": "0054AC",
+      "formid": "010054AC",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_27": {
+      "id": "0054AD",
+      "formid": "010054AD",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_28": {
+      "id": "0054AE",
+      "formid": "010054AE",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_29": {
+      "id": "0054AF",
+      "formid": "010054AF",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_30": {
+      "id": "0054B0",
+      "formid": "010054B0",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_31": {
+      "id": "0054B1",
+      "formid": "010054B1",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_32": {
+      "id": "0054B2",
+      "formid": "010054B2",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_33": {
+      "id": "0054B3",
+      "formid": "010054B3",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_34": {
+      "id": "0054B4",
+      "formid": "010054B4",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_35": {
+      "id": "0054B5",
+      "formid": "010054B5",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_36": {
+      "id": "0054B6",
+      "formid": "010054B6",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_37": {
+      "id": "0054B7",
+      "formid": "010054B7",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_38": {
+      "id": "0054B8",
+      "formid": "010054B8",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_39": {
+      "id": "0054B9",
+      "formid": "010054B9",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_40": {
+      "id": "0054BA",
+      "formid": "010054BA",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_41": {
+      "id": "0054BB",
+      "formid": "010054BB",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_42": {
+      "id": "0054BC",
+      "formid": "010054BC",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_43": {
+      "id": "0054BD",
+      "formid": "010054BD",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_44": {
+      "id": "0054BE",
+      "formid": "010054BE",
+      "type": "SPEL"
+    },
+    "ESSB_N3_PoisonDot_45": {
+      "id": "0054BF",
+      "formid": "010054BF",
+      "type": "SPEL"
+    },
+    "ESSB_N3_IceChillGaugeEffect": {
+      "id": "0054C4",
+      "formid": "010054C4",
+      "type": "MGEF"
+    },
+    "ESSB_N3_FrenzyBladeEffect": {
+      "id": "0054C2",
+      "formid": "010054C2",
+      "type": "MGEF"
+    },
+    "ESSB_N3_VisionEffect": {
+      "id": "0054C5",
+      "formid": "010054C5",
+      "type": "MGEF"
+    },
+    "ESSB_N3_Vision": {
+      "id": "0054C6",
+      "formid": "010054C6",
+      "type": "SPEL"
+    },
+    "ESSB_N3_FrenzyBlade": {
+      "id": "0054C3",
+      "formid": "010054C3",
       "type": "SPEL"
     },
     "ESSB_Proc": {
@@ -21226,8 +22221,8 @@
       "type": "PERK"
     },
     "ESSB_MainQuest": {
-      "id": "006010",
-      "formid": "01006010",
+      "id": "006012",
+      "formid": "01006012",
       "type": "QUST"
     },
     "ESSB_MainQuest_Schema1_Stub": {
@@ -21320,9 +22315,19 @@
       "formid": "0100600F",
       "type": "QUST"
     },
-    "ESSB_MCMQuest": {
+    "ESSB_MainQuest_Schema10_Stub": {
+      "id": "006010",
+      "formid": "01006010",
+      "type": "QUST"
+    },
+    "ESSB_MCMQuest_Schema10_Stub": {
       "id": "006011",
       "formid": "01006011",
+      "type": "QUST"
+    },
+    "ESSB_MCMQuest": {
+      "id": "006013",
+      "formid": "01006013",
       "type": "QUST"
     }
   }

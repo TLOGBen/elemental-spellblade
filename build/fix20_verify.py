@@ -26,11 +26,17 @@ from types import SimpleNamespace as NS
 import itertools, json, math, re, runpy, sys
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
+# Round 22: these checks run on the pre-fix22 scripts; build/fix22_history.py ties them to today's (declared changes only).
+import sys as _sys22
+_sys22.path.insert(0, str(ROOT / 'build'))
+import fix22_history as _fix22_history
+SRC22 = _fix22_history.legacy_source()
+
 sys.path[:0] = [str(ROOT / 'build'), str(ROOT)]
 import fix20_reference as ref
 from papyrus_harness import Script
 
-NEW = ROOT / 'src'
+NEW = SRC22
 BEFORE = ROOT / '.codex/pre-fix20-snapshot/src'
 R20 = ROOT / '.codex/pre-fix21-snapshot/src'   # round 20 as shipped (round 21 snapshot, taken before any edit)
 F18 = runpy.run_path(str(ROOT / 'build/fix18_verify.py'))
@@ -400,7 +406,7 @@ def untouched_r20():
             versions = [json.loads(p.read_text(encoding='utf8'))['state_schema_version'] for p in (BEFORE.parent / 'settings.json', R20.parent / 'settings.json')]
             ids = [f"0x{state_schema.quest_ids(v)['ESSB_MainQuest']:06X}" for v in versions]
             assert old.read_bytes().replace(ids[0].encode(), ids[1].encode()) == new.read_bytes(), ('ESSBState.psc', ids)
-            now = [f"0x{state_schema.quest_ids(v)['ESSB_MainQuest']:06X}" for v in (versions[1], json.loads((ROOT / 'settings.json').read_text(encoding='utf8'))['state_schema_version'])]
+            now = [f"0x{state_schema.quest_ids(v)['ESSB_MainQuest']:06X}" for v in (versions[1], json.loads((NEW.parent / 'settings.json').read_text(encoding='utf8'))['state_schema_version'])]  # round 22: NEW is the pre-fix22 snapshot
             assert new.read_bytes().replace(now[0].encode(), now[1].encode()) == (NEW / old.name).read_bytes(), ('ESSBState.psc now', now)
             identical += 1
             continue

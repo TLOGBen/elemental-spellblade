@@ -20,7 +20,7 @@ Event OnEffectStart(Actor akTarget, Actor akCaster)
 		Return
 	EndIf
 	ESSBController ctl = GetController()
-	If !ctl || !ctl.IsOperational()
+	If !ctl || !ctl.IsReadyUI()
 		Debug.Notification("元素魔戰士：尚未就緒")
 		Return
 	EndIf
@@ -62,7 +62,7 @@ EndFunction
 
 ESSBTrees Function GetTrees()
 	ESSBController ctl = GetController()
-	If !ctl || !ctl.IsOperational()
+	If !ctl || !ctl.IsReadyUI()
 		Return None
 	EndIf
 	If !Controller

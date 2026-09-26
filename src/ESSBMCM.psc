@@ -6,7 +6,7 @@ Quest Property Controller Auto
 Bool Property AllowTreeEditing = False AutoReadOnly
 
 Function RespecCurrent()
-	If Controller != ESSBState.ControllerQuest() || !ESSBState.Operational()
+	If Controller != ESSBState.ControllerQuest() || !ESSBState.ReadyUI()
 		Return
 	EndIf
 	ESSBTrees trees = GetTrees()
@@ -29,7 +29,7 @@ Function RespecCurrent()
 EndFunction
 
 Function RespecAll()
-	If Controller != ESSBState.ControllerQuest() || !ESSBState.Operational()
+	If Controller != ESSBState.ControllerQuest() || !ESSBState.ReadyUI()
 		Return
 	EndIf
 	ESSBTrees trees = GetTrees()
@@ -40,19 +40,19 @@ Function RespecAll()
 EndFunction
 
 Function DumpRegistry()
-	If Controller != ESSBState.ControllerQuest() || !ESSBState.Operational()
+	If Controller != ESSBState.ControllerQuest() || !ESSBState.ReadyUI()
 		Return
 	EndIf
 	If Controller
 		ESSBController ctl = Controller.GetAlias(0) as ESSBController
 		If ctl
-			ctl.DumpRegistry()
+			ctl.DumpStatus()
 		EndIf
 	EndIf
 EndFunction
 
 ESSBTrees Function GetTrees()
-	If Controller != ESSBState.ControllerQuest() || !ESSBState.Operational()
+	If Controller != ESSBState.ControllerQuest() || !ESSBState.ReadyUI()
 		Return None
 	EndIf
 	If Controller
@@ -62,14 +62,14 @@ ESSBTrees Function GetTrees()
 EndFunction
 
 Function RestoreDefaults()
-	If Controller != ESSBState.ControllerQuest() || !ESSBState.Operational()
+	If Controller != ESSBState.ControllerQuest() || !ESSBState.ReadyUI()
 		Return
 	EndIf
 	If !ShowMessage("確定恢復全部平衡與一般頁毒層／流血係數的建置預設值？", True, "恢復預設", "取消")
 		Return
 	EndIf
 	; Confirmation yields to the menu: revalidate this quest before any write.
-	If Controller != ESSBState.ControllerQuest() || !ESSBState.Operational()
+	If Controller != ESSBState.ControllerQuest() || !ESSBState.ReadyUI()
 		Return
 	EndIf
 	ESSBState.RestoreTunableDefaults()

@@ -4,6 +4,15 @@ from types import SimpleNamespace as NS
 import copy, hashlib, json, re, sys
 sys.dont_write_bytecode=True
 ROOT=Path(__file__).resolve().parents[1]
+# Round 22: these checks run on the pre-fix22 scripts; build/fix22_history.py ties them to today's (declared changes only).
+import sys as _sys22
+_sys22.path.insert(0, str(ROOT / 'build'))
+import fix22_history as _fix22_history
+SRC22 = _fix22_history.legacy_source()
+def CUR22(rel):  # a repo path as the older rounds knew it: src/* comes from the pre-fix22 snapshot
+    rel = str(rel).replace(chr(92), '/')
+    return SRC22 / rel[4:] if rel.startswith('src/') else ROOT / rel
+
 sys.path.insert(0,str(ROOT));sys.path.insert(0,str(ROOT/'build'))
 from papyrus_harness import Script, Array
 import state_schema
@@ -39,11 +48,11 @@ def make():
     env=dict(Debug=NS(MessageBox=lambda s:notices.append(s)),PO3_Events_Alias=po3,
              Utility=NS(GetCurrentRealTime=lambda:10.0),SendModEvent=lambda *args:None,
              UnregisterForUpdate=lambda:queue.clear(),RegisterForSingleUpdate=lambda d:queue.append(d),GetActorReference=lambda:player,RegisterForMenu=lambda *a:None)
-    helper=Script(ROOT/'src/ESSBState.psc')
+    helper=Script(SRC22/'ESSBState.psc')
     env['ESSBState']=helper
-    ctl=Script(ROOT/'src/ESSBController.psc',env)
-    trees=Script(ROOT/'src/ESSBTrees.psc',env)
-    guard=Script(ROOT/'src/ESSBGuard.psc',env)
+    ctl=Script(SRC22/'ESSBController.psc',env)
+    trees=Script(SRC22/'ESSBTrees.psc',env)
+    guard=Script(SRC22/'ESSBGuard.psc',env)
     # Required VMAD properties are supplied by the ESP in production. Give distinct identity tokens here.
     for vm in (ctl,trees):
         source=vm.path.read_text(encoding='utf8')
@@ -87,13 +96,13 @@ def run():
         expect_fail(lambda:state_schema.check_lock(version,c,lock))
     assert state_schema.quest_ids(3)=={'ESSB_MainQuest':0x6002,'ESSB_MCMQuest':0x6003}
     assert set(state_schema.stub_ids(2).values())<set(state_schema.stub_ids(3).values())
-    src=(ROOT/'src/ESSBController.psc').read_text(encoding='utf8')
+    src=(SRC22/'ESSBController.psc').read_text(encoding='utf8')
     sig=state_schema.signature(src)
     assert state_schema.signature(src+'\nFunction LocalOnly()\n Int[] local = new Int[8]\nEndFunction\n')==sig
     assert state_schema.signature(src+'\nInt[] AddedMember\n')!=sig
     assert state_schema.signature(src.replace('Actor[] LiftActor','Int[] LiftActor'))!=sig
     comparisons=[]
-    for p in (ROOT/'src').glob('*.psc'):
+    for p in (SRC22).glob('*.psc'):
         s=p.read_text(encoding='utf8');arrays=set(re.findall(r'\b\w+\[\]\s+(?:Property\s+)?(\w+)',s,re.I))
         for num,line in enumerate(s.splitlines(),1):
             for var,op in re.findall(r'\b(\w+)\s+(==|!=)\s+None\b',line.split(';')[0]):
@@ -151,15 +160,15 @@ def run():
     for name in ('BleedRing','PoisonRing','AstralRing','AstralWeight'):
         c,t,g,p,notices,q,r=make();c.Setup();q.clear()
         quest=NS(GetAlias=lambda i:c)
-        helper=Script(ROOT/'src/ESSBState.psc');helper.overrides['ControllerQuest']=lambda:quest
-        status=Script(ROOT/'src/ESSBStatus.psc',dict(ESSBState=helper,RegisterForSingleUpdate=lambda d:q.append(d)))
+        helper=Script(SRC22/'ESSBState.psc');helper.overrides['ControllerQuest']=lambda:quest
+        status=Script(SRC22/'ESSBStatus.psc',dict(ESSBState=helper,RegisterForSingleUpdate=lambda d:q.append(d)))
         status.fields['Controller']=quest;status.fields=RejectField(status.fields,name)
         status.OnEffectStart(p,p)
         assert c.StateBroken and len(notices)==1 and not status.Bound,name
         for _ in range(3):status.OnEffectStart(p,p);status.OnUpdate();status.AddStack(7,1)
         assert status.fields.attempts==1 and len(notices)==1 and not q,name
         tested.append('status.'+name)
-    shatter=Script(ROOT/'src/ESSBElem.psc');shatter.Shatter(None,None,1.0)
+    shatter=Script(SRC22/'ESSBElem.psc');shatter.Shatter(None,None,1.0)
     # Missing required VMAD bindings stop before any gameplay; validates the None.value error boundary.
     for field in ('MultUpkeep','BaseDamageMult','Trees','FormPowers','FormRulesAbility'):
         c,t,g,p,notices,q,r=make();c.fields[field]=None;c.Setup();c.OnUpdate()
@@ -168,13 +177,13 @@ def run():
     class Orphan:
         def __getattr__(self,n):raise AssertionError('touched orphan '+n)
     for name,event,args in [('ESSBStatus','OnUpdate',()),('ESSBMark','OnEffectStart',(None,None)),('ESSBCounter','OnAnimationEvent',(None,'')),('ESSBFormRules','OnUpdate',()),('ESSBSilence','OnUpdate',())]:
-        vm=Script(ROOT/'src'/f'{name}.psc',dict(ESSBState=NS(ControllerQuest=lambda:object(),Operational=lambda:True)))
+        vm=Script(SRC22/f'{name}.psc',dict(ESSBState=NS(ControllerQuest=lambda:object(),Operational=lambda:True)))
         vm.fields.update(Controller=object(),Ctl=Orphan());getattr(vm,event)(*args)
     # BOM and exact existing line ending conventions; protected tree hashes are read-only evidence.
     for old in (ROOT/'.codex/pre-fix9-snapshot').rglob('*'):
         rel=old.relative_to(ROOT/'.codex/pre-fix9-snapshot')
         if not old.is_file() or rel.as_posix()=='v03-formids.json':continue
-        a=old.read_bytes();b=(ROOT/rel).read_bytes()
+        a=old.read_bytes();b=CUR22(rel).read_bytes()
         assert a.startswith(b'\xef\xbb\xbf')==b.startswith(b'\xef\xbb\xbf'),str(rel)
         assert (a.count(b'\r\n'),a.count(b'\n')-a.count(b'\r\n'))[0]==0 or b.count(b'\r\n')==b.count(b'\n'),str(rel)
         if a.count(b'\r\n')==0:assert b.count(b'\r\n')==0,str(rel)
@@ -186,7 +195,7 @@ def run():
             # Round 21 rebuilt both for v0.4 (its write set): the pre-fix21 snapshot must still carry the protected bytes.
             assert hashlib.sha256((ROOT/'.codex/pre-fix21-snapshot'/n).read_bytes()).hexdigest()==h,n
             continue
-        assert hashlib.sha256((ROOT/n).read_bytes()).hexdigest()==h,n
+        assert hashlib.sha256(CUR22(n).read_bytes()).hexdigest()==h,n
     report=dict(array_failure_cases=tested,remaining_none_comparisons=comparisons,first_setup=True,repeated_setup=True,progress_preserved=True,old_effects_quarantined=True,signature_negative_cases=6,runtime_tested=False)
     (ROOT/'build/fix9-runtime-check.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf8')
     print(f'FIX9 ok: {len(tested)} array failures latched once; no retry/tick/hit/kill/power; Setup idempotent; progress preserved; old AMEs quarantined; schema negative cases; encodings/protected files checked')

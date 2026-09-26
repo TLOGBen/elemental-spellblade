@@ -6,6 +6,12 @@ from types import SimpleNamespace as NS
 import ast, collections, hashlib, json, re, struct, sys
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
+# Round 22: these checks run on the pre-fix22 scripts; build/fix22_history.py ties them to today's (declared changes only).
+import sys as _sys22
+_sys22.path.insert(0, str(ROOT / 'build'))
+import fix22_history as _fix22_history
+SRC22 = _fix22_history.legacy_source()
+
 sys.path[:0] = [str(ROOT/'build'), str(ROOT)]
 import papyrus_harness as h
 from fix10_verify import controller, Actor as BaseActor, Spell as BaseSpell, Glob
@@ -54,7 +60,7 @@ def native_generation(c):
     # both deliver the element proc outside Papyrus; the script only records attribution and adds differences.
     return 'ApplyBakedProc' in c.functions or 'NativeProcUnit' in c.functions
 
-def make(folder=ROOT/'src', right=None, left=None, magic=False):
+def make(folder=SRC22, right=None, left=None, magic=False):
     c,_=controller(folder); c.__class__=HitScript
     p=Actor(right,left,magic); t=Actor(); calls=collections.Counter(); logs=[]; clock=[10.0]
     c.fields.update(PlayerRef=p,Enabled=Glob(1),DebugLevel=Glob(3),CachedDebugLevel=3,CurrentElement=Glob(10),Sync=Glob(0),
@@ -79,7 +85,7 @@ def make(folder=ROOT/'src', right=None, left=None, magic=False):
         c.overrides['NoteDamageElement']=note
     return c,p,t,calls,logs,clock
 
-def hit_case(name,source,projectile,equipped,flags,accept,power=False,left=None,magic=False,folder=ROOT/'src'):
+def hit_case(name,source,projectile,equipped,flags,accept,power=False,left=None,magic=False,folder=SRC22):
     c,p,t,calls,logs,_=make(folder,equipped,left,magic)
     c.OnWeaponHit(t,source,projectile,flags)
     damage=[spell for spell in t.hits if spell in c.HitNormalSpells or spell in c.HitPowerSpells]
@@ -161,7 +167,7 @@ def incoming():
             c.overrides.update(GetSelf=lambda *a:1,GetIceShield=lambda:1,GetWaterMirror=lambda:1,
                 ConsumeRockArmor=lambda:calls.update(['rock']),ConsumeIceShield=lambda:calls.update(['ice']),
                 ConsumeWaterMirror=lambda:calls.update(['water']),GetGuardWindLeft=lambda:0)
-            g=HitScript(ROOT/'src/ESSBGuard.psc',dict(cast=native_cast,padd=add,ESSBNodes=c.env['ESSBNodes'],
+            g=HitScript(SRC22/'ESSBGuard.psc',dict(cast=native_cast,padd=add,ESSBNodes=c.env['ESSBNodes'],
                 ESSBElem2=NS(OnEarthRetaliate=lambda *a:calls.update(['melee-retaliation']))))
             g.fields['Ctl']=c
             if 'NodeBits' in g.fields:
@@ -253,7 +259,7 @@ def run():
             state_schema.preflight()
             continue
         assert hashlib.sha256((ROOT/name).read_bytes()).hexdigest()==digest,name
-    src=(ROOT/'src/ESSBController.psc').read_text(encoding='utf8')
+    src=(SRC22/'ESSBController.psc').read_text(encoding='utf8')
     old=(ROOT/'.codex/pre-fix11-snapshot/src/ESSBController.psc').read_text(encoding='utf8')
     for token in ('RegisterForWeaponHit(Self)','Utility.Wait','RegisterForUpdate('):
         assert src.count(token)==old.count(token),token

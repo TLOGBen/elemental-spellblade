@@ -126,6 +126,11 @@ constexpr Tuning ReadTuning(Global&& global)
     t.envNight = global(glob::kEnvNight) == 1.0f;
     t.prevElement = static_cast<int>(global(glob::kPrevElement));
     t.twinElement = static_cast<int>(global(glob::kTwinElement));
+    t.multCooldown = global(glob::kMultCooldown);
+    t.envStormy = global(glob::kEnvStormy) == 1.0f;
+    t.multDot = global(glob::kMultDot);
+    t.poisonDotK = global(glob::kPoisonDotK);
+    t.bleedDotK = global(glob::kBleedDotK);
     return t;
 }
 

@@ -1,256 +1,10 @@
 {
-  "state_schema_version": 10,
-  "signature_sha256": "89235fde727b2ef1ae79b578533f8a31a14b6c4dbb833bc16225e3dc1bcb473c",
+  "state_schema_version": 11,
+  "signature_sha256": "a1860170931c1d5830430813bc986b3f2960d751d2459e44900663d1e42bb267",
   "signatures": {
-    "ESSBStatus": {
+    "ESSBStub": {
       "parent": "activemagiceffect",
-      "members": [
-        [
-          "airdamage",
-          "float",
-          "member"
-        ],
-        [
-          "airleft",
-          "float",
-          "member"
-        ],
-        [
-          "astralring",
-          "int[]",
-          "member"
-        ],
-        [
-          "astralweight",
-          "float[]",
-          "member"
-        ],
-        [
-          "bleedring",
-          "int[]",
-          "member"
-        ],
-        [
-          "bound",
-          "bool",
-          "member"
-        ],
-        [
-          "catalyzeleft",
-          "float",
-          "member"
-        ],
-        [
-          "catalyzemult",
-          "float",
-          "member"
-        ],
-        [
-          "controller",
-          "quest",
-          "auto"
-        ],
-        [
-          "ctl",
-          "essbcontroller",
-          "member"
-        ],
-        [
-          "curse",
-          "int",
-          "member"
-        ],
-        [
-          "cursetime",
-          "float",
-          "member"
-        ],
-        [
-          "deathcurseamount",
-          "float",
-          "member"
-        ],
-        [
-          "deathcurseleft",
-          "float",
-          "member"
-        ],
-        [
-          "deathcursemult",
-          "float",
-          "member"
-        ],
-        [
-          "finished",
-          "bool",
-          "member"
-        ],
-        [
-          "fissure",
-          "int",
-          "member"
-        ],
-        [
-          "fissuretime",
-          "float",
-          "member"
-        ],
-        [
-          "freeze",
-          "int",
-          "member"
-        ],
-        [
-          "freezeseconds",
-          "float",
-          "member"
-        ],
-        [
-          "freezetime",
-          "float",
-          "member"
-        ],
-        [
-          "frozenfxshown",
-          "bool",
-          "member"
-        ],
-        [
-          "frozenshader",
-          "effectshader",
-          "auto"
-        ],
-        [
-          "heat",
-          "int",
-          "member"
-        ],
-        [
-          "heattime",
-          "float",
-          "member"
-        ],
-        [
-          "holder",
-          "actor",
-          "member"
-        ],
-        [
-          "holystack",
-          "int",
-          "member"
-        ],
-        [
-          "holytime",
-          "float",
-          "member"
-        ],
-        [
-          "migrating",
-          "bool",
-          "member"
-        ],
-        [
-          "nextendmult",
-          "float",
-          "member"
-        ],
-        [
-          "nextopenmult",
-          "float",
-          "member"
-        ],
-        [
-          "poisonring",
-          "int[]",
-          "member"
-        ],
-        [
-          "pressure",
-          "int",
-          "member"
-        ],
-        [
-          "pressuretime",
-          "float",
-          "member"
-        ],
-        [
-          "ringclock",
-          "float",
-          "member"
-        ],
-        [
-          "settling",
-          "bool",
-          "member"
-        ],
-        [
-          "spreadcounter",
-          "float",
-          "member"
-        ],
-        [
-          "starlockleft",
-          "float",
-          "member"
-        ],
-        [
-          "unbalance",
-          "int",
-          "member"
-        ],
-        [
-          "unbalancetime",
-          "float",
-          "member"
-        ],
-        [
-          "wet",
-          "int",
-          "member"
-        ],
-        [
-          "wetlock",
-          "int",
-          "member"
-        ],
-        [
-          "wettime",
-          "float",
-          "member"
-        ]
-      ]
-    },
-    "ESSBMark": {
-      "parent": "activemagiceffect",
-      "members": [
-        [
-          "controller",
-          "quest",
-          "auto"
-        ],
-        [
-          "ctl",
-          "essbcontroller",
-          "member"
-        ],
-        [
-          "elementindex",
-          "int",
-          "auto"
-        ],
-        [
-          "finished",
-          "bool",
-          "member"
-        ],
-        [
-          "holder",
-          "actor",
-          "member"
-        ]
-      ]
+      "members": []
     },
     "ESSBTrees": {
       "parent": "referencealias",
@@ -561,41 +315,6 @@
           "member"
         ],
         [
-          "backupfloatsa",
-          "float[]",
-          "member"
-        ],
-        [
-          "backupfloatsb",
-          "float[]",
-          "member"
-        ],
-        [
-          "backupintsa",
-          "int[]",
-          "member"
-        ],
-        [
-          "backupintsb",
-          "int[]",
-          "member"
-        ],
-        [
-          "backupintsc",
-          "int[]",
-          "member"
-        ],
-        [
-          "backupintsd",
-          "int[]",
-          "member"
-        ],
-        [
-          "backupvalid",
-          "bool[]",
-          "member"
-        ],
-        [
           "basedamagemult",
           "globalvariable",
           "auto"
@@ -629,6 +348,11 @@
           "branchcacheb",
           "int[]",
           "auto"
+        ],
+        [
+          "burstcharge",
+          "int",
+          "member"
         ],
         [
           "cacheddebuglevel",
@@ -746,17 +470,17 @@
           "member"
         ],
         [
+          "damagetime",
+          "float[]",
+          "member"
+        ],
+        [
           "deadactor",
           "actor[]",
           "member"
         ],
         [
           "deadbleed",
-          "int[]",
-          "member"
-        ],
-        [
-          "deadcurse",
           "int[]",
           "member"
         ],
@@ -771,23 +495,13 @@
           "member"
         ],
         [
-          "deadheat",
-          "int[]",
-          "member"
-        ],
-        [
-          "deadholy",
+          "deadmarks",
           "int[]",
           "member"
         ],
         [
           "deadnext",
           "int",
-          "member"
-        ],
-        [
-          "deadpoison",
-          "int[]",
           "member"
         ],
         [
@@ -891,21 +605,6 @@
           "auto"
         ],
         [
-          "endboost",
-          "float[]",
-          "member"
-        ],
-        [
-          "endboostamount",
-          "float",
-          "member"
-        ],
-        [
-          "endboostleft",
-          "float",
-          "member"
-        ],
-        [
           "engagedkeyword",
           "keyword",
           "auto"
@@ -983,6 +682,11 @@
         [
           "formsound",
           "globalvariable",
+          "auto"
+        ],
+        [
+          "frenzybladespell",
+          "spell",
           "auto"
         ],
         [
@@ -1286,11 +990,6 @@
           "member"
         ],
         [
-          "hitbonusspells",
-          "spell[]",
-          "auto"
-        ],
-        [
           "hitform",
           "int[]",
           "member"
@@ -1413,11 +1112,6 @@
         [
           "killprocuntil",
           "float[]",
-          "member"
-        ],
-        [
-          "killstreakready",
-          "bool",
           "member"
         ],
         [
@@ -1551,21 +1245,6 @@
           "auto"
         ],
         [
-          "markspells",
-          "spell[]",
-          "auto"
-        ],
-        [
-          "moltenleft",
-          "float",
-          "member"
-        ],
-        [
-          "moltentickat",
-          "float",
-          "member"
-        ],
-        [
           "multcooldown",
           "globalvariable",
           "auto"
@@ -1616,16 +1295,6 @@
           "auto"
         ],
         [
-          "nextmarkbonus",
-          "int",
-          "member"
-        ],
-        [
-          "nextseq",
-          "int",
-          "member"
-        ],
-        [
           "nexttickat",
           "float",
           "member"
@@ -1651,64 +1320,9 @@
           "auto"
         ],
         [
-          "openboost",
-          "float[]",
-          "member"
-        ],
-        [
           "overheatselfspell",
           "spell",
           "auto"
-        ],
-        [
-          "pendingair",
-          "float[]",
-          "member"
-        ],
-        [
-          "pendingairdamage",
-          "float[]",
-          "member"
-        ],
-        [
-          "pendingastral",
-          "int[]",
-          "member"
-        ],
-        [
-          "pendingastralweight",
-          "float[]",
-          "member"
-        ],
-        [
-          "pendingbleed",
-          "int",
-          "member"
-        ],
-        [
-          "pendingcatalyze",
-          "float[]",
-          "member"
-        ],
-        [
-          "pendingcatalyzemult",
-          "float[]",
-          "member"
-        ],
-        [
-          "pendingcurse",
-          "float[]",
-          "member"
-        ],
-        [
-          "pendingcursebase",
-          "float[]",
-          "member"
-        ],
-        [
-          "pendingcursemult",
-          "float[]",
-          "member"
         ],
         [
           "pendingdischarge",
@@ -1716,33 +1330,18 @@
           "member"
         ],
         [
-          "pendingdrain",
-          "bool",
+          "pendingkillactor",
+          "actor[]",
           "member"
         ],
         [
-          "pendingfrozen",
+          "pendingkillat",
           "float[]",
           "member"
         ],
         [
-          "pendingheal",
-          "bool",
-          "member"
-        ],
-        [
-          "pendingnextend",
-          "float[]",
-          "member"
-        ],
-        [
-          "pendingnextopen",
-          "float[]",
-          "member"
-        ],
-        [
-          "pendingradiance",
-          "float[]",
+          "pendingkillnext",
+          "int",
           "member"
         ],
         [
@@ -1756,18 +1355,13 @@
           "member"
         ],
         [
-          "pendingset",
-          "bool[]",
-          "member"
-        ],
-        [
-          "pendingstacks",
-          "int[]",
-          "member"
-        ],
-        [
           "perpetualkeep",
           "int",
+          "member"
+        ],
+        [
+          "playerinfiredomain",
+          "bool",
           "member"
         ],
         [
@@ -1836,116 +1430,6 @@
           "auto"
         ],
         [
-          "regactor",
-          "actor[]",
-          "member"
-        ],
-        [
-          "regelem",
-          "int[]",
-          "member"
-        ],
-        [
-          "regelem2",
-          "int[]",
-          "member"
-        ],
-        [
-          "reggeneration",
-          "int[]",
-          "member"
-        ],
-        [
-          "reghostpending",
-          "bool[]",
-          "member"
-        ],
-        [
-          "reghostrequest",
-          "float[]",
-          "member"
-        ],
-        [
-          "registryinitialised",
-          "bool",
-          "member"
-        ],
-        [
-          "reglastdamage",
-          "int[]",
-          "member"
-        ],
-        [
-          "reglastend",
-          "float[]",
-          "member"
-        ],
-        [
-          "reglastopen",
-          "float[]",
-          "member"
-        ],
-        [
-          "regmark",
-          "essbmark[]",
-          "member"
-        ],
-        [
-          "regmark2",
-          "essbmark[]",
-          "member"
-        ],
-        [
-          "regpendamt",
-          "int[]",
-          "member"
-        ],
-        [
-          "regpendelem",
-          "int[]",
-          "member"
-        ],
-        [
-          "regpendstarlock",
-          "float[]",
-          "member"
-        ],
-        [
-          "regpendwetlock",
-          "bool[]",
-          "member"
-        ],
-        [
-          "regsecondreal",
-          "bool[]",
-          "member"
-        ],
-        [
-          "regseconduntil",
-          "float[]",
-          "member"
-        ],
-        [
-          "regseq",
-          "int[]",
-          "member"
-        ],
-        [
-          "regseq2",
-          "int[]",
-          "member"
-        ],
-        [
-          "regstatus",
-          "essbstatus[]",
-          "member"
-        ],
-        [
-          "reguntil",
-          "float[]",
-          "member"
-        ],
-        [
           "resolve",
           "int",
           "member"
@@ -1998,11 +1482,6 @@
         [
           "selflasthit",
           "float",
-          "member"
-        ],
-        [
-          "selfoverheat",
-          "int",
           "member"
         ],
         [
@@ -2076,52 +1555,7 @@
           "auto"
         ],
         [
-          "statushostspell",
-          "spell",
-          "auto"
-        ],
-        [
           "stormcharge",
-          "float",
-          "member"
-        ],
-        [
-          "stripspell",
-          "spell",
-          "auto"
-        ],
-        [
-          "swapactor",
-          "actor",
-          "member"
-        ],
-        [
-          "swapdeadline",
-          "float",
-          "member"
-        ],
-        [
-          "swapfloats",
-          "float[]",
-          "member"
-        ],
-        [
-          "swapgeneration",
-          "int",
-          "member"
-        ],
-        [
-          "swapints",
-          "int[]",
-          "member"
-        ],
-        [
-          "swapslot",
-          "int",
-          "member"
-        ],
-        [
-          "swapstarted",
           "float",
           "member"
         ],
@@ -2174,6 +1608,11 @@
           "synct3",
           "globalvariable",
           "auto"
+        ],
+        [
+          "tablesinitialised",
+          "bool",
+          "member"
         ],
         [
           "thunderleft",
@@ -2238,6 +1677,11 @@
         [
           "utiltargetspells",
           "spell[]",
+          "auto"
+        ],
+        [
+          "visionspell",
+          "spell",
           "auto"
         ],
         [
@@ -2557,8 +2001,8 @@
     }
   },
   "quests": {
-    "ESSB_MainQuest": "006010",
-    "ESSB_MCMQuest": "006011"
+    "ESSB_MainQuest": "006012",
+    "ESSB_MCMQuest": "006013"
   },
   "history": [
     {
@@ -2632,6 +2076,14 @@
       "quests": {
         "ESSB_MainQuest": "00600E",
         "ESSB_MCMQuest": "00600F"
+      }
+    },
+    {
+      "state_schema_version": 10,
+      "signature_sha256": "89235fde727b2ef1ae79b578533f8a31a14b6c4dbb833bc16225e3dc1bcb473c",
+      "quests": {
+        "ESSB_MainQuest": "006010",
+        "ESSB_MCMQuest": "006011"
       }
     }
   ]

@@ -202,8 +202,15 @@ def snapshot_text(script: str) -> str:
     return (SNAPSHOT / 'src' / script).read_text(encoding='utf-8-sig')
 
 
+def current_dir() -> Path:
+    """Round 22 moved "now" for this seal to the pre-fix22 snapshot (round 21 as shipped): build/fix22_history.py
+    first proves today's scripts differ from it only by round 22's declared changes."""
+    import fix22_history
+    return fix22_history.legacy_source()
+
+
 def current_text(script: str) -> str:
-    return (ROOT / 'src' / script).read_text(encoding='utf-8-sig')
+    return (current_dir() / script).read_text(encoding='utf-8-sig')
 
 
 def body_of(text: str, fn: str) -> str | None:
@@ -302,7 +309,7 @@ def accept_file(script: str, baseline: bytes) -> dict:
     bytes; round 20 -> now must then pass round21_diff."""
     snap = (SNAPSHOT / 'src' / script).read_bytes()
     assert snap == baseline, (script, 'differed from its pinned bytes before round 21 (undeclared change)')
-    if (ROOT / 'src' / script).read_bytes() == baseline:
+    if (current_dir() / script).read_bytes() == baseline:
         return dict(same=True)
     return dict(same=False, functions=round21_diff(script))
 

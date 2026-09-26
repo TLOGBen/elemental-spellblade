@@ -176,10 +176,10 @@ def run():
                 for rd in src:
                     for node in rd['nodes']:mapped[pos(node)].append((f'src/{name}:{fn}',number,base))
                 pct_sites+=1
-    assert pct_sites>=30,pct_sites
+    papyrus_sites=pct_sites
     # Round 20 (N2): the sustain adept / master element lines are applied by the DLL at hit time
-    # (native/include/HitMath.h NodeSum over the generated node::kProcAdept / kProcMaster tables); the Papyrus
-    # ESSBController.NativeNodeSum mirror (bound above) must cover exactly the same cells with the same 1%.
+    # (native/include/HitMath.h NodeSum over the generated node::kProcAdept / kProcMaster tables). Round 22 deleted the
+    # Papyrus mirror (ESSBController.NativeNodeSum, with the difference patch), so the DLL site is the only binding.
     hitmath=(ROOT/'native/include/HitMath.h').read_text(encoding='utf-8')
     nodesum=re.search(r'constexpr float NodeSum\(.*?\n\}',hitmath,re.S)[0]
     manifest=(ROOT/'native/include/ManifestData.h').read_text(encoding='utf-8')
@@ -190,8 +190,37 @@ def run():
             if tr==8:
                 continue  # water: its sustain adept / master lines are recovery, not proc damage
             assert '{'+f'{tr}, 0, {tier}'+'}' in cells,(table_name,tr)
-            assert any(s[0]=='src/ESSBController.psc:NativeNodeSum' and math.isclose(s[2],.01) for s in mapped[tr,0,tier]),(table_name,tr)
             mapped[tr,0,tier].append((f'native/include/HitMath.h:NodeSum[{table_name}]',hitmath[:hitmath.index(nodesum)].count('\n')+1,.01))
+            pct_sites+=1
+    # Round 22 (N3): the status layer's percentage main lines are the DLL's too. Every Pct(t, nodes.Rank(node::X), base)
+    # in native/include/Status.h and native/src/Plugin.cpp is bound, through fix19_native's NODE_IDENTITY (constants)
+    # and ARRAY_IDENTITY (per-element tables, node::kX[kElement] or [element] = every tree that has the line), to the
+    # v0.4 main line it reads, with its base coefficient (a literal, or an n3:: constant of Status.h).
+    sys.path.insert(0,str(ROOT/'build'))
+    import fix19_native
+    status_h=(ROOT/'native/include/Status.h').read_text(encoding='utf-8')
+    n3={m[1]:float(m[2]) for m in re.finditer(r'inline constexpr float (k\w+) = ([\d.]+)f;',status_h)}
+    elements={n:i for i,n in enumerate(['kFire','kFrost','kLightning','kEarth','kWind','kBlood','kDivine','kPoison','kWater','kDarkness','kAstral'],1)}
+    dll_sites=0
+    for rel in ('native/include/Status.h','native/src/Plugin.cpp'):
+        text=(ROOT/rel).read_text(encoding='utf-8')
+        for m in re.finditer(r'Pct\(\s*[\w.]+,\s*nodes\.Rank\(\s*(?:essb::)?node::(k\w+)(?:\[\s*(?:essb::)?(\w+)\s*\])?\s*\),\s*([^)]+?)\s*\)',text):
+            name,index,expr=m[1],m[2],m[3].strip()
+            base=float(expr[:-1]) if re.fullmatch(r'[\d.]+f',expr) else n3[expr.removeprefix('essb::').removeprefix('n3::')]
+            if name in fix19_native.NODE_IDENTITY:
+                cells=[fix19_native.NODE_IDENTITY[name]]
+            else:
+                table=fix19_native.ARRAY_IDENTITY[name]
+                cells=[table[elements[index]]] if index in elements else [c for c in table if c]
+            line=text[:m.start()].count('\n')+1
+            for cell in cells:
+                node=by_name[cell]
+                if node['kind']!='main':
+                    continue   # branch nodes carry no per-point coefficient
+                mapped[pos(cell)].append((f'{rel}:{name}',line,base))
+            dll_sites+=1
+            pct_sites+=1
+    assert papyrus_sites>=15 and dll_sites>=15 and pct_sites>=30,(papyrus_sites,dll_sites,pct_sites)
     scaled={}
     for row in rows:
         k=row['tree_index'],row['route'],row['tier']

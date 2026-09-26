@@ -1,14 +1,17 @@
 Scriptname ESSBElem2 Hidden
 {大地（5.6）、風（5.7）、鮮血（5.8）、神聖（5.9）四棵元素樹的節點效果。
 
+Round 22（N3）起，裂痕、倒地、失衡、血痕、聖印、聖佑與聖裁計數是 DLL 掛的引擎效果（native/include/Status.h）；
+這裡只剩開印與終焉的本體與範圍掃描（N5 前），狀態只經 ESSBNative 讀寫。
+
 樹索引 3 土、4 風、5 血、6 聖（元素編號 4／5／6／7）。路線 0 持續、1 開啟、2 關閉。
 函式名與 ESSBElem（火冰雷）一一對應，由 ESSBElem 依元素分派過來，
 共通框架（G(L)、M_mod、開印／終焉倍率、狀態上限、印記時長）完全不必改。
 
 物理推力（跌倒、拉近、吹飛、吹上天）一律走 ESSBController 的
 Knockdown／PullIn／BlowBack／LiftUp，四者都在控制器裡做每目標冷卻與免疫名單，
-本檔只決定「要不要推、推多遠」。浮空是自有的 1.5 秒狀態（ESSBStatus.AirLeft），
-不讀物理狀態，落地傷害在狀態到期時結算（規劃 8 的空中追擊實作備註）。
+本檔只決定「要不要推、推多遠」。浮空是 DLL 掛的 2 秒自有效果，不讀物理狀態，
+到期時 DLL 送落地事件（ESSBController.OnLanding）結算落地傷害（規劃 8 的空中追擊實作備註）。
 
 所有傷害都走 ESSBController.ApplyDamage，G(L) 由 ApplyDamage 統一乘上。}
 
@@ -39,78 +42,43 @@ Int Function WindThreshold(ESSBController akCtl) Global
 	Return 4
 EndFunction
 
-; 血 血痕上限：8，深創分支 12；萬象再 +1／每 5 點。
-Int Function BleedCap(ESSBController akCtl) Global
-	Int cap = 8
-	If ESSBNodes.Br(akCtl, 5, 0, 0, 1) ; @node 深創
-		cap = 12
-	EndIf
-	Return cap + ESSBNodes.StatusCapBonus(akCtl)
-EndFunction
 
-; 聖 聖印上限：5；萬象再 +1／每 5 點。
-Int Function HolyCap(ESSBController akCtl) Global
-	Return 5 + ESSBNodes.StatusCapBonus(akCtl)
-EndFunction
 
-; ================================================================== 附傷倍率
 
-Float Function HitExtra(ESSBController akCtl, Int aiElement, Actor akTarget, Bool abPower) Global
-	If aiElement == 4
-		Return EarthHitExtra(akCtl, akTarget, abPower)
-	ElseIf aiElement == 6
-		Return BloodHitExtra(akCtl, akTarget, abPower)
-	ElseIf aiElement == 7
-		Return DivineHitExtra(akCtl, akTarget, abPower)
-	EndIf
-	; 5.7 風：開啟熟練主線是拉近距離，不是附傷；風附傷的節點與潛行 ×3 由 DLL 算。
-	Return 0.0
-EndFunction
 
-; 5.6：開印後 5 秒內 +1%／點（土附傷與同調每段由 DLL 算）。
-Float Function EarthHitExtra(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	If akCtl.GetOpenBoost(4) > 0
-		Return ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 3, 1, 1), 0.01) ; @node 開印後 5 秒內土附傷
-	EndIf
-	Return 0.0
-EndFunction
 
-; 5.8：開印後 5 秒內 +1%／點（血附傷、同調每段、血位曲線與血怒由 DLL 算）。
-Float Function BloodHitExtra(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	If akCtl.GetOpenBoost(6) > 0
-		Return ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 5, 1, 1), 0.01) ; @node 開印後 5 秒內血附傷
-	EndIf
-	Return 0.0
-EndFunction
 
-; 5.9：開印後 5 秒內 +1%／點、聖印、聖痕（聖附傷、同調每段、白天、亡靈魔族、驅魔由 DLL 算）。
-Float Function DivineHitExtra(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	Float extra = HolyVulnerability(akCtl, akTarget)
-	If akCtl.GetOpenBoost(7) > 0
-		extra = extra + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 6, 1, 1), 0.01) ; @node 開印後 5 秒內聖附傷
-	EndIf
-	Return extra
-EndFunction
-
-; 聖印本身讓目標受聖傷 +20%（規劃 2.6 的基礎開印）＋聖痕的 +10%。裁決與聖光也吃同一個函式。
-; v0.4 的持續新手主線是「聖佑各階武器傷害與聖傷加成」（聖佑在 N3 才有），v0.3 的「聖印每層目標受聖傷 +1%／點」已拿掉。
+; 聖印（神聖印記本身）讓目標受聖傷 +20%（規劃 2.6 的基礎開印）＋聖痕的 +10%（非亡靈）。裁決吃同一個函式；
+; 附傷的同一項由 DLL 讀（Status.h ProcTerms）。
 Float Function HolyVulnerability(ESSBController akCtl, Actor akTarget) Global
-	Float bonus = 0.0
-	If akCtl.GetStack(akTarget, 6) > 0
-		bonus = bonus + 0.2
+	If !akCtl.HasElementMark(akTarget, 7)
+		Return 0.0
 	EndIf
-	If ESSBNodes.Br(akCtl, 6, 1, 3, 0) && akCtl.HasElementMark(akTarget, 7) ; @node 聖痕
+	Float bonus = 0.2
+	If ESSBNodes.Br(akCtl, 6, 1, 3, 0) && !akCtl.IsUndeadOrDaedra(akTarget) ; @node 聖痕
 		bonus = bonus + 0.1
 	EndIf
 	Return bonus
+EndFunction
+
+; 聖佑各階的聖傷加成（v0.4 5.9：I +10%、II +20%、III +35%；持續新手主線 +1%／點 × 階數）：裁決與聖裁都吃。
+Float Function HolyTierBonus(ESSBController akCtl, Int aiTier) Global
+	Float bonus = 0.0
+	If aiTier >= 3
+		bonus = 0.35
+	ElseIf aiTier == 2
+		bonus = 0.2
+	ElseIf aiTier == 1
+		bonus = 0.1
+	EndIf
+	Return bonus + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 6, 0, 0), 0.01) * aiTier ; @node 聖佑各階武器傷害與聖傷加成
 EndFunction
 
 ; ================================================================== 開印時的層數
 
 ; 土 開印岩甲 +2（岩膚 +4），開啟新手主線再 +1／每 5 點。
 ; 風 開印風勢 +2（疾風痕直接滿），開啟新手主線 +1／每 5 點。
-; 血 開印流血 2 層，開啟新手主線 +1／每 5 點。
-; 聖 開印聖印 1 層，開啟新手主線不加層（改為回血），所以維持 1。
+; （岩甲與風勢是你身上的資源，N4 前在 Papyrus；血痕、聖印在 DLL。）
 Int Function OpenStacks(ESSBController akCtl, Int aiElement) Global
 	If aiElement == 4
 		Int rock = 2
@@ -123,18 +91,10 @@ Int Function OpenStacks(ESSBController akCtl, Int aiElement) Global
 			Return WindThreshold(akCtl)
 		EndIf
 		Return 2 + ESSBNodes.Rank(akCtl, 4, 1, 0) / 5 ; @node 開印風勢
-	ElseIf aiElement == 6
-		Return 2 + ESSBNodes.Rank(akCtl, 5, 1, 0) / 5 ; @node 開印流血
-	ElseIf aiElement == 7
-		Return 1
 	EndIf
 	Return 0
 EndFunction
 
-; 命中時的層數（規劃 2.3 的「命中」欄）。土風是自身資源、血聖是敵方狀態，都各 +1。
-Int Function HitStacks(ESSBController akCtl, Int aiElement, Bool abPower) Global
-	Return 1
-EndFunction
 
 ; ================================================================== 每次命中（元素專屬）
 
@@ -155,10 +115,10 @@ Function OnEarthHit(ESSBController akCtl, Actor akTarget, Bool abPower) Global
 		Return
 	EndIf
 	; 5.6 持續熟練分支「震擊」：重擊消耗裂痕標記，1.5× 地震爆傷並削減耐力。
-	If ESSBNodes.Br(akCtl, 3, 0, 1, 0) && akCtl.GetStack(akTarget, 3) > 0 ; @node 震擊
+	If ESSBNodes.Br(akCtl, 3, 0, 1, 0) && ESSBNative.GetStatus(akTarget, 3) > 0 ; @node 震擊
 		akCtl.ApplyDamage(4, ESSBReactions.ReactDamage(akCtl, 4, 1.5), akTarget)
 		akCtl.ApplyUtil(3, 50.0, 0, akTarget)
-		akCtl.SetStack(akTarget, 3, 0)
+		ESSBNative.ClearStatus(akTarget, 3)
 		If akCtl.CachedDebugLevel >= 2
 			akCtl.LogThrottled(2, "node", "earth quakestrike " + akTarget.GetFormID())
 		EndIf
@@ -182,9 +142,8 @@ Function OnWindHit(ESSBController akCtl, Actor akTarget, Bool abPower) Global
 	; 5.7 關閉大師分支「順勢」的視窗在接管元素身上，不在風形態，見 OnEnd。
 EndFunction
 
-; v0.4 的神聖以聖佑三階與聖裁為核心（DLL N3）：持續專精主線是「聖裁傷害」、神罰是「聖裁只要 2 擊」、聖盾是
-; 聖佑各階的法術減傷，都要等聖佑／聖裁上線；v0.3 的「命中回血 +2%／點」「聖印滿層額外聖光」「聖盾層數」
-; 與已退役的「祝福」都已拿掉。
+; v0.4 的神聖以聖佑三階與聖裁為核心：聖佑升階、II／III 命中回血、聖裁計數與聖裁本身（含聖裁傷害、神罰）都在 DLL；
+; 聖盾（聖佑各階的法術減傷）是聖佑階上的引擎效果。這裡只剩護持。
 Function OnDivineHit(ESSBController akCtl, Actor akTarget, Bool abPower) Global
 	Actor player = akCtl.ThePlayer()
 	If !player
@@ -223,7 +182,7 @@ Function OnOpen(ESSBController akCtl, Int aiElement, Actor akTarget, Float afMul
 EndFunction
 
 Function OpenEarth(ESSBController akCtl, Actor akTarget) Global
-	; 5.6 開啟新手分支「震波」：開印時附近 1 人也裂痕。
+	; 5.6 開啟新手分支「震波」：開印時附近 1 人也裂痕（掃描 N5 前在這裡）。
 	If ESSBNodes.Br(akCtl, 3, 1, 0, 0) ; @node 震波
 		Actor[] nearby = akCtl.ScanTargets(akTarget, 1050.0, 1, akTarget)
 		If nearby[0]
@@ -231,8 +190,15 @@ Function OpenEarth(ESSBController akCtl, Actor akTarget) Global
 			akCtl.ApplyUtil(1, FissureArmor(akCtl), 8, nearby[0])
 		EndIf
 	EndIf
-	; v0.4 的「地基」（開印目標 3 秒內耐力不回復）與「裂地」（被土弄倒時倒地 3 → 5 秒）都是 DLL N3，
-	; v0.3 的「開印目標減速」與「3 秒減速地帶」已拿掉。
+	; 5.6 開啟熟練分支「深裂痕」：開印時目標耐力低於 50% 則立即跌倒（倒地標記 DLL 在開印當下已掛，這裡是推力）。
+	If ESSBNodes.Br(akCtl, 3, 1, 1, 0) && akTarget.GetActorValuePercentage("Stamina") < 0.5 ; @node 深裂痕
+		akCtl.Knockdown(akTarget, 3.0)
+	EndIf
+	; 5.6 開啟大師分支「地基」：開印目標 3 秒內耐力不回復（自有效果把耐力回復設 0）。
+	If ESSBNodes.Br(akCtl, 3, 1, 3, 0) ; @node 地基
+		akCtl.ApplyUtil(21, 100.0, 3, akTarget)
+	EndIf
+	; 「裂地」（開印目標 8 秒內被土弄倒，倒地 3 → 5 秒）由 DLL 在掛倒地時讀裂痕。
 	; 5.6 開啟傳奇分支「先震」：同調三段時開印立即一次 ×0.5 地震，不含跌倒。
 	If ESSBNodes.Br(akCtl, 3, 1, 4, 0) && akCtl.SyncStage() >= 3 ; @node 先震
 		Quake(akCtl, akTarget, 0.5, False)
@@ -246,8 +212,24 @@ Function OpenWind(ESSBController akCtl, Actor akTarget, Float afMult = 1.0) Glob
 	If !ambush
 		; 規劃 2.6 基礎開印「風痕」：把目標拉近你 1.5 公尺；開啟熟練主線 +0.1 公尺／點。
 		akCtl.PullIn(akTarget, PullDistance(akCtl) * afMult)
+		; 5.7 開啟大師分支「牽引」：目標身後 1.5 公尺內的其他敵人也一起被拉近並失衡（最多 2 人，各自 3 秒推力冷卻；
+		; 掃描 N5 前在這裡）。「身後」＝比目標離你更遠。
+		If ESSBNodes.Br(akCtl, 4, 1, 3, 0) && player ; @node 牽引
+			Float behind = player.GetDistance(akTarget)
+			Actor[] dragged = akCtl.ScanTargets(akTarget, 105.0, 5, akTarget)
+			Int pulled = 0
+			Int index = 0
+			While index < dragged.Length && pulled < 2
+				If dragged[index] && player.GetDistance(dragged[index]) > behind
+					akCtl.PullIn(dragged[index], PullDistance(akCtl) * afMult)
+					akCtl.AddStackTo(dragged[index], 4, 1)
+					pulled += 1
+				EndIf
+				index += 1
+			EndWhile
+		EndIf
 	EndIf
-	; 5.7 開啟新手分支「風襲」：開印時附近 1 人也風痕。
+	; 5.7 開啟新手分支「風襲」：開印時附近 1 人也風痕（掃描 N5 前在這裡）。
 	If ESSBNodes.Br(akCtl, 4, 1, 0, 0) ; @node 風襲
 		Actor[] nearby = akCtl.ScanTargets(akTarget, 1050.0, 1, akTarget)
 		If nearby[0]
@@ -268,9 +250,9 @@ Function OpenWind(ESSBController akCtl, Actor akTarget, Float afMult = 1.0) Glob
 		WindBlade(akCtl, akTarget, afMult)
 	EndIf
 	If ambush
-		; 一刀開印兼吹飛：立即結算一次風終焉（abChain = True，不再往外連鎖）。
-		ESSBReactions.End(akCtl, 5, akTarget, 0, 1.0, True)
-		BlowAway(akCtl, akTarget, 1.0)
+		; 一刀開印兼吹飛：立即結算一次風終焉的本體（不再往外連鎖），失衡照吹飛的規則吹掉。
+		ESSBNative.ClearStatus(akTarget, 4)
+		ESSBReactions.EndWind(akCtl, akTarget, 1.0)
 		If akCtl.CachedDebugLevel >= 1
 			akCtl.LogThrottled(1, "node", "wind ambush " + akTarget.GetFormID())
 		EndIf
@@ -279,7 +261,7 @@ EndFunction
 
 Function OpenBlood(ESSBController akCtl, Actor akTarget) Global
 	Actor player = akCtl.ThePlayer()
-	; 5.8 開啟新手分支「血濺」：開印時附近 1 人流血 1 層。
+	; 5.8 開啟新手分支「血濺」：開印時附近 1 人流血 1 層（掃描 N5 前在這裡）。
 	If ESSBNodes.Br(akCtl, 5, 1, 0, 0) ; @node 血濺
 		Actor[] nearby = akCtl.ScanTargets(akTarget, 1050.0, 1, akTarget)
 		If nearby[0]
@@ -302,14 +284,24 @@ Function OpenBlood(ESSBController akCtl, Actor akTarget) Global
 	If ESSBNodes.Br(akCtl, 5, 1, 3, 1) ; @node 血脈
 		akCtl.AddSync(2)
 	EndIf
-	; 5.8 關閉大師分支「血引」：血終焉後接管元素的開印附帶流血 2 層（跨元素，所以在控制器）。
-	Int pending = akCtl.TakePendingBleed()
-	If pending > 0
-		akCtl.AddStackTo(akTarget, 5, pending)
+	; 5.8 開啟熟練分支「深血痕」的吸血那一半（層數在 DLL）：中血區吸血一次、低血區吸血兩次。
+	If ESSBNodes.Br(akCtl, 5, 1, 1, 0) && player ; @node 深血痕
+		Float health = player.GetActorValuePercentage("Health")
+		Int leeches = 0
+		If health < 0.3
+			leeches = 2
+		ElseIf health <= 0.7
+			leeches = 1
+		EndIf
+		While leeches > 0
+			akCtl.Leech(50.0 * akCtl.GetBloodLeechRatio())
+			leeches -= 1
+		EndWhile
 	EndIf
+	; 血引（血終焉後接管元素的開印附帶流血 2 層）在 DLL 的同一擊裡做。
 	; 5.8 開啟傳奇分支「血祭之始」：同調三段時開印立即結算一次 ×0.5 血潮。
 	If ESSBNodes.Br(akCtl, 5, 1, 4, 0) && akCtl.SyncStage() >= 3 ; @node 血祭之始
-		ESSBReactions.End(akCtl, 6, akTarget, 0, 0.5, True)
+		ESSBReactions.SurgeOn(akCtl, akTarget, 0.5, True)
 	EndIf
 EndFunction
 
@@ -320,11 +312,10 @@ Function OpenDivine(ESSBController akCtl, Actor akTarget) Global
 	If rank > 0 && player
 		akCtl.ApplyUtil(4, ESSBReactions.BaseMax(akCtl, 7) * 0.05 * rank, 0, player)
 	EndIf
-	; 5.9 開啟新手分支「聖輝」：開印時附近 1 人也聖印。
+	; 5.9 開啟新手分支「聖輝」：開印時附近 1 人也聖印（聖印就是神聖印記；掃描 N5 前在這裡）。
 	If ESSBNodes.Br(akCtl, 6, 1, 0, 0) ; @node 聖輝
 		Actor[] nearby = akCtl.ScanTargets(akTarget, 1050.0, 1, akTarget)
 		If nearby[0]
-			akCtl.AddStackTo(nearby[0], 6, 1)
 			akCtl.ApplyMark(nearby[0], 7)
 		EndIf
 	EndIf
@@ -332,12 +323,7 @@ Function OpenDivine(ESSBController akCtl, Actor akTarget) Global
 	If ESSBNodes.Br(akCtl, 6, 1, 3, 1) ; @node 聖光
 		HealAllies(akCtl, ESSBReactions.BaseMax(akCtl, 7))
 	EndIf
-	; 5.9 關閉大師分支「聖引」：聖終焉後接管元素的開印治療你 B_max。
-	If akCtl.TakePendingHeal() && player
-		akCtl.ApplyUtil(4, ESSBReactions.BaseMax(akCtl, 7), 0, player)
-	EndIf
-	; v0.4 的「聖啟」是開印讓聖佑直接升到 II（聖佑是 DLL N3），v0.3 的「開印對亡靈 ×0.5 裁決」已拿掉；
-	; v0.3 的「聖護」分支已退役。
+	; 聖引（聖終焉後接管元素的開印治療你 B_max）與聖啟（聖佑直接 II）在 DLL。
 EndFunction
 
 ; 5.6 持續新手主線：裂痕護甲削減 -30 → -60（+2／點；v0.4 沒有 G(L)）。
@@ -388,10 +374,11 @@ Function OnFormOpened(ESSBController akCtl, Int aiElement) Global
 			EndWhile
 		EndIf
 	ElseIf aiElement == 6
-		; 5.8 開啟專精分支「血臨強化」：血臨時你付最大生命 15%（代價路徑，留 1 點）。
-		; 「並立即觸發一次濺血」要等越線與濺血（DLL N3／N5）。v0.3 的「血臨後 10 秒不扣血」已拿掉。
+		; 5.8 開啟專精分支「血臨強化」：血臨時你付最大生命 15%（代價路徑，留 1 點），並立即觸發一次濺血（不受越線冷卻；
+		; 濺血的掃描 N5 前在 ESSBController.Splash）。v0.3 的「血臨後 10 秒不扣血」已拿掉。
 		If ESSBNodes.Br(akCtl, 5, 1, 2, 0) ; @node 血臨強化
 			akCtl.PayBloodCost(0.15)
+			akCtl.Splash()
 		EndIf
 	ElseIf aiElement == 7
 		; 5.9 開啟專精分支「聖臨強化」：聖臨時你與附近同伴回血 B_max ×2（聖 B_max 10 → 20；v0.4 這一格沒有 G(L)）。
@@ -521,7 +508,7 @@ EndFunction
 
 Function WindBladeOne(ESSBController akCtl, Actor akTarget, Float afAmount) Global
 	Float amount = afAmount
-	If akCtl.GetStack(akTarget, 4) > 0
+	If ESSBNative.GetStatus(akTarget, 4) > 0
 		amount = amount * 1.3
 	EndIf
 	akCtl.ApplyDamage(5, amount, akTarget)
@@ -584,30 +571,8 @@ EndFunction
 
 ; ================================================================== 血：血潮
 
-; 5.8 持續新手主線：流血每層傷害 +2%／點。
-Float Function BleedPerLayer(ESSBController akCtl) Global
-	Return ESSBReactions.BaseMax(akCtl, 6) * akCtl.BleedDotK.GetValue() * akCtl.GetDamageMult(6) \
-		* ESSBNodes.OmniMult(akCtl) * BleedTickMult(akCtl)
-EndFunction
 
-Float Function BleedTickMult(ESSBController akCtl) Global
-	Float mult = 1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 5, 0, 0), 0.02) ; @node 流血每層傷害
-	; 5.8 持續大師分支「止血」：低血位（30% 以下）時流血傷害 ×1.5。
-	Actor player = akCtl.ThePlayer()
-	If ESSBNodes.Br(akCtl, 5, 0, 3, 0) && player && player.GetActorValuePercentage("Health") < 0.3 ; @node 止血
-		mult = mult * 1.5
-	EndIf
-	Return mult
-EndFunction
 
-; 5.8 持續新手主線：放血係數 0.3% +0.01%／點（首領 0.1%，同樣按比例成長）。
-Float Function BleedDrainPercent(ESSBController akCtl, Bool abVIP) Global
-	Float percent = 0.003 + 0.0001 * ESSBNodes.Rank(akCtl, 5, 0, 0) ; @node 流血每層傷害
-	If abVIP
-		percent = percent / 3.0
-	EndIf
-	Return percent
-EndFunction
 
 ; 5.8 關閉專精主線：血潮治療倍率 ×2，每點 +0.1。
 Float Function SurgeHealMult(ESSBController akCtl) Global
@@ -636,11 +601,11 @@ Float Function JudgeK(ESSBController akCtl) Global
 	Return 2.0
 EndFunction
 
-; 裁決本體（規劃 2.6）：B_max ×2.0 聖傷，對亡靈魔族 ×3，治療你 B_max ×1.0。
-Function Judge(ESSBController akCtl, Actor akTarget, Float afMult) Global
+; 裁決本體（規劃 2.6）：B_max ×2.0 聖傷（乘聖佑階的聖傷加成），對亡靈魔族 ×3，治療你 B_max ×1.0。
+Function Judge(ESSBController akCtl, Actor akTarget, Float afMult, Int aiHolyTier) Global
 	Actor player = akCtl.ThePlayer()
 	Float amount = ESSBReactions.ReactDamage(akCtl, 7, JudgeK(akCtl)) * afMult \
-		* ESSBElem.SignatureMult(akCtl, 7) * (1.0 + HolyVulnerability(akCtl, akTarget))
+		* ESSBElem.SignatureMult(akCtl, 7) * (1.0 + HolyVulnerability(akCtl, akTarget)) * (1.0 + HolyTierBonus(akCtl, aiHolyTier))
 	If IsHolyPrey(akCtl, akTarget)
 		amount = amount * 3.0
 	EndIf
@@ -686,7 +651,7 @@ Function EndEarthNodes(ESSBController akCtl, Actor akTarget, Int aiReason, Float
 		Actor[] nearby = akCtl.ScanTargets(akTarget, QuakeRadius(akCtl), 5, akTarget)
 		Int index = 0
 		While index < nearby.Length
-			If nearby[index] && akCtl.GetStack(nearby[index], 3) > 0
+			If nearby[index] && ESSBNative.GetStatus(nearby[index], 3) > 0
 				Quake(akCtl, nearby[index], afMult, False)
 			EndIf
 			index += 1
@@ -743,22 +708,18 @@ Function EndWindNodes(ESSBController akCtl, Actor akTarget, Int aiReason, Float 
 EndFunction
 
 Function EndBloodNodes(ESSBController akCtl, Actor akTarget, Int aiReason, Float afMult) Global
-	; 5.8 關閉熟練分支「血漫」：血潮結算時附近流血目標一起血潮。
+	; 5.8 關閉熟練分支「血漫」：血潮結算時附近流血目標一起血潮（掃描 N5 前在這裡）。
 	If ESSBNodes.Br(akCtl, 5, 2, 1, 0) ; @node 血漫
 		Actor[] nearby = akCtl.ScanTargets(akTarget, 350.0, 5, akTarget)
 		Int index = 0
 		While index < nearby.Length
-			If nearby[index] && akCtl.GetStack(nearby[index], 5) > 0
-				ESSBReactions.End(akCtl, 6, nearby[index], 2, afMult, True)
+			If nearby[index] && ESSBNative.GetStatus(nearby[index], 5) > 0
+				ESSBReactions.SurgeOn(akCtl, nearby[index], afMult, True)
 			EndIf
 			index += 1
 		EndWhile
 	EndIf
-	; v0.4 的「血約」是往上越線（回湧）時 15 公尺內流血目標血痕 +2（DLL N3），v0.3 的「血終焉後 8 秒不扣血」已拿掉。
-	; 5.8 關閉大師分支「血引」：血終焉後接管元素的開印附帶流血 2 層。
-	If aiReason == 0 && ESSBNodes.Br(akCtl, 5, 2, 3, 2) ; @node 血引
-		akCtl.SetPendingBleed(2)
-	EndIf
+	; 血約（往上越線時 15 公尺內流血目標血痕 +2）是越線的回湧那一邊（N4）加範圍掃描（N5）。血引在 DLL。
 	; 5.8 關閉傳奇分支「血池」：血印記融斷後留下 5 秒血池。
 	If aiReason == 1 && ESSBNodes.Br(akCtl, 5, 2, 4, 0) ; @node 血池
 		akCtl.StartDomain(6, akTarget, 5)
@@ -769,16 +730,13 @@ EndFunction
 ; v0.3 的「光耀減速」與已退役的「處決」已拿掉。
 Function EndDivineNodes(ESSBController akCtl, Actor akTarget, Int aiReason, Float afMult) Global
 	Actor player = akCtl.ThePlayer()
-	; 5.9 關閉大師分支「聖引」：聖終焉後接管元素的開印治療你 B_max。
-	If aiReason == 0 && ESSBNodes.Br(akCtl, 6, 2, 3, 1) ; @node 聖引
-		akCtl.SetPendingHeal()
-	EndIf
+	; 聖引（接管元素的開印治療你 B_max）在 DLL 的同一擊裡做。
 	; 5.9 關閉熟練分支「聖斷」：聖印記融斷每個目標治療你 B_max ×1.0。
 	If aiReason == 1 && ESSBNodes.Br(akCtl, 6, 2, 1, 1) && player ; @node 聖斷
 		akCtl.ApplyUtil(4, ESSBReactions.BaseMax(akCtl, 7), 0, player)
 	EndIf
-	; 5.9 關閉專精分支「聖域」：聖終焉後留下聖域 5 秒；傳奇分支「神聖領域」：聖印記融斷後留下 8 秒聖域。
-	; 「聖佑 III 時融斷不清空聖佑」要等聖佑（DLL N3）。
+	; 5.9 關閉專精分支「聖域」：聖終焉後留下聖域 5 秒；傳奇分支「神聖領域」：聖印記融斷後留下 8 秒聖域
+	;（「聖佑 III 時融斷不清空聖佑」在 DLL 的離開形態）。
 	If aiReason == 1 && ESSBNodes.Br(akCtl, 6, 2, 4, 0) ; @node 神聖領域
 		akCtl.StartDomain(7, akTarget, 8)
 	ElseIf ESSBNodes.Br(akCtl, 6, 2, 2, 0) ; @node 聖域
@@ -789,9 +747,19 @@ EndFunction
 ; ================================================================== 擊殺
 
 
-; 5.9 持續傳奇主線「天啟」：同調三段時裁決改為範圍，1 公尺 +0.2 公尺／點。
-Function JudgeArea(ESSBController akCtl, Actor akTarget, Float afMult) Global
-	Judge(akCtl, akTarget, afMult)
+; 5.9 持續傳奇主線「天啟」：同調三段時裁決改為範圍，1 公尺 +0.2 公尺／點（掃描 N5 前在這裡）。
+; 懲戒（v0.4 2.3）：這一次裁決每層 +20%，然後清空（範圍裁決的每個目標吃同一份；聖裁那一份在 DLL）。
+Function JudgeArea(ESSBController akCtl, Actor akTarget, Float afMult, Int aiHolyTier) Global
+	Actor player = akCtl.ThePlayer()
+	Int punish = 0
+	If player
+		punish = ESSBNative.GetStatus(player, 23)
+		If punish > 0
+			ESSBNative.ClearStatus(player, 23)
+		EndIf
+	EndIf
+	afMult = afMult * (1.0 + 0.2 * punish)
+	Judge(akCtl, akTarget, afMult, aiHolyTier)
 	Int rank = ESSBNodes.Rank(akCtl, 6, 0, 4) ; @node 天啟
 	Bool wide = ESSBNodes.Br(akCtl, 6, 2, 1, 0) ; @node 廣裁
 	If rank <= 0 && !wide
@@ -811,7 +779,7 @@ Function JudgeArea(ESSBController akCtl, Actor akTarget, Float afMult) Global
 	Int index = 0
 	While index < nearby.Length
 		If nearby[index]
-			Judge(akCtl, nearby[index], afMult)
+			Judge(akCtl, nearby[index], afMult, aiHolyTier)
 		EndIf
 		index += 1
 	EndWhile
@@ -924,37 +892,24 @@ Bool Function WindSlowImmune(ESSBController akCtl) Global
 	Return ESSBNodes.Br(akCtl, 4, 0, 4, 0) && akCtl.SyncStage() >= 3 ; @node 御風
 EndFunction
 
-; 5.7 持續傳奇分支「御風」：失衡目標受你所有傷害 +30%；
-; 5.7 關閉傳奇分支「空中追擊」：浮空目標受你所有傷害 ×1.5。
+; 5.7 持續傳奇分支「御風」：失衡目標受你所有傷害 +30%（不看同調；v0.4 只有免疫減速看同調三段）；
+; 5.7 關閉傳奇分支「空中追擊」：浮空目標受你所有傷害 ×1.5。只給 Papyrus 反應本體的傷害（ApplyDamage）；
+; 附傷的同一項由 DLL 讀（Status.h ProcTerms），武器傷害那一半是 PERK 讀失衡效果。
 Float Function TargetDamageMult(ESSBController akCtl, Actor akTarget) Global
 	Float mult = 1.0
 	If !akTarget
 		Return mult
 	EndIf
-	If ESSBNodes.Br(akCtl, 4, 0, 4, 0) && akCtl.SyncStage() >= 3 && akCtl.GetStack(akTarget, 4) > 0 ; @node 御風
+	If ESSBNodes.Br(akCtl, 4, 0, 4, 0) && ESSBNative.GetStatus(akTarget, 4) > 0 ; @node 御風
 		mult = mult * 1.3
 	EndIf
-	If ESSBNodes.Br(akCtl, 4, 2, 4, 0) && akCtl.GetAirborne(akTarget) > 0 ; @node 空中追擊
+	If ESSBNodes.Br(akCtl, 4, 2, 4, 0) && ESSBNative.GetStatusFloat(akTarget, 14) > 0.0 ; @node 空中追擊
 		mult = mult * 1.5
 	EndIf
 	Return mult
 EndFunction
 
-; 5.7 關閉傳奇分支「連殺」：下一次潛行攻擊附傷 ×2。
-Float Function KillStreakMult(ESSBController akCtl) Global
-	If ESSBNodes.Br(akCtl, 4, 2, 4, 1) && akCtl.TakeKillStreak() ; @node 連殺
-		Return 2.0
-	EndIf
-	Return 1.0
-EndFunction
 
-; 5.7 持續大師分支「暗風」：潛行攻擊的風附傷 ×3 → ×5。
-Float Function SneakMult(ESSBController akCtl) Global
-	If ESSBNodes.Br(akCtl, 4, 0, 3, 2) ; @node 暗風
-		Return 5.0
-	EndIf
-	Return 3.0
-EndFunction
 
 ; FIX16 deviation: wind-form branch consumes recorded hit-time form, not killing element.
 Function TryKillStreak(ESSBController akCtl, Int aiHitForm, Bool abSneak = False) Global
@@ -983,6 +938,8 @@ Function TryKillStreak(ESSBController akCtl, Int aiHitForm, Bool abSneak = False
 		Return
 	EndIf
 	akCtl.KeepSneak(5)
+	; 下一次潛行攻擊附傷 ×2：DLL 讀你身上的連殺視窗、用掉就移除（死亡處理 N5 前由這裡掛）。
+	ESSBNative.SetWindow(akCtl.ThePlayer(), 31, akCtl.DurationSeconds(5.0), 0.0)
 EndFunction
 
 ; Terminal physical sneak attack: the victim is already dead, but the ambush's

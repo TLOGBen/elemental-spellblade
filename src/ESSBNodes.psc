@@ -131,7 +131,12 @@ EndFunction
 ; 5.2 關閉新手 +1%／點、關閉大師再 +1%／點。終焉與融斷都吃。
 ; （持續專精主線「同調三段時終焉 +1%／點」是 DLL N3，v0.3 的「同調三段時受傷 -0.5%／點」已拿掉。）
 Float Function CommonEndMult(ESSBController akCtl) Global
-	Return 1.0 + ESSBNodes.Pct(akCtl, Rank(akCtl, 12, 2, 0), 0.01) + ESSBNodes.Pct(akCtl, Rank(akCtl, 12, 2, 3), 0.01) ; @node 終焉, 終焉再
+	Float mult = 1.0 + ESSBNodes.Pct(akCtl, Rank(akCtl, 12, 2, 0), 0.01) + ESSBNodes.Pct(akCtl, Rank(akCtl, 12, 2, 3), 0.01) ; @node 終焉, 終焉再
+	; 5.2 持續專精主線：同調三段時終焉 +1%／點（融斷的那一份是 N5，這裡照一般終焉算）。
+	If akCtl.SyncStage() >= 3
+		mult = mult + ESSBNodes.Pct(akCtl, Rank(akCtl, 12, 0, 2), 0.01) ; @node 同調三段時終焉
+	EndIf
+	Return mult
 EndFunction
 
 ; 5.2 關閉熟練 融斷 +1%／點、關閉傳奇 再 +2%／點。
@@ -160,13 +165,6 @@ EndFunction
 
 ; ================================================================== 通用樹：印記與開印
 
-; 5.2 開啟熟練主線：印記持續 +0.2 秒／點。回傳「額外秒數」（四捨五入到整數秒，
-; SetNthEffectDuration 只吃整數）。
-Int Function MarkDurationBonus(ESSBController akCtl) Global
-	Float extra = 0.2 * Rank(akCtl, 12, 1, 1) ; @node 印記持續
-	Return (extra + 0.5) as Int
-EndFunction
-
 ; 5.2 開啟熟練分支「先制」（開印 +2 同調）與開啟專精主線（+1 同調／每 5 點）。
 Int Function OpenSyncBonus(ESSBController akCtl) Global
 	Int gain = Rank(akCtl, 12, 1, 2) / 5 ; @node 開印時
@@ -179,15 +177,7 @@ EndFunction
 ; v0.3 的開啟新手分支「廣印」與開啟大師分支「深印」（開印那一擊 ×1.5）v0.4 已移除
 ; （同格改為「跳印」「印潮」，DLL N3／N5）。
 
-; 5.2 開啟專精分支「雙印」：目標可同時帶兩種元素印記。
-Bool Function HasDualMark(ESSBController akCtl) Global
-	Return Br(akCtl, 12, 1, 2, 0) ; @node 雙印
-EndFunction
-
-; 5.2 關閉熟練分支「疊印」：終焉後舊印記保留 4 秒為副印記。
-Bool Function HasResidualMark(ESSBController akCtl) Global
-	Return Br(akCtl, 12, 2, 1, 1) ; @node 疊印
-EndFunction
+; 5.2 開啟熟練主線「印記持續」、開啟專精分支「雙印」、關閉熟練分支「疊印」都在 DLL（native/include/Status.h）。
 
 ; 5.2 開啟大師分支「臨界」：開形態那一刻附近敵人減速 30% 2 秒。
 Function OnFormOpened(ESSBController akCtl, Int aiElement) Global

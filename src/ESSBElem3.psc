@@ -5,11 +5,11 @@ Scriptname ESSBElem3 Hidden
 函式名與 ESSBElem（火冰雷）／ESSBElem2（土風血聖）一一對應，由 ESSBElem 依元素分派過來，
 共通框架（G(L)、M_mod、開印／終焉倍率、狀態上限、印記時長）完全不必改。
 
-本輪的四個特殊機制：
-  毒（2.3）毒層無上限、每層獨立 12 秒（ESSBStatus 的十二格環狀桶），終焉不結清只催毒，
-      ≥門檻每 N 秒向 3 公尺內一名敵人傳 1 層；擴散間隔與門檻由節點改。
+Round 22（N3）起，中毒（一顆成長的持續傷）、瘴氣、催毒、浸濕、水壓與沖刷、詛咒與幻覺階梯、死咒引信、星痕、共鳴、
+星鎖都是 DLL 掛的引擎效果（native/include/Status.h）；這裡只剩開印與終焉的本體與範圍掃描（N5 前）。
+本輪的特殊機制：
   水（5.11）長流是每秒百分比回復（規劃 8：自有效果，不動回復速率 AV），
-      洗淨／淨化走「限定關鍵字的 Dispel 原型」，沖刷／洗滌走「對目標的 Dispel 原型」。
+      洗淨／淨化走「限定關鍵字的 Dispel 原型」，沖刷（開印沖刷、洗滌、潮池）走 DLL 的精確判定（ESSBNative.WashBuffs，裁定 R5）。
   暗（5.12）恐懼與瘋狂用自有 Demoralize（原型 7）／Frenzy（原型 8）效果，
       magnitude 就是等級上限（同原版幻術），首領、龍、亡靈魔族與機械免疫；
       亡者歸來（v0.4 的基礎死亡機制，DLL N5＋Papyrus）的六階表在這裡，復生本身等 N5 接上。
@@ -18,32 +18,8 @@ Scriptname ESSBElem3 Hidden
 所有傷害都走 ESSBController.ApplyDamage，G(L) 由 ApplyDamage 統一乘上；
 真實傷害（星斷）走 ApplyTrueDamage(amount, target, 樹)。}
 
-; ================================================================== 狀態上限（規劃 2.3）
 
-; 毒 毒層：無上限（0 代表無上限，見 ESSBController.StackCap）。
-; 水 水壓：基礎 5；萬象再 +1／每 5 點。
-Int Function PressureCap(ESSBController akCtl) Global
-	Return 5 + ESSBNodes.StatusCapBonus(akCtl)
-EndFunction
 
-; 暗 詛咒：基礎 5；傳奇主線「深淵」同調三段時 +1／每 3 點（最多 +5，共 10）；萬象再加。
-Int Function CurseCap(ESSBController akCtl) Global
-	Int cap = 5
-	Int rank = ESSBNodes.Rank(akCtl, 9, 0, 4) ; @node 深淵
-	If rank > 0 && akCtl.SyncStage() >= 3
-		Int extra = rank / 3
-		If extra > 5
-			extra = 5
-		EndIf
-		cap = cap + extra
-	EndIf
-	Return cap + ESSBNodes.StatusCapBonus(akCtl)
-EndFunction
-
-; 星 星痕：基礎 3；持續專精主線 +1／每 5 點；萬象再加。
-Int Function AstralCap(ESSBController akCtl) Global
-	Return 3 + ESSBNodes.Rank(akCtl, 10, 0, 2) / 5 + ESSBNodes.StatusCapBonus(akCtl) ; @node 星痕層數上限
-EndFunction
 
 ; ================================================================== 範圍
 
@@ -52,65 +28,10 @@ Float Function AdventRadius(ESSBController akCtl) Global
 	Return (2.0 + 0.2 * ESSBNodes.Rank(akCtl, 10, 1, 3)) * 70.0 ; @node 星臨
 EndFunction
 
-; ================================================================== 附傷倍率
 
-Float Function HitExtra(ESSBController akCtl, Int aiElement, Actor akTarget, Bool abPower) Global
-	If aiElement == 8
-		Return PoisonHitExtra(akCtl, akTarget, abPower)
-	ElseIf aiElement == 9
-		Return WaterHitExtra(akCtl, akTarget, abPower)
-	ElseIf aiElement == 10
-		Return DarkHitExtra(akCtl, akTarget, abPower)
-	ElseIf aiElement == 11
-		Return AstralHitExtra(akCtl, akTarget, abPower)
-	EndIf
-	Return 0.0
-EndFunction
 
-; 5.10：開印後 5 秒內 +1%／點（毒附傷與同調每段由 DLL 算）。
-Float Function PoisonHitExtra(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	If akCtl.GetOpenBoost(8) > 0
-		Return ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 7, 1, 1), 0.01) ; @node 開印後 5 秒內毒附傷
-	EndIf
-	Return 0.0
-EndFunction
 
-; 5.11：開印後 5 秒內 +1%／點、水壓每層 +（10% + 1%／點）（「水壓」分支才會有層數）。
-Float Function WaterHitExtra(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	Float extra = 0.0
-	If akCtl.GetOpenBoost(9) > 0
-		extra = extra + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 8, 1, 1), 0.01) ; @node 開印後 5 秒內水附傷
-	EndIf
-	; 水壓層數只有「水壓」分支才會產生，沒投點就不查狀態容器（命中路徑）。
-	If ESSBNodes.Br(akCtl, 8, 0, 1, 0) ; @node 水壓
-		Int pressure = akCtl.GetStack(akTarget, 9)
-		If pressure > 0
-			Float perLayer = 0.1 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 8, 0, 2), 0.01) ; @node 水壓每層水附傷
-			extra = extra + pressure * perLayer * ESSBNodes.OmniMult(akCtl)
-		EndIf
-	EndIf
-	Return extra
-EndFunction
 
-; 5.12：開印後 5 秒內 +1%／點（暗附傷、同調每段、夜晚由 DLL 算）。
-Float Function DarkHitExtra(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	If akCtl.GetOpenBoost(10) > 0
-		Return ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 9, 1, 1), 0.01) ; @node 開印後 5 秒內暗附傷
-	EndIf
-	Return 0.0
-EndFunction
-
-; 5.13：開印後 5 秒內 +1%／點、星痕弱點（重擊時每層星痕 +8%）（星附傷與同調每段由 DLL 算）。
-Float Function AstralHitExtra(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	Float extra = 0.0
-	If akCtl.GetOpenBoost(11) > 0
-		extra = extra + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 10, 1, 1), 0.01) ; @node 開印後 5 秒內星附傷
-	EndIf
-	If abPower && ESSBNodes.Br(akCtl, 10, 0, 2, 0) ; @node 星痕弱點
-		extra = extra + 0.08 * akCtl.GetStack(akTarget, 11) * ESSBNodes.OmniMult(akCtl)
-	EndIf
-	Return extra
-EndFunction
 
 ; 5.13 開啟大師分支「星鎖」（開印目標 3 秒內受所有元素傷 +10%）與關閉傳奇分支「星域」（內部敵人受所有元素傷 +20%）。
 ; 決定 61：攻擊類進入點讀不到目標，所以這兩條只放大本模組造成的傷害。
@@ -120,8 +41,8 @@ Float Function TargetDamageMult(ESSBController akCtl, Actor akTarget) Global
 	If !akTarget
 		Return mult
 	EndIf
-	; 查詢都先看節點有沒有投點，沒投就完全不碰狀態（這是命中路徑，見效能守則）。
-	If ESSBNodes.Br(akCtl, 10, 1, 3, 0) && akCtl.HasStarLock(akTarget) ; @node 星鎖
+	; 只給 Papyrus 反應本體的傷害（ApplyDamage）；附傷的同一項由 DLL 讀。
+	If ESSBNodes.Br(akCtl, 10, 1, 3, 0) && ESSBNative.GetStatus(akTarget, 15) > 0 ; @node 星鎖
 		mult = mult * 1.1
 	EndIf
 	If ESSBNodes.Br(akCtl, 10, 2, 4, 0) && akCtl.InDomain(akTarget, 11) ; @node 星域
@@ -130,29 +51,7 @@ Float Function TargetDamageMult(ESSBController akCtl, Actor akTarget) Global
 	Return mult
 EndFunction
 
-; ================================================================== 開印時的層數
 
-; 毒 開印 +3 毒層，開啟新手主線 +1／每 3 點；劇毒之始在 OpenPoison 再加一份。
-; 水 浸濕是單層狀態，固定 1。
-; 暗 開印 2 層詛咒，開啟新手主線 +1／每 5 點。
-; 星 開印 1 層星痕，開啟新手主線不加層（改為縮短延遲），所以維持 1。
-Int Function OpenStacks(ESSBController akCtl, Int aiElement) Global
-	If aiElement == 8
-		Return 3 + ESSBNodes.Rank(akCtl, 7, 1, 0) / 3 ; @node 開印劑數
-	ElseIf aiElement == 9
-		Return 1
-	ElseIf aiElement == 10
-		Return 2 + ESSBNodes.Rank(akCtl, 9, 1, 0) / 5 ; @node 開印詛咒
-	ElseIf aiElement == 11
-		Return 1
-	EndIf
-	Return 0
-EndFunction
-
-; 命中時的層數（規劃 2.3 的「命中」欄）：四個元素都各 +1。
-Int Function HitStacks(ESSBController akCtl, Int aiElement, Bool abPower) Global
-	Return 1
-EndFunction
 
 ; ================================================================== 每次命中（元素專屬）
 
@@ -172,7 +71,7 @@ Function OnPoisonHit(ESSBController akCtl, Actor akTarget, Bool abPower) Global
 	If !ESSBNodes.Br(akCtl, 7, 0, 1, 0) && !ESSBNodes.Br(akCtl, 7, 0, 2, 0) ; @node 萎靡, 侵蝕
 		Return
 	EndIf
-	Int stacks = akCtl.GetStack(akTarget, 7)
+	Int stacks = ESSBNative.GetStatus(akTarget, 7)
 	; 5.10 持續熟練分支「萎靡」：目標中毒 ≥5 劑（v0.3 毒層，N3 改成劑）時攻擊 -15%。
 	If stacks >= 5 && ESSBNodes.Br(akCtl, 7, 0, 1, 0) ; @node 萎靡
 		akCtl.ApplyUtil(17, 15.0, 3, akTarget)
@@ -183,14 +82,8 @@ Function OnPoisonHit(ESSBController akCtl, Actor akTarget, Bool abPower) Global
 	EndIf
 EndFunction
 
-; v0.3 的「水牢」「水鏡」v0.4 已移除。
+; v0.3 的「水牢」「水鏡」v0.4 已移除；清流（命中回耐力）round 20 起、水壓（命中浸濕目標 +1、滿格沖刷）round 22 起在 DLL。
 Function OnWaterHit(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	; 5.11 持續新手分支「清流」（命中回復耐力）round 20 起由 DLL 在命中當下施放。
-	Bool wet = akCtl.IsWet(akTarget) || akCtl.IsEnvWet()
-	; 5.11 持續熟練分支「水壓」：命中浸濕目標 +1 水壓。
-	If wet && ESSBNodes.Br(akCtl, 8, 0, 1, 0) ; @node 水壓
-		akCtl.AddStackTo(akTarget, 9, 1)
-	EndIf
 	; 5.11 持續專精分支「洗淨」／大師分支「淨化」：命中時清除自身負面，每 3 秒一次。
 	If ESSBNodes.Br(akCtl, 8, 0, 2, 0) && akCtl.TakeCleanse() ; @node 洗淨
 		akCtl.ApplyCleanse(ESSBNodes.Br(akCtl, 8, 0, 3, 1)) ; @node 淨化
@@ -200,7 +93,7 @@ EndFunction
 ; v0.3 的「蝕魔」「衰弱」「腐朽」（暗的持續分支）v0.4 已移除；命中只剩詛咒本身的抗性侵蝕。
 Function OnDarkHit(ESSBController akCtl, Actor akTarget, Bool abPower) Global
 	; 抗性侵蝕是詛咒狀態本身的效果（基礎 -2%／層，主線把它推到 -5%），一次命中一次狀態查詢。
-	Int curse = akCtl.GetStack(akTarget, 10)
+	Int curse = ESSBNative.GetStatus(akTarget, 10)
 	If curse <= 0
 		Return
 	EndIf
@@ -242,11 +135,31 @@ EndFunction
 
 Function OpenPoison(ESSBController akCtl, Actor akTarget, Float afMult = 1.0) Global
 	Actor player = akCtl.ThePlayer()
-	; 5.10 開啟新手分支「毒濺」：開印時附近 1 人中毒 2 劑（v0.3 毒層）。
+	; 5.10 開啟新手分支「毒濺」：開印時附近 1 人中毒 2 劑（掃描 N5 前在這裡）。
 	If ESSBNodes.Br(akCtl, 7, 1, 0, 0) ; @node 毒濺
 		Actor[] nearby = akCtl.ScanTargets(akTarget, 1050.0, 1, akTarget)
 		If nearby[0]
 			akCtl.AddStackTo(nearby[0], 7, ESSBElem.RoundStochastic(2.0 * afMult))
+		EndIf
+	EndIf
+	; 5.10 開啟熟練分支「濃毒」：6 公尺內已有中毒的敵人時，從劑數最高的那一個複製 2 劑到新目標（不從對方扣；
+	; 掃描 N5 前在這裡）。
+	If ESSBNodes.Br(akCtl, 7, 1, 1, 0) ; @node 濃毒
+		Actor[] poisoned = akCtl.ScanTargets(akTarget, 420.0, 5, akTarget)
+		Int most = 0
+		Int index = 0
+		While index < poisoned.Length
+			If poisoned[index]
+				Int doses = ESSBNative.GetStatus(poisoned[index], 7)
+				If doses > most
+					most = doses
+				EndIf
+			EndIf
+			index += 1
+		EndWhile
+		If most > 0
+			; 擴散一劑的規則（碼 25：d' = max(d - t, 12)，審查修正 5）。
+			ESSBNative.AddStatus(akTarget, 25, 2)
 		EndIf
 	EndIf
 	; 5.10 開啟熟練分支「毒膜」：開印時你毒抗 +50% 5 秒。
@@ -261,15 +174,18 @@ Function OpenPoison(ESSBController akCtl, Actor akTarget, Float afMult = 1.0) Gl
 	If ESSBNodes.Br(akCtl, 7, 1, 3, 1) && player ; @node 毒血
 		akCtl.ApplyUtil(4, ESSBReactions.BaseMax(akCtl, 8) * 0.5, 0, player)
 	EndIf
-	; 5.10 開啟傳奇分支「劇毒之始」：同調三段時開印劑數 ×2（再補一份等量）。
-	If ESSBNodes.Br(akCtl, 7, 1, 4, 0) && akCtl.SyncStage() >= 3 ; @node 劇毒之始
-		akCtl.AddStackTo(akTarget, 7, ESSBElem.RoundStochastic(OpenStacks(akCtl, 8) * afMult))
-	EndIf
+	; 開印劑數（開啟新手主線）與劇毒之始（×2）在 DLL。
 EndFunction
 
 Function OpenWater(ESSBController akCtl, Actor akTarget) Global
 	Actor player = akCtl.ThePlayer()
-	; 5.11 開啟新手分支「廣佈」：開印時浸濕擴散到附近 1 人（浸濕的減速與時長同開印的浸濕）。
+	; 5.11 開啟新手主線：開印時回復生命與耐力各最大值 0.3%／點（15 點 4.5%）。
+	Int rank = ESSBNodes.Rank(akCtl, 8, 1, 0) ; @node 開印時回復生命與耐力各最大值 0.3%／點
+	If rank > 0 && player
+		akCtl.ApplyUtil(4, player.GetActorValueMax("Health") * 0.003 * rank, 0, player)
+		akCtl.ApplyUtil(6, player.GetActorValueMax("Stamina") * 0.003 * rank, 0, player)
+	EndIf
+	; 5.11 開啟新手分支「廣佈」：開印時浸濕擴散到附近 1 人（浸濕的減速與時長同開印的浸濕；掃描 N5 前在這裡）。
 	If ESSBNodes.Br(akCtl, 8, 1, 0, 0) ; @node 廣佈
 		Actor[] nearby = akCtl.ScanTargets(akTarget, 1050.0, 1, akTarget)
 		If nearby[0]
@@ -281,25 +197,18 @@ Function OpenWater(ESSBController akCtl, Actor akTarget) Global
 	If ESSBNodes.Br(akCtl, 8, 1, 1, 1) && player ; @node 湧泉
 		akCtl.ApplyUtil(6, akCtl.WaterOpenStamina.GetValue(), 0, player)
 	EndIf
-	; 5.11 開啟大師分支「開印沖刷」：開印額外驅散目標一個有時限的增益，每目標每 10 秒一次。
+	; 5.11 開啟大師分支「開印沖刷」：開印額外驅散目標一個有時限的增益，每目標每 10 秒一次（淨潮照算）。
 	If ESSBNodes.Br(akCtl, 8, 1, 3, 0) ; @node 開印沖刷
 		akCtl.ApplyStrip(akTarget)
 	EndIf
-	; 5.11 開啟傳奇分支「汪洋之始」：同調三段時開印的浸濕不會過期，直到被切掉。
-	If ESSBNodes.Br(akCtl, 8, 1, 4, 0) && akCtl.SyncStage() >= 3 ; @node 汪洋之始
-		akCtl.SetWetLock(akTarget)
-	EndIf
+	; 深濕（水壓直接滿格）與汪洋之始（浸濕不過期）在 DLL。
 EndFunction
 
-; v0.4 暗的開啟路線圍繞幻覺階梯（DLL N3）：「夢魘」（目標恐懼時附近詛咒 +1）、「迷亂」（瘋狂中被命中詛咒 +2）、
-; 「群魔」（達瘋狂門檻時範圍瘋狂）都要等幻覺階梯；v0.3 的「開印恐懼」「開印沉默」與已退役的「瘋狂」已拿掉。
+; 暗的開啟路線圍繞幻覺階梯：階梯本身與「迷亂」（瘋狂中被命中詛咒 +2）在 DLL；「夢魘」「群魔」是階梯觸發時的範圍掃描（N5）。
 Function OpenDark(ESSBController akCtl, Actor akTarget) Global
-	; 5.12 開啟熟練分支「幻影」：開印後 3 秒目標對你的命中率 -30%
-	; （引擎沒有命中率修正，以攻擊 -30% 表達，見實作紀錄）。
-	If ESSBNodes.Br(akCtl, 9, 1, 1, 1) ; @node 幻影
-		akCtl.ApplyUtil(17, 30.0, 3, akTarget)
-	EndIf
-	; 5.12 開啟大師分支「暗染」：開印時附近 1 人也詛咒。
+	; 5.12 開啟熟練分支「幻影」（開印後 3 秒目標對你的命中 30% 落空）在 DLL＋PERK：DLL 開印時給目標幻影效果，
+	; 你的 PERK「受到的傷害 ×0」條件是攻擊者帶幻影且 GetRandomPercent < 30，每一擊各擲一次（指揮官裁定 (c)）。
+	; 5.12 開啟大師分支「暗染」：開印時附近 1 人也詛咒（掃描 N5 前在這裡）。
 	If ESSBNodes.Br(akCtl, 9, 1, 3, 1) ; @node 暗染
 		Actor[] spread = akCtl.ScanTargets(akTarget, 1050.0, 1, akTarget)
 		If spread[0]
@@ -311,7 +220,21 @@ EndFunction
 
 Function OpenAstral(ESSBController akCtl, Actor akTarget) Global
 	Actor player = akCtl.ThePlayer()
-	; 5.13 開啟新手分支「星散」：開印時附近 1 人（15 公尺內）也星痕。
+	; 5.13 開啟熟練分支「明星」：15 公尺內已有其他共鳴目標（帶星痕）時，新目標與最近的那一個星痕各 +1
+	;（掃描 N5 前在這裡；在星散之前判定，星散剛給的那一人不算「已有」）。
+	If ESSBNodes.Br(akCtl, 10, 1, 1, 0) ; @node 明星
+		Actor[] resonant = akCtl.ScanTargets(akTarget, 1050.0, 5, akTarget)
+		Int index = 0
+		While index < resonant.Length
+			If resonant[index] && ESSBNative.GetStatus(resonant[index], 11) > 0
+				akCtl.AddStackTo(akTarget, 11, 1)
+				akCtl.AddStackTo(resonant[index], 11, 1)
+				index = resonant.Length
+			EndIf
+			index += 1
+		EndWhile
+	EndIf
+	; 5.13 開啟新手分支「星散」：開印時附近 1 人（15 公尺內）也星痕（也進入共鳴；掃描 N5 前在這裡）。
 	If ESSBNodes.Br(akCtl, 10, 1, 0, 0) ; @node 星散
 		Actor[] nearby = akCtl.ScanTargets(akTarget, 1050.0, 1, akTarget)
 		If nearby[0]
@@ -319,15 +242,7 @@ Function OpenAstral(ESSBController akCtl, Actor akTarget) Global
 			akCtl.ApplyMark(nearby[0], 11)
 		EndIf
 	EndIf
-	; 5.13 開啟大師分支「星鎖」：開印目標 3 秒內受所有元素傷 +10%。
-	If ESSBNodes.Br(akCtl, 10, 1, 3, 0) ; @node 星鎖
-		akCtl.SetStarLock(akTarget, 3)
-	EndIf
-	; 5.13 開啟傳奇分支「星耀」：同調三段時開印的延遲星傷改為立即並 ×2。
-	If ESSBNodes.Br(akCtl, 10, 1, 4, 0) && akCtl.SyncStage() >= 3 ; @node 星耀
-		akCtl.DetonateAstralNow(akTarget, 2.0)
-	EndIf
-	; v0.3 的「星引力」「星光」（開啟分支）v0.4 已移除。
+	; 星鎖（開印目標 3 秒內受所有元素傷 +10%）與星耀（延遲星傷改為立即並 ×2）在 DLL。v0.3 的「星引力」「星光」已移除。
 EndFunction
 
 ; 浸濕的減速（v0.4 2.6 水的開印：減速 15%，ESSB_WaterWetSlowPct）。v0.3 的「開啟新手主線：浸濕減速 +1%／點」
@@ -407,66 +322,14 @@ EndFunction
 
 ; ================================================================== 毒：催毒與擴散（規劃 2.3、2.6）
 
-; 5.10 關閉熟練分支「延毒」：催毒時剩餘時長 +4 秒（v0.3 的催毒 8 → 12 秒）。
-; v0.4 的「毒斷」是融斷的催毒改為強度 ×4（DLL N5），v0.3 的「融斷催毒時間 ×2」已拿掉。
-Int Function CatalyzeSeconds(ESSBController akCtl, Int aiReason) Global
-	If ESSBNodes.Br(akCtl, 7, 2, 1, 0) ; @node 延毒
-		Return 12
-	EndIf
-	Return 8
-EndFunction
 
-; 催毒期間的每秒跳動倍率：基礎 2（每秒兩次），關閉新手分支「潰爛」改為 3。
-Float Function CatalyzeRate(ESSBController akCtl) Global
-	If ESSBNodes.Br(akCtl, 7, 2, 0, 0) ; @node 潰爛
-		Return 3.0
-	EndIf
-	Return 2.0
-EndFunction
 
-; 毒層每秒傷害的節點倍率：持續新手主線「每劑傷害 +2%／點」，催毒期間再 +3%／點（關閉傳奇主線）。
-Float Function PoisonTickMult(ESSBController akCtl, Bool abCatalyzed) Global
-	Float mult = 1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 7, 0, 0), 0.02) ; @node 每劑傷害
-	If abCatalyzed
-		mult = mult * (1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 7, 2, 4), 0.03)) ; @node 催毒期間中毒傷害
-	EndIf
-	Return mult
-EndFunction
 
-; 毒的基礎擴散（v0.3 毒層，N3 前）：每 2 秒向附近一名敵人傳 1 層。v0.4 的持續專精主線是瘴氣披風的每秒劑量
-; （劑數併入待決，見規劃 10.4），v0.3 的「擴散間隔 -0.1 秒／點」已拿掉。
-Int Function SpreadInterval(ESSBController akCtl) Global
-	Return 2
-EndFunction
 
-Int Function SpreadTargets(ESSBController akCtl) Global
-	Return 1
-EndFunction
 
-; 5.10 持續專精分支「傳染門檻」：擴散門檻 5 劑 → 1 劑（v0.3 毒層）。
-Int Function SpreadThreshold(ESSBController akCtl) Global
-	If ESSBNodes.Br(akCtl, 7, 0, 2, 1) ; @node 傳染門檻
-		Return 1
-	EndIf
-	Return 5
-EndFunction
 
-; 5.10 持續傳奇主線「瘟疫」：同調三段時毒層每秒自動擴散到附近敵人，機率 5%／點。
-; 由 ESSBStatus 的每秒 tick 呼叫（每個帶毒目標一次，不做全場掃描）。
-Function PoisonTickHook(ESSBController akCtl, Actor akTarget, Int aiPoison, Int aiKillingElement = 0) Global
-	Int rank = ESSBNodes.Rank(akCtl, 7, 0, 4) ; @node 瘟疫
-	If rank <= 0 || akCtl.SyncStage() < 3
-		Return
-	EndIf
-	If Utility.RandomFloat(0.0, 1.0) < 0.05 * rank
-		akCtl.SpreadPoison(akTarget, 1)
-		If akCtl.CachedDebugLevel >= 2
-			akCtl.LogThrottled(2, "node", "poison plague " + akTarget.GetFormID())
-		EndIf
-	EndIf
-EndFunction
 
-; 5.10 關閉大師分支「劇毒」：催毒期間目標毒抗視為 0。
+; 5.10 關閉大師分支「劇毒」：催毒期間目標毒抗視為 0（催毒的秒數＝中毒剩下的時間，DLL 做催毒）。
 ; 引擎沒有「視為 0」，所以下一個等量於目標當前毒抗的削減（同碎冰的碎甲做法）。
 Function ApplyVirulence(ESSBController akCtl, Actor akTarget, Int aiSeconds) Global
 	If !ESSBNodes.Br(akCtl, 7, 2, 3, 0) || !akTarget ; @node 劇毒
@@ -491,14 +354,6 @@ Float Function FlowPercent(ESSBController akCtl) Global
 	Return percent
 EndFunction
 
-; 5.11 關閉新手分支「強引」：導引 ×1.5 → ×2.0；關閉傳奇主線：導引 +3%／點。
-Float Function GuideMult(ESSBController akCtl) Global
-	Float mult = 1.5
-	If ESSBNodes.Br(akCtl, 8, 2, 0, 0) ; @node 強引
-		mult = 2.0
-	EndIf
-	Return mult * ESSBElem.SignatureMult(akCtl, 9)
-EndFunction
 
 ; 導引給接管元素的同調（v0.3 基礎 +5）。v0.3 的「潮引」（+10）v0.4 已移除。
 Int Function GuideSync(ESSBController akCtl) Global
@@ -507,12 +362,8 @@ EndFunction
 
 ; ================================================================== 暗：死咒周邊
 
-; 5.12 關閉專精主線：死咒的「已損失生命」係數 15% +0.5%／點。
-Float Function DeathCurseLostRatio(ESSBController akCtl) Global
-	Return 0.15 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 9, 2, 2), 0.005) ; @node 死咒的「已損失生命」係數
-EndFunction
 
-; 死咒期間目標無法被治療（規劃 2.6）：3 秒，關閉熟練分支「不治」延長到 6 秒。
+; 死咒期間目標無法被治療（規劃 2.6）：3 秒，關閉熟練分支「不治」延長到 6 秒。死咒的引信與結算（含噬咒、饕餮）在 DLL。
 ; 引擎沒有「受到的治療」修正，以 HealRateMult -100% 表達（同血咒的偏離，見實作紀錄）。
 Int Function DeathCurseSeconds(ESSBController akCtl) Global
 	If ESSBNodes.Br(akCtl, 9, 2, 1, 0) ; @node 不治
@@ -521,20 +372,6 @@ Int Function DeathCurseSeconds(ESSBController akCtl) Global
 	Return 3
 EndFunction
 
-; 死咒結算之後（由 ESSBStatus 在傷害套用完的那一秒呼叫）。
-Function AfterDeathCurse(ESSBController akCtl, Actor akTarget, Float afAmount) Global
-	Actor player = akCtl.ThePlayer()
-	If !akTarget || !player
-		Return
-	EndIf
-	; 5.12 關閉新手分支「饕餮」：死咒結算時吸血吸魔各 B_max ×1.0。
-	If ESSBNodes.Br(akCtl, 9, 2, 0, 0) ; @node 饕餮
-		Float gain = ESSBReactions.BaseMax(akCtl, 10)
-		akCtl.ApplyUtil(4, gain, 0, player)
-		akCtl.ApplyUtil(5, gain, 0, player)
-	EndIf
-	; v0.3 的「處刑」（死咒結算時低血直接死亡）v0.4 已移除：處決只有冰一家（v0.4 相對 v0.3 的差異）。
-EndFunction
 
 ; 恐懼與瘋狂的等級上限（同原版幻術：magnitude 就是可影響的最高等級）。
 ; 基礎 10 級，暗樹每級 +1，所以 100 級的暗樹可影響 110 級以下的目標。
@@ -608,14 +445,6 @@ Bool Function HasTrueBurst(ESSBController akCtl) Global
 	Return ESSBNodes.Br(akCtl, 10, 2, 1, 1) ; @node 星斷
 EndFunction
 
-; 星痕引爆的延遲：環狀桶是 2 格（2 秒）。開啟新手主線「星痕延遲 -0.1 秒／點」
-; 在 10 點以上縮成 1 秒（整數秒 tick 只有這兩檔）。
-Int Function AstralDelay(ESSBController akCtl) Global
-	If ESSBNodes.Rank(akCtl, 10, 1, 0) >= 10 ; @node 星痕延遲
-		Return 1
-	EndIf
-	Return 2
-EndFunction
 
 ; 星落本體（規劃 2.6 的終焉）：B_max ×2.0 星傷；星斷改為真實傷害 ×0.6。
 ; v0.3 的「流星雨」（星落改範圍）與「群星」（星落連鎖）v0.4 已移除／改版（持續傳奇主線是永夜，DLL N4）。
@@ -623,6 +452,16 @@ Function Fall(ESSBController akCtl, Actor akTarget, Float afMult, Int aiReason) 
 	Float amount = ESSBReactions.ReactDamage(akCtl, 11, FallK(akCtl)) * afMult \
 		* ESSBElem.SignatureMult(akCtl, 11)
 	FallHit(akCtl, akTarget, amount, aiReason)
+	; v0.4 2.6 星落：15 公尺內所有共鳴目標（含本人）的星痕立即引爆（照常結算，最多 5 人）。本人的由 DLL 在終焉時引爆，
+	; 其他共鳴目標的掃描 N5 前在這裡。
+	Actor[] resonant = akCtl.ScanTargets(akTarget, 1050.0, 5, akTarget)
+	Int index = 0
+	While index < resonant.Length
+		If resonant[index] && ESSBNative.GetStatus(resonant[index], 11) > 0
+			ESSBNative.Detonate(resonant[index])
+		EndIf
+		index += 1
+	EndWhile
 	If akCtl.CachedDebugLevel >= 2
 		akCtl.LogThrottled(2, "node", "astral fall " + akTarget.GetFormID() + " amount=" + amount)
 	EndIf
@@ -637,16 +476,6 @@ Function FallHit(ESSBController akCtl, Actor akTarget, Float amount, Int aiReaso
 	EndIf
 EndFunction
 
-; Both delayed astral stacks and radiance retain weighted opening damage.
-; v0.4 的持續新手主線是「回聲比例」（DLL N5），v0.3 的「星痕延遲傷害 +2%／點」已拿掉；
-; v0.3 引爆時的「星盾」「星體」分支 v0.4 已移除。
-Function DetonateAstral(ESSBController akCtl, Actor akTarget, Int aiLayers, Float afWeight, Float afMult = 1.0) Global
-	If aiLayers <= 0 || afWeight <= 0.0
-		Return
-	EndIf
-	Float amount = ESSBReactions.ReactDamage(akCtl, 11, 1.0) * afWeight * afMult * ESSBNodes.OmniMult(akCtl)
-	akCtl.ApplyDamage(11, amount, akTarget)
-EndFunction
 
 ; ================================================================== 終焉掛勾
 
@@ -663,15 +492,15 @@ Function OnEnd(ESSBController akCtl, Int aiElement, Actor akTarget, Int aiReason
 EndFunction
 
 Function EndPoisonNodes(ESSBController akCtl, Actor akTarget, Int aiReason, Float afMult) Global
-	; 5.10 關閉大師分支「劇毒」：催毒期間目標毒抗視為 0。
-	ApplyVirulence(akCtl, akTarget, CatalyzeSeconds(akCtl, aiReason))
+	; 5.10 關閉大師分支「劇毒」：催毒期間目標毒抗視為 0（整個催毒期間：中毒剩下的秒數，上限 15 秒 + 延毒 4 秒）。
+	ApplyVirulence(akCtl, akTarget, 19)
 	; 5.10 關閉大師分支「腐蝕終焉」：毒終焉後目標魔抗 -20% 8 秒。
 	If ESSBNodes.Br(akCtl, 7, 2, 3, 1) ; @node 腐蝕終焉
 		akCtl.ApplyUtil(16, 20.0, 8, akTarget)
 	EndIf
-	; 5.10 關閉熟練分支「疫染」：毒終焉時把目標的中毒（v0.3 毒層，同層數）複製到 6 公尺內敵人（規劃 2.9 例外表：5 人）。
+	; 5.10 關閉熟練分支「疫染」：毒終焉時把目標的中毒（同劑數）複製到 6 公尺內敵人（規劃 2.9 例外表：5 人；掃描 N5 前在這裡）。
 	If ESSBNodes.Br(akCtl, 7, 2, 1, 1) ; @node 疫染
-		Int layers = akCtl.GetStack(akTarget, 7)
+		Int layers = ESSBNative.GetStatus(akTarget, 7)
 		If layers > 0
 			Actor[] nearby = akCtl.ScanTargets(akTarget, 420.0, 5, akTarget)
 			Int index = 0
@@ -694,13 +523,18 @@ EndFunction
 
 Function EndWaterNodes(ESSBController akCtl, Actor akTarget, Int aiReason, Float afMult) Global
 	Actor player = akCtl.ThePlayer()
-	; 5.11 關閉大師分支「大潮」：水終焉時範圍內所有浸濕目標都給接管元素導引。
-	If ESSBNodes.Br(akCtl, 8, 2, 3, 0) ; @node 大潮
+	; 5.11 關閉大師分支「大潮」：水終焉時範圍內所有浸濕目標都給接管元素導引（被切才有接管元素；掃描 N5 前在這裡）。
+	If aiReason == 0 && ESSBNodes.Br(akCtl, 8, 2, 3, 0) ; @node 大潮
+		Float guide = 1.5
+		If ESSBNodes.Br(akCtl, 8, 2, 0, 0) ; @node 強引
+			guide = 2.0
+		EndIf
+		guide = guide * ESSBElem.SignatureMult(akCtl, 9)
 		Actor[] nearby = akCtl.ScanTargets(akTarget, 350.0, 5, akTarget)
 		Int index = 0
 		While index < nearby.Length
-			If nearby[index] && akCtl.IsWet(nearby[index])
-				akCtl.SetNextEndMultOn(nearby[index], GuideMult(akCtl) * afMult)
+			If nearby[index] && ESSBNative.GetStatus(nearby[index], 8) > 0
+				ESSBNative.SetGuided(nearby[index], guide * afMult)
 			EndIf
 			index += 1
 		EndWhile
@@ -710,7 +544,7 @@ Function EndWaterNodes(ESSBController akCtl, Actor akTarget, Int aiReason, Float
 		akCtl.ApplyCleanse(True)
 		akCtl.ApplyStrip(akTarget)
 	EndIf
-	; v0.4 的「汪洋」是水終焉時目標浸濕延長到 30 秒（浸濕是 DLL N3），v0.3 的「保留為副印記 10 秒」已拿掉。
+	; 汪洋（水終焉時目標浸濕延長到 30 秒）與退潮（被切或融斷時沖刷一次）在 DLL。
 	If aiReason != 1
 		Return
 	EndIf
@@ -749,10 +583,6 @@ Function EndAstralNodes(ESSBController akCtl, Actor akTarget, Int aiReason, Floa
 	EndIf
 EndFunction
 
-; 星終焉後接管元素的開印倍率（規劃 2.6 的基礎星落 ×1.5）。v0.3 的「星軌終焉」（×2.0）v0.4 已移除。
-Float Function TakeoverOpenMult(ESSBController akCtl) Global
-	Return 1.5
-EndFunction
 
 ; ================================================================== 每秒與擊殺
 
@@ -784,7 +614,7 @@ Function PoisonFormTick(ESSBController akCtl) Global
 	Float heal = 0.0
 	Int index = 0
 	While index < nearby.Length
-		If nearby[index] && akCtl.GetStack(nearby[index], 7) > 0
+		If nearby[index] && ESSBNative.GetStatus(nearby[index], 7) > 0
 			heal = heal + 6.0
 		EndIf
 		index += 1
@@ -833,7 +663,7 @@ Bool Function HasPoisonImmunity(ESSBController akCtl) Global
 	Return ESSBNodes.Br(akCtl, 7, 0, 0, 0) ; @node 免疫
 EndFunction
 
-; 5.10 持續熟練分支「毒皮」：被近戰命中時攻擊者中毒 +2 劑（v0.3 毒層）。由 ESSBGuard 呼叫。
+; 5.10 持續熟練分支「毒皮」：被近戰命中時攻擊者中毒 +2 劑（受擊 N4 前由 ESSBGuard 呼叫；劑數照 DLL 的成長公式）。
 Function OnPoisonSkin(ESSBController akCtl, Actor akAttacker) Global
 	If !ESSBNodes.Br(akCtl, 7, 0, 1, 1) || !akAttacker ; @node 毒皮
 		Return
