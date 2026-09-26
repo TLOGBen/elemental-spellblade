@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(ElementsSpellblade VERSION 0.24.0 LANGUAGES CXX)
+project(ElementsSpellblade VERSION 0.25.0 LANGUAGES CXX)
 if(NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   message(FATAL_ERROR "MSVC x64 is required")
 endif()
@@ -51,3 +51,9 @@ add_executable(reaction_test tests/reaction_test.cpp)
 target_include_directories(reaction_test PRIVATE include deps/json/single_include)
 target_compile_options(reaction_test PRIVATE /W4 /WX /EHsc /utf-8 /bigobj)
 add_test(NAME reaction_bodies COMMAND reaction_test "${CMAKE_CURRENT_SOURCE_DIR}/../build/fix24-body-table.json" "${CMAKE_CURRENT_SOURCE_DIR}/../build/fix24-wiring.json")
+# Round 25 (N6): the per-second work, the domains' DLL halves and the hotkey decisions (Timer.h) against
+# build/fix25_reference.py and the generator's round-25 record identities.
+add_executable(timer_test tests/timer_test.cpp)
+target_include_directories(timer_test PRIVATE include deps/json/single_include)
+target_compile_options(timer_test PRIVATE /W4 /WX /EHsc /utf-8 /bigobj)
+add_test(NAME timer_domains_hotkeys COMMAND timer_test "${CMAKE_CURRENT_SOURCE_DIR}/../build/fix25-timer-table.json" "${CMAKE_CURRENT_SOURCE_DIR}/../build/fix25-wiring.json")

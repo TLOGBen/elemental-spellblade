@@ -123,10 +123,10 @@
 | poison | 關閉（催毒） | 大師 | ×3：純百分比傷害主線（規劃 3） | 毒印記的融斷再 +2%／點 | 毒印記的融斷再 +6%／點 | native/include/Reactions.h:kBurstAgain |
 | poison | 關閉（催毒） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 催毒期間中毒傷害 +3%／點 | 催毒期間中毒傷害 +9%／點 | native/include/Status.h:kSignature；native/include/Reactions.h:kSignature |
 | water | 持續（潮汐） | 新手 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 浸濕持續 +0.3 秒／點（只延長浸濕本身，不影響水印記時長） | 浸濕持續 +0.3 秒／點（只延長浸濕本身，不影響水印記時長） | ESSBElem3.WetSeconds（Papyrus 浸濕）＋DLL 雨雪浸濕（固定時長法術 ESSB_Native_Soak_*，node::kWaterSoakDuration） |
-| water | 持續（潮汐） | 熟練 | 不改：時間、機率、範圍、層數、回復、抗性、分擔或比例類（規劃 3 不吃節點倍率） | 長流每秒回復 +0.2%／點（2.0% → 5.0%；只加生命與耐力） | 長流每秒回復 +0.2%／點（2.0% → 5.0%；只加生命與耐力） | ESSBElem3.FlowPercent → WaterFormTick |
+| water | 持續（潮汐） | 熟練 | 不改：時間、機率、範圍、層數、回復、抗性、分擔或比例類（規劃 3 不吃節點倍率） | 長流每秒回復 +0.2%／點（2.0% → 5.0%；只加生命與耐力） | 長流每秒回復 +0.2%／點（2.0% → 5.0%；只加生命與耐力） | DLL native/include/Timer.h FlowFraction／PlanFormSecond（node::kWaterFlowRate）← Plugin.cpp FormSecondWork（計時器每秒） |
 | water | 持續（潮汐） | 專精 | ×3：純百分比傷害主線（規劃 3） | 水壓每層水附傷 +1%／點 | 水壓每層水附傷 +3%／點 | native/include/Status.h:kWaterPressureDamage |
-| water | 持續（潮汐） | 大師 | 不改：時間、機率、範圍、層數、回復、抗性、分擔或比例類（規劃 3 不吃節點倍率） | 同調每段長流回復 +0.05%／點 | 同調每段長流回復 +0.05%／點 | ESSBElem3.FlowPercent |
-| water | 持續（潮汐） | 傳奇 | 不改：時間、機率、範圍、層數、回復、抗性、分擔或比例類（規劃 3 不吃節點倍率） | 長河，同調三段時長流再 +0.05%／點，且長流同時作用於附近同伴 | 長河，同調三段時長流再 +0.05%／點，且長流同時作用於附近同伴 | ESSBElem3.FlowPercent / WaterFormTick |
+| water | 持續（潮汐） | 大師 | 不改：時間、機率、範圍、層數、回復、抗性、分擔或比例類（規劃 3 不吃節點倍率） | 同調每段長流回復 +0.05%／點 | 同調每段長流回復 +0.05%／點 | DLL native/include/Timer.h FlowFraction（node::kWaterFlowSync） |
+| water | 持續（潮汐） | 傳奇 | 不改：時間、機率、範圍、層數、回復、抗性、分擔或比例類（規劃 3 不吃節點倍率） | 長河，同調三段時長流再 +0.05%／點，且長流同時作用於附近同伴 | 長河，同調三段時長流再 +0.05%／點，且長流同時作用於附近同伴 | DLL native/include/Timer.h FlowFraction／PlanFormSecond（node::kWaterLongRiver）＋ Plugin.cpp AlliesNear（6 公尺內同伴與召喚物最多 5 人，ESSB_UtilTarget_RestoreHealth／RestoreStamina） |
 | water | 開啟（水臨） | 新手 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 開印時回復生命與耐力各最大值 0.3%／點（15 點 4.5%） | 開印時回復生命與耐力各最大值 0.3%／點（15 點 4.5%） | DLL native/include/Reactions.h（node::kWaterOpenHeal） |
 | water | 開啟（水臨） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 開印後 5 秒內水附傷 +1%／點 | 開印後 5 秒內水附傷 +3%／點 | native/include/Status.h:kOpenProc |
 | water | 開啟（水臨） | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 水印記持續 +0.2 秒／點 | 水印記持續 +0.2 秒／點 | DLL native/include/Status.h（node::kMarkDuration[element]） |

@@ -13,8 +13,6 @@ Event OnEffectStart(Actor akTarget, Actor akCaster)
 	If !Controller
 		Return
 	EndIf
-	ESSBInput controllerAlias = Controller.GetAlias(0) as ESSBInput
-	If controllerAlias
-		controllerAlias.RequestSwitch(ElementIndex)
-	EndIf
+	; round 25（N6，裁定 R6）：Z 路線與熱鍵呼叫同一個切換函式（DLL：魔力門檻、全域變數、提示，再 ESSB_Switch 回控制器）。
+	ESSBNative.RequestSwitch(ElementIndex)
 EndEvent

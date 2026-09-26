@@ -22,21 +22,24 @@ import fix21_records as hit21
 import fix22_records as hit22
 import fix23_records as hit23
 import fix24_records as hit24
+import fix25_records as hit25
 import fix20_fixture
 import fix22_fixture
 import fix23_fixture
 import fix24_fixture
+import fix25_fixture
 import fix20_reference as _ref
 import fix22_reference as _ref22
 import fix23_reference as _ref23
 import fix24_reference as _ref24
+import fix25_reference as _ref25
 NATIVE = ROOT / 'native'
-NATIVE_VERSION = '0.24.0'
+NATIVE_VERSION = '0.25.0'
 NATIVE_HIT = 0x52d1
 NATIVE_WANTED = 0x52d2
 NATIVE_GLOBALS = {'ESSB_NativeHit', 'ESSB_NativeWanted'}      # round 19: the MCM shows both
 NEW_EDIDS = (NATIVE_GLOBALS | hit20.new_edids() | hit21.new_edids() | hit22.new_edids() | hit23.new_edids() |
-             hit24.new_edids())   # every record the native slices added
+             hit24.new_edids() | hit25.new_edids())   # every record the native slices added
 DEPS = {
     'CommonLibSSE-NG': ('https://github.com/CharmedBaryon/CommonLibSSE-NG', 'b93280e832f263dbef44e44cbe2936622a02f91a'),
     'spdlog': ('https://github.com/gabime/spdlog', '27cb4c76708608465c413f6d0e6b8d99a4d84302'),
@@ -52,6 +55,8 @@ SELF_TABLE = ROOT / fix23_fixture.TABLE
 SELF_WIRING = ROOT / fix23_fixture.WIRING
 BODY_TABLE = ROOT / fix24_fixture.TABLE
 BODY_WIRING = ROOT / fix24_fixture.WIRING
+TIMER_TABLE = ROOT / fix25_fixture.TABLE
+TIMER_WIRING = ROOT / fix25_fixture.WIRING
 ENTRY_POINT = 2  # PRKE effect type: 0 quest stage, 1 ability, 2 entry point
 ENTRY_51 = 51    # Apply Combat Hit Spell
 
@@ -59,8 +64,10 @@ ENTRY_51 = 51    # Apply Combat Hit Spell
 # and, from round 22, the status layer's (build/fix22_reference.NODE_NAMES); the slot of each is looked up by name in
 # the identity table.
 NODE_IDENTITY = (dict(_ref.NODE_NAMES) | dict(_ref22.NODE_NAMES) | dict(_ref23.NODE_NAMES) |   # round 23 (N4): the self layer's
-                 dict(_ref24.NODE_NAMES))                                                          # round 24 (N5): the bodies'
-assert len(NODE_IDENTITY) == len(_ref.NODE_NAMES) + len(_ref22.NODE_NAMES) + len(_ref23.NODE_NAMES) + len(_ref24.NODE_NAMES), \
+                 dict(_ref24.NODE_NAMES) |                                                         # round 24 (N5): the bodies'
+                 dict(_ref25.NODE_NAMES))                                                          # round 25 (N6): the timer's
+assert len(NODE_IDENTITY) == (len(_ref.NODE_NAMES) + len(_ref22.NODE_NAMES) + len(_ref23.NODE_NAMES) + len(_ref24.NODE_NAMES) +
+                              len(_ref25.NODE_NAMES)), \
     'a node constant is named twice'
 ELEMENT_SHORT = ['火', '冰', '雷', '土', '風', '血', '聖', '毒', '水', '暗', '星']
 TREE_IDS = ['fire', 'frost', 'lightning', 'earth', 'wind', 'blood', 'divine', 'poison', 'water', 'darkness', 'astral']
@@ -240,6 +247,16 @@ def globals_(b):
         ids[name] = b.ID_GLOB_ENGINE[name]   # round 23 review: the sync thresholds too (one source with Papyrus)
     for tree, key in enumerate(b.TREES):
         ids[f'ESSB_Lvl_{key}'] = b.ID_TREE_GLOB['Lvl'] + tree
+    # Round 25 (N6): the per-second work (維持費、長流), the hotkeys and 免門檻; 審查修正: 雷雨's own flag ESSB_EnvThunder,
+    # and no 聖域 mirror (聖域's -20% is the hazard's own effects on the enemies inside).
+    for name in ['ESSB_MultUpkeep', 'ESSB_WaterFlowBasePct', 'ESSB_WaterFlowPerRankPct']:
+        ids[name] = b.ID_BALANCE_GLOB[name][0]
+    ids[hit25.THUNDER_GLOBAL] = hit25.thunder_global_id()
+    ids['ESSB_FreeOpen'] = b.ID_MECH_GLOB + mech.index('ESSB_FreeOpen')
+    ids['ESSB_HotkeysEnabled'] = b.hit18.KEY_ENABLE
+    ids['ESSB_FormNotify'] = b.hit18.NOTIFY
+    for i, element in enumerate(b.ELEMENTS):
+        ids[f'ESSB_Hotkey_{element}'] = b.hit18.HOTKEYS + i
     return ids
 
 
@@ -278,6 +295,7 @@ def spells(b):
         'kRiposte': (hit21.RIPOSTE, 'ESSB_RiposteWindow'),   # round 23: 反擊's window, cast by the DLL on a block
         'kHush': (hit21.HUSH, 'ESSB_Hush'),                  # round 24: 寂 (冷寂 at 融斷, 萬寂)
         'kHealTarget': (0x005151, 'ESSB_UtilTarget_RestoreHealth'),   # round 24: 聖光 heals an ally
+        'kStaminaTarget': (0x005153, 'ESSB_UtilTarget_RestoreStamina'),   # round 25: 長河 an ally's stamina
     }
     for seconds in range(1, hit20.SILENCE_COUNT + 1):
         rows[f'kSilence{seconds}'] = (hit20.SILENCE + seconds - 1, hit20.silence_edid(seconds))
@@ -358,11 +376,13 @@ def header_text(b):
     names = {'ESSB_Enabled': 'kEnabled', 'ESSB_FormActive': 'kFormActive', 'ESSB_CurrentElement': 'kCurrentElement',
              'ESSB_DebugLevel': 'kDebugLevel', 'ESSB_NativeHit': 'kNativeHit', 'ESSB_NativeWanted': 'kNativeWanted'}
     for edid, fid in g.items():
-        if edid.startswith('ESSB_Lvl_'):
+        if edid.startswith(('ESSB_Lvl_', 'ESSB_Hotkey_')):
             continue
         cname = names.get(edid, 'k' + edid.removeprefix('ESSB_'))
         L.append(f'inline constexpr std::uint32_t {cname} = {hex(fid)};  // {edid}')
     L.append('inline constexpr std::uint32_t kTreeLevel[13] = {' + ', '.join(hex(g[f'ESSB_Lvl_{k}']) for k in b.TREES) + '};  // ESSB_Lvl_<tree>')
+    L.append('inline constexpr std::uint32_t kHotkey[11] = {' + ', '.join(hex(g[f'ESSB_Hotkey_{e}']) for e in b.ELEMENTS)
+             + '};  // ESSB_Hotkey_<element> (round 25: the input sink reads them)')
     L += ['}  // namespace glob', '', '// Skyrim.esm forms (local FormIDs in Skyrim.esm).', 'namespace vanilla {']
     for name, row in vanilla(b).items():
         L.append(f'inline constexpr std::uint32_t {name} = {hex(row["form_id"])};  // {row["kind"]}')
@@ -391,6 +411,10 @@ def header_text(b):
           'inline constexpr float kElementDamage[12][2] = {{0.0f, 0.0f}, '
           + ', '.join('{' + ', '.join(f'{float(x)}f' for x in s['element_damage'][n]) + '}' for n in b.ELEMENTS) + '};',
           f'inline constexpr float kNoFormBaseTrue = {float(s["noform_base_true"])}f;',
+          '// settings.json upkeep_* (v0.4 1.1 維持費; round 25: the DLL timer pays it, ESSBFormRules is gone).',
+          f'inline constexpr float kUpkeepBasePct = {float(s["upkeep_base_pct"])}f;',
+          f'inline constexpr float kUpkeepDarkPct = {float(s["upkeep_dark_pct"])}f;',
+          f'inline constexpr float kUpkeepLevelRelief = {float(s["upkeep_level_relief"])}f;',
           'inline constexpr std::string_view elementNames[12] = {"無元素", ' + ', '.join(f'"{z}"' for z in b.ZH) + '};',
           f'inline constexpr char nativeVersion[] = "{NATIVE_VERSION}";',
           f'inline constexpr char addressHash[] = "{sha(address_library())}";',
@@ -414,7 +438,14 @@ def status_ids(b):
                        stub=False, editor_id=hit23.edid_spell(k[1])) for k in hit23.KINDS] +
                  # round 24 (N5): the death markers, windows, cooldowns and 血承 (build/fix24_records.py)
                  [dict(kind=k[0], effect=hit24.effect_id(k[0]), spell=hit24.spell_id(k[0]), seconds=k[4], player=k[3],
-                       stub=False, editor_id=hit24.edid_spell(k[1])) for k in hit24.KINDS],
+                       stub=False, editor_id=hit24.edid_spell(k[1])) for k in hit24.KINDS] +
+                 # round 25 (N6): the domain markers the hazards leave and your per-second windows (build/fix25_records.py)
+                 [dict(kind=k[0], effect=hit25.effect_id(k[0]), spell=hit25.spell_id(k[0]), seconds=k[4], player=k[3],
+                       stub=False, editor_id=hit25.edid_spell(k[1])) for k in hit25.KINDS],
+        'domains': [dict(element=e, hazard=hit25.hazard_id(e), hazard_spell=hit25.hazard_spell_id(e),
+                         spawn_effect=hit25.spawn_effect_id(e),
+                         spawn=[hit25.spawn_id(e, s) for s in range(1, hit25.DOMAIN_MAX_SECONDS + 1)],
+                         editor_id=hit25.hazard_edid(e)) for e in hit25.DOMAIN_ELEMENTS],
         'timed': [dict(name=name, util=util, self=util in hit24.SELF_UTILS,
                        spells=[hit24.timed_id(name, s) for s in range(1, hit24.TIMED_MAX_SECONDS + 1)],
                        editor_ids=[hit24.timed_edid(name, s) for s in range(1, hit24.TIMED_MAX_SECONDS + 1)])
@@ -458,7 +489,21 @@ def status_header(b):
     for row in timed:
         L.append('    {' + ', '.join(hex(x) for x in row['spells']) + f'}},  // {row["name"]}: ESSB_N5_Timed<X>_1..{hit24.TIMED_MAX_SECONDS}')
     L.append('};')
+    # Round 25 (N6): the domains (build/fix25_records.py DOMAINS): [element] -> the HAZD, its Spawn Hazard effect, the
+    # spawn spell per whole second (0 for an element without a domain).
+    by_element = {d['element']: d for d in ids['domains']}
+    zero = [0] * hit25.DOMAIN_MAX_SECONDS
+    L.append('inline constexpr std::uint32_t kDomainHazard[12] = {' + ', '.join(hex(by_element[e]['hazard']) if e in by_element else '0'
+                                                                         for e in range(12)) + '};  // ESSB_N6_Hazard_<X>')
+    L.append('inline constexpr std::uint32_t kDomainSpawnEffect[12] = {' + ', '.join(hex(by_element[e]['spawn_effect']) if e in by_element else '0'
+                                                                              for e in range(12)) + '};  // ESSB_N6_DomainEffect_<X>')
+    L.append(f'inline constexpr std::uint32_t kDomainSpawn[12][{hit25.DOMAIN_MAX_SECONDS}] = {{')
+    for e in range(12):
+        row = by_element[e]['spawn'] if e in by_element else zero
+        L.append('    {' + ', '.join(hex(x) if x else '0' for x in row) + f'}},  // element {e}')
+    L.append('};')
     L += ['}  // namespace status', '',
+          f'inline constexpr int kDomainMaxSeconds = {hit25.DOMAIN_MAX_SECONDS};  // round 25: the longest domain spell',
           '// Round 24 (N5): the timed utilities a reaction body casts (build/fix24_records.py TIMED): Op::kTimed element.',
           f'inline constexpr int kTimedKinds = {len(timed)};',
           f'inline constexpr int kTimedMaxSeconds = {hit24.TIMED_MAX_SECONDS};',
@@ -492,6 +537,9 @@ def fixture(b):
     # Round 24 (N5): the reaction bodies', the burst's and the death handling's scenarios (reference model) and wiring.
     count += fix24_fixture.write(b, settings(), write_if_changed, ROOT)
     fix24_fixture.wiring(b, globals_(b), write_if_changed, ROOT)
+    # Round 25 (N6): the timer's, the domains' and the hotkeys' scenarios (reference model) and wiring.
+    count += fix25_fixture.write(b, settings(), write_if_changed, ROOT)
+    fix25_fixture.wiring(b, globals_(b), write_if_changed, ROOT)
     return count
 
 
@@ -532,6 +580,8 @@ def input_paths():
              SELF_WIRING,
              ROOT / 'build/fix24_records.py', ROOT / 'build/fix24_reference.py', ROOT / 'build/fix24_fixture.py', BODY_TABLE,
              BODY_WIRING,
+             ROOT / 'build/fix25_records.py', ROOT / 'build/fix25_reference.py', ROOT / 'build/fix25_fixture.py', TIMER_TABLE,
+             TIMER_WIRING,
              NATIVE / 'build.py', NATIVE / 'CMakeLists.txt',
              NATIVE / 'dependencies.lock.json', NATIVE / 'toolchain.lock.json']
     for part in ['src', 'include', 'tests', 'cmake']:
@@ -643,6 +693,10 @@ def verify(b):
                           capture_output=True, encoding='utf-8', errors='replace')
     (ROOT / 'build/fix24-native-test.log').write_text(body.stdout + body.stderr, encoding='utf8')
     assert body.returncode == 0, body.stdout + body.stderr
+    timer = subprocess.run([str(NATIVE / 'out/Release/timer_test.exe'), str(TIMER_TABLE), str(TIMER_WIRING)], text=True,
+                           capture_output=True, encoding='utf-8', errors='replace')
+    (ROOT / 'build/fix25-native-test.log').write_text(timer.stdout + timer.stderr, encoding='utf8')
+    assert timer.returncode == 0, timer.stdout + timer.stderr
     print(f'NATIVE ok: fresh DLL {NATIVE_VERSION} + exact dependencies + manifest/ESP identities (22 proc spells with one damage '
           f'effect each, {len(m["spells"])} cast spells, {len(m["effects"])} effects, {len(m["globals"])} globals, '
           f'{len(wiring["main_perks"])} main lines + {len(wiring["branch_perks"])} branches by EDID); '
@@ -651,4 +705,5 @@ def verify(b):
     print(status.stdout.strip())
     print(own.stdout.strip())
     print(body.stdout.strip())
+    print(timer.stdout.strip())
     return m

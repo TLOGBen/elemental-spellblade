@@ -48,6 +48,7 @@ inline constexpr std::uint32_t kHushSpent = 0x5343;  // ESSB_HushSpent
 inline constexpr std::uint32_t kRiposte = 0x5345;  // ESSB_RiposteWindow
 inline constexpr std::uint32_t kHush = 0x5341;  // ESSB_Hush
 inline constexpr std::uint32_t kHealTarget = 0x5151;  // ESSB_UtilTarget_RestoreHealth
+inline constexpr std::uint32_t kStaminaTarget = 0x5153;  // ESSB_UtilTarget_RestoreStamina
 inline constexpr std::uint32_t kSilence[8] = {0x5310, 0x5311, 0x5312, 0x5313, 0x5314, 0x5315, 0x5316, 0x5317};  // ESSB_Native_Silence_1..8
 inline constexpr std::uint32_t kSoak[30] = {0x5320, 0x5321, 0x5322, 0x5323, 0x5324, 0x5325, 0x5326, 0x5327, 0x5328, 0x5302, 0x5329, 0x532a, 0x532b, 0x532c, 0x532d, 0x532e, 0x532f, 0x5330, 0x5331, 0x5332, 0x5333, 0x5334, 0x5335, 0x5336, 0x5337, 0x5338, 0x5339, 0x533a, 0x533b, 0x533c};  // soaked slow of 1..30 s: ESSB_Native_Soak_<s>, 10 s = ESSB_Native_SoakSlow
 }  // namespace spell
@@ -105,7 +106,15 @@ inline constexpr std::uint32_t kEnvStormy = 0x1f14;  // ESSB_EnvStormy
 inline constexpr std::uint32_t kSyncT1 = 0x1f10;  // ESSB_SyncT1
 inline constexpr std::uint32_t kSyncT2 = 0x1f11;  // ESSB_SyncT2
 inline constexpr std::uint32_t kSyncT3 = 0x1f12;  // ESSB_SyncT3
+inline constexpr std::uint32_t kMultUpkeep = 0x516d;  // ESSB_MultUpkeep
+inline constexpr std::uint32_t kWaterFlowBasePct = 0x5161;  // ESSB_WaterFlowBasePct
+inline constexpr std::uint32_t kWaterFlowPerRankPct = 0x5162;  // ESSB_WaterFlowPerRankPct
+inline constexpr std::uint32_t kEnvThunder = 0x5907;  // ESSB_EnvThunder
+inline constexpr std::uint32_t kFreeOpen = 0x5011;  // ESSB_FreeOpen
+inline constexpr std::uint32_t kHotkeysEnabled = 0x520f;  // ESSB_HotkeysEnabled
+inline constexpr std::uint32_t kFormNotify = 0x520d;  // ESSB_FormNotify
 inline constexpr std::uint32_t kTreeLevel[13] = {0x2400, 0x2401, 0x2402, 0x2403, 0x2404, 0x2405, 0x2406, 0x2407, 0x2408, 0x2409, 0x240a, 0x240b, 0x240c};  // ESSB_Lvl_<tree>
+inline constexpr std::uint32_t kHotkey[11] = {0x5202, 0x5203, 0x5204, 0x5205, 0x5206, 0x5207, 0x5208, 0x5209, 0x520a, 0x520b, 0x520c};  // ESSB_Hotkey_<element> (round 25: the input sink reads them)
 }  // namespace glob
 
 // Skyrim.esm forms (local FormIDs in Skyrim.esm).
@@ -486,6 +495,11 @@ inline constexpr BranchId kAstralMeteor{10, 2, 0, 0};  // v0.4 astral 隕星
 inline constexpr BranchId kAstralScatter{10, 1, 0, 0};  // v0.4 astral 星散
 inline constexpr BranchId kAstralSever{10, 2, 1, 1};  // v0.4 astral 星斷
 inline constexpr BranchId kAstralZone{10, 2, 4, 0};  // v0.4 astral 星域
+inline constexpr NodeId kWaterFlowRate{8, 0, 1};  // v0.4 water 長流每秒回復
+inline constexpr NodeId kWaterFlowSync{8, 0, 3};  // v0.4 water 同調每段長流回復
+inline constexpr NodeId kWaterLongRiver{8, 0, 4};  // v0.4 water 長河
+inline constexpr BranchId kCommonComposure{12, 0, 2, 0};  // v0.4 common 定神
+inline constexpr BranchId kCommonSmoothSwitch{12, 1, 1, 0};  // v0.4 common 順轉
 inline constexpr NodeId kProcAdept[12] = {kNoNode, {0, 0, 1}, {1, 0, 1}, {2, 0, 1}, {3, 0, 1}, {4, 0, 1}, {5, 0, 1}, {6, 0, 1}, {7, 0, 1}, kNoNode, {9, 0, 1}, {10, 0, 1}};  // [element]; water has none
 inline constexpr NodeId kProcMaster[12] = {kNoNode, {0, 0, 3}, {1, 0, 3}, {2, 0, 3}, {3, 0, 3}, {4, 0, 3}, {5, 0, 3}, {6, 0, 3}, {7, 0, 3}, kNoNode, {9, 0, 3}, {10, 0, 3}};  // [element]; water has none
 inline constexpr NodeId kOpenProc[12] = {kNoNode, {0, 1, 1}, {1, 1, 1}, {2, 1, 1}, {3, 1, 1}, kNoNode, {5, 1, 1}, {6, 1, 1}, {7, 1, 1}, {8, 1, 1}, {9, 1, 1}, {10, 1, 1}};  // [element]; round 22, checked by v0.4 label
@@ -630,6 +644,15 @@ enum class StatusKind : std::uint8_t
     kInheritMagic,
     kInheritArmor,
     kInheritHealth,
+    kDomainEarth,
+    kDomainBlood,
+    kDomainDivine,
+    kDomainPoison,
+    kDomainWater,
+    kDomainDark,
+    kFrostDomainPlayer,
+    kManaEmpty,
+    kStormCooldown,
     kCount,
 };
 
@@ -761,6 +784,15 @@ inline constexpr StatusRecord kStatusRecords[] = {
     {0x5616, 0x5617, 15.0f, true, false, "ESSB_N5_InheritMagic"},
     {0x5618, 0x5619, 15.0f, true, false, "ESSB_N5_InheritArmor"},
     {0x561a, 0x561b, 15.0f, true, false, "ESSB_N5_InheritHealth"},
+    {0x5800, 0x5801, 2.0f, false, false, "ESSB_N6_DomainEarth"},
+    {0x5802, 0x5803, 2.0f, false, false, "ESSB_N6_DomainBlood"},
+    {0x5804, 0x5805, 2.0f, false, false, "ESSB_N6_DomainDivine"},
+    {0x5806, 0x5807, 2.0f, false, false, "ESSB_N6_DomainPoison"},
+    {0x5808, 0x5809, 2.0f, false, false, "ESSB_N6_DomainWater"},
+    {0x580a, 0x580b, 2.0f, false, false, "ESSB_N6_DomainDark"},
+    {0x580c, 0x580d, 2.0f, true, false, "ESSB_N6_FrostDomainPlayer"},
+    {0x580e, 0x580f, 3600.0f, true, false, "ESSB_N6_ManaEmpty"},
+    {0x5810, 0x5811, 3.0f, true, false, "ESSB_N6_StormCooldown"},
 };
 
 namespace status {
@@ -790,8 +822,25 @@ inline constexpr std::uint32_t kTimed[12][20] = {
     {0x56e4, 0x56e5, 0x56e6, 0x56e7, 0x56e8, 0x56e9, 0x56ea, 0x56eb, 0x56ec, 0x56ed, 0x56ee, 0x56ef, 0x56f0, 0x56f1, 0x56f2, 0x56f3, 0x56f4, 0x56f5, 0x56f6, 0x56f7},  // kPoisonResistBuff: ESSB_N5_Timed<X>_1..20
     {0x56f8, 0x56f9, 0x56fa, 0x56fb, 0x56fc, 0x56fd, 0x56fe, 0x56ff, 0x5700, 0x5701, 0x5702, 0x5703, 0x5704, 0x5705, 0x5706, 0x5707, 0x5708, 0x5709, 0x570a, 0x570b},  // kPoisonResistDebuff: ESSB_N5_Timed<X>_1..20
 };
+inline constexpr std::uint32_t kDomainHazard[12] = {0, 0x5812, 0x582d, 0, 0x5848, 0, 0x5863, 0x587e, 0x5899, 0x58b4, 0x58cf, 0x58ea};  // ESSB_N6_Hazard_<X>
+inline constexpr std::uint32_t kDomainSpawnEffect[12] = {0, 0x5814, 0x582f, 0, 0x584a, 0, 0x5865, 0x5880, 0x589b, 0x58b6, 0x58d1, 0x58ec};  // ESSB_N6_DomainEffect_<X>
+inline constexpr std::uint32_t kDomainSpawn[12][24] = {
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},  // element 0
+    {0x5815, 0x5816, 0x5817, 0x5818, 0x5819, 0x581a, 0x581b, 0x581c, 0x581d, 0x581e, 0x581f, 0x5820, 0x5821, 0x5822, 0x5823, 0x5824, 0x5825, 0x5826, 0x5827, 0x5828, 0x5829, 0x582a, 0x582b, 0x582c},  // element 1
+    {0x5830, 0x5831, 0x5832, 0x5833, 0x5834, 0x5835, 0x5836, 0x5837, 0x5838, 0x5839, 0x583a, 0x583b, 0x583c, 0x583d, 0x583e, 0x583f, 0x5840, 0x5841, 0x5842, 0x5843, 0x5844, 0x5845, 0x5846, 0x5847},  // element 2
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},  // element 3
+    {0x584b, 0x584c, 0x584d, 0x584e, 0x584f, 0x5850, 0x5851, 0x5852, 0x5853, 0x5854, 0x5855, 0x5856, 0x5857, 0x5858, 0x5859, 0x585a, 0x585b, 0x585c, 0x585d, 0x585e, 0x585f, 0x5860, 0x5861, 0x5862},  // element 4
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},  // element 5
+    {0x5866, 0x5867, 0x5868, 0x5869, 0x586a, 0x586b, 0x586c, 0x586d, 0x586e, 0x586f, 0x5870, 0x5871, 0x5872, 0x5873, 0x5874, 0x5875, 0x5876, 0x5877, 0x5878, 0x5879, 0x587a, 0x587b, 0x587c, 0x587d},  // element 6
+    {0x5881, 0x5882, 0x5883, 0x5884, 0x5885, 0x5886, 0x5887, 0x5888, 0x5889, 0x588a, 0x588b, 0x588c, 0x588d, 0x588e, 0x588f, 0x5890, 0x5891, 0x5892, 0x5893, 0x5894, 0x5895, 0x5896, 0x5897, 0x5898},  // element 7
+    {0x589c, 0x589d, 0x589e, 0x589f, 0x58a0, 0x58a1, 0x58a2, 0x58a3, 0x58a4, 0x58a5, 0x58a6, 0x58a7, 0x58a8, 0x58a9, 0x58aa, 0x58ab, 0x58ac, 0x58ad, 0x58ae, 0x58af, 0x58b0, 0x58b1, 0x58b2, 0x58b3},  // element 8
+    {0x58b7, 0x58b8, 0x58b9, 0x58ba, 0x58bb, 0x58bc, 0x58bd, 0x58be, 0x58bf, 0x58c0, 0x58c1, 0x58c2, 0x58c3, 0x58c4, 0x58c5, 0x58c6, 0x58c7, 0x58c8, 0x58c9, 0x58ca, 0x58cb, 0x58cc, 0x58cd, 0x58ce},  // element 9
+    {0x58d2, 0x58d3, 0x58d4, 0x58d5, 0x58d6, 0x58d7, 0x58d8, 0x58d9, 0x58da, 0x58db, 0x58dc, 0x58dd, 0x58de, 0x58df, 0x58e0, 0x58e1, 0x58e2, 0x58e3, 0x58e4, 0x58e5, 0x58e6, 0x58e7, 0x58e8, 0x58e9},  // element 10
+    {0x58ed, 0x58ee, 0x58ef, 0x58f0, 0x58f1, 0x58f2, 0x58f3, 0x58f4, 0x58f5, 0x58f6, 0x58f7, 0x58f8, 0x58f9, 0x58fa, 0x58fb, 0x58fc, 0x58fd, 0x58fe, 0x58ff, 0x5900, 0x5901, 0x5902, 0x5903, 0x5904},  // element 11
+};
 }  // namespace status
 
+inline constexpr int kDomainMaxSeconds = 24;  // round 25: the longest domain spell
 // Round 24 (N5): the timed utilities a reaction body casts (build/fix24_records.py TIMED): Op::kTimed element.
 inline constexpr int kTimedKinds = 12;
 inline constexpr int kTimedMaxSeconds = 20;
@@ -814,7 +863,11 @@ inline constexpr bool kTimedOnPlayer[12] = {false, true, true, false, false, fal
 // settings.json element_damage (B_min, B_max per element; [0] unused) and noform_base_true.
 inline constexpr float kElementDamage[12][2] = {{0.0f, 0.0f}, {10.0f, 12.0f}, {8.0f, 10.0f}, {1.0f, 25.0f}, {8.0f, 10.0f}, {8.0f, 9.0f}, {8.0f, 10.0f}, {8.0f, 10.0f}, {8.0f, 9.0f}, {5.0f, 7.0f}, {8.0f, 10.0f}, {8.0f, 10.0f}};
 inline constexpr float kNoFormBaseTrue = 5.0f;
+// settings.json upkeep_* (v0.4 1.1 維持費; round 25: the DLL timer pays it, ESSBFormRules is gone).
+inline constexpr float kUpkeepBasePct = 1.0f;
+inline constexpr float kUpkeepDarkPct = 2.0f;
+inline constexpr float kUpkeepLevelRelief = 0.7f;
 inline constexpr std::string_view elementNames[12] = {"無元素", "火焰", "冰霜", "雷電", "大地", "風", "鮮血", "神聖", "毒素", "水", "黑暗", "星界"};
-inline constexpr char nativeVersion[] = "0.24.0";
+inline constexpr char nativeVersion[] = "0.25.0";
 inline constexpr char addressHash[] = "1d7530d001139ca58f462ea0210a8055868159057ba8b5ebc624fc5e9c4f5e9a";
 }  // namespace essb

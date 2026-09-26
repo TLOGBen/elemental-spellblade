@@ -48,8 +48,10 @@ REMOVED_NAMES = ['ESSBReactions', 'ESSBGuard', 'OnKillEvent', 'SettleKill', 'Set
                  'SetGuided', 'RegisterForActorKilled', 'OnActorKilled', 'InheritSpell', 'SpreadPoison']
 REMOVED_NATIVES = ['BurstMarks', 'SetGuided', 'DotRemaining', 'ForceOpen', 'EndMark', 'Shatter', 'Detonate', 'MarkedNear']
 # review fix 1: the natives that scan or cast only queue their work (QueueNative -> AddTask) and return
+# round 25 (N6): ExtendFuse and WashBuffs lost their only callers (the Papyrus domains) and are gone; build/fix25_verify.py
+# checks that, and that RequestSwitch is queued too.
 QUEUED_NATIVES = ['Burst', 'FormEnter', 'FormLeave', 'SetSync', 'AddStatus', 'SetStatus', 'ClearStatus', 'SetWindow', 'ApplyMark',
-                  'ExtendFuse', 'WashBuffs', 'CastProc', 'DumpTargets']
+                  'CastProc', 'DumpTargets']
 
 
 def code_only(text):
@@ -207,7 +209,8 @@ def check_records(b):
     quest = next((r for r in records if r.sig == 'QUST' and r.edid == 'ESSB_MainQuest'), None)
     if not quest or b'ESSBGuard' in quest.d.get('VMAD', b'') or b'ESSBController' not in quest.d.get('VMAD', b''):
         errors.append('the main quest VMAD still carries ESSBGuard (or lost ESSBController)')
-    settings = json.loads((ROOT / 'settings.json').read_text(encoding='utf-8'))
+    # round 25 (N6) bumped the schema again (R1); round 24's bump is checked on the settings round 24 shipped
+    settings = json.loads((ROOT / '.codex/pre-fix25-snapshot/settings.json').read_text(encoding='utf-8'))
     if settings.get('state_schema_version') != 13:
         errors.append(f'state_schema_version is {settings.get("state_schema_version")}, not 13 (R1: one bump this round)')
     return errors, len(rec.KINDS), timed, by
@@ -380,15 +383,19 @@ def check_behaviour():
     ctl = v6.Ctl(settings)
     reg = v6.make_scripts(SRC, ctl)
     c = reg['ESSBController']
+    # Round 25 (N6): GetDamageMult and ReactDamage went with the Papyrus domains (死域's damage is the DLL's D_react);
+    # they run on the scripts round 24 shipped (build/fix25_history.py ties them to today's).
+    import fix25_history
+    old = v6.make_scripts(fix25_history.legacy_source(), ctl)['ESSBController']
     checks = 0
     ctl.EnvNight = v6.Glob(0)
-    assert math.isclose(c.GetDamageMult(1), 1.0), 'GetDamageMult: no Papyrus 嗜血 ×1.2 any more (the DLL reads it)'
-    assert math.isclose(c.GetDamageMult(7), 1.2) and math.isclose(c.GetDamageMult(10), 1.0), 'day: divine ×1.2'
+    assert math.isclose(old.GetDamageMult(1), 1.0), 'GetDamageMult: no Papyrus 嗜血 ×1.2 any more (the DLL reads it)'
+    assert math.isclose(old.GetDamageMult(7), 1.2) and math.isclose(old.GetDamageMult(10), 1.0), 'day: divine ×1.2'
     ctl.EnvNight = v6.Glob(1)
-    assert math.isclose(c.GetDamageMult(10), 1.2) and math.isclose(c.GetDamageMult(7), 1.0), 'night: darkness ×1.2'
+    assert math.isclose(old.GetDamageMult(10), 1.2) and math.isclose(old.GetDamageMult(7), 1.0), 'night: darkness ×1.2'
     fire = settings['element_damage']['Fire'][1]
     assert c.BaseMax(1) == fire and c.BaseMax(0) == 0.0 and c.BaseMax(12) == 0.0, 'BaseMax'
-    assert math.isclose(c.ReactDamage(10, 0.5), settings['element_damage']['Darkness'][1] * 0.5 * 1.2), 'ReactDamage at night'
+    assert math.isclose(old.ReactDamage(10, 0.5), settings['element_damage']['Darkness'][1] * 0.5 * 1.2), 'ReactDamage at night'
     checks += 4
     ctl.UtilSpells = [v6.Spell()]
     ctl.UtilTargetSpells = []

@@ -144,6 +144,38 @@ MUTANTS = [
     ('a named (not essential) enemy is exempt from rising again', 'Reactions.h', 'reaction',
      'if ((!marked && !summon) || corpse.essential || corpse.dragon || f.servant) {',
      'if ((!marked && !summon) || corpse.essential || corpse.body.vip || corpse.dragon || f.servant) {'),
+    # Round 25 (N6): mutations of the per-second work, the domains' DLL halves and the hotkey decisions (Timer.h, the
+    # domain cast of StatusEngine.h); each must fail timer_test against build/fix25-timer-table.json.
+    ('長流 gives back 90% of the upkeep (not 80%)', 'Timer.h', 'timer',
+     'inline constexpr float kFlowMagickaShare = 0.8f;', 'inline constexpr float kFlowMagickaShare = 0.9f;'),
+    # 審查修正 (round 25 review): 雷雨 / 暴風雪 per 2.10, the domain scan's node gate, the blood maximum.
+    ('any rain counts as 雷雨 (lightning ignored)', 'Timer.h', 'timer',
+     'e.thunder = outdoors && f.weather == 2 && f.lightning != n6::kNoLightning;', 'e.thunder = outdoors && f.weather == 2;'),
+    ('any snow counts as 暴風雪 (wind ignored)', 'Timer.h', 'timer',
+     'e.stormy = outdoors && f.weather == 3 && f.wind >= n6::kBlizzardWind;', 'e.stormy = outdoors && f.weather == 3;'),
+    ('the domain scan runs without a domain node', 'Timer.h', 'timer',
+     '            return true;\n        }\n    }\n    return false;\n}', '            return true;\n        }\n    }\n    return true;\n}'),
+    ('blood upkeep amount on the current maximum', 'Timer.h', 'timer',
+     'out.bled = f.healthPermanent * BloodUpkeepFraction(fraction) * tt.multUpkeep;',
+     'out.bled = f.healthMax * BloodUpkeepFraction(fraction) * tt.multUpkeep;'),
+    ('魔力歸零 closes after 1 s (not 2 s)', 'Timer.h', 'timer',
+     'inline constexpr float kManaEmptySlack = 0.5f;', 'inline constexpr float kManaEmptySlack = 1.5f;'),
+    ('the clock counts paused time', 'Timer.h', 'timer',
+     '    if (stopped) {\n        return b;\n    }\n    c.active += dt;', '    c.active += dt;'),
+    ('blood upkeep at 70% health is 0.5% (not 0.6%)', 'Timer.h', 'timer',
+     'pct = 0.6f + (f - 0.7f) * (0.4f / 0.3f);', 'pct = 0.5f + (f - 0.7f) * (0.5f / 0.3f);'),
+    ('opening the blood form needs 10% magicka', 'Timer.h', 'timer',
+     'if (wanted != kBlood && !f.freePass', 'if (!f.freePass'),
+    ('定神 makes you slow-immune below sync stage 3', 'Timer.h', 'timer',
+     '(t.syncStage >= 3 && (nodes.Has(node::kCommonComposure)', '(t.syncStage >= 0 && (nodes.Has(node::kCommonComposure)'),
+    ('a domain reaches 4 m (not 3 m)', 'Timer.h', 'timer',
+     'inline constexpr float kDomainRadius = 210.0f;', 'inline constexpr float kDomainRadius = 280.0f;'),
+    ('潮池 washes every buff a second (not one)', 'Timer.h', 'timer',
+     '        wash.element = 1;\n        plan.Push(wash);', '        plan.Push(wash);'),
+    ('the storm charges without its 3 s clock', 'Timer.h', 'timer',
+     'if (f.form == kLightning && f.thunder && !me.Has(K::kStormCooldown)) {', 'if (f.form == kLightning && f.thunder) {'),
+    ('the domain spell overrides the hazard magnitude', 'StatusEngine.h', 'timer',
+     'engine.Cast(Who::kTarget, spawn, 0.0f, 1.0f);', 'engine.Cast(Who::kTarget, spawn, 1.0f, 1.0f);'),
 ]
 
 
@@ -170,7 +202,7 @@ def run_mutants(log):
                 (folder / other.name).write_bytes(other.read_bytes())
         (folder / header).write_text(text.replace(old, new), encoding='utf-8', newline='\n')
         source = n.NATIVE / 'tests' / {'status': 'status_test.cpp', 'engine': 'engine_test.cpp', 'self': 'self_test.cpp',
-                                       'reaction': 'reaction_test.cpp'}[test]
+                                       'reaction': 'reaction_test.cpp', 'timer': 'timer_test.cpp'}[test]
         lines += [f'add_executable(m{i} "{source.as_posix()}")',
                   f'target_include_directories(m{i} PRIVATE "{folder.as_posix()}" "{inc.as_posix()}" "{js.as_posix()}")',
                   f'target_compile_options(m{i} PRIVATE /EHsc /utf-8 /bigobj)']
@@ -182,7 +214,8 @@ def run_mutants(log):
         exe = root / 'build' / 'Release' / f'm{i}.exe'
         tables = {'status': ['build/fix22-status-table.json', 'build/fix22-wiring.json'],
                   'self': ['build/fix23-self-table.json', 'build/fix23-wiring.json'],
-                  'reaction': ['build/fix24-body-table.json', 'build/fix24-wiring.json']}.get(test, [])
+                  'reaction': ['build/fix24-body-table.json', 'build/fix24-wiring.json'],
+                  'timer': ['build/fix25-timer-table.json', 'build/fix25-wiring.json']}.get(test, [])
         args = [exe] + [ROOT / t for t in tables]
         r = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf8', errors='replace')
         log.write(f'$ mutant {i} ({name}): exit {r.returncode}\n{r.stdout}\n')

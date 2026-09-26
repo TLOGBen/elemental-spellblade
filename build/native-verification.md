@@ -257,3 +257,48 @@ snapshot 的 74 段中，R5→R1 priority 遞減；按 smoke 證實的最低 pri
 | 已知邊界（裁定：記錄） | 指揮官裁定 | 主控台 `kill` 若只送 `dead=true`，那次死亡**沒有**死亡處理；火葬／亡魂／冥召靠 1 秒標記判斷「被爆燃／死咒殺死」：標記後 1 秒內被別的東西殺死也算。斷界＝對應抗性 −10% 3 秒（火／冰／電／毒自己的抗性，其餘魔抗），列為文件缺口。 |
 
 測試：reaction_test R 組 92 個情境（467 個預期操作），手算錨點 33 個（新增：三段融斷打冰封目標有／沒有冰封融斷與首領、三段聖與星、有名字的敵人復生與化灰、essential 不復生不化灰）；3 個新原始碼突變（融斷又打出終焉招式、沒有冰封融斷也碎冰、有名字的敵人被豁免），全部 33/33 被抓；`build/fix24_verify.py` 加：13 個原生函式必須經 `QueueNative`（注入錯誤：Burst 在 VM 緒直接施放）、復生法術的第二個效果、今天腳本上的行為檢查（GetDamageMult 不再有 Papyrus 嗜血 ×1.2、晝夜 ×1.2、BaseMax、ReactDamage、ApplyUtil 的減速上限）；fix6 的 Pct／FlowPercent／ApplyUtil 改在今天的腳本上跑（只剩被刪的 WetSlow 在 round 23 的腳本上）。
+
+## Round 25（N6：每秒計時、熱鍵、領域，2026-09-26）
+
+本輪的 DLL 做法（0.25.0），每一項標出依據（`nv3`＝native-verification-3、「推論」＝沒有直接查證）。實作者沒有進遊戲；遊戲內要看的列在 `build/fix25-probes.md`。
+
+| 項目 | 依據 | 做法 |
+|---|---|---|
+| 計時器 | 裁定 R3；nv3 §10 | 背景執行緒每 100 ms 只排**一個** `AddTask`（`tickQueued` 原子旗標：上一個還沒跑完就不排），task 不會再排自己。時間用 `Timer.h Cadence` 算：只累加「遊戲在跑」的毫秒（`GameStopped`＝`UI::GameIsPaused()` 或 Loading Menu 開著；每步上限 250 ms，秒數不補跑），每滿 1 秒一個 beat，每 5 秒環境檢查；讀檔（`kPostLoadGame`／新遊戲）重設。停住與恢復寫 `[N6-1][L3]`。對話等不暫停的選單照走（跟以前 Papyrus 的 `RegisterForSingleUpdate` 一樣）。 |
+| 每秒工作 | 成果 1；v0.4 1.1、5.8、5.10 | 純函式 `PlanFormSecond`：維持費（`ESSB_MultUpkeep`×基礎％×最大魔力，等級減免）、魔力歸零（魔力 < 0.1 掛 3 秒標記 `ESSB_N6_ManaEmpty`，連續第 3 秒送 `ESSB_Close`）、血形態扣血（走代價路徑、留 1 點，血位曲線 `BloodUpkeepFraction`）、長流與長河（每秒回復×回復倍率；另回維持費 80% 的魔力；長河給 6 公尺（420 單位）內最多 5 名同伴生命與耐力，新 `Op::kStaminaTarget`）、雷雨電荷（第一個雷雨秒就給，之後 3 秒冷卻 `ESSB_N6_StormCooldown`）。環境（天氣分類順序同 Papyrus 的 `GetClassification`、室內、水中 `TESObjectREFR::IsPointSubmergedMoreThan(0.875)`、20–6 點算夜）寫 `ESSB_EnvWet／EnvStormy／EnvNight`。沉默的扣魔：施放當下 `RunOp`（`DrainMagickaAll`），之後每秒 `SilenceSecond`。 |
+| 熱鍵 | 裁定 R6；nv3（BSInputDeviceManager 的 sink 在主執行緒，推論：跟 kDataLoaded 同一緒，探針 X1 看） | `BSTEventSink<InputEvent*>` 登記在 `BSInputDeviceManager`，永遠回 `kContinue`（不吃按鍵）。只看 `ButtonEvent::IsDown()`；鍵碼：鍵盤 DX scan、滑鼠 256+、手把對應到 266 起（LT 280／RT 281）。門檻 `InputOpen`：遊戲暫停、主控台、`ControlMap::textEntryCount > 0`、選單堆疊有 kPausesGame／kUsesCursor／kUsesMenuContext／kModal、讀檔，任何一個成立就擋（`[N6-2][L3]` 寫 blocked 或 accepted）。`PlanSwitch`：總開關、`ESSB_HotkeysEnabled`、魔力 10% 門檻（血形態免）、順轉、`ESSB_FreeOpen` 一次免門檻；結果寫全域變數後送 `ESSB_Switch`／`ESSB_Close`，Papyrus 只換形態。Z 路線（`ESSBFormPowerEffect`）呼叫同一個 `ESSBNative.RequestSwitch`（排進主執行緒 task）。 |
+| 領域：敵人那一半 | 裁定 R4；推論（HAZD 半徑單位、limit 0＝不限，探針 N6-3 看） | 每個有領域的元素一個 HAZD（半徑 9.84＝210 單位若單位是呎；Inherit Duration + Drop to Ground；limit 0；目標間隔 0.3 秒；模型 `FXEmptyObject.nif`）、一個 hazard 法術（標記、地裂的耐力停回、死域的治療削減）、一個 Spawn Hazard（archetype 40）效果、24 個整秒放置法術（持續時間倍率取整秒）。`ESSB_Domain` 事件在融斷目標腳下 `CastSpellImmediate` 施放，強度 0（不覆寫）。引擎管壽命與數量（拿掉 3 格上限）；hazard 只打對施放者敵對的角色，所以隨從與路人不受影響。 |
+| 領域：找 hazard | 推論（`Hazard::GetHazardRuntimeData` 的 owner／age／lifetime；`SpawnHazardEffect::hazard` handle） | 每秒一次：`TES::ForEachReferenceInRange` 找玩家 60 公尺（4200 單位）內的 PlacedHazard（owner 是你、hazard 是本模組的），加上身上效果的 `SpawnHazardEffect` handle，兩邊去重；寫 `[N6-3][L3]`。DLL 不存領域：每秒重找。 |
+| 領域：DLL 每秒效果 | 裁定 R4、R5；v0.4 5.x | 敵人在 3 公尺（210 單位）內（幾何判定，`InsideOf`）：冰原減速 50% 2 秒（MCM 減速上限 hazard 讀不到）、毒霧擴散一劑（d' = max(d − t, 12)，同瘟疫／瘴氣）、潮池每秒沖刷一個增益、死域每秒 B_max × 0.5 × 反應倍率 × 易傷 × DoT 倍率（hazard 的強度覆寫會蓋掉治療削減，所以不走 hazard）、地裂耐力 ≤ 0 時推倒（推力留 Papyrus，力道 2.0）。你在裡面：火域第一次進入熱度 3 加 5 秒、2 秒視窗內不重複；冰原免疫減速；血池／聖域／潮池回復；潮池淨化送 `Cleanse` 事件；聖域寫 `ESSB_DomainDivine` 給 Papyrus 的「你在裡面受到傷害 −20%」。 |
+| 免疫減速 | v0.4（定神、御風、冰原） | 每 tick `SlowImmunity`：`SlowImmune`（冰原視窗、或同調 ≥ 3 且有定神或御風）時把你身上本模組以外的減速驅散。以前的 Papyrus 守衛沒有呼叫者（假 DONE）。 |
+| 刪除 | 成果 3、4 | 原生函式 `ExtendFuse`、`WashBuffs`、`SetWindow` 32–35 刪除；新增 `RequestSwitch`。Papyrus `ESSBFormRules`、`ESSBInput`、`ESSBSilence` 整檔刪除（VMAD 一起拿掉，別名腳本 3 → 2），控制器的三格領域、環境、雷雨計時、9 個領域鏡射屬性刪除。 |
+| 防護 | — | 輸入 sink：SEH → C++ catch（`InputCpp`）；計時 task：`TickGuarded`（SEH）→ `TickCpp`（C++ catch）；`RequestSwitch` 經 `Guard` → `QueueNative`。沒有 hook、trampoline、vtable 修補，也不寫遊戲記憶體；DLL 不存設計狀態（領域每秒重找、計時只有時鐘）、沒有存檔序列化。 |
+
+測試：原有各組照過；新增 `native/tests/timer_test.cpp`：T 組 118 個情境（581 個預期項目，對 `build/fix25_reference.py` 另寫的 v0.4 模型；14 個手算錨點由 `build/fix25_fixture.py` 核對，含邊界：等級 150 夾到 100、魔力不夠扣時只扣剩下的並開始 2 秒計時、歸零 2 秒關閉、血 70% 的損血）、W 組 457 個接線檢查（round 25 狀態種類、每個領域的 HAZD／Spawn Hazard／放置法術、CastSpells、全域變數、熱鍵、維持費設定）、X 組 15 個假引擎檢查（融斷時的領域施放、沉默扣魔、潮池沖刷上限、帶暫停與讀檔的假計時器、假輸入事件）；10 個新原始碼突變（Timer.h 9、StatusEngine.h 1），43/43 突變全被抓；`build/fix25_verify.py` 的 7 個來源錯誤與 7 個 timer_test 錯誤注入全被抓；每個 DLL 施放的法術與 hazard 由 `ResolveDomains` 對 ESP 核對（archetype 與 associated form）；0 個 entry-point 51。
+
+### 仍未實測（探針卡 `build/fix25-probes.md`）
+
+- N6-1：暫停、背包、Alt+Tab、讀檔時計時停住（`[N6-1]` 的 active 不增加）。
+- N6-2：輸入 sink 的執行緒（X1）、主控台／背包／文字欄裡不觸發。
+- N6-3：DLL 找得到 hazard（`cells` 或 `effects` > 0）、HAZD 半徑單位、limit 0 是否真的不限、hazard 只打敵人。
+- 水中判定（`IsPointSubmergedMoreThan` 0.875）與天氣分類。
+
+### Round 25 審查修正（2026-09-26）
+
+| 項目 | 依據 | 做法 |
+|---|---|---|
+| 聖域「其中敵人傷害 −20%」 | 指揮官裁定；推論（NPC 的毀滅法術是否吃 DestructionPowerModifier 沒查證，探針 C4） | 聖域 hazard 法術 `ESSB_N6_HazardSpell_Divine` 多兩個有害的 Peak Value Modifier 效果：`ESSB_N6_DivineAttackEffect`（AV 154 AttackDamageMult −0.2）、`ESSB_N6_DivineMagicEffect`（AV 149 DestructionPowerModifier −20），各 2 秒，跟聖域標記一起由 hazard 重新套用（0x005905、0x005906）。「你在聖域裡受傷 −20%」的 PERK 進入點（聖域、神聖領域兩個節點）與 DLL 每秒寫的 `ESSB_DomainDivine` 鏡射拿掉；那個 GLOB 留著不回收，沒有人讀寫。 |
+| 領域掃描 | 審查修正 2 | `Timer.h HasDomainNode`：你沒有任何一個會留下領域的節點（火域、冰原、地裂、血池、聖域、神聖領域、毒霧、潮池、死域、星域）時，每秒不跑 `ForEachReferenceInRange(4200)` 與效果掃描；每秒從你的 perk 讀，不快取。 |
+| 雷雨與暴風雪 | v0.4 2.10；Skyrim.esm WTHR DATA（本機掃描：沒有雷電的天氣 thunderLightningFrequency 都是 255，SkyrimStormRain 系列 246；風速 SkyrimStormSnow 178、SkyrimOvercastSnow 76） | 雷雨＝天氣分類是雨、且雷電頻率 ≠ 255 → 新 GLOB `ESSB_EnvThunder`（0x005907），雷形態電荷只讀它。暴風雪＝天氣分類是雪、且風速 ≥ 128／255 → `ESSB_EnvStormy`（round 22 的命中路徑本來就把它當暴風雪：凍結累積 ×2）。下雨或下雪照舊給浸濕。`[env][L1]` 多寫 `thunder=`、`lightning=`、`wind=`。 |
+| Papyrus 的秒計時器 | 審查修正 4 | 新原生函式 `ESSBNative.RunningSeconds`：DLL 計時器每步把「遊戲在跑的毫秒」加進一個 atomic（這次開遊戲以來，不重設、不存檔），函式只讀它，登記為 callable-from-tasklets（不等主執行緒），有自己的 SEH 與 C++ catch、不經 Guard（總開關關著時也要回答，否則計時器永遠不到期；也不讓 X1 的 native 執行緒探針被 tasklet 緒弄亂）。`ESSBController.Now()` 包它；TickTimers、TimersActive、SecondsLeft、各 Set 視窗函式、同調保留、雙生改用它。讀檔時 ResetLoadClock 照舊全部歸零。沒有讀者的連段 `ComboHits`／`ComboTime`／`GCombo` 刪除（`ESSB_Combo` GLOB 留著）。 |
+| 血形態扣血 | 審查修正 5 | 比例（血位）與扣血量都用永久生命（`GetPermanentActorValue`，其他血位規則的分母）；以前扣血量用目前上限。錨點改為 70／100 → 0.6。 |
+| 存檔結構 | 裁定 R1 | 控制器成員變了（連段刪除），round 25 的 schema 14 還沒出貨：`state-schema.lock.json` 從 pre-fix25 快照（13）還原，讓建置重新做這一輪唯一的 13 → 14。 |
+
+測試：timer_test T 126 個情境（589 個預期項目；新增 8 個天氣情境，數字取自 Skyrim.esm）、W 457、X 18（新增領域節點閘門）；4 個新突變（任何雨算雷雨、任何雪算暴風雪、沒有節點也掃描、血形態扣血用目前上限），47/47 全被抓；`build/fix25_verify.py` 加：聖域 hazard 法術的兩個效果（AV、強度、2 秒、有害）、沒有 PERK 讀 `ESSB_DomainDivine`、`ESSB_EnvThunder` 存在、秒計時器函式不用真實時間（新注入錯誤：SecondsLeft 改回真實時間，被抓）、領域節點閘門、RunningSeconds 的登記；`build/fix22_verify.py` 的原生函式比對認得帶 callable-from-tasklets 的登記，防護檢查多認「函式自己有 SEH＋C++ catch」。
+
+#### 仍未實測（探針卡 C 段）
+
+- NPC 的毀滅法術（火球）在聖域裡是否 ×0.8（DestructionPowerModifier）；不吃的話替代做法由指揮官決定。
+- 等待、睡覺、快速旅行時計時器是否停住（選單暫停遊戲、快速旅行是讀檔）；對話照走。
+- 按住熱鍵是否只切換一次（只看 IsDown）、手把鍵；死亡、倒地、騎馬時按熱鍵的行為（沒有擋，記錄）。
+- 同一元素 5 個領域與讀檔後 `domains=` 不重複；冰原減速吃 MCM 上限 30；五種天氣的 `[env]`；FPS。

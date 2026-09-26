@@ -12,7 +12,10 @@ Round 22（N3）起沒有登記表、沒有狀態容器：目標身上的印記�
 終焉的狀態部分；round 24（N5）起反應本體、融斷、死亡處理與所有範圍掃描也在 DLL（native/include/Reactions.h）。
 ModEvent 只剩 Papyrus 負責的那一半（裁定 R4）：ESSB_Open／ESSB_End（經驗、終焉特效）、ESSB_Hallucinate（恐懼／瘋狂的 AI）、
 ESSB_Knock／ESSB_Push（推力）、ESSB_Ash（化灰崩解）、ESSB_Raise（復生 AI 與召喚上限）、ESSB_Sneak（不解除潛行）、
-ESSB_Domain（領域，N6）、ESSB_SyncUp、ESSB_Cleanse、ESSB_Lethal（神佑）。
+ESSB_Domain（領域開場特效）、ESSB_SyncUp、ESSB_Cleanse、ESSB_Lethal（神佑）；round 25（N6）起再加 ESSB_Switch（熱鍵與
+形態力量的切換：DLL 已判定魔力門檻、寫好全域變數）與 ESSB_Close（魔力歸零 2 秒關閉）。每秒的維持費、長流、環境、雷雨電荷、
+沉默扣魔與領域都在 DLL 的計時器（native/include/Timer.h），熱鍵在 DLL 的輸入事件 sink；ESSBFormRules、ESSBInput、
+ESSBSilence 三個腳本刪除。
 本腳本讀寫目標狀態一律經 ESSBNative（狀態代碼見 ESSBNative.psc）。
 
 自身資源 aiKind（N4 前留在這裡）：1 電荷 2 岩甲 3 風勢
@@ -61,17 +64,14 @@ GlobalVariable Property SyncT3 Auto
 GlobalVariable Property EnvWet Auto
 GlobalVariable Property EnvStormy Auto
 GlobalVariable Property EnvNight Auto
-GlobalVariable Property GameHour Auto
-{Skyrim.esm 0x38：夜晚判定 20:00–6:00}
+; round 25（N6）：環境偵測（天氣、室內、水中、時間）搬進 DLL 計時器，GameHour 屬性拿掉；這三個全域變數由 DLL 寫。
 
 Spell Property SettingsPower Auto
-Spell Property FormRulesAbility Auto
 Spell Property EngagedSpell Auto
 Spell[] Property FormPowers Auto
 Spell[] Property FormAbilities Auto
 Spell[] Property HitNormalSpells Auto
 Spell[] Property HitPowerSpells Auto
-Spell[] Property ReactSpells Auto
 Spell[] Property UtilSpells Auto
 Spell[] Property UtilTargetSpells Auto
 ; Contact variants: RestoreHealth, RestoreStamina, MeleeBuff (allies only).
@@ -84,7 +84,6 @@ Keyword[] Property MarkKeywords Auto
 
 ; ---------------------------------------------------------------- 機制前線新增
 
-Spell Property OverheatSelfSpell Auto
 Spell Property TrueSpell Auto
 {真實傷害（規劃 2.8）：Resist Value = None、不掛學派、只掛 ESSB_TrueDamage。}
 Spell Property ManaBreakSpell Auto
@@ -123,7 +122,6 @@ Spell Property IceArmorWideAbility Auto
 GlobalVariable Property GDivineArmed Auto
 GlobalVariable Property FormNotify Auto
 GlobalVariable Property FormSound Auto
-ESSBInput Property InputLayer Auto
 Int[] Property RankCacheA Auto
 Int[] Property RankCacheB Auto
 Int[] Property BranchCacheA Auto
@@ -202,10 +200,6 @@ GlobalVariable Property GWaterMirror Auto
 GlobalVariable Property GGuardDark Auto
 GlobalVariable Property GGuardAstral Auto
 GlobalVariable Property GGuardStar Auto
-GlobalVariable Property GDomainPoison Auto
-GlobalVariable Property GDomainWater Auto
-GlobalVariable Property GDomainDark Auto
-GlobalVariable Property GDomainAstral Auto
 
 GlobalVariable Property GRockArmor Auto
 GlobalVariable Property GWind Auto
@@ -213,9 +207,6 @@ GlobalVariable Property GHolyShield Auto
 GlobalVariable Property GBloodthirst Auto
 GlobalVariable Property GGuardWind Auto
 GlobalVariable Property GGuardDivine Auto
-GlobalVariable Property GDomainEarth Auto
-GlobalVariable Property GDomainBlood Auto
-GlobalVariable Property GDomainDivine Auto
 GlobalVariable Property GNoBloodCost Auto
 GlobalVariable Property GCloakGuard Auto
 
@@ -231,13 +222,10 @@ GlobalVariable Property GEmber Auto
 GlobalVariable Property GQuench Auto
 GlobalVariable Property GPrevElement Auto
 GlobalVariable Property GTwinElement Auto
-GlobalVariable Property GDomainFire Auto
-GlobalVariable Property GDomainFrost Auto
 GlobalVariable Property GShockRecent Auto
 GlobalVariable Property GGuardSwitch Auto
 GlobalVariable Property GGuardBurst Auto
 GlobalVariable Property GGuardIce Auto
-GlobalVariable Property GCombo Auto
 GlobalVariable Property GFreeOpen Auto
 
 ESSBTrees Property Trees Auto
@@ -258,7 +246,6 @@ Float[] PendingServantDue
 Bool ReanimateBusy
 
 
-Bool PlayerInFireDomain
 
 
 Bool DivineArmed
@@ -266,13 +253,11 @@ Actor[] CastActor
 Float[] CastAt
 Int CastNext
 
-; 自身資源（電荷、岩甲、風勢、戰意、冰盾、同調……）round 23 起是 DLL 掛在你身上的效果（native/include/SelfLayer.h），
-; 這裡只剩雷雨天氣的 3 秒計時（它呼叫 DLL 加電荷）。
-Float StormCharge
+; 自身資源（電荷、岩甲、風勢、戰意、冰盾、同調……）round 23 起是 DLL 掛在你身上的效果（native/include/SelfLayer.h）；
+; round 25 起雷雨天氣的 3 秒電荷也在 DLL（Timer.h PlanFormSecond）。
 Bool LastHitPower
 Int SyncStageShown
 
-Float LastEnvCheck
 Bool Ready
 Int Property CachedDebugLevel Auto
 Bool Property RuntimeCacheReady Auto
@@ -290,8 +275,6 @@ Bool FirstSetupDone
 ; ---------------------------------------------------------------- 節點狀態（機制前線）
 
 ; 無元素樹（戰意與斷咒的冷卻 round 23 起在 DLL）
-Int ComboHits
-Float ComboTime
 
 ; 秒計時器（每秒 tick 減 1，歸零時把對應的全域變數寫回 0）
 Float EmberLeft
@@ -323,19 +306,8 @@ Float[] PullTime
 Float[] WashTime
 Int KnockNext
 
-; 領域（火域、冰原、地裂、血池、聖域、毒霧、潮池、死域、星域）：
-; 不放任何 ObjectReference，只記中心座標、半徑與剩餘秒數，由既有的每秒 tick 做幾何判定
-; （見實作紀錄的偏離說明）。round 3 把單一格擴充成固定 3 格，因為不同元素的領域
-; 在正常玩法下會同時存在（融斷留下領域 → 切換形態 → 再融斷）。
-Actor[] DomainResident
-Float[] DomainResidentAt
-Int[] DomainElem
-Float[] DomainTickAt
-Float[] DomainLeft
-Float[] DomainX
-Float[] DomainY
-Float[] DomainZ
-Float[] DomainR
+; 領域 round 25（N6）起是引擎的 hazard（DLL 在融斷目標腳下放 Spawn Hazard 法術，引擎管壽命與數量；對你與對內部敵人的
+; 每秒效果在 DLL 計時器，native/include/Timer.h）；這裡不再有三格表。
 
 ; ---- 機制前線 round 3 的狀態
 Int WaterMirror
@@ -540,7 +512,7 @@ Function ArmUpdate()
 	RegisterForSingleUpdate(delay)
 EndFunction
 
-; 推力冷卻環與三格領域（round 22 起沒有目標登記表）。
+; 推力冷卻環（round 22 起沒有目標登記表；round 25 起領域是引擎的 hazard）。
 Function InitTables()
 	If !IsCurrentController() || StateBroken
 		Return
@@ -577,69 +549,6 @@ Function InitTables()
 	If !WashTime
 		WashTime = new Float[8]
 		If !WashTime
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !DomainResident
-		DomainResident = new Actor[18]
-		If !DomainResident
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !DomainResidentAt
-		DomainResidentAt = new Float[18]
-		If !DomainResidentAt
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !DomainElem
-		DomainElem = new Int[3]
-		If !DomainElem
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !DomainTickAt
-		DomainTickAt = new Float[3]
-		If !DomainTickAt
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !DomainLeft
-		DomainLeft = new Float[3]
-		If !DomainLeft
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !DomainX
-		DomainX = new Float[3]
-		If !DomainX
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !DomainY
-		DomainY = new Float[3]
-		If !DomainY
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !DomainZ
-		DomainZ = new Float[3]
-		If !DomainZ
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !DomainR
-		DomainR = new Float[3]
-		If !DomainR
 			BreakState()
 			Return
 		EndIf
@@ -700,9 +609,6 @@ Function Setup()
 		EndIf
 		index += 1
 	EndWhile
-	If !player.HasSpell(FormRulesAbility)
-		player.AddSpell(FormRulesAbility, False)
-	EndIf
 	; 基礎規則天賦（血形態重擊改扣生命、岩甲物理減傷）：不是節點，開局加一次就不再動。
 	If HitProcPerk && !player.HasPerk(HitProcPerk)
 		player.AddPerk(HitProcPerk)
@@ -712,7 +618,6 @@ Function Setup()
 	EndIf
 	RefreshTrees()
 	RefreshAbilities()
-	EnvCheck()
 	If wasLoaded
 		ResetLoadClock()
 	EndIf
@@ -726,13 +631,11 @@ Function Setup()
 		Return
 	EndIf
 	Ready = True
-	If InputLayer
-		InputLayer.Setup()
-	EndIf
 	PO3_Events_Alias.RegisterForWeaponHit(Self)
 	; DLL → Papyrus（round 22 起）。ModEvent 的登記不隨存檔保存，每次載入由這裡重登。
 	; round 24（N5）：反應本體（冰封、聖裁、濺血、越線、碎冰、落地、放電、風刃、死亡）全在 DLL，這裡只剩經驗與特效
-	;（開印、終焉）、推力、幻術 AI、化灰崩解、復生、不解除潛行、領域（N6）、同調升段、洗淨、神佑（裁定 R4）。
+	;（開印、終焉）、推力、幻術 AI、化灰崩解、復生、不解除潛行、領域的開場特效、同調升段、洗淨、神佑（裁定 R4）；
+	; round 25（N6）：熱鍵／形態力量的切換與魔力歸零的關閉。
 	RegisterForModEvent("ESSB_Open", "OnESSBOpen")
 	RegisterForModEvent("ESSB_End", "OnESSBEnd")
 	RegisterForModEvent("ESSB_Hallucinate", "OnESSBHallucinate")
@@ -745,7 +648,8 @@ Function Setup()
 	RegisterForModEvent("ESSB_SyncUp", "OnESSBSyncUp")
 	RegisterForModEvent("ESSB_Cleanse", "OnESSBCleanse")
 	RegisterForModEvent("ESSB_Lethal", "OnESSBLethal")
-	SendModEvent("ESSB_FormRulesReady")
+	RegisterForModEvent("ESSB_Switch", "OnESSBSwitch")
+	RegisterForModEvent("ESSB_Close", "OnESSBClose")
 	If CachedDebugLevel >= 1
 		LogEvent(1, "init", "ready enabled=" + Enabled.GetValueInt() + " element=" + CurrentElement.GetValueInt() \
 			+ " active=" + FormActive.GetValueInt() + " native=" + NativeHit.GetValueInt())
@@ -761,12 +665,6 @@ Actor Function ThePlayer()
 EndFunction
 
 ; ---------------------------------------------------------------- 形態層
-
-Function ToggleForm(Int aiIndex)
-	If IsOperational() && InputLayer
-		InputLayer.RequestSwitch(aiIndex)
-	EndIf
-EndFunction
 
 Function SwitchForm(Int aiIndex)
 	If !IsOperational()
@@ -799,7 +697,7 @@ Function SwitchForm(Int aiIndex)
 	If previous >= 1
 		keep = ESSBNodes.CarryOverSync(Self, syncBefore)
 	EndIf
-	If (SyncKeepLeft > 0 && SyncKeepLeft > Utility.GetCurrentRealTime()) && SyncKeep > keep
+	If (SyncKeepLeft > 0 && SyncKeepLeft > Now()) && SyncKeep > keep
 		keep = SyncKeep
 	EndIf
 	If PerpetualKeep > keep
@@ -901,7 +799,7 @@ Function OnFormSwitched(Int aiOldIndex, Int aiNewIndex)
 	; 5.2 關閉傳奇分支「雙生」：雙持時左手武器攜帶前一個形態的元素 30 秒。
 	If ESSBNodes.HasTwin(Self)
 		TwinElement = aiOldIndex
-		TwinTime = Utility.GetCurrentRealTime()
+		TwinTime = Now()
 		If GTwinElement
 			GTwinElement.SetValueInt(aiOldIndex)
 		EndIf
@@ -1122,7 +1020,7 @@ Event OnWeaponHit(ObjectReference akTarget, Form akSource, Projectile akProjecti
 		Return
 	EndIf
 	; 雙生：左手命中改用前一個形態的元素（30 秒內有效）。
-	If leftHand && TwinElement >= 1 && Utility.GetCurrentRealTime() - TwinTime <= DurationSeconds(30.0)
+	If leftHand && TwinElement >= 1 && Now() - TwinTime <= DurationSeconds(30.0)
 		element = TwinElement
 	EndIf
 
@@ -1160,44 +1058,6 @@ Function ApplyMark(Actor akTarget, Int aiElement)
 EndFunction
 
 ; ---------------------------------------------------------------- 傷害與法術套用封裝
-
-; 所有反應傷害都走自有的 ESSB_React_<元素>：執行期設 magnitude 後 DoCombatSpellApply。
-; G(L) 與 BaseDamageMult 在這裡各乘一次；呼叫端與延遲狀態只存未乘倍率的值。
-Function ApplyDamage(Int aiElement, Float afAmount, Actor akTarget)
-	; 5.7 傳奇分支「御風」與「空中追擊」：失衡／浮空目標受你所有傷害放大。
-	; 5.12 持續專精主線、5.13「星鎖」與「星域」同樣只放大本模組造成的傷害（決定 61）。
-	Float amount = afAmount * BaseDamageMult.GetValue() * GLevel(ESSBNodes.TreeOf(aiElement)) \
-		* ESSBElem2.TargetDamageMult(Self, akTarget) \
-		* ESSBElem3.TargetDamageMult(Self, akTarget)
-	; 5.3 火域：內部敵人受火傷 +20%（附傷與 DLL 結算的火傷由 DLL 讀領域效果）。
-	If aiElement == 1 && DomainActive() && InDomain(akTarget, 1)
-		amount = amount * 1.2
-	EndIf
-	ApplyDamageRaw(aiElement, amount, akTarget)
-EndFunction
-
-; Raw delivery never adds G(L) or BaseDamageMult; overheat self damage is not B-derived.
-Function ApplyDamageRaw(Int aiElement, Float afAmount, Actor akTarget)
-	If aiElement < 1 || aiElement > 11 || !akTarget || afAmount <= 0.0
-		Return
-	EndIf
-	If !ReactSpells || aiElement > ReactSpells.Length
-		Return
-	EndIf
-	Spell reactSpell = ReactSpells[aiElement - 1]
-	Actor player = ThePlayer()
-	If aiElement == 1 && akTarget == player
-		reactSpell = OverheatSelfSpell
-	EndIf
-	If !reactSpell || !player
-		Return
-	EndIf
-	reactSpell.SetNthEffectMagnitude(0, afAmount)
-	player.DoCombatSpellApply(reactSpell, akTarget)
-	If CachedDebugLevel >= 3
-		LogThrottled(3, "damage", akTarget.GetFormID() + " element=" + aiElement + " amount=" + afAmount)
-	EndIf
-EndFunction
 
 ; 破魔印 8 秒（ESSBCounter）。
 Function ApplyManaBreakMark(Actor akTarget)
@@ -1263,10 +1123,6 @@ Float Function DrainAmount(Float afAmount)
 	Return afAmount * MultDrain.GetValue()
 EndFunction
 
-Function ApplyDotDamage(Int aiElement, Float afAmount, Actor akTarget)
-	ApplyDamage(aiElement, afAmount * MultDot.GetValue(), akTarget)
-EndFunction
-
 Function ApplyUtil(Int aiIndex, Float afMagnitude, Int aiDuration, Actor akTarget, Bool abBalanced = False)
 	If !UtilSpells || aiIndex < 0 || aiIndex >= UtilSpells.Length || !akTarget || afMagnitude <= 0.0
 		Return
@@ -1323,28 +1179,6 @@ Float Function BaseMax(Int aiElement)
 		Return 0.0
 	EndIf
 	Return ElementDamageMax[aiElement - 1]
-EndFunction
-
-; D_react 的本模組部分：B_max × K × M_mod（G(L) 由 ApplyDamage 乘上）。
-Float Function ReactDamage(Int aiElement, Float afK)
-	Return BaseMax(aiElement) * afK * GetDamageMult(aiElement)
-EndFunction
-
-; M_mod：本模組節點加成合計。技能樹屬機制前線，本前線只提供環境加成與血位倍率，
-; 之後的節點加成接在同一個函式裡，公式其他項不必改（規劃 2.7）。
-Float Function GetDamageMult(Int aiElement)
-	Float mult = 1.0
-	; 5.8 飲血的 10 秒「嗜血」（命中效果 +20%）round 24 起是 DLL 在死亡 sink 掛在你身上的效果，DLL 的反應讀它。
-	If aiElement == 6
-		mult = mult * GetBloodHitMult()
-	ElseIf aiElement == 7 && EnvNight.GetValueInt() == 0
-		; 白天神聖附傷 +20%（規劃 2.10）
-		mult = mult * 1.2
-	ElseIf aiElement == 10 && EnvNight.GetValueInt() == 1
-		; 夜晚黑暗附傷 +20%（規劃 2.10）
-		mult = mult * 1.2
-	EndIf
-	Return mult
 EndFunction
 
 ; ---------------------------------------------------------------- 節點框架的讀取入口
@@ -1484,41 +1318,6 @@ Float Function FormHeldSeconds()
 	Return Utility.GetCurrentRealTime() - FormOpenTime
 EndFunction
 
-; 血位讀值（規劃 1.1）。5.8 持續專精分支「逆流」反轉曲線：低血位命中強、高血位吸血強，
-; 只反轉查表用的百分比，損血曲線另走 BloodDrainPercentAt，不受影響。
-Float Function BloodPercent()
-	Actor player = ThePlayer()
-	If !player
-		Return 1.0
-	EndIf
-	Float percent = player.GetActorValuePercentage("Health")
-	If ESSBNodes.Br(Self, 5, 0, 2, 0) ; @node 逆流
-		percent = 1.0 - percent
-	EndIf
-	If percent > 1.0
-		percent = 1.0
-	ElseIf percent < 0.0
-		percent = 0.0
-	EndIf
-	Return percent
-EndFunction
-
-; Phase 1 blood damage uses the approved four HP bands; leech retains its original curve.
-Float Function GetBloodHitMult()
-	Actor player = ThePlayer()
-	If !player
-		Return 1.0
-	EndIf
-	Float percent = BloodPercent()
-	Float extra = 1.0
-	; 5.8 持續大師分支「血怒」：中血位（30～70%）時命中效果與吸血同時 +15%。
-	Float raw = player.GetActorValuePercentage("Health")
-	If ESSBNodes.Br(Self, 5, 0, 3, 1) && raw >= 0.3 && raw <= 0.7 ; @node 血怒
-		extra = 1.15
-	EndIf
-	Return BloodBandMult(BloodBand(raw)) * extra
-EndFunction
-
 Float Function BloodHitCurve(Float percent)
 	If percent >= 0.85
 		Return 1.25
@@ -1562,20 +1361,6 @@ Float Function BloodDrainCurve(Float percent, Bool abPower)
 	Return value / 100.0
 EndFunction
 
-; 維持每秒損血（給 ESSBFormRules 呼叫）。非血形態回 0。
-; v0.4「代價（扣血）不會被任何節點取消，只會被換成別的東西」：v0.3 的「血氣」減半、「血臨強化」「血約」
-; 「不死」的免扣血都已拿掉。
-Float Function BloodDrainPerSecond()
-	If FormActive.GetValueInt() != 1 || CurrentElement.GetValueInt() != 6
-		Return 0.0
-	EndIf
-	Actor player = ThePlayer()
-	If !player
-		Return 0.0
-	EndIf
-	Return BloodDrainCurve(player.GetActorValuePercentage("Health"), False)
-EndFunction
-
 ; 重擊一次的損血（占最大生命）。
 Float Function BloodPowerCost()
 	Actor player = ThePlayer()
@@ -1583,31 +1368,6 @@ Float Function BloodPowerCost()
 		Return 0.0
 	EndIf
 	Return BloodDrainCurve(player.GetActorValuePercentage("Health"), True)
-EndFunction
-
-; 血形態的自身損血：這是規劃 1.1 明定的「維持費」，和真實傷害一樣是本模組少數
-; 允許直接動生命的路徑（維持費原本就寫在 ESSBFormRules 裡）。永遠留 1 點生命，
-; 不讓維持費自己把玩家打死。
-Function PayBloodCost(Float afPercentOfMax)
-	If afPercentOfMax <= 0.0
-		Return
-	EndIf
-	Actor player = ThePlayer()
-	If !player
-		Return
-	EndIf
-	Float cost = player.GetActorValueMax("Health") * afPercentOfMax
-	Float current = player.GetActorValue("Health")
-	If cost > current - 1.0
-		cost = current - 1.0
-	EndIf
-	If cost <= 0.0
-		Return
-	EndIf
-	player.DamageActorValue("Health", cost)
-	If CachedDebugLevel >= 3
-		LogThrottled(3, "blood", "cost=" + cost + " percent=" + afPercentOfMax)
-	EndIf
 EndFunction
 
 ; ---------------------------------------------------------------- 同調
@@ -1659,14 +1419,6 @@ Int Function SelfCode(Int aiKind)
 	Return 0
 EndFunction
 
-Function AddSelf(Int aiKind, Int aiAmount)
-	Actor player = ThePlayer()
-	Int code = SelfCode(aiKind)
-	If player && code > 0 && aiAmount != 0
-		ESSBNative.AddStatus(player, code, aiAmount)
-	EndIf
-EndFunction
-
 ; 樣式 C 的鏡射：v0.3 的聖盾層數（電荷、冰盾、戰意、岩甲、風勢的鏡射 round 23 起由 DLL 寫）。
 Function PushSelf()
 	SetGlobal(GHolyShield, HolyShield)
@@ -1687,7 +1439,6 @@ EndFunction
 
 ; 離開形態時 Papyrus 自己的部分（你的資源由 DLL 在 FormLeave 清）。
 Function ClearSelfAll()
-	StormCharge = 0
 	HolyShield = 0
 	; round 3：水鏡層與追擊的命中計數也是「疊在你身上」的資源，離開形態清空（規劃 2.3）。
 	WaterMirror = 0
@@ -1880,28 +1631,9 @@ Function Tick()
 	If MultRecovery && LastRecoveryScale != MultRecovery.GetValue()
 		RefreshRecovery()
 	EndIf
-	Float now = Utility.GetCurrentRealTime()
-
 	; 自身資源的衰減（風勢 5 秒、電荷 10 秒未命中歸零、戰意 10 秒）是 DLL 效果的時長（round 23）。
 
-	; 雷雨天氣：雷形態每 3 秒自動 +1 電荷（規劃 2.10；電荷是 DLL 的效果，這裡呼叫 DLL 加）。
-	If FormActive.GetValueInt() == 1 && CurrentElement.GetValueInt() == 3 && EnvStormy.GetValueInt() == 1
-		If StormCharge <= 0
-			StormCharge = now + CooldownSeconds(3.0)
-		EndIf
-		If now >= StormCharge
-			StormCharge = now + CooldownSeconds(3.0)
-			AddSelf(1, 1)
-		EndIf
-	Else
-		StormCharge = 0
-	EndIf
-
-	; 「節奏」「疾攻」的連段：4 秒沒有新命中就斷。
-	If ComboHits > 0 && now - ComboTime >= 4.0
-		ComboHits = 0
-		SetGlobal(GCombo, 0)
-	EndIf
+	; 雷雨天氣的每 3 秒電荷（規劃 2.10）round 25 起在 DLL 計時器（Timer.h PlanFormSecond）。
 
 	RefreshDivineProtection()
 	TickTimers()
@@ -1910,7 +1642,7 @@ Function Tick()
 	; 5.2 持續傳奇主線「化身」是 DLL N4（冷卻後的下一次命中觸發該元素的持續傳奇；被動數值改為 10 秒視同已取得）。
 	; v0.3「每 N 秒自動施放一次」的近似已拿掉。
 
-	; 各元素樹的每秒掛勾（毒形態、長流；冰心與雷神 round 23 起在 DLL）。
+	; 各元素樹的每秒掛勾（毒形態的以毒攻毒、百毒不侵；冰心與雷神 round 23 起、長流與長河 round 25 起在 DLL）。
 	If FormActive.GetValueInt() == 1
 		Int tickElement = CurrentElement.GetValueInt()
 		ESSBElem.OnTick(Self, tickElement)
@@ -1935,10 +1667,7 @@ Function Tick()
 		EndIf
 	EndIf
 
-	If now - LastEnvCheck >= 5.0
-		LastEnvCheck = now
-		EnvCheck()
-	EndIf
+	; 環境偵測（規劃 2.10，每 5 秒）round 25 起在 DLL 計時器，結果照舊寫進 ESSB_EnvWet／EnvStormy／EnvNight。
 
 	Float delay = 5.0
 	If FormActive.GetValueInt() == 1 || TimersActive()
@@ -1954,7 +1683,7 @@ Function TickTimers()
 		Return
 	EndIf
 	Int oldStage = CachedSyncStage
-	Float now = Utility.GetCurrentRealTime()
+	Float now = Now()
 	; v0.3 的熔身（過熱滿 10 秒、每秒回耐力）在 v0.4 是 DLL 的熔身效果與每秒 tick。
 	If EmberLeft > 0
 		If now >= EmberLeft
@@ -2052,7 +1781,6 @@ Function TickTimers()
 			SyncKeep = 0
 		EndIf
 	EndIf
-	TickDomain()
 	RefreshSyncStage()
 	If oldStage != CachedSyncStage
 		PushSyncStage()
@@ -2061,86 +1789,24 @@ Function TickTimers()
 EndFunction
 
 Bool Function TimersActive()
-	If (EmberLeft > 0 && EmberLeft > Utility.GetCurrentRealTime()) || (QuenchLeft > 0 && QuenchLeft > Utility.GetCurrentRealTime()) || (ShockLeft > 0 && ShockLeft > Utility.GetCurrentRealTime()) || DomainActive()
+	If (EmberLeft > 0 && EmberLeft > Now()) || (QuenchLeft > 0 && QuenchLeft > Now()) || (ShockLeft > 0 && ShockLeft > Now())
 		Return True
 	EndIf
-	If (GuardDarkLeft > 0 && GuardDarkLeft > Utility.GetCurrentRealTime()) || (GuardAstralLeft > 0 && GuardAstralLeft > Utility.GetCurrentRealTime()) || (GuardStarLeft > 0 && GuardStarLeft > Utility.GetCurrentRealTime()) || WaterMirror > 0
+	If (GuardDarkLeft > 0 && GuardDarkLeft > Now()) || (GuardAstralLeft > 0 && GuardAstralLeft > Now()) || (GuardStarLeft > 0 && GuardStarLeft > Now()) || WaterMirror > 0
 		Return True
 	EndIf
-	If (GuardSwitchLeft > 0 && GuardSwitchLeft > Utility.GetCurrentRealTime()) || (GuardIceLeft > 0 && GuardIceLeft > Utility.GetCurrentRealTime()) || (SyncKeepLeft > 0 && SyncKeepLeft > Utility.GetCurrentRealTime()) 		|| ComboHits > 0
+	If (GuardSwitchLeft > 0 && GuardSwitchLeft > Now()) || (GuardIceLeft > 0 && GuardIceLeft > Now()) || (SyncKeepLeft > 0 && SyncKeepLeft > Now())
 		Return True
 	EndIf
-	If (GuardWindLeft > 0 && GuardWindLeft > Utility.GetCurrentRealTime()) || (GuardDivineLeft > 0 && GuardDivineLeft > Utility.GetCurrentRealTime()) || (CloakGuardLeft > 0 && CloakGuardLeft > Utility.GetCurrentRealTime())
+	If (GuardWindLeft > 0 && GuardWindLeft > Now()) || (GuardDivineLeft > 0 && GuardDivineLeft > Now()) || (CloakGuardLeft > 0 && CloakGuardLeft > Now())
 		Return True
 	EndIf
-	Return (NoBloodCostLeft > 0 && NoBloodCostLeft > Utility.GetCurrentRealTime()) || (KeepSneakLeft > 0 && KeepSneakLeft > Utility.GetCurrentRealTime()) 		|| DivineSaveUsed
+	Return (NoBloodCostLeft > 0 && NoBloodCostLeft > Now()) || (KeepSneakLeft > 0 && KeepSneakLeft > Now()) 		|| DivineSaveUsed
 EndFunction
 
 Function SetGlobal(GlobalVariable akGlobal, Int aiValue)
 	If akGlobal && akGlobal.GetValueInt() != aiValue
 		akGlobal.SetValueInt(aiValue)
-	EndIf
-EndFunction
-
-; 規劃 2.10：只讀天氣分類、時間與是否在水中，成本極低。
-Function EnvCheck()
-	Int wet = 0
-	Int stormy = 0
-	Int night = 0
-	Weather current = Weather.GetCurrentWeather()
-	Int classification = -1
-	If current
-		classification = current.GetClassification()
-	EndIf
-	; 分類 2 = 雨、3 = 雪。雷雨與暴風雪都落在這兩類。
-	If classification == 2 || classification == 3
-		wet = 1
-		stormy = 1
-	EndIf
-	Actor player = ThePlayer()
-	If player
-		; 規劃 2.10：室內、地城沒有環境加成。
-		Cell here = player.GetParentCell()
-		If here && here.IsInterior()
-			wet = 0
-			stormy = 0
-		EndIf
-		If player.IsSwimming() || PO3_SKSEFunctions.IsRefUnderwater(player)
-			wet = 1
-		EndIf
-	EndIf
-	Float hour = 12.0
-	If GameHour
-		hour = GameHour.GetValue()
-	EndIf
-	If hour >= 20.0 || hour < 6.0
-		night = 1
-	EndIf
-	Bool changed = False
-	If EnvWet && EnvWet.GetValueInt() != wet
-		EnvWet.SetValueInt(wet)
-		changed = True
-	EndIf
-	If EnvStormy && EnvStormy.GetValueInt() != stormy
-		EnvStormy.SetValueInt(stormy)
-		changed = True
-	EndIf
-	If EnvNight && EnvNight.GetValueInt() != night
-		EnvNight.SetValueInt(night)
-		changed = True
-	EndIf
-	If changed
-		If CachedDebugLevel >= 1
-			LogEvent(1, "env", "wet=" + wet + " stormy=" + stormy + " night=" + night \
-				+ " classification=" + classification + " hour=" + hour)
-		EndIf
-	EndIf
-	If CachedDebugLevel >= 3
-		; PO3 GetWeatherType 的回傳值只在等級 3 紀錄，供進遊戲校準雷雨與暴風雪的細分。
-		If CachedDebugLevel >= 3
-			LogThrottled(3, "env", "po3WeatherType=" + PO3_SKSEFunctions.GetWeatherType() \
-				+ " classification=" + classification)
-		EndIf
 	EndIf
 EndFunction
 
@@ -2173,7 +1839,7 @@ EndFunction
 
 Function SetEmber(Int aiSeconds, Int aiElement)
 	aiSeconds = DurationInt(aiSeconds)
-	EmberLeft = Utility.GetCurrentRealTime() + aiSeconds
+	EmberLeft = Now() + aiSeconds
 	EmberElem = aiElement
 	SetGlobal(GEmber, SecondsLeft(EmberLeft))
 EndFunction
@@ -2184,26 +1850,26 @@ EndFunction
 
 Function SetQuench(Int aiSeconds)
 	aiSeconds = DurationInt(aiSeconds)
-	QuenchLeft = Utility.GetCurrentRealTime() + aiSeconds
+	QuenchLeft = Now() + aiSeconds
 	SetGlobal(GQuench, SecondsLeft(QuenchLeft))
 EndFunction
 
 Function SetShockRecent(Int aiSeconds)
 	aiSeconds = DurationInt(aiSeconds)
-	ShockLeft = Utility.GetCurrentRealTime() + aiSeconds
+	ShockLeft = Now() + aiSeconds
 	SetGlobal(GShockRecent, SecondsLeft(ShockLeft))
 EndFunction
 
 Function SetGuardSwitch(Int aiSeconds)
 	aiSeconds = DurationInt(aiSeconds)
-	GuardSwitchLeft = Utility.GetCurrentRealTime() + aiSeconds
+	GuardSwitchLeft = Now() + aiSeconds
 	SetGlobal(GGuardSwitch, SecondsLeft(GuardSwitchLeft))
 	ApplyGuardWindow(0, GuardSwitchLeft)
 EndFunction
 
 Function SetGuardIce(Int aiSeconds)
 	aiSeconds = DurationInt(aiSeconds)
-	GuardIceLeft = Utility.GetCurrentRealTime() + aiSeconds
+	GuardIceLeft = Now() + aiSeconds
 	SetGlobal(GGuardIce, SecondsLeft(GuardIceLeft))
 	ApplyGuardWindow(2, GuardIceLeft)
 EndFunction
@@ -2225,19 +1891,12 @@ Function SetSyncKeep(Int aiValue, Int aiSeconds)
 	If aiValue > SyncKeep
 		SyncKeep = aiValue
 	EndIf
-	SyncKeepLeft = Utility.GetCurrentRealTime() + aiSeconds
+	SyncKeepLeft = Now() + aiSeconds
 EndFunction
 
 ; 協奏／大協奏的「切換後首次終焉」與三重奏的逐元素標記 round 23 起是 DLL 掛在你身上的效果（終焉事件帶旗標、倍率已乘）。
 
 ; 斷咒、冰心、反震、洗淨的冷卻 round 23 起是 DLL 掛在你身上的效果（ESSB_N4_*Cooldown）。
-
-; 對目標加層（代碼見 ESSBNative.psc）：狀態本身是 DLL 掛在目標身上的引擎效果，上限與萬象也在 DLL。
-Function AddStackTo(Actor akTarget, Int aiKind, Int aiAmount)
-	If akTarget && aiAmount > 0
-		ESSBNative.AddStatus(akTarget, aiKind, aiAmount)
-	EndIf
-EndFunction
 
 ; 只讀本模組自己的印記關鍵字（規劃 2.2）。
 Bool Function HasElementMark(Actor akTarget, Int aiElement)
@@ -2249,286 +1908,6 @@ Bool Function HasElementMark(Actor akTarget, Int aiElement)
 		Return False
 	EndIf
 	Return akTarget.HasMagicEffectWithKeyword(mark)
-EndFunction
-
-; ---- 領域（火域、冰原）
-; 規劃 2.9 的例外表：中心為目標、半徑 3 公尺、持續 5 秒。本模組不放任何
-; ObjectReference，只記中心座標與剩餘秒數，判定在既有的每秒 tick 與命中路徑上做。
-; 3 格：同元素的領域直接取代自己那一格，否則取空格，全滿就換掉剩餘秒數最少的那一格。
-; 半徑預設 3 公尺（規劃 2.9 例外表），星域另外傳入隨主線成長的半徑。
-Function StartDomain(Int aiElement, Actor akCenter, Int aiSeconds, Float afRadius = 210.0)
-	InitTables()
-	If !IsCurrentController() || StateBroken
-		Return
-	EndIf
-	If !akCenter
-		Return
-	EndIf
-	Int slot = -1
-	Int index = 0
-	While index < 3
-		If DomainLeft[index] > 0 && DomainElem[index] == aiElement
-			slot = index
-			index = 3
-		EndIf
-		index += 1
-	EndWhile
-	If slot < 0
-		index = 0
-		While index < 3
-			If DomainLeft[index] <= 0
-				slot = index
-				index = 3
-			EndIf
-			index += 1
-		EndWhile
-	EndIf
-	If slot < 0
-		slot = 0
-		index = 1
-		While index < 3
-			If DomainLeft[index] < DomainLeft[slot]
-				slot = index
-			EndIf
-			index += 1
-		EndWhile
-	EndIf
-	DomainElem[slot] = aiElement
-	DomainTickAt[slot] = Utility.GetCurrentRealTime()
-	DomainLeft[slot] = DomainTickAt[slot] + DurationSeconds(aiSeconds)
-	DomainX[slot] = akCenter.GetPositionX()
-	DomainY[slot] = akCenter.GetPositionY()
-	DomainZ[slot] = akCenter.GetPositionZ()
-	DomainR[slot] = afRadius
-	ClearDomainResidents(slot)
-	ObserveDomainResidents(slot, ScanDomainTargets(PO3_SKSEFunctions.GetActorsByProcessingLevel(0), slot), ThePlayer(), DomainTickAt[slot])
-	; 特效前線：領域開場放一次該元素的爆炸（規劃 2.12 允許「大事」用爆炸記錄）。
-	; 判定完全不變——三格、中心座標、半徑、剩餘秒數都還是腳本側的，沒有 ObjectReference。
-	PlaceFx(aiElement, akCenter)
-	If CachedDebugLevel >= 1
-		LogEvent(1, "domain", "start element=" + aiElement + " sec=" + aiSeconds \
-			+ " radius=" + afRadius + " slot=" + slot)
-	EndIf
-EndFunction
-
-Bool Function InDomain(Actor akTarget, Int aiElement)
-	If !IsOperational()
-		Return False
-	EndIf
-	InitTables()
-	If !IsCurrentController() || StateBroken
-		Return False
-	EndIf
-	If !akTarget
-		Return False
-	EndIf
-	Int index = 0
-	While index < 3
-		If DomainLeft[index] > Utility.GetCurrentRealTime() && DomainElem[index] == aiElement
-			Float dx = akTarget.GetPositionX() - DomainX[index]
-			Float dy = akTarget.GetPositionY() - DomainY[index]
-			Float dz = akTarget.GetPositionZ() - DomainZ[index]
-			Float r = DomainR[index]
-			If dx * dx + dy * dy + dz * dz <= r * r
-				Return True
-			EndIf
-		EndIf
-		index += 1
-	EndWhile
-	Return False
-EndFunction
-
-Bool Function DomainActive()
-	InitTables()
-	If !IsCurrentController() || StateBroken
-		Return False
-	EndIf
-	Int index = 0
-	While index < 3
-		If DomainLeft[index] > 0
-			Return True
-		EndIf
-		index += 1
-	EndWhile
-	Return False
-EndFunction
-
-Bool Function PlayerInDomain(Int aiElement)
-	Return InDomain(ThePlayer(), aiElement)
-EndFunction
-
-; 每秒：三格領域各自倒數並結算內部的持續效果（火域的熱度加倍由命中路徑讀 InDomain）。
-; 共用一次候選池，逐領域先篩選再按距離取五人；最後一秒結算後才倒數。
-Function TickDomain()
-	If !IsOperational()
-		Return
-	EndIf
-	InitTables()
-	If !IsCurrentController() || StateBroken
-		Return
-	EndIf
-	If !DomainActive()
-		PlayerInFireDomain = False
-		Return
-	EndIf
-	Actor player = ThePlayer()
-	Actor[] pool = PO3_SKSEFunctions.GetActorsByProcessingLevel(0)
-	Int slot = 0
-	While slot < 3
-		If DomainLeft[slot] > 0
-			Float stop = Utility.GetCurrentRealTime()
-			If stop > DomainLeft[slot]
-				stop = DomainLeft[slot]
-			EndIf
-			Actor[] nearby = ScanDomainTargets(pool, slot)
-			ObserveDomainResidents(slot, nearby, player, Utility.GetCurrentRealTime())
-			Int ticks = DomainTargetTicks(player, slot, stop)
-			DomainTickAt[slot] = stop
-			Int element = DomainElem[slot]
-			If ticks > 0 && InsideDomainSlot(player, slot)
-				If element == 6
-					ApplyUtil(4, 20.0 * ticks, 0, player)
-				ElseIf element == 7
-					ApplyUtil(4, 25.0 * ticks, 0, player)
-					ApplyUtil(5, 20.0 * ticks, 0, player)
-				ElseIf element == 9
-					; 潮池：你在其中回血回耐力並每秒洗淨一次。
-					ApplyUtil(4, 15.0 * ticks, 0, player)
-					ApplyUtil(6, 15.0 * ticks, 0, player)
-					ApplyCleanse(False)
-				EndIf
-			EndIf
-			Int index = 0
-			While index < nearby.Length
-				Actor victim = nearby[index]
-				; 火域（受火附傷 +20%）、冰原（凍結累積 ×2）、星域（受所有元素傷 +20%）：DLL 讀內部敵人身上的領域效果
-				;（2 秒，每秒續；離開或領域結束後最多殘留 2 秒）。
-				If victim && element == 1
-					ESSBNative.SetWindow(victim, 32, 2.0, 0.0)
-				ElseIf victim && element == 2
-					ESSBNative.SetWindow(victim, 33, 2.0, 0.0)
-				ElseIf victim && element == 11
-					ESSBNative.SetWindow(victim, 34, 2.0, 0.0)
-				EndIf
-				ticks = DomainTargetTicks(victim, slot, stop)
-				If victim && ticks > 0
-					If element == 2
-						; 冰原：內部敵人減速 50%。
-						ApplyUtil(0, 50.0, 2, victim)
-					EndIf
-					If element == 4
-						; 5.6 關閉傳奇分支「地裂」：內部敵人耐力不回復，耐力歸 0 的敵人在其中跌倒
-						; （Knockdown 本身是每目標 8 秒一次）。「掛倒地」要等倒地標記（DLL N3）。
-						ApplyUtil(21, 100.0, 2, victim)
-						If victim.GetActorValue("Stamina") <= 0.0
-							Knockdown(victim, 3.0)
-						EndIf
-					EndIf
-					If element == 8
-						; 5.10 關閉傳奇分支「毒霧」：內部每秒 +1 毒層。
-						AddStackTo(victim, 7, ticks)
-					EndIf
-					If element == 9
-						; 5.11 關閉傳奇分支「潮池」：內部敵人每秒被沖刷一個增益（沖刷法術；v0.4 寫的 DLL 原生沖刷函式尚未有）。
-						ApplyStrip(victim, True)
-					EndIf
-					If element == 10
-						; 5.12 關閉傳奇分支「死域」：內部敵人無法被治療、每秒受 B_max ×0.5 暗傷。
-						ApplyUtil(20, 100.0, 2, victim)
-						ApplyDotDamage(10, ReactDamage(10, 0.5) * ticks, victim)
-					EndIf
-				EndIf
-				index += 1
-			EndWhile
-			; Resolve the final second before removing the domain.
-			If Utility.GetCurrentRealTime() >= DomainLeft[slot]
-				DomainLeft[slot] = 0.0
-			EndIf
-			If DomainLeft[slot] <= 0
-				DomainElem[slot] = 0
-				ClearDomainResidents(slot)
-			EndIf
-		EndIf
-		slot += 1
-	EndWhile
-	; 火域：你在其中熱度升階免等待（DLL 讀你身上的效果），進入火域時白熱引信一次性 +5 秒（v0.4 5.3）。
-	Bool inFire = player && PlayerInDomain(1)
-	If inFire
-		ESSBNative.SetWindow(player, 35, 2.0, 0.0)
-		If !PlayerInFireDomain
-			ESSBNative.ExtendFuse(5.0)
-		EndIf
-	EndIf
-	PlayerInFireDomain = inFire
-	; 鏡射給 PERK 進入點的是「玩家在不在領域裡」，不是「領域存不存在」。
-	SetGlobal(GDomainFire, DomainFlag(1, False))
-	SetGlobal(GDomainFrost, DomainFlag(2, False))
-	SetGlobal(GDomainEarth, DomainFlag(4, False))
-	SetGlobal(GDomainBlood, DomainFlag(6, True))
-	SetGlobal(GDomainDivine, DomainFlag(7, True))
-	SetGlobal(GDomainPoison, DomainFlag(8, False))
-	SetGlobal(GDomainWater, DomainFlag(9, True))
-	SetGlobal(GDomainDark, DomainFlag(10, False))
-	SetGlobal(GDomainAstral, DomainFlag(11, False))
-EndFunction
-
-Actor[] Function ScanDomainTargets(Actor[] akPool, Int aiSlot)
-	Actor[] result = new Actor[5]
-	Float[] distances = new Float[5]
-	If !akPool
-		Return result
-	EndIf
-	Int index = 0
-	While index < akPool.Length
-		Actor candidate = akPool[index]
-		If IsValidTarget(candidate)
-			Float dx = candidate.GetPositionX() - DomainX[aiSlot]
-			Float dy = candidate.GetPositionY() - DomainY[aiSlot]
-			Float dz = candidate.GetPositionZ() - DomainZ[aiSlot]
-			Float d = dx * dx + dy * dy + dz * dz
-			If d <= DomainR[aiSlot] * DomainR[aiSlot]
-				Int pos = 0
-				Bool placed = False
-				While pos < 5 && !placed
-					If !result[pos] || d < distances[pos]
-						Int shift = 4
-						While shift > pos
-							result[shift] = result[shift - 1]
-							distances[shift] = distances[shift - 1]
-							shift -= 1
-						EndWhile
-						result[pos] = candidate
-						distances[pos] = d
-						placed = True
-					EndIf
-					pos += 1
-				EndWhile
-			EndIf
-		EndIf
-		index += 1
-	EndWhile
-	Return result
-EndFunction
-
-; 領域鏡射：abPlayerOnly 為真時只有「玩家在裡面」才寫 1（聖域、血池、潮池是對玩家的條件）。
-Int Function DomainFlag(Int aiElement, Bool abPlayerOnly)
-	If !IsOperational()
-		Return 0
-	EndIf
-	If abPlayerOnly
-		If PlayerInDomain(aiElement)
-			Return 1
-		EndIf
-		Return 0
-	EndIf
-	Int index = 0
-	While index < 3
-		If DomainLeft[index] > 0 && DomainElem[index] == aiElement
-			Return 1
-		EndIf
-		index += 1
-	EndWhile
-	Return 0
 EndFunction
 
 ; ---------------------------------------------------------------- 機制前線 round 2
@@ -2732,15 +2111,15 @@ EndFunction
 
 Function SetGuardDivine(Int aiSeconds)
 	aiSeconds = DurationInt(aiSeconds)
-	GuardDivineLeft = Utility.GetCurrentRealTime() + aiSeconds
+	GuardDivineLeft = Now() + aiSeconds
 	SetGlobal(GGuardDivine, SecondsLeft(GuardDivineLeft))
 	ApplyGuardWindow(4, GuardDivineLeft)
 EndFunction
 
 Function SetNoBloodCost(Int aiSeconds)
 	aiSeconds = DurationInt(aiSeconds)
-	If Utility.GetCurrentRealTime() + aiSeconds > NoBloodCostLeft
-		NoBloodCostLeft = Utility.GetCurrentRealTime() + aiSeconds
+	If Now() + aiSeconds > NoBloodCostLeft
+		NoBloodCostLeft = Now() + aiSeconds
 	EndIf
 	SetGlobal(GNoBloodCost, SecondsLeft(NoBloodCostLeft))
 EndFunction
@@ -2750,7 +2129,7 @@ EndFunction
 ; 5.7 關閉傳奇分支「連殺」：擊殺後 5 秒內不解除潛行；下一次潛行攻擊 ×2 是 DLL 讀的連殺效果（ESSBElem2.TryKillStreak）。
 Function KeepSneak(Int aiSeconds)
 	aiSeconds = DurationInt(aiSeconds)
-	KeepSneakLeft = Utility.GetCurrentRealTime() + aiSeconds
+	KeepSneakLeft = Now() + aiSeconds
 	Actor player = ThePlayer()
 	If player
 		; 規劃 8：用「壓低偵測值」實作，尊重原版偵測系統，不鎖 AI。
@@ -2792,7 +2171,7 @@ EndFunction
 ; ---- round 3 的受傷視窗（PERK 進入點讀這三個鏡射全域變數）
 Function SetGuardDark(Int aiSeconds)
 	aiSeconds = DurationInt(aiSeconds)
-	GuardDarkLeft = Utility.GetCurrentRealTime() + aiSeconds
+	GuardDarkLeft = Now() + aiSeconds
 	SetGlobal(GGuardDark, SecondsLeft(GuardDarkLeft))
 	ApplyGuardWindow(6, GuardDarkLeft)
 EndFunction
@@ -2805,8 +2184,8 @@ EndFunction
 
 Function SetGuardAstral(Int aiSeconds)
 	aiSeconds = DurationInt(aiSeconds)
-	If Utility.GetCurrentRealTime() + aiSeconds > GuardAstralLeft
-		GuardAstralLeft = Utility.GetCurrentRealTime() + aiSeconds
+	If Now() + aiSeconds > GuardAstralLeft
+		GuardAstralLeft = Now() + aiSeconds
 	EndIf
 	SetGlobal(GGuardAstral, SecondsLeft(GuardAstralLeft))
 	ApplyGuardWindow(7, GuardAstralLeft)
@@ -2814,7 +2193,7 @@ EndFunction
 
 Function SetGuardStar(Int aiSeconds)
 	aiSeconds = DurationInt(aiSeconds)
-	GuardStarLeft = Utility.GetCurrentRealTime() + aiSeconds
+	GuardStarLeft = Now() + aiSeconds
 	SetGlobal(GGuardStar, SecondsLeft(GuardStarLeft))
 	ApplyGuardWindow(8, GuardStarLeft)
 EndFunction
@@ -2903,21 +2282,6 @@ Int Function DispelHostileEffects(Actor akActor)
 		index += 1
 	EndWhile
 	Return removed
-EndFunction
-
-; ---- 沖刷（5.11）：沖掉目標一個「手施、有時限、有益」的增益，判定同浸濕／水壓的全數沖刷（DLL WashBuffs：
-; 排除種族能力、任務腳本、常駐能力、疾病、藥水與本模組自己的效果）。每目標 10 秒一次（沿用推力的環狀表，
-; kind 2）；潮池的「每秒沖刷一個」走 abEverySecond，不吃這個冷卻。
-Function ApplyStrip(Actor akTarget, Bool abEverySecond = False)
-	Actor player = ThePlayer()
-	If !player || !akTarget || akTarget == player || !IsValidTarget(akTarget)
-		Return
-	EndIf
-	If !abEverySecond && !TakePush(akTarget, 2)
-		Return
-	EndIf
-	; 審查修正 1：排進 DLL 的 task；驅散了幾個寫在 DLL 的 [strip] 行。
-	ESSBNative.WashBuffs(akTarget, 1)
 EndFunction
 
 ; ---------------------------------------------------------------- 特效（規劃 2.11、2.12）
@@ -3435,7 +2799,8 @@ Event OnESSBSneak(String asEventName, String asArgs, Float afSeconds, Form akSen
 	KeepSneak(UnscaledSeconds(afSeconds))
 EndEvent
 
-; ESSB_Domain：融斷（與聖域）留下的領域：元素、秒數（未乘持續時間）、半徑（領域是 N6，照舊由 Papyrus 管，裁定 R5）。
+; ESSB_Domain：融斷（與聖域）留下的領域：元素、秒數（未乘持續時間）、半徑。round 25（N6，裁定 R4）：領域本身是引擎的
+; hazard，DLL 已在目標腳下放好（Spawn Hazard，引擎管壽命與數量）；這裡只放一次該元素的開場爆炸特效（規劃 2.12）。
 Event OnESSBDomain(String asEventName, String asArgs, Float afElement, Form akSender)
 	Actor target = akSender as Actor
 	If !IsOperational() || !target
@@ -3446,7 +2811,29 @@ Event OnESSBDomain(String asEventName, String asArgs, Float afElement, Form akSe
 	If element < 1 || element > 11
 		Return
 	EndIf
-	StartDomain(element, target, (EventArg(args, 1) + 0.5) as Int, EventArg(args, 2))
+	PlaceFx(element, target)
+	If CachedDebugLevel >= 1
+		LogEvent(1, "domain", "placed element=" + element + " sec=" + ((EventArg(args, 1) + 0.5) as Int) + " target=" + target.GetFormID())
+	EndIf
+EndEvent
+
+; ESSB_Switch（round 25，裁定 R6）：熱鍵或形態力量要切換（元素、1 = 從沒有形態開啟）。DLL 已判定魔力門檻（血形態、順轉、
+; 免門檻例外）、寫好 ESSB_CurrentElement／ESSB_FormActive、用掉免門檻並顯示提示；這裡照規劃 1.1 換形態（能力、同調保留、
+; 關閉時的融斷）。
+Event OnESSBSwitch(String asEventName, String asArgs, Float afElement, Form akSender)
+	If !IsOperational()
+		Return
+	EndIf
+	SwitchForm((afElement + 0.5) as Int)
+EndEvent
+
+; ESSB_Close（round 25）：魔力歸零持續 2 秒（DLL 計時器判定，規劃 1.1），關閉形態。
+Event OnESSBClose(String asEventName, String asArgs, Float afUnused, Form akSender)
+	If !IsOperational() || FormActive.GetValueInt() != 1
+		Return
+	EndIf
+	CloseForm()
+	Debug.Notification("魔力耗盡，形態已關閉")
 EndEvent
 
 ; ---- 同伴掃描（祝福、聖光、聖臨強化）。ScanTargets 刻意排除同伴，所以另走這一條。
@@ -3747,13 +3134,7 @@ Bool Function ValidateBindings()
 	If !EnvNight
 		Return False
 	EndIf
-	If !GameHour
-		Return False
-	EndIf
 	If !SettingsPower
-		Return False
-	EndIf
-	If !FormRulesAbility
 		Return False
 	EndIf
 	If !EngagedSpell
@@ -3799,16 +3180,6 @@ Bool Function ValidateBindings()
 		EndIf
 		checkHitPowerSpells += 1
 	EndWhile
-	If !ReactSpells
-		Return False
-	EndIf
-	Int checkReactSpells = 0
-	While checkReactSpells < ReactSpells.Length
-		If !ReactSpells[checkReactSpells]
-			Return False
-		EndIf
-		checkReactSpells += 1
-	EndWhile
 	If !UtilSpells
 		Return False
 	EndIf
@@ -3839,9 +3210,6 @@ Bool Function ValidateBindings()
 		EndIf
 		checkMarkKeywords += 1
 	EndWhile
-	If !OverheatSelfSpell
-		Return False
-	EndIf
 	If !TrueSpell
 		Return False
 	EndIf
@@ -3962,18 +3330,6 @@ Bool Function ValidateBindings()
 	If !GGuardStar
 		Return False
 	EndIf
-	If !GDomainPoison
-		Return False
-	EndIf
-	If !GDomainWater
-		Return False
-	EndIf
-	If !GDomainDark
-		Return False
-	EndIf
-	If !GDomainAstral
-		Return False
-	EndIf
 	If !GRockArmor
 		Return False
 	EndIf
@@ -3990,15 +3346,6 @@ Bool Function ValidateBindings()
 		Return False
 	EndIf
 	If !GGuardDivine
-		Return False
-	EndIf
-	If !GDomainEarth
-		Return False
-	EndIf
-	If !GDomainBlood
-		Return False
-	EndIf
-	If !GDomainDivine
 		Return False
 	EndIf
 	If !GNoBloodCost
@@ -4037,12 +3384,6 @@ Bool Function ValidateBindings()
 	If !GTwinElement
 		Return False
 	EndIf
-	If !GDomainFire
-		Return False
-	EndIf
-	If !GDomainFrost
-		Return False
-	EndIf
 	If !GShockRecent
 		Return False
 	EndIf
@@ -4053,9 +3394,6 @@ Bool Function ValidateBindings()
 		Return False
 	EndIf
 	If !GGuardIce
-		Return False
-	EndIf
-	If !GCombo
 		Return False
 	EndIf
 	If !GFreeOpen
@@ -4088,9 +3426,6 @@ Bool Function ValidateBindings()
 	If !FormSound
 		Return False
 	EndIf
-	If !InputLayer
-		Return False
-	EndIf
 	Return True
 EndFunction
 
@@ -4103,19 +3438,12 @@ Function ReconcileLoadedForm(Actor player)
 	GGuardDark.SetValueInt(0)
 	GGuardAstral.SetValueInt(0)
 	GGuardStar.SetValueInt(0)
-	GDomainPoison.SetValueInt(0)
-	GDomainWater.SetValueInt(0)
-	GDomainDark.SetValueInt(0)
-	GDomainAstral.SetValueInt(0)
 	GRockArmor.SetValueInt(0)
 	GWind.SetValueInt(0)
 	GHolyShield.SetValueInt(0)
 	GBloodthirst.SetValueInt(0)
 	GGuardWind.SetValueInt(0)
 	GGuardDivine.SetValueInt(0)
-	GDomainEarth.SetValueInt(0)
-	GDomainBlood.SetValueInt(0)
-	GDomainDivine.SetValueInt(0)
 	GNoBloodCost.SetValueInt(0)
 	GCloakGuard.SetValueInt(0)
 	GSyncStage.SetValueInt(0)
@@ -4128,21 +3456,16 @@ Function ReconcileLoadedForm(Actor player)
 	GQuench.SetValueInt(0)
 	GPrevElement.SetValueInt(0)
 	GTwinElement.SetValueInt(0)
-	GDomainFire.SetValueInt(0)
-	GDomainFrost.SetValueInt(0)
 	GShockRecent.SetValueInt(0)
 	GGuardSwitch.SetValueInt(0)
 	GGuardBurst.SetValueInt(0)
 	GGuardIce.SetValueInt(0)
-	GCombo.SetValueInt(0)
 	GFreeOpen.SetValueInt(0)
 	Int i = 0
 	While i < FormAbilities.Length
 		player.RemoveSpell(FormAbilities[i])
 		i += 1
 	EndWhile
-	; Recreate the AME too: its saved Controller property belongs to the old quest.
-	player.RemoveSpell(FormRulesAbility)
 	; round 23：v0.3 的岩甲常駐能力退役（岩甲的護甲是 DLL 的效果）。
 	player.RemoveSpell(UtilSpells[18])
 	player.DispelSpell(UtilSpells[18])
@@ -4181,7 +3504,6 @@ Function ResetLoadClock()
 	EndIf
 	Float now = Utility.GetCurrentRealTime()
 	InitTables()
-	StormCharge = 0.0
 	SetGlobal(GBloodthirst, 0)
 	SetGlobal(GCloakGuard, 0)
 	SetGlobal(GEmber, 0)
@@ -4200,15 +3522,6 @@ Function ResetLoadClock()
 	If KeepSneakLeft > 0
 		PO3_SKSEFunctions.ResetActorDetection(ThePlayer())
 	EndIf
-	SetGlobal(GDomainFire, 0)
-	SetGlobal(GDomainFrost, 0)
-	SetGlobal(GDomainEarth, 0)
-	SetGlobal(GDomainBlood, 0)
-	SetGlobal(GDomainDivine, 0)
-	SetGlobal(GDomainPoison, 0)
-	SetGlobal(GDomainWater, 0)
-	SetGlobal(GDomainDark, 0)
-	SetGlobal(GDomainAstral, 0)
 	EmberLeft = 0.0
 	QuenchLeft = 0.0
 	ShockLeft = 0.0
@@ -4223,16 +3536,8 @@ Function ResetLoadClock()
 	GuardDarkLeft = 0.0
 	GuardAstralLeft = 0.0
 	GuardStarLeft = 0.0
-	Int timerIndex = 0
-	While timerIndex < 3
-		DomainLeft[timerIndex] = 0.0
-		ClearDomainResidents(timerIndex)
-		timerIndex += 1
-	EndWhile
-	ComboTime = now
 	FormOpenTime = now
-	TwinTime = now
-	LastEnvCheck = 0.0
+	TwinTime = Now()
 	TrioTime = now
 	TrioMask = 0
 	FxBudgetTime = now
@@ -4374,25 +3679,21 @@ Function RefreshDivineProtection()
 	EndIf
 EndFunction
 
+; round 25 審查修正：秒計時器（引燃、淬火、守勢、同調保留、雙生……）用 DLL 的遊戲時鐘（只算遊戲在跑的秒數，暫停、
+; 讀檔不走），不再用 Utility.GetCurrentRealTime（暫停時照走）。讀檔時 ResetLoadClock 照舊把它們全部歸零。
+Float Function Now()
+	Return ESSBNative.RunningSeconds()
+EndFunction
+
 Int Function SecondsLeft(Float afDeadline)
 	If afDeadline <= 0.0
 		Return 0
 	EndIf
-	Float remaining = afDeadline - Utility.GetCurrentRealTime()
+	Float remaining = afDeadline - Now()
 	If remaining <= 0.0
 		Return 0
 	EndIf
 	Return Math.Ceiling(remaining) as Int
-EndFunction
-
-Bool Function InsideDomainSlot(Actor akTarget, Int aiSlot)
-	If !akTarget
-		Return False
-	EndIf
-	Float dx = akTarget.GetPositionX() - DomainX[aiSlot]
-	Float dy = akTarget.GetPositionY() - DomainY[aiSlot]
-	Float dz = akTarget.GetPositionZ() - DomainZ[aiSlot]
-	Return dx * dx + dy * dy + dz * dz <= DomainR[aiSlot] * DomainR[aiSlot]
 EndFunction
 
 ; Explicit maintenance release: disabling prevents tick/combat/setup from rearming.
@@ -4409,82 +3710,6 @@ Function ReleaseDivineProtection()
 	If player
 		player.EndDeferredKill()
 	EndIf
-EndFunction
-
-; Six residents/domain: the existing nearest-five selection plus the player.
-; First observed inside is a conservative entry time; no retroactive award to newcomers.
-Function ClearDomainResidents(Int aiSlot)
-	Int i = aiSlot * 6
-	While i < aiSlot * 6 + 6
-		DomainResident[i] = None
-		DomainResidentAt[i] = 0.0
-		i += 1
-	EndWhile
-EndFunction
-
-Function ObserveDomainResidents(Int aiSlot, Actor[] akNearby, Actor akPlayer, Float afNow)
-	Int i = aiSlot * 6
-	While i < aiSlot * 6 + 6
-		Actor resident = DomainResident[i]
-		Bool present = resident && resident == akPlayer && InsideDomainSlot(akPlayer, aiSlot)
-		Int n = 0
-		While resident && !present && n < akNearby.Length
-			present = akNearby[n] == resident
-			n += 1
-		EndWhile
-		If !present
-			DomainResident[i] = None
-			DomainResidentAt[i] = 0.0
-		EndIf
-		i += 1
-	EndWhile
-	If InsideDomainSlot(akPlayer, aiSlot)
-		RememberDomainResident(akPlayer, aiSlot, afNow)
-	EndIf
-	i = 0
-	While i < akNearby.Length
-		RememberDomainResident(akNearby[i], aiSlot, afNow)
-		i += 1
-	EndWhile
-EndFunction
-
-Function RememberDomainResident(Actor akTarget, Int aiSlot, Float afNow)
-	If !akTarget
-		Return
-	EndIf
-	Int i = aiSlot * 6
-	Int empty = -1
-	While i < aiSlot * 6 + 6
-		If DomainResident[i] == akTarget
-			Return
-		ElseIf !DomainResident[i]
-			empty = i
-		EndIf
-		i += 1
-	EndWhile
-	If empty >= 0
-		DomainResident[empty] = akTarget
-		DomainResidentAt[empty] = afNow
-	EndIf
-EndFunction
-
-Int Function DomainTargetTicks(Actor akTarget, Int aiSlot, Float afStop)
-	If !akTarget
-		Return 0
-	EndIf
-	Int i = aiSlot * 6
-	While i < aiSlot * 6 + 6
-		If DomainResident[i] == akTarget
-			Int ticks = (afStop - DomainResidentAt[i]) as Int
-			If ticks > 0
-				DomainResidentAt[i] = DomainResidentAt[i] + ticks
-				Return ticks
-			EndIf
-			Return 0
-		EndIf
-		i += 1
-	EndWhile
-	Return 0
 EndFunction
 
 ; PERK reads native active-effect lifetime. A stale mirror alone grants no protection.
@@ -4522,32 +3747,6 @@ EndFunction
 Function RefreshSyncStage()
 	CachedSyncStage = SyncStage()
 	SyncCacheReady = True
-EndFunction
-
-Float Function BloodBandMult(Int aiBand)
-	Int band = aiBand
-	If Br(5, 0, 2, 0) ; @node 逆流
-		band = 3 - band
-	EndIf
-	If band == 0
-		Return 1.25
-	ElseIf band == 1
-		Return 1.1
-	ElseIf band == 2
-		Return 0.85
-	EndIf
-	Return 0.6
-EndFunction
-
-Int Function BloodBand(Float percent)
-	If percent >= 0.85
-		Return 0
-	ElseIf percent >= 0.5
-		Return 1
-	ElseIf percent >= 0.2
-		Return 2
-	EndIf
-	Return 3
 EndFunction
 
 Function OnLethalHitWhileArmed()

@@ -131,6 +131,7 @@ struct Fake {
     void Interrupt(Who who) { log.push_back(std::string("interrupt ") + (who == Who::kPlayer ? "player" : "target")); }
     void CrushArea(const essb::StatusOp& op) { log.push_back("crush " + std::to_string(static_cast<int>(op.magnitude))); }
     void FreezeNearby() { log.push_back("freeze nearby"); }
+    void DrainMagickaAll(Who who) { log.push_back(std::string("drain magicka ") + (who == Who::kPlayer ? "player" : "target")); }   // round 25
 
     void Select(std::uint8_t at) { selected.push_back(at); current = at; }   // round 24: the crowd member of each op
     std::vector<std::uint8_t> selected;

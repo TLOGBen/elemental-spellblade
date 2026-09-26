@@ -48,10 +48,11 @@ VANILLA_ELEMENT_KEYWORD = {0: 0x1CEAD, 1: 0x1CEAE, 2: 0x1CEAF}
 # Round 22 (N3): ESSBStatus (status container) and ESSBMark (mark AME) are gone -- the status layer is DLL-applied
 # engine effects; ESSBStub is the empty script on the effects whose expiry the DLL settles (build/fix22_records.py).
 # round 24 (N5): ESSBReactions (the reaction bodies) and ESSBGuard (the kill event) are deleted -- the DLL owns them.
+# round 25 (N6): ESSBFormRules (upkeep), ESSBSilence (the silence's drain) and ESSBInput (hotkeys) are the DLL's now.
 SCRIPTS = ['ESSBLog', 'ESSBStub', 'ESSBTrees', 'ESSBNodes',
-           'ESSBNoForm', 'ESSBElem', 'ESSBElem2', 'ESSBElem3', 'ESSBCounter', 'ESSBSilence',
-           'ESSBController', 'ESSBFormPowerEffect', 'ESSBFormRules',
-           'ESSBSettingsEffect', 'ESSBState', 'ESSBMCM', 'ESSBInput', 'ESSBNative']
+           'ESSBNoForm', 'ESSBElem', 'ESSBElem2', 'ESSBElem3', 'ESSBCounter',
+           'ESSBController', 'ESSBFormPowerEffect',
+           'ESSBSettingsEffect', 'ESSBState', 'ESSBMCM', 'ESSBNative']
 
 # ---------------------------------------------------------------- 技能樹前線（機制）
 # 樹的正式順序（與 plan_trees.TREE_ORDER 相同）：0–10 是 ELEMENTS，11 無元素，12 全元素通用。
@@ -268,6 +269,12 @@ def util_spell_id(index):
     if index < UTIL_LEGACY:
         return ID_UTIL_SPELL + index
     return ID_UTIL2_SPELL + (index - UTIL_LEGACY)
+
+# round 25 (N6): the domain mirrors Papyrus no longer binds (see the QUST properties).
+DOMAIN_MIRRORS = {'ESSB_DomainFire', 'ESSB_DomainFrost', 'ESSB_DomainEarth', 'ESSB_DomainBlood', 'ESSB_DomainDivine',
+                  'ESSB_DomainPoison', 'ESSB_DomainWater', 'ESSB_DomainDark', 'ESSB_DomainAstral'}
+# round 25 審查修正：ESSB_Combo（「節奏」「疾攻」的連段，沒有任何讀者）也不再綁到控制器；GLOB 留著，不回收。
+UNBOUND_GLOBALS = DOMAIN_MIRRORS | {'ESSB_Combo'}
 
 # Skyrim.esm 參照
 FID_GAME_HOUR = 0x00000038
@@ -1023,9 +1030,9 @@ BRANCH_ENTRY_NODES = {
     ('earth', '蓄能'): bracing_entries,
     # 5.9 神佑：留 1 血之後 2 秒受傷 ×0。
     ('divine', '神佑'): lambda: entry(EP_INCOMING_DAMAGE, 0.0, [(0, guard_window(4))]),
-    # 5.9 聖域／神聖領域：其中敵人傷害 -20%（＝你在聖域內受傷 -20%），共用 ESSB_DomainDivine。
-    ('divine', '聖域'): lambda: entry(EP_INCOMING_DAMAGE, 0.8, [(0, gv_ge(mech2(8), 1))]),
-    ('divine', '神聖領域'): lambda: entry(EP_INCOMING_DAMAGE, 0.8, [(0, gv_ge(mech2(8), 1))]),
+    # 5.9 聖域／神聖領域「其中敵人傷害 -20%」：round 25 審查修正（指揮官裁定）起是聖域 hazard 法術自己的兩個效果
+    # （build/fix25_records.py DIVINE_WEAKEN：AttackDamageMult -0.2、DestructionPowerModifier -20，掛在裡面的敵人身上），
+    # 不再是「你在聖域內受傷 -20%」的 PERK 進入點；ESSB_DomainDivine 沒有人讀也沒有人寫（GLOB 留著，不回收）。
     # round 22 (N3) -- 5.9 聖盾：聖佑各階另給受法術傷害 -10%／-20%／-30%（受到的法術強度 ×0.9／0.8／0.7，條件是你身上的
     # 聖佑階效果，DLL 掛的 ESSB_N3_Holy<n>Effect）。
     ('divine', '聖盾'): lambda: sum((entry(EP_INCOMING_SPELL, 1.0 - 0.1 * tier,
@@ -1449,6 +1456,7 @@ import fix21_identity
 import fix22_records as hit22
 import fix23_records as hit23
 import fix24_records as hit24
+import fix25_records as hit25
 import tree_v04
 
 
@@ -1555,6 +1563,7 @@ def build_esp(plan):
     hit22.add_records(sys.modules[__name__], add, fx, settings)   # round 22 (N3): the status layer's effects
     hit23.add_records(sys.modules[__name__], add)                 # round 23 (N4): your resources, windows, cooldowns
     hit24.add_records(sys.modules[__name__], add)                 # round 24 (N5): markers, 雙斷／安全閥, 血承, timed bodies
+    hit25.add_records(sys.modules[__name__], add)                 # round 25 (N6): domain hazards, markers, the timer's windows
 
     # -------------------------------------------------------------- KYWD
     add('KYWD', ID_KW_PROC, 'ESSB_Proc', [])
@@ -1668,15 +1677,9 @@ def build_esp(plan):
             ('EFID', I(own(ID_FORM_ABILITY_EFFECT + ix))), ('EFIT', struct.pack('<fII', 0.0, 0, 0)),
         ] + glow)
 
+    # round 25 (N6): the upkeep is the DLL timer's (native/include/Timer.h PlanFormSecond, settings.json upkeep_* compiled
+    # into ManifestData.h); the record stays without its script (never recycle IDs) and nothing adds it any more.
     add('MGEF', ID_FORM_RULES_EFFECT, 'ESSB_FormRulesEffect', [
-        ('VMAD', vmad('ESSBFormRules', {
-            'UpkeepBasePct': (4, settings['upkeep_base_pct']),
-            'UpkeepDarkPct': (4, settings['upkeep_dark_pct']),
-            'UpkeepLevelRelief': (4, settings['upkeep_level_relief']),
-            'FormActive': (1, own(ID_GLOB['ESSB_FormActive'])),
-            'CurrentElement': (1, own(ID_GLOB['ESSB_CurrentElement'])),
-            'Controller': (1, own(ID_QUEST)),
-        })),
         ('FULL', Z('形態維持')),
         ('DATA', mgef_data(MGEF_UTILITY_FLAGS, 1, casting=0, delivery=0)),
     ])
@@ -1922,9 +1925,9 @@ def build_esp(plan):
         ('SPIT', spit(0, 1, 1)),
         ('EFID', I(own(ID_MANABREAK_EFFECT))), ('EFIT', struct.pack('<fII', 0.0, 0, 8)),
     ])
-    # 沉默的兩個效果：腳本每秒把魔力扣到 0，加上 MagickaRateMult 的 -100 有害值修正。
+    # 沉默的兩個效果：MagickaRateMult 的 -100 有害值修正，加上這顆標記；round 25（N6）起把魔力扣到 0 的是 DLL（施放當下
+    # 與計時器每秒，native/src/Plugin.cpp SilenceSecond），ESSBSilence 腳本刪除。
     add('MGEF', ID_SILENCE_EFFECT, 'ESSB_SilenceEffect', [
-        ('VMAD', vmad('ESSBSilence', {'Controller': (1, own(ID_QUEST))})),
         ('FULL', Z('沉默')),
         ('KSIZ', I(1)), ('KWDA', I(own(ID_KW_SILENCE))),
         ('DATA', mgef_data(MGEF_MARK_FLAGS | 0x1000, 1, casting=1, delivery=1,
@@ -2237,7 +2240,6 @@ def build_esp(plan):
         'Sync': (1, own(ID_GLOB['ESSB_Sync'])),
         'SchoolXPMult': (1, own(ID_GLOB['ESSB_SchoolXPMult'])),
         'SettingsPower': (1, own(ID_SETTINGS_POWER)),
-        'FormRulesAbility': (1, own(ID_FORM_RULES_SPELL)),
         'FormPowers': (11, [own(ID_FORM_POWER_SPELL + n) for n in range(11)]),
         'FormAbilities': (11, [own(ID_FORM_ABILITY_SPELL + n) for n in range(11)]),
         'HitNormalSpells': (11, [own(ID_HIT_SPELL + n * 2) for n in range(11)]),
@@ -2248,19 +2250,16 @@ def build_esp(plan):
         'EnvWet': (1, own(ID_GLOB_ENGINE['ESSB_EnvWet'])),
         'EnvStormy': (1, own(ID_GLOB_ENGINE['ESSB_EnvStormy'])),
         'EnvNight': (1, own(ID_GLOB_ENGINE['ESSB_EnvNight'])),
-        'GameHour': (1, ref('Skyrim.esm', FID_GAME_HOUR)),
         'EngagedSpell': (1, own(ID_ENGAGED_SPELL)),
         'EngagedKeyword': (1, own(ID_KW_ENGAGED)),
         'UndeadKeyword': (1, ref('Skyrim.esm', FID_KW_UNDEAD)),
         'DaedraKeyword': (1, ref('Skyrim.esm', FID_KW_DAEDRA)),
-        'ReactSpells': (11, [own(ID_REACT_SPELL + n) for n in range(11)]),
         'UtilTargetSpells': (11, [own(0x005151), own(0x005153), own(0x005155)]),
         'UtilSpells': (11, [own(util_spell_id(n)) for n in range(len(UTILS))]),
         'MarkKeywords': (11, [own(ID_KW_MARK + n) for n in range(11)]),
         # 技能樹腳本掛在同一個 Player 別名上（同別名的第二個腳本）。
         'Trees': (1, (own(ID_QUEST), 0)),
         # ---- 機制前線 round 1
-        'OverheatSelfSpell': (1, own(0x005157)),
         'TrueSpell': (1, own(ID_TRUE_SPELL)),
         'ManaBreakSpell': (1, own(ID_MANABREAK_SPELL)),
         'SilenceSpell': (1, own(ID_SILENCE_SPELL)),
@@ -2307,7 +2306,6 @@ def build_esp(plan):
         'HitProcPerk': (1, own(hit18.HIT_PERK)),
         'GDivineArmed': (1, own(hit18.DIVINE_ARMED)),
         'FormNotify': (1, own(hit18.NOTIFY)), 'FormSound': (1, own(hit18.SOUND)),
-        'InputLayer': (1, (own(ID_QUEST), 0)),
         'BloodGuardSpell': (1, own(hit20.GUARD)),
         'EchoPendingSpell': (1, own(hit20.ECHO)),
         'TwinWindowSpell': (1, own(hit20.TWIN)),
@@ -2316,13 +2314,18 @@ def build_esp(plan):
         'IceArmorWideAbility': (1, own(hit21.ICE_ARMOR_WIDE)),
         'NativeHit': (1, own(hit19.NATIVE_HIT)), 'NativeWanted': (1, own(hit19.NATIVE_WANTED)),
     })
+    # round 25 (N6): the domain mirrors are no Papyrus property any more (the domains are engine hazards; since the
+    # round-25 review nothing reads or writes any of the nine GLOBs, ESSB_DomainDivine included; never recycled).
     for ix, (name, _default) in enumerate(MECH_GLOBALS):
         # 屬性名 = 全域變數名去掉 ESSB_ 前綴再加 G（ESSB_Resolve → GResolve）。
-        props['G' + name[len('ESSB_'):]] = (1, own(ID_MECH_GLOB + ix))
+        if name not in UNBOUND_GLOBALS:
+            props['G' + name[len('ESSB_'):]] = (1, own(ID_MECH_GLOB + ix))
     for ix, (name, _default) in enumerate(MECH2_GLOBALS):
-        props['G' + name[len('ESSB_'):]] = (1, own(ID_MECH2_GLOB + ix))
+        if name not in UNBOUND_GLOBALS:
+            props['G' + name[len('ESSB_'):]] = (1, own(ID_MECH2_GLOB + ix))
     for ix, (name, _default) in enumerate(MECH3_GLOBALS):
-        props['G' + name[len('ESSB_'):]] = (1, own(ID_MECH3_GLOB + ix))
+        if name not in UNBOUND_GLOBALS:
+            props['G' + name[len('ESSB_'):]] = (1, own(ID_MECH3_GLOB + ix))
     tree_props = {
         'Controller': (1, (own(ID_QUEST), 0)),
         'CurrentElement': (1, own(ID_GLOB['ESSB_CurrentElement'])),
@@ -2337,19 +2340,14 @@ def build_esp(plan):
         'ShowLvlGlobals': (11, [own(ID_TREE_GLOB['ShowLvl'] + n) for n in range(len(TREES))]),
         'RespecGlobals': (11, [own(ID_TREE_GLOB['Respec'] + n) for n in range(len(TREES))]),
     }
-    # round 24 (N5)：玩家擊殺事件的第三個腳本 ESSBGuard 刪除（死亡處理在 DLL 的死亡 sink）；別名上剩三個腳本。
-    input_props = {'Ctl': (1, (own(ID_QUEST), 0)),
-        **{name: (1, own(ID_GLOB['ESSB_'+name])) for name in ['Enabled','CurrentElement','FormActive']},
-        'HotkeysEnabled': (1, own(hit18.KEY_ENABLE)), 'FormNotify': (1, own(hit18.NOTIFY)),
-        'FreeOpen': (1, own(int(manifest['ESSB_FreeOpen']['id'],16))),
-        'Hotkeys': (11, [own(hit18.HOTKEYS+i) for i in range(11)])}
+    # round 24 (N5)：玩家擊殺事件的第三個腳本 ESSBGuard 刪除（死亡處理在 DLL 的死亡 sink）；round 25（N6）：熱鍵的 ESSBInput
+    # 刪除（DLL 的輸入事件 sink），別名上剩兩個腳本。
     quest_vmad = (struct.pack('<3H', 5, 2, 0)
                   + b'\x02' + struct.pack('<H', 0) + struct.pack('<H', 0)   # 片段：版本 2、0 個片段、空檔名
                   + struct.pack('<H', 1) + obj(own(ID_QUEST), 0)
-                  + struct.pack('<3H', 5, 2, 3)
+                  + struct.pack('<3H', 5, 2, 2)
                   + script('ESSBController', props)
-                  + script('ESSBTrees', tree_props)
-                  + script('ESSBInput', input_props))
+                  + script('ESSBTrees', tree_props))
     add('QUST', ID_QUEST, 'ESSB_MainQuest', [
         ('VMAD', quest_vmad),
         ('FULL', Z('元素魔戰士')),
@@ -3463,6 +3461,7 @@ def main():
     runpy.run_path(str(WORK / 'build/fix22_verify.py'))['run'](sys.modules[__name__])   # round 22: seam, removals, records, guards, faults
     runpy.run_path(str(WORK / 'build/fix23_verify.py'))['run'](sys.modules[__name__])   # round 23: seam, removals, records, resolve, guards, faults, seals
     runpy.run_path(str(WORK / 'build/fix24_verify.py'))['run'](sys.modules[__name__])   # round 24: bodies seam, removals, records, resolve, guards, faults, seals
+    runpy.run_path(str(WORK / 'build/fix25_verify.py'))['run'](sys.modules[__name__])   # round 25: timer, hotkeys, domains, removals, records, resolve, nodes, faults, seals
     runpy.run_path(str(WORK / 'build/fix18_probes.py'))['run'](sys.modules[__name__])
     perks = sum(1 for r in check if r.sig == 'PERK')
     print(f'READBACK ok: masters={meta["masters"]} records={len(check)} manifest={written["record_count"]} '
@@ -3606,6 +3605,7 @@ def validate_delivery(records):
     contact_names.update(hit22.contact_edids())
     contact_names.update(hit23.contact_edids())   # round 23: 誓約, the retort / grudge cooldowns, the last-hit-sneak marker
     contact_names.update(hit24.contact_edids(sys.modules[__name__]))   # round 24: the corpse markers, 光耀, 星鏈, the timed debuffs
+    contact_names.update(hit25.contact_edids())   # round 25: the domain markers, the hazard spells, the spawn spells
     aimed_names |= hit22.aimed_edids()
     groups = {0: [], 1: []}
     rows = []

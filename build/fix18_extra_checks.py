@@ -4,6 +4,13 @@ from types import SimpleNamespace as NS
 from papyrus_harness import Script,Array
 
 def input_checks(root):
+    # Round 25 (N6): ESSBInput is gone -- the hotkeys are the DLL's input sink and switch (native/include/Timer.h
+    # InputOpen / PlanSwitch, tested in native/tests/timer_test.cpp); these round-18 gates run on the script round 24
+    # shipped, which build/fix25_history.py ties to today's (declared changes only).
+    import sys
+    sys.path.insert(0,str(root/'build'))
+    import fix25_history
+    legacy=fix25_history.legacy_source()
     class G:
         def __init__(self,v):self.v=v
         def GetValueInt(self):return int(self.v)
@@ -11,7 +18,7 @@ def input_checks(root):
     checks=[]
     for reason in ['open','switch','close','low','free','branch','disabled','stale','broken','unready','dead','invalid','menu','text','keys-off']:
         notices=[];events=[];quest=object();menu=reason=='menu';text=reason=='text'
-        vm=Script(root/'src/ESSBInput.psc',dict(ESSBState=NS(ControllerQuest=lambda:quest),Debug=NS(Notification=lambda x:notices.append(x)),Utility=NS(IsInMenuMode=lambda:menu),UI=NS(IsTextInputEnabled=lambda:text)))
+        vm=Script(legacy/'ESSBInput.psc',dict(ESSBState=NS(ControllerQuest=lambda:quest),Debug=NS(Notification=lambda x:notices.append(x)),Utility=NS(IsInMenuMode=lambda:menu),UI=NS(IsTextInputEnabled=lambda:text)))
         active=reason in ['switch','close'];current=1 if active else 0
         ctl=NS(StateBroken=reason=='broken')
         ctl.SetFreeOpen=lambda x:events.append(('consume',vm.CurrentElement.v,vm.FormActive.v))

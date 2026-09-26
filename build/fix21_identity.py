@@ -822,8 +822,8 @@ def self_test(inputs):
     expect('working node with no reader', unread, 'nothing reads it')
 
     def perk_math(data):
-        # round 24: ESSBGuard.psc is deleted; any script but ESSBTrees carries the fault
-        data['sources']['ESSBInput.psc'] += '\n; x\nFunction Probe21()\n\tForm f = Game.GetFormFromFile(0x2034, "x")\nEndFunction\n'
+        # round 24: ESSBGuard.psc is deleted; round 25: ESSBInput.psc too -- any script but ESSBTrees carries the fault
+        data['sources']['ESSBFormPowerEffect.psc'] += '\n; x\nFunction Probe21()\n\tForm f = Game.GetFormFromFile(0x2034, "x")\nEndFunction\n'
     expect('perk FormID arithmetic outside ESSBTrees', perk_math, 'outside ESSBTrees')
 
     # ---- review round 21: the reviewer's escapes, each one must now be caught
@@ -841,7 +841,7 @@ def self_test(inputs):
     expect('ESSBTrees.CachedBranch called outside the tree layer', layer_call, 'is a tree-layer function')
 
     def internal_call(data):
-        add(data, 'ESSBInput.psc', '\tInt x = akCtl.Trees.mainrankinternal(3, 0, 2)')
+        add(data, 'ESSBFormPowerEffect.psc', '\tInt x = akCtl.Trees.mainrankinternal(3, 0, 2)')
     expect('ESSBTrees.MainRankInternal (lower case) outside the tree layer', internal_call, 'is a tree-layer function')
 
     def cache_read(data):  # the rank cache read directly
@@ -849,11 +849,11 @@ def self_test(inputs):
     expect('rank cache read outside the wrappers', cache_read, "rank cache")
 
     def hex_sum(data):     # perk FormID built from a hex base plus an offset
-        add(data, 'ESSBInput.psc', '\tForm f = Game.GetFormFromFile(0x002000 + 52, "Elements Spellblade.esp")')
+        add(data, 'ESSBFormPowerEffect.psc', '\tForm f = Game.GetFormFromFile(0x002000 + 52, "Elements Spellblade.esp")')
     expect('perk FormID from hex base + offset', hex_sum, 'outside ESSBTrees')
 
     def decimal_id(data):  # perk FormID as a decimal literal
-        add(data, 'ESSBInput.psc', '\tForm f = Game.GetFormFromFile(8244, "Elements Spellblade.esp")')
+        add(data, 'ESSBFormPowerEffect.psc', '\tForm f = Game.GetFormFromFile(8244, "Elements Spellblade.esp")')
     expect('perk FormID as a decimal literal', decimal_id, 'outside ESSBTrees')
 
     def skeleton_expr(data):   # skeleton read with a tree argument that is not the element's own tree

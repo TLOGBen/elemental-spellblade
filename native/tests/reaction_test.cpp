@@ -82,12 +82,13 @@ struct ScriptRng {
 std::string SuffixOf(int kind)
 {
     const std::string_view id = essb::kStatusRecords[kind].editorId;
-    for (const std::string_view prefix : { std::string_view("ESSB_N3_"), std::string_view("ESSB_N4_"), std::string_view("ESSB_N5_") }) {
+    for (const std::string_view prefix :
+        { std::string_view("ESSB_N3_"), std::string_view("ESSB_N4_"), std::string_view("ESSB_N5_"), std::string_view("ESSB_N6_") }) {
         if (id.starts_with(prefix)) {
             return std::string(id.substr(prefix.size()));
         }
     }
-    throw std::runtime_error("status record without the ESSB_N3_ / N4_ / N5_ prefix");
+    throw std::runtime_error("status record without the ESSB_N3_ .. N6_ prefix");
 }
 
 StatusKind KindOf(const std::string& suffix)
@@ -101,8 +102,9 @@ StatusKind KindOf(const std::string& suffix)
 }
 
 const char* kEventNames[] = { "Open", "End", "Frozen", "Hallucinate", "Judgment", "Splash", "Shatter", "Landing", "Rise",
-    "Discharge", "Blade", "Knock", "SyncUp", "Cleanse", "Lethal", "Push", "Ash", "Raise", "Sneak", "Domain", "Overheat" };
-const int kEventArgs[] = { 4, 8, 1, 3, 2, 1, 1, 1, 0, 4, 2, 1, 1, 1, 0, 5, 0, 5, 1, 3, 0 };
+    "Discharge", "Blade", "Knock", "SyncUp", "Cleanse", "Lethal", "Push", "Ash", "Raise", "Sneak", "Domain", "Overheat",
+    "Switch", "Close" };
+const int kEventArgs[] = { 4, 8, 1, 3, 2, 1, 1, 1, 0, 4, 2, 1, 1, 1, 0, 5, 0, 5, 1, 3, 0, 2, 0 };
 static_assert(std::size(kEventNames) == static_cast<int>(essb::Event::kCount));
 static_assert(std::size(kEventArgs) == static_cast<int>(essb::Event::kCount));
 

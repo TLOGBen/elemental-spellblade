@@ -66,8 +66,9 @@ def natives_declared(sources):
 
 
 def natives_registered(cpp):
+    # round 25 review: a registration may pass callableFromTasklets (RunningSeconds, an atomic read); still counted.
     out = {}
-    for name, fn in re.findall(r'vm->RegisterFunction\("(\w+)", kClass, (\w+)\)', cpp):
+    for name, fn in re.findall(r'vm->RegisterFunction\("(\w+)", kClass, (\w+)(?:, (?:true|false))?\)', cpp):
         sig = re.search(r'\n[^\n]*\b' + fn + r'\(RE::StaticFunctionTag\*([^)]*)\)', cpp)
         assert sig, fn
         args = [a for a in sig[1].split(',') if a.strip()]
@@ -297,9 +298,11 @@ def check_guards(cpp):
         cpp_body = re.search(r'\n\w[^\n]*\b' + inner[1] + r'\([^)]*\) noexcept\s*\{(.*?)\n\}', cpp, re.S) if inner else None
         if not cpp_body or 'catch (...)' not in cpp_body[1]:
             errors.append(f'task {fn}: its body has no C++ catch')
-    for name, fn in re.findall(r'vm->RegisterFunction\("(\w+)", kClass, (\w+)\)', cpp):
+    for name, fn in re.findall(r'vm->RegisterFunction\("(\w+)", kClass, (\w+)(?:, (?:true|false))?\)', cpp):
         body = re.search(r'\n[^\n]*\b' + fn + r'\(RE::StaticFunctionTag\*[^)]*\)\s*\{(.*?)\n\}', cpp, re.S)
-        if not body or not re.search(r'\b(Guard\(|IsActiveGuarded\(|SetWantedGuarded\(|return essb::nativeVersion)', body[1]):
+        # round 25 review: or its own SEH frame and C++ catch (RunningSeconds must answer with the switch off).
+        own = body and 'SehInvoke(' in body[1] and 'catch (...)' in body[1]
+        if not body or not (own or re.search(r'\b(Guard\(|IsActiveGuarded\(|SetWantedGuarded\(|return essb::nativeVersion)', body[1])):
             errors.append(f'ESSBNative.{name} runs outside Guard')
     guard = re.search(r'auto Guard\(.*?\n\}', cpp, re.S)
     if not guard or 'SehInvoke(' not in guard[0] or 'catch (...)' not in guard[0]:

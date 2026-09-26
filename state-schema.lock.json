@@ -1,6 +1,6 @@
 {
-  "state_schema_version": 13,
-  "signature_sha256": "7fee0dd65966b4a263092f4186b629564df11c660344cfd1acf3d72fb4f2ec9a",
+  "state_schema_version": 14,
+  "signature_sha256": "0ae4a67de7dbe5b635180d4f698f5a38508c8e169a15c736c79a43f9ce2b2792",
   "signatures": {
     "ESSBStub": {
       "parent": "activemagiceffect",
@@ -256,21 +256,6 @@
         ]
       ]
     },
-    "ESSBSilence": {
-      "parent": "activemagiceffect",
-      "members": [
-        [
-          "controller",
-          "quest",
-          "auto"
-        ],
-        [
-          "holder",
-          "actor",
-          "member"
-        ]
-      ]
-    },
     "ESSBController": {
       "parent": "referencealias",
       "members": [
@@ -395,16 +380,6 @@
           "auto"
         ],
         [
-          "combohits",
-          "int",
-          "member"
-        ],
-        [
-          "combotime",
-          "float",
-          "member"
-        ],
-        [
           "currentelement",
           "globalvariable",
           "auto"
@@ -427,51 +402,6 @@
         [
           "divinesaveused",
           "bool",
-          "member"
-        ],
-        [
-          "domainelem",
-          "int[]",
-          "member"
-        ],
-        [
-          "domainleft",
-          "float[]",
-          "member"
-        ],
-        [
-          "domainr",
-          "float[]",
-          "member"
-        ],
-        [
-          "domainresident",
-          "actor[]",
-          "member"
-        ],
-        [
-          "domainresidentat",
-          "float[]",
-          "member"
-        ],
-        [
-          "domaintickat",
-          "float[]",
-          "member"
-        ],
-        [
-          "domainx",
-          "float[]",
-          "member"
-        ],
-        [
-          "domainy",
-          "float[]",
-          "member"
-        ],
-        [
-          "domainz",
-          "float[]",
           "member"
         ],
         [
@@ -575,11 +505,6 @@
           "auto"
         ],
         [
-          "formrulesability",
-          "spell",
-          "auto"
-        ],
-        [
           "formsound",
           "globalvariable",
           "auto"
@@ -635,11 +560,6 @@
           "auto"
         ],
         [
-          "gamehour",
-          "globalvariable",
-          "auto"
-        ],
-        [
           "gbloodthirst",
           "globalvariable",
           "auto"
@@ -655,57 +575,7 @@
           "auto"
         ],
         [
-          "gcombo",
-          "globalvariable",
-          "auto"
-        ],
-        [
           "gdivinearmed",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "gdomainastral",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "gdomainblood",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "gdomaindark",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "gdomaindivine",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "gdomainearth",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "gdomainfire",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "gdomainfrost",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "gdomainpoison",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "gdomainwater",
           "globalvariable",
           "auto"
         ],
@@ -910,11 +780,6 @@
           "auto"
         ],
         [
-          "inputlayer",
-          "essbinput",
-          "auto"
-        ],
-        [
           "inspread",
           "bool",
           "member"
@@ -937,11 +802,6 @@
         [
           "knocktime",
           "float[]",
-          "member"
-        ],
-        [
-          "lastenvcheck",
-          "float",
           "member"
         ],
         [
@@ -1125,11 +985,6 @@
           "auto"
         ],
         [
-          "overheatselfspell",
-          "spell",
-          "auto"
-        ],
-        [
           "pendingservantdue",
           "float[]",
           "member"
@@ -1142,11 +997,6 @@
         [
           "perpetualkeep",
           "int",
-          "member"
-        ],
-        [
-          "playerinfiredomain",
-          "bool",
           "member"
         ],
         [
@@ -1192,11 +1042,6 @@
         [
           "rankcacheb",
           "int[]",
-          "auto"
-        ],
-        [
-          "reactspells",
-          "spell[]",
           "auto"
         ],
         [
@@ -1278,11 +1123,6 @@
           "statebroken",
           "bool",
           "auto"
-        ],
-        [
-          "stormcharge",
-          "float",
-          "member"
         ],
         [
           "sync",
@@ -1461,56 +1301,6 @@
         ]
       ]
     },
-    "ESSBFormRules": {
-      "parent": "activemagiceffect",
-      "members": [
-        [
-          "controller",
-          "quest",
-          "auto"
-        ],
-        [
-          "ctl",
-          "essbcontroller",
-          "member"
-        ],
-        [
-          "currentelement",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "formactive",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "holder",
-          "actor",
-          "member"
-        ],
-        [
-          "magickaemptysince",
-          "float",
-          "member"
-        ],
-        [
-          "upkeepbasepct",
-          "float",
-          "auto"
-        ],
-        [
-          "upkeepdarkpct",
-          "float",
-          "auto"
-        ],
-        [
-          "upkeeplevelrelief",
-          "float",
-          "auto"
-        ]
-      ]
-    },
     "ESSBSettingsEffect": {
       "parent": "activemagiceffect",
       "members": [
@@ -1556,61 +1346,6 @@
         ]
       ]
     },
-    "ESSBInput": {
-      "parent": "referencealias",
-      "members": [
-        [
-          "ctl",
-          "essbcontroller",
-          "auto"
-        ],
-        [
-          "currentelement",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "enabled",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "formactive",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "formnotify",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "freeopen",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "freepass",
-          "bool",
-          "member"
-        ],
-        [
-          "hotkeys",
-          "globalvariable[]",
-          "auto"
-        ],
-        [
-          "hotkeysenabled",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "ready",
-          "bool",
-          "member"
-        ]
-      ]
-    },
     "MCM_ConfigBase": {
       "parent": "ski_configbase",
       "members": []
@@ -1631,8 +1366,8 @@
     }
   },
   "quests": {
-    "ESSB_MainQuest": "006016",
-    "ESSB_MCMQuest": "006017"
+    "ESSB_MainQuest": "006018",
+    "ESSB_MCMQuest": "006019"
   },
   "history": [
     {
@@ -1730,6 +1465,14 @@
       "quests": {
         "ESSB_MainQuest": "006014",
         "ESSB_MCMQuest": "006015"
+      }
+    },
+    {
+      "state_schema_version": 13,
+      "signature_sha256": "7fee0dd65966b4a263092f4186b629564df11c660344cfd1acf3d72fb4f2ec9a",
+      "quests": {
+        "ESSB_MainQuest": "006016",
+        "ESSB_MCMQuest": "006017"
       }
     }
   ]

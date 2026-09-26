@@ -83,7 +83,9 @@ std::string SuffixOf(int kind)
     constexpr std::string_view n3 = "ESSB_N3_";
     constexpr std::string_view n4 = "ESSB_N4_";
     constexpr std::string_view n5 = "ESSB_N5_";   // round 24's kinds follow (same prefix length)
-    Check(id.starts_with(n3) || id.starts_with(n4) || id.starts_with(n5), "status record without the ESSB_N3_ / N4_ / N5_ prefix");
+    constexpr std::string_view n6 = "ESSB_N6_";   // round 25's too
+    Check(id.starts_with(n3) || id.starts_with(n4) || id.starts_with(n5) || id.starts_with(n6),
+        "status record without the ESSB_N3_ .. N6_ prefix");
     return std::string(id.substr(n3.size()));
 }
 
@@ -98,10 +100,11 @@ StatusKind KindOf(const std::string& suffix)
 }
 
 const char* kEventNames[] = { "Open", "End", "Frozen", "Hallucinate", "Judgment", "Splash", "Shatter", "Landing", "Rise",
-    "Discharge", "Blade", "Knock", "SyncUp", "Cleanse", "Lethal", "Push", "Ash", "Raise", "Sneak", "Domain", "Overheat" };
+    "Discharge", "Blade", "Knock", "SyncUp", "Cleanse", "Lethal", "Push", "Ash", "Raise", "Sneak", "Domain", "Overheat",
+    "Switch", "Close" };
 // End: arg 7 = the charges (N4). Round 24 added events after these (build/fix24_reference.py checks them); the
 // round-23 table compares the first values of the older ones only.
-const int kEventArgs[] = { 4, 8, 1, 2, 1, 1, 1, 1, 0, 4, 2, 1, 1, 1, 0, 5, 0, 5, 1, 3, 0 };
+const int kEventArgs[] = { 4, 8, 1, 2, 1, 1, 1, 1, 0, 4, 2, 1, 1, 1, 0, 5, 0, 5, 1, 3, 0, 2, 0 };
 static_assert(std::size(kEventNames) == static_cast<int>(essb::Event::kCount));
 
 // ---------------------------------------------------------------- group S

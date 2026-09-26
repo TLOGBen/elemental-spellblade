@@ -599,9 +599,6 @@ Function RefreshTree(Int aiTree)
 	Controller.LevelMirror = LevelCache
 	Controller.NodeMirrorReady = True
 	Controller.RefreshSyncStage()
-	If Controller.InputLayer
-		Controller.InputLayer.RefreshPermission()
-	EndIf
 EndFunction
 
 ; 機制前線的讀取入口：快取命中就 O(1)，沒命中就即時二分搜尋。
@@ -637,9 +634,6 @@ Function RefreshActive(Int aiTree)
 		i += 1
 	EndWhile
 	Controller.RefreshSyncStage()
-	If Controller.InputLayer
-		Controller.InputLayer.RefreshPermission()
-	EndIf
 EndFunction
 
 ; 規劃 2.7：L 是該樹等級（1–100），G(L) = 1 + 0.05 × L，100 級為 ×6。

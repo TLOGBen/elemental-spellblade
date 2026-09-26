@@ -10,8 +10,8 @@ Status codes (the old aiKind numbering with v0.4 meanings):
   on the player: 20 heat tier (0-4)  21 聖佑 tier (0-3)  22 熔身  23 懲戒 layers (ClearStatus 23 uses them up)
   24 瘋狂冷卻 (target, 1 = cooling down)
   25 AddStatus only: spread poison doses (2.7 擴散一劑: m' = m + doses, d' = max(d - t, 12)); 7 is the hit growth (+3 s)
-Windows (SetWindow): 30 嗜血 / 31 連殺 (player)  32 火域 / 33 冰原 / 34 星域 (target)  35 in a 火域 (player)
-  36 浮空 (target; magnitude = landing damage)  37 瘋狂冷卻 (target; seconds before the MCM cooldown multiplier)
+Windows (SetWindow): 30 嗜血 / 31 連殺 (player)  36 浮空 (target; magnitude = landing damage)
+  37 瘋狂冷卻 (target; seconds before the MCM cooldown multiplier)
 End reasons: 0 cut, 1 burst, 2 expiry.
 
 Round 23 (slice N4): your own resources are engine effects on you the DLL applies (native/include/SelfLayer.h). Player
@@ -27,9 +27,14 @@ SetSync: the count a switch or a burst leaves (承接, 連斷, 永續, 三重奏
 Round 24 (slice N5): the reaction bodies, the fusion and the death handling are the DLL's (native/include/Reactions.h).
 Burst(element): closing the form -- the one scan, every mark settled, 寂 and the 冷寂 branches.
 Round 24 review fix 1: every native that scans or casts (Burst, FormEnter, FormLeave, SetSync, AddStatus, SetStatus,
-ClearStatus, SetWindow, ApplyMark, ExtendFuse, WashBuffs, CastProc, DumpTargets) only queues its work on the main thread
+ClearStatus, SetWindow, ApplyMark, CastProc, DumpTargets, RequestSwitch) only queues its work on the main thread
 (SKSE AddTask, first in first out) and returns at once; a GetStatus right after one of them reads the state before it.
-BurstMarks, SetGuided, DotRemaining, ForceOpen, EndMark, Shatter and Detonate (the Papyrus bodies' hooks) are gone.}
+BurstMarks, SetGuided, DotRemaining, ForceOpen, EndMark, Shatter and Detonate (the Papyrus bodies' hooks) are gone.
+
+Round 25 (slice N6): the per-second work, the domains and the hotkeys are the DLL's (native/include/Timer.h).
+RequestSwitch(element): the form powers (Z) switch through the same function as the hotkeys -- the DLL checks the
+magicka gate (blood, 順轉 and 免門檻 waive it), writes ESSB_CurrentElement / ESSB_FormActive, shows the notice and sends
+ESSB_Switch back to ESSBController. SetWindow 32-35, ExtendFuse and WashBuffs (the Papyrus domains' natives) are gone.}
 
 Bool Function IsNativeHitActive() Global Native
 String Function NativeVersion() Global Native
@@ -45,9 +50,10 @@ Function ApplyMark(Actor akActor, Int aiElement) Global Native
 Int Function MarksOn(Actor akActor) Global Native
 Function Burst(Int aiElement) Global Native
 Function FormLeave(Int aiElement, Bool abBurst) Global Native
-Function ExtendFuse(Float afSeconds) Global Native
-Function WashBuffs(Actor akActor, Int aiLimit) Global Native
 Function DumpTargets(Float afRadius) Global Native
 Function CastProc(Actor akActor, Bool abPower) Global Native
 Function FormEnter(Int aiElement) Global Native
 Function SetSync(Int aiCount) Global Native
+Function RequestSwitch(Int aiElement) Global Native
+; round 25 審查修正：遊戲在跑的秒數（這次開遊戲以來；暫停、讀檔不算）。控制器的秒計時器用它。
+Float Function RunningSeconds() Global Native

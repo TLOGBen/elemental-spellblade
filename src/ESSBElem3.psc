@@ -7,48 +7,17 @@ Scriptname ESSBElem3 Hidden
 
 Round 22（N3）起，中毒（一顆成長的持續傷）、瘴氣、催毒、浸濕、水壓與沖刷、詛咒與幻覺階梯、死咒引信、星痕、共鳴、
 星鎖都是 DLL 掛的引擎效果（native/include/Status.h）；round 24（N5）起開印與終焉的本體、各樹分支、臨強化、
-星落、中毒死亡擴散、亡者歸來的判定都在 DLL（native/include/Reactions.h）。這裡只剩每秒的形態效果（以毒攻毒、
-百毒不侵、長流、長河）、常駐能力的判定、幻術等級上限與 Papyrus 自己的傷害（領域）用的目標倍率。
+星落、中毒死亡擴散、亡者歸來的判定都在 DLL（native/include/Reactions.h）；round 25（N6）起長流、長河與領域也在 DLL
+的計時器（native/include/Timer.h）。這裡只剩毒形態的每秒效果（以毒攻毒、百毒不侵）、常駐能力的判定與幻術等級上限。
 留在 Papyrus 的機制：
-  水（5.11）長流是每秒百分比回復（規劃 8：自有效果，不動回復速率 AV），
-      洗淨／淨化走「限定關鍵字的 Dispel 原型」，沖刷（開印沖刷、洗滌、潮池）走 DLL 的精確判定（ESSBNative.WashBuffs，裁定 R5）。
+  水（5.11）洗淨／淨化走「限定關鍵字的 Dispel 原型」；長流（每秒百分比回復）與沖刷（開印沖刷、洗滌、潮池）在 DLL。
   暗（5.12）恐懼與瘋狂用自有 Demoralize（原型 7）／Frenzy（原型 8）效果，
       magnitude 就是等級上限（同原版幻術），首領、龍、亡靈魔族與機械免疫（DLL 送 ESSB_Hallucinate，這裡施放）。}
 
 
-; ================================================================== Papyrus 自己的傷害（領域）的目標倍率
 
-; 5.13 開啟大師分支「星鎖」（開印目標 3 秒內受所有元素傷 +10%）與關閉傳奇分支「星域」（內部敵人受所有元素傷 +20%）。
-; 決定 61：攻擊類進入點讀不到目標，所以這兩條只放大本模組造成的傷害。
-; v0.4 暗的持續專精主線是「幻覺持續」（DLL N3），v0.3 的「詛咒滿層目標受所有傷害 +1%／點」已拿掉。
-Float Function TargetDamageMult(ESSBController akCtl, Actor akTarget) Global
-	Float mult = 1.0
-	If !akTarget
-		Return mult
-	EndIf
-	; 只給 Papyrus 反應本體的傷害（ApplyDamage）；附傷的同一項由 DLL 讀。
-	If ESSBNodes.Br(akCtl, 10, 1, 3, 0) && ESSBNative.GetStatus(akTarget, 15) > 0 ; @node 星鎖
-		mult = mult * 1.1
-	EndIf
-	If ESSBNodes.Br(akCtl, 10, 2, 4, 0) && akCtl.InDomain(akTarget, 11) ; @node 星域
-		mult = mult * 1.2
-	EndIf
-	Return mult
-EndFunction
-
-
-; ================================================================== 水：長流與導引
-
-; 5.11 持續熟練主線：長流每秒回復 2.0% +0.2%／點；
-; 持續大師主線：同調每段 +0.05%／點；傳奇主線「長河」：同調三段時再 +0.05%／點。
-Float Function FlowPercent(ESSBController akCtl) Global
-	Float percent = (akCtl.WaterFlowBasePct.GetValue() + akCtl.WaterFlowPerRankPct.GetValue() * ESSBNodes.Rank(akCtl, 8, 0, 1)) * 0.01 ; @node 長流每秒回復
-	percent = percent + 0.0005 * ESSBNodes.Rank(akCtl, 8, 0, 3) * akCtl.SyncStage() ; @node 同調每段長流回復
-	If akCtl.SyncStage() >= 3
-		percent = percent + 0.0005 * ESSBNodes.Rank(akCtl, 8, 0, 4) ; @node 長河
-	EndIf
-	Return percent
-EndFunction
+; ================================================================== 水
+; 5.11 長流（每秒回復生命、耐力與維持費 80% 的魔力）與長河（同伴）round 25（N6）起在 DLL 計時器（Timer.h PlanFormSecond）。
 
 
 ; 導引的同調跳段（v0.4 2.6：同調立即跳到下一段門檻）round 23 起在 DLL（Status.h PlanEndSelf）。
@@ -74,8 +43,6 @@ EndFunction
 Function OnTick(ESSBController akCtl, Int aiElement) Global
 	If aiElement == 8
 		PoisonFormTick(akCtl)
-	ElseIf aiElement == 9
-		WaterFormTick(akCtl)
 	EndIf
 EndFunction
 
@@ -107,36 +74,6 @@ Function PoisonFormTick(ESSBController akCtl) Global
 	If heal > 0.0
 		akCtl.ApplyUtil(4, heal, 0, player)
 	EndIf
-EndFunction
-
-; 5.11 持續熟練／大師／傳奇主線「長流」：每秒回復最大生命與最大耐力的百分比。
-; 規劃 8：自有效果的每秒回復，不動回復速率 AV，所以不受戰鬥中回復減半影響。
-Function WaterFormTick(ESSBController akCtl) Global
-	Actor player = akCtl.ThePlayer()
-	If !player
-		Return
-	EndIf
-	Float percent = FlowPercent(akCtl)
-	If percent <= 0.0
-		Return
-	EndIf
-	Float health = player.GetActorValueMax("Health") * percent
-	Float stamina = player.GetActorValueMax("Stamina") * percent
-	akCtl.ApplyUtil(4, health, 0, player)
-	akCtl.ApplyUtil(6, stamina, 0, player)
-	; 5.11 持續傳奇主線「長河」：同調三段時長流同時作用於附近同伴。
-	If ESSBNodes.Rank(akCtl, 8, 0, 4) <= 0 || akCtl.SyncStage() < 3 ; @node 長河
-		Return
-	EndIf
-	Actor[] allies = akCtl.ScanAllies(420.0)
-	Int index = 0
-	While index < allies.Length
-		If allies[index]
-			akCtl.ApplyUtil(4, allies[index].GetActorValueMax("Health") * percent, 0, allies[index])
-			akCtl.ApplyUtil(6, allies[index].GetActorValueMax("Stamina") * percent, 0, allies[index])
-		EndIf
-		index += 1
-	EndWhile
 EndFunction
 
 

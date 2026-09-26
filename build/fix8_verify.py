@@ -70,11 +70,14 @@ def run():
     # generated header (and no longer through a Papyrus VMAD property).
     assert b.vstr('NoformBaseTrue') not in quest
     assert f"inline constexpr float kNoFormBaseTrue = {float(cfg['noform_base_true'])}f;" in text('native/include/ManifestData.h')
-    assert rec['ESSB_FormRulesEffect'].d['VMAD'] == b.vmad('ESSBFormRules', {
-        'UpkeepBasePct': (4, cfg['upkeep_base_pct']), 'UpkeepDarkPct': (4, cfg['upkeep_dark_pct']),
-        'UpkeepLevelRelief': (4, cfg['upkeep_level_relief']),
-        'FormActive': (1, b.own(b.ID_GLOB['ESSB_FormActive'])),
-        'CurrentElement': (1, b.own(b.ID_GLOB['ESSB_CurrentElement'])), 'Controller': (1, b.own(b.ID_QUEST))})
+    # Round 25 (N6): the upkeep is the DLL timer's (native/include/Timer.h MagickaUpkeep); ESSBFormRules is gone, its
+    # effect record carries no script, and the three upkeep settings reach the DLL through the generated header (the
+    # round-8 formula itself runs below on the pre-fix22 script and natively in native/tests/timer_test.cpp).
+    assert 'VMAD' not in rec['ESSB_FormRulesEffect'].d
+    header = text('native/include/ManifestData.h')
+    for key, name in (('upkeep_base_pct', 'kUpkeepBasePct'), ('upkeep_dark_pct', 'kUpkeepDarkPct'),
+                      ('upkeep_level_relief', 'kUpkeepLevelRelief')):
+        assert f'inline constexpr float {name} = {float(cfg[key])}f;' in header, name
 
     # Exact inherited eligibility and opening/closing mechanics remain byte-for-byte unchanged.
     ctlfile = 'src/ESSBController.psc'

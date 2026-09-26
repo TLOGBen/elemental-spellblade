@@ -150,19 +150,6 @@ Bool Function HasPerpetual(ESSBController akCtl) Global
 	Return Br(akCtl, 12, 0, 4, 0) ; @node 永續
 EndFunction
 
-; 5.2 持續專精分支「定神」：同調三段時免疫減速（自有）。
-; 冰原「你在其中免疫減速」走同一個守衛函式（5.4 關閉傳奇分支）。
-Bool Function SelfSlowImmune(ESSBController akCtl) Global
-	If Br(akCtl, 12, 0, 2, 0) && akCtl.SyncStage() >= 3 ; @node 定神
-		Return True
-	EndIf
-	; 5.7 風持續傳奇分支「御風」：同調三段時免疫減速（自有）。
-	If ESSBElem2.WindSlowImmune(akCtl)
-		Return True
-	EndIf
-	Return akCtl.PlayerInDomain(2)
-EndFunction
-
 ; 5.2 關閉傳奇分支「雙生」：雙持時左手武器攜帶你前一個形態的元素 30 秒。
 Bool Function HasTwin(ESSBController akCtl) Global
 	Return Br(akCtl, 12, 2, 4, 1) ; @node 雙生

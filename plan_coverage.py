@@ -101,8 +101,8 @@ NODES = {
         'round 24（N5）照 v0.4 在 DLL：火葬：爆燃擊殺的目標對附近敵人再爆一次 ×0.5（讀法見 round 24 決策 18）'),  # 2,3,1 v0.4 負責：DLL N5
     ('fire', '爆燃'): ('DONE', 'DLL native/include/Reactions.h／native/include/Status.h（node::kSignature[element]）',
         'round 24（N5）照 v0.4 在 DLL：爆燃 +3%／點'),  # 2,4 v0.4 負責：DLL N3（融斷 N5）
-    ('fire', '火域'): ('DONE', 'ESSBElem.EndFireNodes → ESSBController.StartDomain／TickDomain（對內部敵人掛 DLL 的火域效果、你在其中掛身在火域、進入時 ESSBNative.ExtendFuse(5)）＋ ESSBController.ApplyDamage／DLL（受火傷 +20%）',
-        '領域本身照裁定 R6 留在 Papyrus（N6）；受火傷 +20%（附傷、DLL 火傷讀領域效果，Papyrus 火傷讀 InDomain）、你在其中熱度升階免等待（DLL 讀身在火域）、進入時白熱引信一次性 +5 秒（DLL）'),  # 2,4,0 v0.4 負責：Papyrus（領域）；引信延長：DLL N3（進入時一次寫入，非每秒暫停）
+    ('fire', '火域'): ('DONE', 'DLL native/include/Reactions.h Bodies::End（node::kFireDomain）→ ESSB_Domain → StatusEngine.h RunOp 在融斷目標腳下施放 Spawn Hazard（ESSB_N6_Domain_Fire_<秒>，HAZD ESSB_N6_Hazard_Fire，引擎管壽命與數量，不再限 3 個）；hazard 對內部敵人掛 ESSB_N3_DomainFireEffect（受火傷 +20%：附傷、火源與 DLL 反應都讀它）；你在其中：native/include/Timer.h PlanDomainSelf（熱度免等待的視窗、進入時白熱引信 +5 秒）',
+        'round 25（N6，裁定 R4）：領域是引擎的 hazard；你身上的兩項由 DLL 計時器每秒找你身邊屬於你的 hazard 判定（上一秒不在火域才算「進入」）'),  # 2,4,0 v0.4 負責：Papyrus（領域）；引信延長：DLL N3（進入時一次寫入，非每秒暫停）
     # ================= 5.4 冰霜（frost）
     ('frost', '每次命中凍結累積'): ('DONE', 'DLL native/include/Status.h（node::kFrostAccumulate）',
         'round 22（N3）照 v0.4：每次命中凍結累積 +5%／點（小數以機率取整）'),  # 0,0 v0.4 負責：DLL N3
@@ -180,8 +180,8 @@ NODES = {
         'round 22（N3）照 v0.4：碎冰 +9%／點（乘在 20% 上）（DLL 做狀態與倍率；round 24 起反應本體也在 DLL）'),  # 2,4 v0.4 負責：DLL N3
     ('frost', '冰棺'): ('DONE', 'DLL native/include/Status.h（node::kFrostCoffin）',
         'round 22（N3）照 v0.4：冰棺：碎冰後目標再冰封 2 秒（第二次碎冰 ×0.5）'),  # 2,4,0 v0.4 負責：DLL N3
-    ('frost', '冰原'): ('DONE', 'ESSBElem.EndFrostNodes → ESSBController.StartDomain/TickDomain',
-        '冰原：融斷後 5 秒冰原，內部敵人減速 50%、凍結累積 ×2，玩家在其中免疫減速'),  # 2,4,1 v0.4 負責：Papyrus（領域）
+    ('frost', '冰原'): ('DONE', 'DLL native/include/Reactions.h Bodies::End（node::kFrostPlain）→ ESSB_Domain → StatusEngine.h RunOp 在融斷目標腳下施放 Spawn Hazard（ESSB_N6_Domain_Frost_<秒>，HAZD ESSB_N6_Hazard_Frost，引擎管壽命與數量，不再限 3 個）；hazard 掛 ESSB_N3_DomainFrostEffect（凍結累積 ×2，命中讀）；native/include/Timer.h PlanDomainEnemy（減速 50%，受 MCM 減速上限）、PlanDomainSelf＋SlowImmune（你在其中免疫減速）',
+        'round 25（N6）：減速由 DLL 每秒下（hazard 讀不到 MCM 減速上限）；「你在其中免疫減速」以前只有沒人呼叫的 Papyrus 守衛，現在 DLL 每 tick 驅散你身上的減速'),  # 2,4,1 v0.4 負責：Papyrus（領域）
     # ================= 5.5 雷電（lightning）
     ('lightning', '放電每格電荷傷害'): ('DONE', 'DLL native/include/Reactions.h（node::kLightningPerCharge）',
         'round 24（N5）照 v0.4 在 DLL：放電每格電荷傷害 +1%／點'),  # 0,0 v0.4 負責：DLL N3
@@ -330,8 +330,8 @@ NODES = {
         'round 24（N5）照 v0.4 在 DLL：塵暴：地震使範圍內敵人攻擊 -20% 3 秒'),  # 2,3,1 v0.4 負責：DLL N5
     ('earth', '地震'): ('DONE', 'DLL native/include/Reactions.h／native/include/Status.h（node::kSignature[element]）',
         'round 24（N5）照 v0.4 在 DLL：地震 +3%／點'),  # 2,4 v0.4 負責：DLL N3（融斷 N5）
-    ('earth', '地裂'): ('DONE', 'ESSBElem2.EndEarthNodes → StartDomain(4) → ESSBController.TickDomain（耐力不回復；耐力歸 0 跌倒並掛 DLL 的倒地）',
-        '領域照裁定 R6 留在 Papyrus（N6）；跌倒現在掛上倒地（ESSBController.Knockdown → 倒地 3 秒，每目標 8 秒一次）'),  # 2,4,0 v0.4 負責：Papyrus（領域與推力）
+    ('earth', '地裂'): ('DONE', 'DLL native/include/Reactions.h Bodies::End（node::kEarthRiftZone）→ ESSB_Domain → StatusEngine.h RunOp 在融斷目標腳下施放 Spawn Hazard（ESSB_N6_Domain_Earth_<秒>，HAZD ESSB_N6_Hazard_Earth，引擎管壽命與數量，不再限 3 個）；hazard 掛標記與耐力不回復（ESSB_UtilEffect_StaminaRateDebuff 100）；native/include/Timer.h PlanDomainEnemy（耐力歸 0 → ESSB_Knock 2.0 → ESSBController.Knockdown：倒地、每目標 8 秒一次）',
+        'round 25（N6）：耐力不回復由引擎的 hazard 施放；跌倒由 DLL 每秒判定、推力照舊 Papyrus（round 24 裁定 R4）；推力 2.0（同地動），推不倒的不改減速'),  # 2,4,0 v0.4 負責：Papyrus（領域與推力）
     # ================= 5.7 風（wind）
     ('wind', '風刃傷害'): ('DONE', 'DLL native/include/Reactions.h（node::kWindBladeDamage）',
         'round 24（N5）照 v0.4 在 DLL：風刃傷害 +2%／點'),  # 0,0 v0.4 負責：DLL N4
@@ -359,8 +359,8 @@ NODES = {
         '潛行攻擊的風附傷 ×3 → ×5（round 22 起 DLL 乘在命中當下；Papyrus 的差額補丁刪除）'),  # 0,3,2 v0.4 負責：DLL N4
     ('wind', '千刃'): ('DONE', 'DLL native/include/SelfLayer.h PlanSelfHit（node::kWindThousand）',
         'round 23：同調三段時每次命中 5%／點附帶風刃（ESSB_Blade）'),  # 0,4 v0.4 負責：DLL N4
-    ('wind', '御風'): ('DONE', 'DLL native/include/Status.h（node::kWindRideWind：附傷與 DLL 反應 ×1.3）＋ ESSBElem2.TargetDamageMult（Papyrus 反應 ×1.3）＋ ESSBElem2.WindSlowImmune ＋ PERK 進入點（武器傷害 ×1.3，條件：對手有 DLL 的失衡）',
-        '同調三段時免疫減速（自有），且失衡目標受你所有傷害 +30%（含武器傷害）；+30% 不看同調（v0.4 第 1091 行，審查修正）'),  # 0,4,0 v0.4 負責：引擎效果
+    ('wind', '御風'): ('DONE', 'DLL native/include/Status.h（node::kWindRideWind：附傷與 DLL 反應 ×1.3）＋ native/include/Timer.h SlowImmune（同調三段免疫減速，Plugin.cpp SlowImmunity 每 tick）＋ PERK 進入點（武器傷害 ×1.3，條件：對手有 DLL 的失衡）',
+        '同調三段時免疫減速（自有），且失衡目標受你所有傷害 +30%（含武器傷害）；+30% 不看同調（v0.4 第 1091 行）。round 25：免疫減速以前是沒人呼叫的 Papyrus 守衛（假 DONE），現在 DLL 做；Papyrus 反應倍率隨領域刪除'),  # 0,4,0 v0.4 負責：引擎效果
     ('wind', '開印風勢'): ('DONE', 'DLL native/include/SelfLayer.h res::OpenGains（node::kWindOpenGauge）',
         'round 23：開印風勢 +2，+1／每 5 點'),  # 1,0 v0.4 負責：DLL N4
     ('wind', '風襲'): ('DONE', 'DLL native/include/Reactions.h（node::kWindRaid）',
@@ -436,8 +436,8 @@ NODES = {
         '同調每段血附傷 +1%／點'),  # 0,3 v0.4 負責：DLL N2
     ('blood', '止血'): ('DONE', 'DLL native/include/Status.h（node::kBloodStanch）',
         'round 22（N3）照 v0.4：止血：低血位（30% 以下）時流血目標的流血傷害 ×1.5，於套用血痕當下依你目前血位寫入強度'),  # 0,3,0 v0.4 負責：DLL N3
-    ('blood', '血怒'): ('DONE', 'DLL native/include/HitMath.h BloodRage（node::kBloodRage）＋ESSBController.GetBloodHitMult（Papyrus 反應）',
-        '中血位命中效果與吸血 +15%'),  # 0,3,1 v0.4 負責：DLL N2
+    ('blood', '血怒'): ('DONE', 'DLL native/include/HitMath.h BloodRage（node::kBloodRage；附傷、吸血與 DLL 反應的 ReactionScale）',
+        '中血位命中效果與吸血 +15%（round 25：Papyrus 的 GetBloodHitMult 隨領域的傷害刪除）'),  # 0,3,1 v0.4 負責：DLL N2
     ('blood', '血海'): ('DONE', 'DLL native/include/Reactions.h（node::kBloodSea）',
         'round 24（N5）照 v0.4 在 DLL：血海，同調三段時血潮改為範圍，範圍 1 公尺 +0.2 公尺／點'),  # 0,4 v0.4 負責：DLL N5
     ('blood', '不死'): ('DONE', 'DLL native/include/Reactions.h（node::kBloodUndying）',
@@ -490,8 +490,8 @@ NODES = {
         'round 22（N3）照 v0.4：血引：血終焉後接管元素的開印附帶流血 2 層'),  # 2,3,2 v0.4 負責：DLL N3
     ('blood', '血潮'): ('DONE', 'DLL native/include/Reactions.h／native/include/Status.h（node::kSignature[element]）',
         'round 24（N5）照 v0.4 在 DLL：血潮 +3%／點'),  # 2,4 v0.4 負責：DLL N3（融斷 N5）
-    ('blood', '血池'): ('DONE', 'ESSBElem2.EndBloodNodes → StartDomain(6) → ESSBController.TickDomain',
-        '血池：血印記融斷後留下 5 秒血池，你在其中每秒回血 B_max（審查修正：每秒回血 20，拿掉 G(L)；v0.4 沒寫數量）'),  # 2,4,0 v0.4 負責：Papyrus（領域）
+    ('blood', '血池'): ('DONE', 'DLL native/include/Reactions.h Bodies::End（node::kBloodPool）→ ESSB_Domain → StatusEngine.h RunOp 在融斷目標腳下施放 Spawn Hazard（ESSB_N6_Domain_Blood_<秒>，HAZD ESSB_N6_Hazard_Blood，引擎管壽命與數量，不再限 3 個）；native/include/Timer.h PlanDomainSelf（你在其中每秒回血 20 × 回復倍率）',
+        '血印記融斷後 5 秒血池，你在其中每秒回血（v0.4 沒寫數量，沿用 20；round 25 起 DLL 計時器每秒判定你在不在血池）'),  # 2,4,0 v0.4 負責：Papyrus（領域）
     # ================= 5.9 神聖（divine）
     ('divine', '聖佑各階武器傷害與聖傷加成'): ('DONE', 'DLL native/include/Status.h ProcTerms／聖裁（node::kDivineHolyBonus：聖傷）＋ PERK 主線進入點（武器傷害，條件你身上的聖佑階效果）',
         '+3%／點 × 階數（I 1、II 2、III 3）。武器那一份是 ESP 進入點，讀不到 MCM 的節點倍率，固定取預設 3（×3）'),  # 0,0 v0.4 負責：引擎效果
@@ -559,8 +559,8 @@ NODES = {
         'round 24（N5）照 v0.4 在 DLL：聖斷：聖印記融斷每個目標治療你 B_max ×1.0'),  # 2,1,1 v0.4 負責：DLL N5
     ('divine', '終焉後 5 秒內接管元素附傷'): ('DONE', 'DLL native/include/Status.h（node::kTakeover[element]）',
         'round 22（N3）照 v0.4：終焉後 5 秒內接管元素附傷 +3%／點'),  # 2,2 v0.4 負責：DLL N3
-    ('divine', '聖域'): ('DONE', 'ESSBElem2.EndDivineNodes → StartDomain(7, 5) + PERK ESSB_P_divine_2_2_B1 進入點 0x24（ESSB_DomainDivine）',
-        '聖終焉後留下 5 秒聖域：其中敵人傷害 -20%（你在其中受傷 -20%）、你持續回復（審查修正：每秒回血 25、回魔 20，拿掉 G(L)；v0.4 沒寫數量）'),  # 2,2,0 v0.4 負責：Papyrus（領域）
+    ('divine', '聖域'): ('DONE', 'DLL native/include/Reactions.h Bodies::End（node::kDivineSanctum）→ ESSB_Domain → StatusEngine.h RunOp 在融斷目標腳下施放 Spawn Hazard（ESSB_N6_Domain_Divine_<秒>，HAZD ESSB_N6_Hazard_Divine，引擎管壽命與數量，不再限 3 個）；native/include/Timer.h PlanDomainSelf（回血 25、回魔 20）；敵人 -20% 是 hazard 法術 ESSB_N6_HazardSpell_Divine 的兩個效果（build/fix25_records.py DIVINE_WEAKEN）',
+        '聖終焉後 5 秒聖域：其中敵人傷害 -20%（round 25 審查修正，指揮官裁定：裡面的敵人 AttackDamageMult -0.2、DestructionPowerModifier -20，各 2 秒跟標記同步；「你在其中受傷 -20%」的 PERK 與 ESSB_DomainDivine 鏡射拿掉）、你持續回復（v0.4 沒寫數量，沿用 25／20）'),  # 2,2,0 v0.4 負責：Papyrus（領域）
     ('divine', '淨灰'): ('DONE', 'DLL native/include/Reactions.h（node::kDivinePureAsh）',
         'round 24（N5）照 v0.4 在 DLL：淨灰：帶神聖印記的亡靈化灰時爆出聖光，附近亡靈受 B_max ×1.0 聖傷（讀法見 round 24 決策 3）'),  # 2,2,1 v0.4 負責：DLL N5
     ('divine', '聖印記的融斷再'): ('DONE', 'DLL native/include/Reactions.h（node::kBurstAgain[element]）',
@@ -571,8 +571,8 @@ NODES = {
         'round 22（N3）照 v0.4：聖引：聖終焉後接管元素的開印治療你 B_max'),  # 2,3,1 v0.4 負責：DLL N3
     ('divine', '裁決'): ('DONE', 'DLL native/include/Reactions.h／native/include/Status.h（node::kSignature[element]）',
         'round 24（N5）照 v0.4 在 DLL：裁決 +3%／點'),  # 2,4 v0.4 負責：DLL N3（融斷 N5）
-    ('divine', '神聖領域'): ('PARTIAL-N6', 'DLL native/include/Reactions.h Bodies::End（node::kDivineHolyDomain）→ ESSB_Domain → ESSBController.StartDomain；「聖佑 III 融斷不清空」在 DLL Status.h OnFormLeave',
-        'round 24（N5）：聖印記融斷時由 DLL 判定並送 ESSB_Domain（8 秒、3 公尺）；聖佑 III 時融斷不清空聖佑在 DLL 的離開形態。差距：領域本身（其中敵人傷害 -20%、你持續回復）照舊由 Papyrus 管，領域是 N6（裁定 R5）'),  # 2,4,0 v0.4 負責：DLL N5＋Papyrus（領域）
+    ('divine', '神聖領域'): ('DONE', 'DLL native/include/Reactions.h Bodies::End（node::kDivineHolyDomain）→ ESSB_Domain（8 秒）→ StatusEngine.h RunOp 在融斷目標腳下施放 Spawn Hazard（ESSB_N6_Domain_Divine_<秒>，HAZD ESSB_N6_Hazard_Divine，引擎管壽命與數量，不再限 3 個）；native/include/Timer.h PlanDomainSelf；「聖佑 III 融斷不清空」在 DLL Status.h OnFormLeave',
+        'round 25（N6）：聖印記融斷時由 DLL 判定並在目標腳下放 8 秒的聖域 hazard（×持續時間倍率，整秒法術最多 24 秒）；其中的效果同聖域（含裡面敵人傷害 -20%）。PARTIAL-N6 的差距（領域本身在 Papyrus）已解決'),  # 2,4,0 v0.4 負責：DLL N5＋Papyrus（領域）
     # ================= 5.10 毒素（poison）
     ('poison', '每劑傷害'): ('DONE', 'DLL native/include/Status.h（node::kPoisonDoseDamage）',
         'round 22（N3）照 v0.4：每劑傷害 +6%／點'),  # 0,0 v0.4 負責：DLL N3
@@ -646,15 +646,15 @@ NODES = {
         'round 24（N5）照 v0.4 在 DLL：腐蝕終焉：毒終焉後目標魔抗 -20% 8 秒'),  # 2,3,1 v0.4 負責：DLL N3
     ('poison', '催毒期間中毒傷害'): ('DONE', 'DLL native/include/Status.h（node::kSignature[kPoison]）',
         'round 22（N3）照 v0.4：催毒期間中毒傷害 +9%／點'),  # 2,4 v0.4 負責：DLL N3（融斷 N5）
-    ('poison', '毒霧'): ('KEPT-待決', 'ESSBElem3.EndPoisonNodes → StartDomain(8) → ESSBController.TickDomain（ESSBNative.AddStatus 每秒 +1 劑）',
-        '毒印記融斷後留下 5 秒毒霧，內部敵人每秒中毒 +1 劑；領域在 Papyrus（R6），劑數併入仍是 10.4 的待決，現在經 DLL 的加劑規則'),  # 2,4,0 v0.4 負責：Papyrus（領域）；劑數併入：待決
+    ('poison', '毒霧'): ('DONE', 'DLL native/include/Reactions.h Bodies::End（node::kPoisonFog）→ ESSB_Domain → StatusEngine.h RunOp 在融斷目標腳下施放 Spawn Hazard（ESSB_N6_Domain_Poison_<秒>，HAZD ESSB_N6_Hazard_Poison，引擎管壽命與數量，不再限 3 個）；native/include/Timer.h PlanDomainEnemy → Status.h rule::SpreadDoses（每秒擴散一劑）',
+        "round 25（N6，裁定 R5）：毒霧的劑數併入照瘟疫與瘴氣：內部敵人每秒「擴散一劑」併進自己的中毒（強度 +1 劑、同一個 10 劑上限，d' = max(d − t, 12)）；v0.4 10.4 的待決已定，交文件修正"),  # 2,4,0 v0.4 負責：Papyrus（領域）；劑數併入：待決
     # ================= 5.11 水（water）
     ('water', '浸濕持續'): ('DONE', 'ESSBElem3.WetSeconds（Papyrus 浸濕）＋DLL 雨雪浸濕（固定時長法術 ESSB_Native_Soak_*，node::kWaterSoakDuration）',
         '浸濕 10 秒 +0.3 秒／點（只延長浸濕本身）；雨雪與站在水中的浸濕由 DLL 挑對應秒數的法術（指揮官裁定 R6）'),  # 0,0 v0.4 負責：DLL N3
     ('water', '清流'): ('DONE', 'DLL native/include/HitMath.h AddFlatHitNodes（node::kWaterClearStream）',
         '命中回復耐力 30（ESSB_WaterClearStamina）'),  # 0,0,0 v0.4 負責：DLL N2
-    ('water', '長流每秒回復'): ('DONE', 'ESSBElem3.FlowPercent → WaterFormTick',
-        '長流每秒回復生命與耐力 2.0% +0.2%／點（settings 可調）'),  # 0,1 v0.4 負責：Papyrus
+    ('water', '長流每秒回復'): ('DONE', 'DLL native/include/Timer.h FlowFraction／PlanFormSecond（node::kWaterFlowRate）← Plugin.cpp FormSecondWork（計時器每秒）',
+        '長流每秒回復生命與耐力 2.0% +0.2%／點（settings 可調）；round 25（N6）起在 DLL 計時器，另回水形態維持費 80% 的魔力（v0.4 1.1，Papyrus 以前沒做）'),  # 0,1 v0.4 負責：Papyrus
     ('water', '水壓'): ('DONE', 'DLL native/include/Status.h（node::kWaterPressure）',
         'round 22（N3）照 v0.4：水壓：命中浸濕目標 +1 水壓，每層水附傷 +10%'),  # 0,1,0 v0.4 負責：DLL N3
     ('water', '水盾'): ('DONE', 'PERK 進入點 0x24／0x29 ＋ DLL native/include/Hurt.h hurt::ShareOf（node::kWaterShield）',
@@ -663,14 +663,14 @@ NODES = {
         'round 22（N3）照 v0.4：水壓每層水附傷 +3%／點'),  # 0,2 v0.4 負責：DLL N3
     ('water', '洗淨'): ('DONE', 'DLL native/include/SelfLayer.h PlanSelfHit（node::kWaterCleanse）＋ ESSBController.OnESSBCleanse → ApplyCleanse',
         'round 23：命中時清除自身一個負面效果，每 3 秒一次（判定與冷卻在 DLL；清除用控制器原本逐項 DispelSpell 的做法，不洗自己的增益）'),  # 0,2,0 v0.4 負責：DLL N4
-    ('water', '同調每段長流回復'): ('DONE', 'ESSBElem3.FlowPercent',
-        '同調每段長流 +0.05%／點'),  # 0,3 v0.4 負責：Papyrus
+    ('water', '同調每段長流回復'): ('DONE', 'DLL native/include/Timer.h FlowFraction（node::kWaterFlowSync）',
+        '同調每段長流 +0.05%／點；round 25 起在 DLL'),  # 0,3 v0.4 負責：Papyrus
     ('water', '潮身'): ('DONE', 'DLL native/include/Hurt.h PlanHurt（node::kWaterTideBody）',
         'round 23：水幕把魔力扣到 0 的那一刻洗淨一次（不佔洗淨冷卻）並回復最大魔力 20%，每 30 秒一次'),  # 0,3,2 v0.4 負責：DLL 受擊 N4
     ('water', '淨化'): ('DONE', 'DLL native/include/SelfLayer.h PlanSelfHit ＋ ESSBController.ApplyCleanse(True)（node::kWaterPurify）',
         '淨化：洗淨改為清除全部負面效果（解毒 ＋ PO3 GetActiveEffects 掃帶敵對／有害旗標的外來效果）'),  # 0,3,1 v0.4 負責：DLL N4
-    ('water', '長河'): ('DONE', 'ESSBElem3.FlowPercent / WaterFormTick',
-        '同調三段時長流再 +0.05%／點且作用於附近同伴'),  # 0,4 v0.4 負責：Papyrus
+    ('water', '長河'): ('DONE', 'DLL native/include/Timer.h FlowFraction／PlanFormSecond（node::kWaterLongRiver）＋ Plugin.cpp AlliesNear（6 公尺內同伴與召喚物最多 5 人，ESSB_UtilTarget_RestoreHealth／RestoreStamina）',
+        '同調三段時長流再 +0.05%／點且作用於附近同伴（生命與耐力；魔力那份不給同伴）；round 25 起在 DLL'),  # 0,4 v0.4 負責：Papyrus
     ('water', '止水'): ('DONE', 'PERK 進入點 0x24／0x29 ＋ DLL native/include/Hurt.h hurt::ShareOf（node::kWaterStill）',
         'round 23：同調三段時水幕分擔再 +15%（配水盾 45%）'),  # 0,4,1 v0.4 負責：引擎效果（PERK）
     ('water', '開印時回復生命與耐力各最大值 0.3%／點'): ('DONE', 'DLL native/include/Reactions.h（node::kWaterOpenHeal）',
@@ -719,8 +719,8 @@ NODES = {
         'round 24（N5）照 v0.4 在 DLL：洗滌：水終焉清除你所有負面效果，並驅散目標一個有時限的增益；清除你的負面效果經 ESSB_Cleanse 由 Papyrus 做'),  # 2,3,1 v0.4 負責：DLL N3
     ('water', '導引'): ('DONE', 'DLL native/include/Status.h（node::kSignature[kWater]） ＋ ESSBElem.SignatureMult',
         'round 22（N3）照 v0.4：導引 +9%／點（DLL 做狀態與倍率；round 24 起反應本體也在 DLL）'),  # 2,4 v0.4 負責：DLL N3
-    ('water', '潮池'): ('DONE', 'ESSBElem3.EndWaterNodes → StartDomain(9) → ESSBController.TickDomain',
-        '水印記融斷後 5 秒水域：你在其中回血回耐並每秒洗淨一次；內部敵人每秒被沖刷一個增益（沖刷法術；v0.4 的 DLL 原生沖刷函式尚未有）（審查修正：每秒回血、回耐各 15，拿掉 G(L)；v0.4 沒寫數量）'),  # 2,4,0 v0.4 負責：Papyrus（領域；沖刷呼叫 DLL 原生函式）
+    ('water', '潮池'): ('DONE', 'DLL native/include/Reactions.h Bodies::End（node::kWaterTidePool）→ ESSB_Domain → StatusEngine.h RunOp 在融斷目標腳下施放 Spawn Hazard（ESSB_N6_Domain_Water_<秒>，HAZD ESSB_N6_Hazard_Water，引擎管壽命與數量，不再限 3 個）；native/include/Timer.h PlanDomainSelf（回血回耐各 15、ESSB_Cleanse → ESSBController.ApplyCleanse）＋ PlanDomainEnemy（每秒沖刷一個增益：StatusEngine.h RunOp kWash 上限 1）',
+        '水印記融斷後 5 秒水域：你在其中回血回耐並每秒洗淨一次；內部敵人每秒被沖刷一個增益（DLL 的精確判定，裁定 R5）；round 25 起全在 DLL，洗淨的施放照舊 Papyrus（round 23 決策 11）'),  # 2,4,0 v0.4 負責：Papyrus（領域；沖刷呼叫 DLL 原生函式）
     # ================= 5.12 黑暗（darkness）
     ('darkness', '詛咒每層抗性侵蝕'): ('DONE', 'DLL native/include/Reactions.h（node::kDarkErosion）',
         'round 24（N5）照 v0.4 在 DLL：詛咒每層抗性侵蝕 -0.2%／點（-2% → -5%）'),  # 0,0 v0.4 負責：DLL N3
@@ -796,8 +796,8 @@ NODES = {
         'round 24（N5）照 v0.4 在 DLL：深淵回響：暗終焉回滿你的魔力'),  # 2,3,1 v0.4 負責：DLL N3
     ('darkness', '死咒'): ('DONE', 'DLL native/include/Status.h（node::kSignature[kDarkness]） ＋ ESSBElem.SignatureMult',
         'round 22（N3）照 v0.4：死咒 +9%／點（DLL 做狀態與倍率；round 24 起反應本體也在 DLL）'),  # 2,4 v0.4 負責：DLL N3
-    ('darkness', '死域'): ('DONE', 'ESSBElem3.EndDarkNodes → ESSBController.StartDomain／TickDomain',
-        '暗印記融斷後 5 秒死域：內部敵人無法被治療、每秒受 B_max ×0.5 暗傷'),  # 2,4,0 v0.4 負責：Papyrus（領域）
+    ('darkness', '死域'): ('DONE', 'DLL native/include/Reactions.h Bodies::End（node::kDarkDeathZone）→ ESSB_Domain → StatusEngine.h RunOp 在融斷目標腳下施放 Spawn Hazard（ESSB_N6_Domain_Darkness_<秒>，HAZD ESSB_N6_Hazard_Darkness，引擎管壽命與數量，不再限 3 個）；hazard 掛無法治療（ESSB_UtilEffect_HealRateDebuff 100）；native/include/Timer.h PlanDomainEnemy（每秒 B_max ×0.5 暗傷：D_react 2.7 × 持續傷害倍率）',
+        '暗印記融斷後 5 秒死域：內部敵人無法被治療、每秒受 B_max ×0.5 暗傷；round 25 起傷害由 DLL 每秒算（hazard 的強度覆寫會蓋掉無法治療的強度）'),  # 2,4,0 v0.4 負責：Papyrus（領域）
     ('darkness', '死靈主'): ('DONE', 'DLL native/include/Reactions.h（node::kDarkLord）',
         'round 24（N5）照 v0.4 在 DLL：死靈主：同調三段時亡者歸來不需要詛咒門檻（帶黑暗印記或冥印即可），60 級以上也能復生，且任何等級的僕從可改為永久（六階，永久上限 1 名）；復生 AI 與召喚上限經 ESSB_Raise 由 Papyrus 做（裁定 R4）'),  # 2,4,1 v0.4 負責：DLL N5＋Papyrus
     # ================= 5.13 星界（astral）
@@ -837,8 +837,8 @@ NODES = {
         'round 24（N5）照 v0.4 在 DLL：星臨強化：星臨時範圍內敵人星痕 2 層（全部進入共鳴）'),  # 1,2,0 v0.4 負責：Papyrus＋DLL N5
     ('astral', '星臨'): ('DONE', 'DLL native/include/Reactions.h（node::kAdvent[element]）',
         'round 24（N5）照 v0.4 在 DLL：星臨，開星形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點'),  # 1,3 v0.4 負責：Papyrus＋DLL N5
-    ('astral', '星鎖'): ('DONE', 'DLL native/include/Status.h（node::kAstralLock） ＋ ESSBElem3.TargetDamageMult',
-        'round 22（N3）照 v0.4：星鎖：開印目標 3 秒內受所有元素傷 +10%（DLL 做狀態與倍率；round 24 起反應本體也在 DLL）'),  # 1,3,0 v0.4 負責：DLL N3＋引擎效果
+    ('astral', '星鎖'): ('DONE', 'DLL native/include/Status.h（node::kAstralLock）',
+        'round 22（N3）照 v0.4：星鎖：開印目標 3 秒內受所有元素傷 +10%（DLL 做狀態與倍率；round 24 起反應本體也在 DLL；round 25 起 Papyrus 已沒有自己的傷害，ESSBElem3.TargetDamageMult 刪除）'),  # 1,3,0 v0.4 負責：DLL N3＋引擎效果
     ('astral', '星門'): ('DONE', 'DLL native/include/SelfLayer.h res::OpenGains（node::kAstralGate）',
         'round 23：開印 +1 共鳴層（闇星中無效）'),  # 1,3,2 v0.4 負責：DLL N4
     ('astral', '開印效果'): ('DONE', 'DLL native/include/Status.h（node::kOpenEffect[element]）',
@@ -863,8 +863,8 @@ NODES = {
         'round 24（N5）照 v0.4 在 DLL：墜星：闇星中切換時剩下的闇宙留到被切那一擊，每層對該目標結算一次 ×0.5 闇星一擊；闇星中按 Z 時，剩下的闇宙平均分給範圍內帶星印記的目標，同樣每層 ×0.5'),  # 2,3,2 v0.4 負責：DLL N4（融斷 N5）
     ('astral', '星落'): ('DONE', 'DLL native/include/Reactions.h／native/include/Status.h（node::kSignature[element]）',
         'round 24（N5）照 v0.4 在 DLL：星落 +3%／點'),  # 2,4 v0.4 負責：DLL N3（融斷 N5）
-    ('astral', '星域'): ('DONE', 'ESSBElem3.EndAstralNodes → StartDomain(11, 5, 3 公尺)＋ESSBElem3.TargetDamageMult（×1.2）',
-        '星印記融斷後 5 秒星域（3 公尺），內部敵人受所有元素傷 +20%（附傷）；v0.3 範圍跟星落主線成長已拿掉'),  # 2,4,0 v0.4 負責：Papyrus（領域）
+    ('astral', '星域'): ('DONE', 'DLL native/include/Reactions.h Bodies::End（node::kAstralZone）→ ESSB_Domain → StatusEngine.h RunOp 在融斷目標腳下施放 Spawn Hazard（ESSB_N6_Domain_Astral_<秒>，HAZD ESSB_N6_Hazard_Astral，引擎管壽命與數量，不再限 3 個）；hazard 掛 ESSB_N3_DomainAstralEffect（受所有元素傷 +20%：附傷與 DLL 反應讀它）',
+        '星印記融斷後 5 秒星域（3 公尺），內部敵人受所有元素傷 +20%；round 25 起是引擎的 hazard'),  # 2,4,0 v0.4 負責：Papyrus（領域）
     # ================= 5.1 無元素：法殺（noform）
     ('noform', '吸魔量'): ('DONE', 'DLL native/include/HitMath.h PlanNoFormHit（node::kNoFormSiphonAmount）',
         '吸魔量 +5%／點（不吃節點倍率，×1.0 → ×1.75），指揮官裁定 R5；v0.3 的「無形態武器傷害」進入點與 RefreshWeaponPercent 已刪'),  # 0,0 v0.4 負責：DLL N2
@@ -959,8 +959,8 @@ NODES = {
         'round 23：同一形態 60 秒後門檻再 ×0.5'),  # 0,1,1 v0.4 負責：引擎效果（60 秒效果）＋DLL N4
     ('common', '同調三段時終焉'): ('DONE', 'DLL native/include/Status.h（node::kCommonSyncEnd）',
         'round 22（N3）照 v0.4：同調三段時終焉 +3%／點'),  # 0,2 v0.4 負責：DLL N3（融斷 N5）
-    ('common', '定神'): ('DONE', 'ESSBNodes.SelfSlowImmune',
-        '同調三段時免疫本模組的減速（自有）'),  # 0,2,0 v0.4 負責：引擎效果
+    ('common', '定神'): ('DONE', 'DLL native/include/Timer.h SlowImmune（node::kCommonComposure）← Plugin.cpp SlowImmunity（每 tick 驅散你身上的減速）',
+        '同調三段時免疫減速（自有）；round 25：以前是沒人呼叫的 Papyrus 守衛 ESSBNodes.SelfSlowImmune（假 DONE），現在 DLL 做'),  # 0,2,0 v0.4 負責：引擎效果
     ('common', '同調三段時重擊附傷'): ('DONE', 'DLL native/include/HitMath.h NodeSum（node::kCommonStage3Power）＋ESSBNodes.CommonHitMult 鏡像',
         '同調三段時重擊附傷 +2%／點'),  # 0,3 v0.4 負責：DLL N2
     ('common', '極致'): ('DONE', 'DLL native/include/SelfLayer.h PlanSelfHit ＋ Plugin.cpp ExtraProc（node::kCommonExtreme）',
@@ -977,8 +977,8 @@ NODES = {
         'round 22（N3）照 v0.4：跳印：印記自然過期時，過期終焉照常結算，然後印記跳到 6 公尺內最近一個沒有印記的敵人身上（剩 4 秒、不觸發開印），每個印記只跳一次'),  # 1,0,1 v0.4 負責：DLL N3（掃描 N5）
     ('common', '印記持續'): ('DONE', 'DLL native/include/Status.h（node::kCommonMarkDuration）',
         'round 22（N3）照 v0.4：印記持續 +0.2 秒／點'),  # 1,1 v0.4 負責：DLL N3
-    ('common', '順轉'): ('DONE', 'ESSBController.SwitchForm／ESSBInput.RefreshPermission + PERK ESSB_P_common_1_1_B1 進入點 0x24（ESSB_GuardSwitch）',
-        '開形態免魔力門檻；切換後 1 秒受傷 -50%（審查修正：視窗由 2 秒改回 v0.4 的 1 秒）'),  # 1,1,0 v0.4 負責：Papyrus＋引擎效果
+    ('common', '順轉'): ('DONE', 'DLL native/include/Timer.h PlanSwitch（node::kCommonSmoothSwitch：開形態免魔力門檻）← Plugin.cpp RequestSwitch（熱鍵與 ESSBNative.RequestSwitch）＋ ESSBController.SwitchForm（SetGuardSwitch）+ PERK ESSB_P_common_1_1_B1 進入點 0x24（ESSB_GuardSwitch）',
+        '開形態免魔力門檻；切換後 1 秒受傷 -50%；round 25 起門檻在 DLL 的切換函式'),  # 1,1,0 v0.4 負責：Papyrus＋引擎效果
     ('common', '先制'): ('DONE', 'DLL native/include/SelfLayer.h res::OpenGains（node::kCommonPreempt）',
         'round 23：開印 +2 同調'),  # 1,1,1 v0.4 負責：DLL N4
     ('common', '開印時'): ('DONE', 'DLL native/include/SelfLayer.h res::OpenGains（node::kCommonOpenSync）',
@@ -1037,10 +1037,12 @@ MECHANISMS = [
      '使用者核准新增：每次通過元素附傷共用資格檢查的無形態命中，'
      'noform_base_true（預設 5）× G(L_無元素) × ESSB_BaseDamageMult；重擊 ×1.5。'
      'G 與傷害倍率各一次，額外 XP 為 0；保留純武藝／破魔節點的獨立效果。'),
-    ('1.1', '開形態需要魔力高於上限 10%；切換不檢查', IMPL,
-     'ESSBController.ToggleForm', '順轉與免門檻兩個節點可以豁免'),
-    ('1.1', '血位：三條曲線線性內插（命中倍率、吸血、損血）', IMPL,
-     'ESSBController.GetBloodHitMult / GetBloodLeechRatio / ESSBFormRules', '損血在 ESSBFormRules 每秒扣，命中倍率乘在 GetDamageMult'),
+    ('1.1', '開形態需要魔力高於上限 10%；切換不檢查', 'IMPLEMENTED',
+     'DLL native/include/Timer.h PlanSwitch ← Plugin.cpp RequestSwitch（熱鍵的輸入事件 sink 與形態力量的 ESSBNative.RequestSwitch）',
+     'round 25（N6）：順轉與免門檻豁免；血形態不需要魔力（v0.4 1.1，舊的 ESSBInput 沒有照做）'),
+    ('1.1', '血位：三條曲線線性內插（命中倍率、吸血、損血）', 'IMPLEMENTED',
+     'DLL native/include/HitMath.h（命中倍率、吸血）＋ native/include/Timer.h BloodUpkeepFraction（維持損血）＋ SelfLayer.h BloodPowerCostFraction（重擊損血）',
+     'round 25 起維持損血也在 DLL 計時器'),
     ('1.1', '風形態潛行：潛行攻擊時風附傷 ×3', IMPL,
      'DLL native/include/HitMath.h ElementMultiplier', '讀 HitData 的潛行旗標（2048）；移速與 Muffle 的自有能力屬風樹，round 2'),
     ('1.1', '火形態過熱：同調三段後每命中 +1，滿了自爆或熔身', REMOVED,
@@ -1053,16 +1055,17 @@ MECHANISMS = [
      '規劃 2.6 的感電與放電都削魔（round 24 起放電、跳躍與削魔都在 DLL）'),
     ('2.3', '狀態上限的三種來源：基礎、分支、通用樹「萬象」欄', IMPL,
      'DLL native/include/Status.h BleedCap／PressureCap／CurseCap／StarCap（CapBonus）', '量表類（凍結）固定 5，不吃通用樹加成；round 22 起層數是 DLL 掛在目標身上的效果強度'),
-    ('2.7', 'G(L) = 1 + 0.05 × L', IMPL,
-     'ESSBTrees.TreeG → ESSBController.ApplyDamage / ApplyTrueDamage；DLL native/include/HitMath.h TreeG（附傷）與 Status.h ReactionScale／PerDose／PerBleedLayer（DLL 的反應與持續傷）',
-     '每條路徑只乘一次，不重複'),
+    ('2.7', 'G(L) = 1 + 0.05 × L', 'IMPLEMENTED',
+     'DLL native/include/HitMath.h TreeG（附傷）與 Status.h ReactionScale／PerDose／PerBleedLayer（DLL 的反應、持續傷與死域）',
+     '每條路徑只乘一次，不重複；round 25 起 Papyrus 已沒有自己的傷害（ApplyDamage 隨 Papyrus 領域刪除）'),
     ('2.7', 'M_mod 只乘一次，不出現疊乘', 'IMPLEMENTED',
      'DLL native/include/HitMath.h NodeSum（附傷）／ DLL native/include/Status.h EndNodeMult（終焉的狀態部分）／ DLL native/include/Reactions.h Bodies::End（終焉的本體：同一個 EndNodeMult，融斷再乘 BurstMult 與該樹融斷主線）',
      '附傷 = 共通 × 通用樹 × 元素樹；終焉 = 共通 × 通用樹關閉 × 元素樹關閉（round 24 起本體也在 DLL，每個本體只乘一次）'),
     ('2.8', '真實傷害類別：不吃護甲、抗性、外部加成', IMPL,
      'MGEF ESSB_TrueEffect（skill = -1、resist = None）+ ESSBController.ApplyTrueDamage', '只掛 ESSB_TrueDamage keyword，沒有外部天賦認得；造成真傷練無元素樹'),
-    ('2.9', '融斷後留下的領域（火域、冰原）', IMPL,
-     'ESSBController.StartDomain / InDomain / TickDomain', '不放 ObjectReference、不用 hazard 或爆炸：只記中心座標與剩餘秒數，判定在既有的每秒 tick 與命中路徑上做'),
+    ('2.9', '融斷後留下的領域（火域、冰原）', 'IMPLEMENTED',
+     'DLL native/include/StatusEngine.h RunOp（ESSB_Domain → Spawn Hazard 放置法術，build/fix25_records.py）＋ native/include/Timer.h（每秒：你與內部敵人）',
+     'round 25（N6，裁定 R4）：真的地面效果（引擎 hazard，放在融斷目標腳下、只打對你有敵意的人、引擎管壽命與數量，不再限 3 個）'),
     ('2.9', '各元素的「臨」：以玩家為中心 2 公尺 + 0.2 公尺／點', 'IMPLEMENTED',
      'ESSBController.OnFormOpened → ESSBNative.FormEnter → DLL native/include/Reactions.h PlanAdvent',
      'round 24：一次掃描，範圍內不限人數的合格敵人各開印一次（決策 3）'),
@@ -1075,12 +1078,12 @@ MECHANISMS = [
     ('8', '過熱／熱度／電荷等自身資源鏡射成全域變數', IMPL,
      'ESSBController.PushSelf / PushSyncStage / SetGlobal', 'PERK 進入點的 CTDA 只讀得到全域變數，這是樣式 C 的橋'),
     # ---- 機制前線 round 2
-    ('1.1', '血形態維持費：依血位曲線每秒扣最大生命（1.0%／0.6%／0.2%／0）', IMPL,
-     'ESSBController.BloodDrainPerSecond / PayBloodCost → ESSBFormRules.OnUpdate',
-     'round 1 是固定 0.5%，本輪換成 1.1 的四點曲線；血氣減半、血臨強化／血約／不死歸零；永遠留 1 點生命'),
-    ('1.1', '血形態重擊不消耗耐力，改扣生命（8%／5%／2%／0）', IMPL,
-     'PERK ESSB_P_BaseRules 進入點 0x1B ×0 + ESSBController.PayBloodCost（OnWeaponHit）',
-     '耐力那一半用進入點（條件 ESSB_FormActive == 1 且 ESSB_CurrentElement == 6），生命那一半在命中時扣'),
+    ('1.1', '血形態維持費：依血位曲線每秒扣最大生命（1.0%／0.6%／0.2%／0）', 'IMPLEMENTED',
+     'DLL native/include/Timer.h PlanFormSecond／BloodUpkeepFraction ← Plugin.cpp FormSecondWork（代價路徑 kPayHealth，留 1 點）',
+     'round 25（N6）：ESSBFormRules 刪除，維持扣血在 DLL 計時器（× MCM 維持費倍率）'),
+    ('1.1', '血形態重擊不消耗耐力，改扣生命（8%／5%／2%／0）', 'IMPLEMENTED',
+     'PERK ESSB_P_BaseRules 進入點 0x1B ×0 ＋ DLL native/include/SelfLayer.h BloodPowerCostFraction（命中時扣）',
+     '耐力那一半用進入點（條件 ESSB_FormActive == 1 且 ESSB_CurrentElement == 6），生命那一半 round 23 起在 DLL'),
     ('1.1', '風形態：移速 +10%、潛行腳步聲減半、潛行攻擊風附傷 ×3 且風勢直接滿', IMPL,
      'ESSBController.RefreshWindAbilities / RefreshWindStealth / ElementHitHook',
      'SPEL ESSB_Ability_WindSpeed（AV 30）與 ESSB_Ability_Muffle（AV 92）；潛行狀態在既有的每秒 tick 讀一次'),
@@ -1146,15 +1149,14 @@ MECHANISMS = [
     ('2.9', '星界的所有範圍：基礎相同，主線每點 +1 公尺', REMOVED,
      '—（round 21 刪除 ESSBElem3.Range / FallRadius / ConstellationRadius / ScatterRadius）',
      'v0.4 已拿掉這條 v0.3 規則：星臨半徑與其他元素相同（ESSBElem.AdventRadiusOf／ESSBElem3.AdventRadius，2 公尺 +0.2 公尺／點），星散 15 公尺、星域 3 公尺'),
-    ('2.9', '領域格從 1 格擴充為固定 3 格', IMPL,
-     'ESSBController.StartDomain / InDomain / DomainActive / TickDomain / DomainFlag',
-     '不同元素的領域在正常玩法下會同時存在（融斷留下領域 → 切換 → 再融斷）；'
-     '同元素取代自己那一格，全滿時換掉剩餘秒數最少的；每秒仍然只掃一次 5 人；每格有自己的半徑'),
+    ('2.9', '領域格從 1 格擴充為固定 3 格', 'REMOVED',
+     '—（round 25 刪除 ESSBController.StartDomain／InDomain／DomainActive／TickDomain／DomainFlag 與三格表）',
+     '裁定 R4：領域改為引擎 hazard，不再有 3 格上限（引擎的 hazard 數量由 HAZD 的 limit 管，本模組設 0＝不限）'),
     ('2.10', '夜晚 → 星界所有範圍 ×1.5', REMOVED,
      '—（round 21 刪除 ESSBElem3.Range）', 'v0.4 已拿掉這條 v0.3 規則；夜晚黑暗附傷 +20% 仍由 DLL 讀環境旗標'),
-    ('8', '長流：自有的每秒百分比回復，不動回復速率 AV', IMPL,
-     'ESSBElem3.WaterFormTick ← ESSBController.Tick',
-     '掛在既有的每秒 tick，不另開計時器；不受原版戰鬥中回復減半影響'),
+    ('8', '長流：自有的每秒百分比回復，不動回復速率 AV', 'IMPLEMENTED',
+     'DLL native/include/Timer.h PlanFormSecond ← Plugin.cpp TickCpp（計時器每秒）',
+     'round 25（N6）：在 DLL 計時器（暫停、選單、讀檔時不走）；不動回復速率 AV、不受戰鬥中回復減半影響'),
     ('8', '洗淨／淨化：不洗掉自己的增益', IMPL,
      'ESSBController.ApplyCleanse + DispelHostileEffects；SPEL ESSB_CleanseSpell / '
      'ESSB_PurgeSpell 只掛 Cure Disease（原型 3）與 Cure Poison（原型 29）',
@@ -1163,11 +1165,9 @@ MECHANISMS = [
      '(2) 治病與解毒走實測原型；(3) 淨化另用 PO3 GetActiveEffects 挑敵對／有害旗標的效果，'
      'GetMagicEffectSource 回推來源法術後 DispelSpell。最壞情況是少清幾個外來減益，'
      '不可能洗掉形態能力、血承、岩甲。MGEF ESSB_CleanseEffect / ESSB_PurgeEffect 仍在 ESP 裡待命'),
-    ('8', '沖刷：只沖掉目標「手施、有時限、有益」的增益', IMPL,
-     'ESSBController.ApplyStrip → ESSBNative.WashBuffs（DLL Executor::Wash）',
-     'round 22：判定同浸濕／水壓的全數沖刷（裁定 R5：法術／卷軸／法杖、左右手施放、有時限未到期、非敵對非有害、'
-     '不是本模組的、不是召喚／綁定武器／復生）；每目標 10 秒一次（推力環狀表 kind 2），潮池每秒一個不吃冷卻；'
-     'ApplyStrip 擋掉「目標＝玩家」與非法目標。ESSB_StripSpell 記錄留著不用'),
+    ('8', '沖刷：只沖掉目標「手施、有時限、有益」的增益', 'IMPLEMENTED',
+     'DLL native/include/StatusEngine.h Washes／Wash（RunOp kWash：浸濕／水壓的全數沖刷、潮池每秒一個）',
+     'round 22：判定同浸濕／水壓的全數沖刷（裁定 R5：法術／卷軸／法杖、左右手施放、有時限未到期、非敵對非有害、不是本模組的、不是召喚／綁定武器／復生）；round 25：Papyrus ApplyStrip 與 ESSBNative.WashBuffs 刪除，潮池每秒一個由 DLL 計時器下'),
     ('8', '亡者歸來：自有 Reanimate 原型的六階表，尊重召喚上限', 'IMPLEMENTED',
      'DLL native/include/Reactions.h JudgeRaise／PlanDeath → ESSB_Raise → ESSBController.CanReanimate／ApplyReanimate（SummonCap／ServantCount）',
      'C3 重做（round 24）：帶黑暗印記（或冥印、冥召、狂宴）死亡、詛咒 ≥3 層即亡者歸來；階依等級，詛咒 5 層以上階 +1 並每層僕從攻擊 +10%，滿層時間加倍；殘魂、冥召、死靈主照 v0.4；復生 AI 與召喚上限留在 Papyrus（裁定 R4）'),
@@ -1200,6 +1200,22 @@ MECHANISMS = [
     ('5.8', '越線：70% 與 30% 兩條線，往下濺血、往上回湧（N4）', 'IMPLEMENTED',
      'DLL native/include/Status.h PlanStatusHit（血區效果與 10 秒冷卻）→ DLL native/include/Reactions.h Bodies::Splash／Bodies::Rise',
      'round 24：濺血（15 公尺內所有流血目標最多 5 人 ×0.5 血潮、不清血痕）與血約的掃描在 DLL；回湧的效果是 N4'),
+    # ---- round 25（N6：每秒計時、熱鍵、領域）
+    ('1.1', '維持費：每秒扣最大魔力 基礎% ×（1 − 0.7 × 樹等級／100）× 維持費倍率；魔力歸零 2 秒關閉', 'IMPLEMENTED',
+     'DLL native/include/Timer.h MagickaUpkeep／PlanFormSecond（魔力歸零的計時是你身上的 ESSB_N6_ManaEmpty）→ ESSB_Close → ESSBController.CloseForm',
+     'round 25（N6）：ESSBFormRules 刪除；基礎 1.0%（暗 2.0%）與折減 0.7 來自 settings.json、編進 ManifestData.h'),
+    ('1.1', '直接切換熱鍵（預設開啟）；Z 路線呼叫同一個切換函式', 'IMPLEMENTED',
+     'DLL native/src/Plugin.cpp InputSink（BSInputDeviceManager，主執行緒）→ Timer.h KeyCodeOf／HotkeyElement／InputOpen／PlanSwitch → RequestSwitch → ESSB_Switch → ESSBController.SwitchForm；ESSBFormPowerEffect → ESSBNative.RequestSwitch',
+     'round 25（N6，裁定 R6）：ESSBInput 刪除；主控台、文字輸入框、選單裡按熱鍵不觸發；DLL 先寫全域變數（下一刀就吃到新元素）'),
+    ('2.10', '環境偵測每 5 秒（下雨下雪、暴風雪與雷雨、夜晚、在水中）', 'IMPLEMENTED',
+     'DLL native/include/Timer.h Environment ← Plugin.cpp EnvironmentCheck（計時器每 5 秒）→ ESSB_EnvWet／EnvStormy／EnvThunder／EnvNight',
+     'round 25（N6）：ESSBController.EnvCheck 刪除；天氣分類同 Papyrus GetClassification，室內沒有天氣，游泳或水下算浸濕；審查修正：暴風雪＝下雪且天氣風速 ≥ 128／255（ESSB_EnvStormy，凍結累積 ×2），雷雨＝下雨且天氣有雷電頻率（≠ 255，ESSB_EnvThunder），不再是「任何雨雪」'),
+    ('2.10', '雷雨天氣 → 雷形態每 3 秒自動 +1 電荷', 'IMPLEMENTED',
+     'DLL native/include/Timer.h PlanFormSecond（讀 ESSB_EnvThunder；3 秒 × 冷卻倍率的時鐘是你身上的 ESSB_N6_StormCooldown）',
+     'round 25（N6）：Papyrus 的 3 秒計時刪除；第一格在進入雷雨的那一秒就給（Papyrus 要等 3 秒）；審查修正：只有真的雷雨（下雨且有雷電）'),
+    ('5.1', '沉默：無法施法、不回魔（每秒把魔力扣到 0）', 'IMPLEMENTED',
+     'DLL native/include/StatusEngine.h RunOp（施放沉默當下扣到 0）＋ Plugin.cpp SilenceSecond（計時器每秒）；MagickaRateMult -100 在法術本身',
+     'round 25（N6）：ESSBSilence 腳本刪除'),
     ('2.9', '擊殺掛勾讀屍體（死亡處理）', 'IMPLEMENTED',
      'DLL native/src/Plugin.cpp OnDeathCpp／DeathCpp → DLL native/include/Reactions.h PlanDeath',
      'round 24：死亡 sink（dead = false，屍體還帶著效果）在 sink 裡只讀屍體與兇手，task 裡掃一次群體後照 v0.4 結算；每個死者只處理一次；ESSB_Death 快照與 Papyrus 的擊殺掛勾刪除'),

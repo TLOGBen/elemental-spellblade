@@ -139,6 +139,8 @@ enum class Op : std::uint8_t
     kHush,            // 寂 on the target: magnitude = layers (ESSB_Hush, its 10 s; the old instance dispelled first)
     kTimed,           // a timed utility (build/fix24_records.py TIMED): element = TimedKind, magnitude, `seconds`
     kNoop,            // a body event the body pass consumed (Reactions.h): nothing left to do
+    // Round 25 (N6)
+    kStaminaTarget,   // an ally's stamina + magnitude (ESSB_UtilTarget_RestoreStamina: 長河)
 };
 
 enum class Who : std::uint8_t
@@ -176,8 +178,13 @@ enum class Event : std::uint8_t
     kAsh,          // (no values) the corpse turns to ash (ESSBController.ApplyAsh, the disintegration)
     kRaise,        // tier, level cap, seconds, attack bonus (0.1 a curse layer at 5+), 1 = permanent: 亡者歸來
     kSneak,        // seconds: 連殺 -- keep sneaking (ESSBController.KeepSneak)
-    kDomain,       // element, seconds, radius (units): a Papyrus domain (N6) centred on the target
+    kDomain,       // element, seconds, radius (units): a domain at the target's feet -- round 25 (N6): the engine adapter
+                   // casts the element's Spawn Hazard spell on the target (StatusEngine.h RunOp, Timer.h DomainSpawn);
+                   // Papyrus only plays the opening effect
     kOverheat,     // (body only) the white-hot fuse ran out: the fire-marked hostiles within 15 m detonate
+    // Round 25 (N6): the DLL's timer and hotkeys decide, Papyrus changes the form (v0.4 1.1: 形態開關 Papyrus)
+    kSwitch,       // element, 1 = opened from no form: a hotkey / the Z power switched (the DLL already wrote the globals)
+    kClose,        // (no values) 魔力歸零 2 秒: close the form (ESSBController.CloseForm)
     kCount,
 };
 
@@ -2625,6 +2632,16 @@ constexpr int WholeSeconds(float seconds, int maximum) noexcept
     return std::clamp(static_cast<int>(seconds + 0.5f), 1, maximum);
 }
 
+// Round 25 (N6): the spell that places a domain of `element` lasting `seconds` × ESSB_MultDuration (whole seconds,
+// build/fix25_records.py: the HAZD inherits the spell's duration); 0 = the element has no domain (lightning, wind).
+constexpr std::uint32_t DomainSpawnSpell(int element, float seconds, const Tuning& t) noexcept
+{
+    if (element < kFire || element > kAstral || seconds <= 0.0f) {
+        return 0;
+    }
+    return status::kDomainSpawn[element][WholeSeconds(Scaled(t, seconds), kDomainMaxSeconds) - 1];
+}
+
 // The cast an op turns into: spell (local FormID), magnitude override, effectiveness, and the running instances that
 // are dispelled first (0 = none). Remove ops have spell 0 and only the dispel.
 struct Lowered {
@@ -2730,8 +2747,9 @@ constexpr Lowered Lower(const StatusOp& op, float slowCapPct) noexcept
         break;
     case Op::kDrainMagicka:
     case Op::kHealTarget:
+    case Op::kStaminaTarget:
         if (op.magnitude > 0.0f) {
-            out.spell = op.op == Op::kDrainMagicka ? spell::kDrainMagicka : spell::kHealTarget;
+            out.spell = op.op == Op::kDrainMagicka ? spell::kDrainMagicka : op.op == Op::kHealTarget ? spell::kHealTarget : spell::kStaminaTarget;
             out.magnitude = op.magnitude;
         }
         break;

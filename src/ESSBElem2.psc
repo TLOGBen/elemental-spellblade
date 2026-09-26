@@ -114,26 +114,4 @@ Bool Function HasSilent(ESSBController akCtl) Global
 	Return ESSBNodes.Br(akCtl, 4, 0, 2, 1) ; @node 無聲
 EndFunction
 
-; 5.7 持續傳奇分支「御風」：同調三段時免疫減速。
-Bool Function WindSlowImmune(ESSBController akCtl) Global
-	Return ESSBNodes.Br(akCtl, 4, 0, 4, 0) && akCtl.SyncStage() >= 3 ; @node 御風
-EndFunction
-
-; 5.7 持續傳奇分支「御風」：失衡目標受你所有傷害 +30%（不看同調；v0.4 只有免疫減速看同調三段）；
-; 5.7 關閉傳奇分支「空中追擊」：浮空目標受你所有傷害 ×1.5。只給 Papyrus 反應本體的傷害（ApplyDamage）；
-; 附傷的同一項由 DLL 讀（Status.h ProcTerms），武器傷害那一半是 PERK 讀失衡效果。
-Float Function TargetDamageMult(ESSBController akCtl, Actor akTarget) Global
-	Float mult = 1.0
-	If !akTarget
-		Return mult
-	EndIf
-	If ESSBNodes.Br(akCtl, 4, 0, 4, 0) && ESSBNative.GetStatus(akTarget, 4) > 0 ; @node 御風
-		mult = mult * 1.3
-	EndIf
-	If ESSBNodes.Br(akCtl, 4, 2, 4, 0) && ESSBNative.GetStatusFloat(akTarget, 14) > 0.0 ; @node 空中追擊
-		mult = mult * 1.5
-	EndIf
-	Return mult
-EndFunction
-
 

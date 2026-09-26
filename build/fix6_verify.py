@@ -138,6 +138,16 @@ def legacy_src():
     return fix24_history.legacy_source()
 
 
+def r24_src():
+    # Round 25 (N6): 長流 (FlowPercent) moved into the DLL timer (Timer.h FlowFraction, tested by native/tests/timer_test.cpp
+    # against build/fix25_reference.py); the Papyrus value checks run on the scripts round 24 shipped, which
+    # build/fix25_history.py ties to today's (declared changes only).
+    import sys
+    sys.path.insert(0,str(ROOT/'build'))
+    import fix25_history
+    return fix25_history.legacy_source()
+
+
 def run():
     import sys
     sys.path.insert(0,str(ROOT))
@@ -269,7 +279,7 @@ def run():
     # Actual water helper, including same bonuses at all MCM scales.
     water=[]
     for scale in [1,3,5]:
-        ctl=Ctl(settings);ctl.NodeScale.x=scale;reg=make_scripts(ROOT/'src',ctl)
+        ctl=Ctl(settings);ctl.NodeScale.x=scale;reg=make_scripts(r24_src(),ctl)
         value=reg['ESSBElem3'].FlowPercent(ctl);assert math.isclose(value,.08)
         old=make_scripts(legacy_src(),Ctl(settings));assert old['ESSBElem3'].WetSlow(ctl)==settings['water_wet_slow_pct']
         water.append(dict(node_scale=scale,regen_pct=value*100,health_300=value*300,health_500=value*500))

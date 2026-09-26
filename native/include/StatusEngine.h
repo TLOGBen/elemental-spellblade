@@ -136,7 +136,9 @@ void RunOp(E& engine, const StatusOp& op, const Tuning& tuning)
         engine.PayHealth(op.magnitude);   // v0.4 5.3 代價：直接扣生命，永遠留 1 點（the engine clamps）
         break;
     case Op::kWash: {
-        const int removed = Wash(engine, Who::kTarget, 999, [&](const EffectView& v, bool washed) { engine.LogWash(v, washed); });
+        // round 25: `element` > 0 is how many buffs at most (潮池: one a second); 0 = all of them
+        const int limit = op.element > 0 ? op.element : 999;
+        const int removed = Wash(engine, Who::kTarget, limit, [&](const EffectView& v, bool washed) { engine.LogWash(v, washed); });
         const float refund = op.magnitude * static_cast<float>(removed) * tuning.multRecovery;   // 淨潮
         if (removed > 0 && refund > 0.0f) {
             engine.Cast(Who::kPlayer, spell::kHeal, refund, 1.0f);
@@ -145,9 +147,20 @@ void RunOp(E& engine, const StatusOp& op, const Tuning& tuning)
         break;
     }
     case Op::kEvent:
+        if (op.event == Event::kDomain) {
+            // Round 25 (N6, ruling R4): the domain is an engine hazard at the target's feet -- the element's Spawn Hazard
+            // spell for the whole seconds (× ESSB_MultDuration), no magnitude override (the hazard keeps its record
+            // magnitudes). The ModEvent after it only plays the opening effect in Papyrus.
+            if (const std::uint32_t spawn = DomainSpawnSpell(static_cast<int>(op.arg[0] + 0.5f), op.arg[1], tuning)) {
+                engine.Cast(Who::kTarget, spawn, 0.0f, 1.0f);
+            }
+        }
         if (!BodyOnly(op.event)) {
             engine.Send(op);   // round 24: a body event left over (the body pass bounded) is never sent to Papyrus
         }
+        break;
+    case Op::kSilence:
+        engine.DrainMagickaAll(on);   // round 25: the silence takes the magicka to 0 at once (the second's drain keeps it there)
         break;
     // Round 23 (N4): the engine-side ops (stamina, the resonance count, the interrupt task, 碎岩's ring, 冰心's scan).
     case Op::kPayStamina:
@@ -393,8 +406,17 @@ inline std::vector<std::uint32_t> CastSpells()
     for (const std::uint32_t id : { spell::kTrueDamage, spell::kHeal, spell::kRestoreMagicka, spell::kRestoreStamina, spell::kBleedTick,
              spell::kSpendMagicka, spell::kDrainStamina, spell::kRiposte, spell::kDispelMark, spell::kBloodGuard,
              // round 24 (N5): the bodies' casts
-             spell::kDrainMagicka, spell::kHealTarget, spell::kHush }) {
+             spell::kDrainMagicka, spell::kHealTarget, spell::kHush,
+             // round 25 (N6): 長河's ally stamina
+             spell::kStaminaTarget }) {
         out.push_back(id);
+    }
+    for (const auto& element : status::kDomainSpawn) {   // round 25 (N6): the domains' Spawn Hazard spells
+        for (const std::uint32_t id : element) {
+            if (id) {
+                out.push_back(id);
+            }
+        }
     }
     for (const std::uint32_t id : spell::kSoak) {
         out.push_back(id);

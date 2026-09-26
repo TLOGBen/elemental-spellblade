@@ -20,6 +20,10 @@
 // that has bodies reads ONE crowd (the high process list, main thread, handles collected first; StatusEngine.h
 // SelectCrowd), the body pass turns the plan's body events into casts on the crowd, and only what stays Papyrus (pushes,
 // fear / frenzy, the raise, the ash, keep-sneak, domains, experience, sounds) goes out as ModEvents.
+// Round 25 (N6): the timer does the per-second work Papyrus did (Timer.h: 維持費, 魔力歸零 2 秒, blood's upkeep, 長流 and
+// 長河, the environment every 5 s, the storm's charge, the silence's drain), counting only the time the game runs; the
+// domains are engine hazards the DLL places at the fused target's feet (Spawn Hazard) and finds again each second for
+// what they do to you and to the enemies inside; the hotkeys come through an input event sink.
 // The design state lives in those effects; `state` holds only handles, forms and faults. Faults latch the handler OFF
 // until the game restarts.
 #include "EngineFacts.h"
@@ -31,6 +35,7 @@
 #include "SelfLayer.h"
 #include "Status.h"
 #include "StatusEngine.h"
+#include "Timer.h"
 #include "TrueHud.h"
 
 #include <Windows.h>
@@ -121,6 +126,18 @@ struct Forms {
     RE::BGSKeyword* dragon{};        // round 24: ActorTypeDragon (never knocked, raised or turned to ash)
     RE::EffectSetting* engaged{};    // round 24: 2.9 你主動攻擊過的目標 (ESSB_EngagedEffect, 30 s)
     RE::EffectSetting* reanimate{};  // round 24: your raised servant (ESSB_ReanimateEffect; 亡衛)
+    // Round 25 (N6): the domains (build/fix25_records.py): [element] -> the HAZD and its Spawn Hazard effect (null: none).
+    std::array<RE::BGSHazard*, essb::kElementCount + 1> domainHazards{};
+    std::array<RE::EffectSetting*, essb::kElementCount + 1> domainSpawn{};
+    // Round 25: the globals the timer and the hotkeys write or read (the DLL is the only writer of the first four).
+    RE::TESGlobal* envWet{};
+    RE::TESGlobal* envStormy{};   // 暴風雪 (the hit path's 凍結累積 ×2)
+    RE::TESGlobal* envThunder{};  // 審查修正: 雷雨 (the storm charge)
+    RE::TESGlobal* envNight{};
+    RE::TESGlobal* freeOpen{};             // ESSB_FreeOpen: 免門檻 (Papyrus sets it after a burst; opening uses it up)
+    RE::TESGlobal* hotkeysEnabled{};
+    RE::TESGlobal* formNotify{};
+    std::array<RE::TESGlobal*, essb::kElementCount> hotkeys{};
     RE::TESClass* necroClass{};
     RE::TESFaction* necroFaction{};
     std::vector<RE::BGSPerk*> mainPerks;    // [localId - kMainPerkBase]
@@ -142,21 +159,23 @@ struct State {
     // (native-verification-3 s6), and those removals are ours to handle, not expiries. Main thread only.
     bool selfDispel = false;
     std::atomic<std::uint64_t> lastProcNotice{};
-    std::uint64_t lastSecondMs = 0;  // cadence of the per-second timer work (main thread); not design state
+    essb::Cadence cadence{};         // round 25: the timer's clock (game-running time only; main thread); not design state
+    // 審查修正: the game-running ms this session (never reset, never saved) -- Papyrus's windows read it through
+    // ESSBNative.RunningSeconds so they stop with the game (paused, loading) like the DLL's own clock.
+    std::atomic<std::uint64_t> runningMs{};
+    bool stoppedLogged = false;      // probe N6-1: the stop was logged once (main thread)
     HANDLE log{ INVALID_HANDLE_VALUE };
     Forms forms{};
     std::optional<essb::SplitMix64> rng;  // damage rolls; seeded once per game process
     // Notices raised before the HUD exists (data load). Only touched from SKSE messages (main thread).
     std::vector<std::string> deferredNotices;
     DWORD mainThread = 0;
-    std::array<std::atomic_bool, 8> threadLogged{};  // probe X1: each sink logs its thread once
+    std::array<std::atomic_bool, 10> threadLogged{};  // probe X1: each sink logs its thread once
     // Round 23: the hits you took this frame, between the hit sink (before the damage) and the one task that reads the
     // damage (native-verification-2 s15). Plumbing between two calls of the same frame, not design state.
     std::mutex hurtLock;
     std::vector<std::pair<RE::ActorHandle, essb::HurtFacts>> hurts;
     std::atomic_bool hurtQueued{};
-    std::uint64_t lastSelfSecondMs = 0;   // cadence of the self layer's per-second work (main thread)
-    std::uint64_t lastTickMs = 0;         // the sprint refund's elapsed time (main thread)
     // Probe N4-2 (debug level 3 only): the last actor you hit and its casters' last logged state (main thread).
     RE::ActorHandle probeTarget{};
     std::array<int, 2> probeCaster{ -1, -1 };
@@ -218,6 +237,7 @@ enum class Probe
     kHurt,
     kCast,
     kNativeTask,   // round 24 review fix 1: the queued native work
+    kInput,        // round 25 (N6): the hotkey input sink (probe N6-2)
 };
 
 void LogThreadOnce(Probe which, const char* name) noexcept
@@ -841,7 +861,7 @@ void QueueMarkerDispel(Marker marker)
 // with '|' (ESSBController parses them with StringUtil.Split).
 constexpr const char* kEventNames[] = { "ESSB_Open", "ESSB_End", "ESSB_Frozen", "ESSB_Hallucinate", "ESSB_Judgment", "ESSB_Splash",
     "ESSB_Shatter", "ESSB_Landing", "ESSB_Rise", "ESSB_Discharge", "ESSB_Blade", "ESSB_Knock", "ESSB_SyncUp", "ESSB_Cleanse",
-    "ESSB_Lethal", "ESSB_Push", "ESSB_Ash", "ESSB_Raise", "ESSB_Sneak", "ESSB_Domain", "ESSB_Overheat" };
+    "ESSB_Lethal", "ESSB_Push", "ESSB_Ash", "ESSB_Raise", "ESSB_Sneak", "ESSB_Domain", "ESSB_Overheat", "ESSB_Switch", "ESSB_Close" };
 static_assert(std::size(kEventNames) == static_cast<int>(essb::Event::kCount));
 
 void SendEvent(const essb::StatusOp& op, RE::Actor* target, RE::Actor* centre = nullptr)
@@ -871,6 +891,17 @@ void SendEvent(const essb::StatusOp& op, RE::Actor* target, RE::Actor* centre = 
 // Round 23 (N4): the engine-side ops (StatusEngine.h RunOp). Defined below.
 void QueueInterrupt(RE::ActorHandle actor);                         // InterruptCast(false) in a task (s9)
 void CrowdOpOutsideBodies(const char* what) noexcept;               // round 24: the crowd ops belong to the body pass
+
+// Round 25 (N6): the silence's drain (v0.4 5.1 沉默中無法施法、不回魔): the actor's current magicka to 0, the same
+// actor-value path as Papyrus DamageActorValue (the effect's MagickaRateMult -100 keeps it from coming back).
+void DrainAllMagicka(RE::Actor& actor)
+{
+    auto* values = actor.AsActorValueOwner();
+    const float current = values->GetActorValue(RE::ActorValue::kMagicka);
+    if (current > 0.0f) {
+        values->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kMagicka, -current);
+    }
+}
 
 // The write half of the engine adapter StatusEngine.h runs on: Dispel(true), CastSpellImmediate from the player's
 // instant caster, the cost path, the ModEvent, the self-dispel flag the removal sink reads.
@@ -912,6 +943,14 @@ public:
     }
 
     bool Dead(essb::Who who) { return On(who).IsDead(); }
+
+    // Round 25 (N6): a silence takes the magicka to 0 at once (was ESSBSilence.OnEffectStart).
+    void DrainMagickaAll(essb::Who who)
+    {
+        if (RE::Actor* actor = ActorOf(who)) {
+            DrainAllMagicka(*actor);
+        }
+    }
 
     void PayHealth(float amount)
     {
@@ -1001,19 +1040,6 @@ public:
         essb::engine::RunPlan(engine_, plan, tuning_);
     }
 
-    // Ruling R5 (StatusEngine.h Washes); 淨潮 refunds `refund` health and magicka per removed buff. Returns the count.
-    int Wash(int limit, float refund)
-    {
-        const int removed = essb::engine::Wash(engine_, essb::Who::kTarget, limit,
-            [&](const essb::engine::EffectView& v, bool washed) { engine_.LogWash(v, washed); });
-        const float amount = refund * static_cast<float>(removed) * tuning_.multRecovery;
-        if (removed > 0 && amount > 0.0f) {
-            engine_.Cast(essb::Who::kPlayer, essb::spell::kHeal, amount, kEffectiveness);
-            engine_.Cast(essb::Who::kPlayer, essb::spell::kRestoreMagicka, amount, kEffectiveness);
-        }
-        return removed;
-    }
-
 private:
     RealEngine engine_;
     const essb::Tuning& tuning_;
@@ -1052,6 +1078,12 @@ bool FormIsActive() noexcept
 std::array<float, 3> PosOf(const RE::Actor& actor)
 {
     const RE::NiPoint3 p = actor.GetPosition();
+    return { p.x, p.y, p.z };
+}
+
+std::array<float, 3> PosOfRef(const RE::TESObjectREFR& ref)
+{
+    const RE::NiPoint3 p = ref.GetPosition();
     return { p.x, p.y, p.z };
 }
 
@@ -2135,16 +2167,123 @@ void FireSecond(RE::PlayerCharacter& player, essb::Board& selfBoard, Context& c,
     }
 }
 
-// Per second, on every hostile within 50 m (round 22, until N5 owns the per-second points): 放血 (2.3: each bleed layer
-// takes 0.3% of the target's CURRENT health, bosses 0.1%, +0.01% per point of 流血每層傷害, no G(L), no resist) and 瘟疫
-// (5.10, 待決 in v0.4 10.4: at sync 3, a poisoned target has 5% per point to pass one dose to an enemy within 3 m; the
-// v0.3 rule, now with the dose merged into that enemy's poison). Both lived in the deleted status container.
+// ---------------------------------------------------------------- round 25 (N6): the domains the engine holds
+
+// The live domains (v0.4 2.9: 3 m, 5 s / 8 s; ruling R4: engine hazards, no limit of 3) within `radius` of you: each
+// hazard of ours whose owner is you, found two ways (both read-only, main thread) -- the references of the loaded cells
+// near you, and the Spawn Hazard effect on the actors of the high process list (its hazard handle; the effect lasts as
+// long as the hazard, build/fix25_records.py). Counted once each. Probe N6-3 logs both counts.
+struct DomainScan {
+    std::vector<essb::DomainSite> sites;
+    std::vector<const RE::TESObjectREFR*> seen;
+    int fromCells = 0;
+    int fromEffects = 0;
+};
+
+int DomainElementOf(const RE::BGSHazard* base) noexcept
+{
+    for (int e = essb::kFire; e <= essb::kAstral; ++e) {
+        if (base && state.forms.domainHazards[e] == base) {
+            return e;
+        }
+    }
+    return 0;
+}
+
+bool AddDomain(DomainScan& scan, RE::TESObjectREFR* ref, RE::PlayerCharacter& player, float radius)
+{
+    if (!ref || ref->GetFormType() != RE::FormType::PlacedHazard || ref->IsDisabled() || ref->IsDeleted()) {
+        return false;
+    }
+    if (std::find(scan.seen.begin(), scan.seen.end(), ref) != scan.seen.end()) {
+        return false;
+    }
+    auto* hazard = static_cast<RE::Hazard*>(ref);
+    const auto& data = hazard->GetHazardRuntimeData();
+    const int element = DomainElementOf(data.hazard);
+    if (element == 0) {
+        return false;
+    }
+    auto owner = data.ownerActor.get();
+    if (owner.get() != &player || (data.lifetime > 0.0f && data.age >= data.lifetime)) {
+        return false;
+    }
+    if (ref->GetPosition().GetDistance(player.GetPosition()) > radius) {
+        return false;
+    }
+    scan.seen.push_back(ref);
+    scan.sites.push_back(essb::DomainSite{ element, PosOfRef(*ref) });
+    if (state.forms.debug->value >= 3.0f) {   // probe N6-3: every live domain the second found
+        Logf("[ESSB][N6-3][L3] domain element=%d ref=%08X age=%.1f lifetime=%.1f radius=%.2f magnitude=%.2f owner=you d=%.0f", element,
+            ref->GetFormID(), data.age, data.lifetime, data.radius, data.magnitude, ref->GetPosition().GetDistance(player.GetPosition()));
+    }
+    return true;
+}
+
+DomainScan ScanDomains(RE::PlayerCharacter& player, float radius)
+{
+    DomainScan scan;
+    if (auto* tes = RE::TES::GetSingleton()) {
+        tes->ForEachReferenceInRange(&player, radius, [&](RE::TESObjectREFR* ref) {
+            if (ref && ref->GetFormType() == RE::FormType::PlacedHazard && AddDomain(scan, ref, player, radius)) {
+                ++scan.fromCells;
+            }
+            return RE::BSContainer::ForEachResult::kContinue;
+        });
+    }
+    if (auto* lists = RE::ProcessLists::GetSingleton()) {
+        std::vector<RE::NiPointer<RE::TESObjectREFR>> hazards;
+        for (auto& handle : lists->highActorHandles) {
+            auto actorPtr = handle.get();
+            RE::Actor* actor = actorPtr.get();
+            if (!actor) {
+                continue;
+            }
+            ForEachRunningEffect(*actor, [&](RE::ActiveEffect& effect, RE::EffectSetting& base) {
+                for (int e = essb::kFire; e <= essb::kAstral; ++e) {
+                    if (state.forms.domainSpawn[e] == &base && base.GetArchetype() == RE::EffectSetting::Archetype::kSpawnHazard) {
+                        if (auto ref = static_cast<RE::SpawnHazardEffect&>(effect).hazard.get()) {
+                            hazards.push_back(ref);
+                        }
+                    }
+                }
+            });
+        }
+        for (auto& ref : hazards) {
+            if (AddDomain(scan, ref.get(), player, radius)) {
+                ++scan.fromEffects;
+            }
+        }
+    }
+    if (state.forms.debug->value >= 3.0f && !scan.sites.empty()) {
+        Logf("[ESSB][N6-3][L3] domains=%d cells=%d effects=%d", static_cast<int>(scan.sites.size()), scan.fromCells, scan.fromEffects);
+    }
+    return scan;
+}
+
+essb::DomainSet InsideAt(const DomainScan& scan, const RE::NiPoint3& at)
+{
+    essb::DomainSet in{};
+    for (const auto& site : scan.sites) {
+        const RE::NiPoint3 p{ site.pos[0], site.pos[1], site.pos[2] };
+        if (essb::IsElement(site.element) && p.GetDistance(at) <= essb::n6::kDomainRadius) {
+            in[site.element] = true;
+        }
+    }
+    return in;
+}
+
+// Per second, on every hostile within 50 m (round 22): 放血 (2.3: each bleed layer takes 0.3% of the target's CURRENT
+// health, bosses 0.1%, +0.01% per point of 流血每層傷害, no G(L), no resist) and 瘟疫 / 瘴氣 (the doses merged into each
+// neighbour's one poison); round 25 (N6): what a live domain does to it (Timer.h PlanDomainEnemy: 冰原 slow, 地裂 knock,
+// 毒霧 +1 dose (R5), 潮池 one buff washed, 死域 dark damage).
 template <class Nodes>
-void TargetSecond(RE::PlayerCharacter& player, const essb::Board& selfBoard, Context& c, const Nodes& nodes)
+void TargetSecond(RE::PlayerCharacter& player, const essb::Board& selfBoard, Context& c, const Nodes& nodes, const DomainScan& domains)
 {
     using K = essb::StatusKind;
     const float drainRate = essb::n3::kBleedDrain + essb::n3::kBleedDrainPerPoint * static_cast<float>(nodes.Rank(essb::node::kBloodLayerDamage));
     const auto hostiles = HostilesNear(player, 3500.0f);
+    const float refund = nodes.Has(essb::node::kWaterPurgeTide) ? essb::n6::kPurgeTideRefund * kConfig.damage[essb::kWater][1] : 0.0f;
     // Gives `doses` to `to` through 2.7 擴散一劑 (the same rule as 淬毒's transfer and 濃毒): read, grow, re-apply.
     auto spread = [&](RE::Actor& to, float doses) {
         essb::Board toBoard = ReadBoard(to);
@@ -2162,6 +2301,18 @@ void TargetSecond(RE::PlayerCharacter& player, const essb::Board& selfBoard, Con
             continue;
         }
         essb::Board board = ReadBoard(*enemy);
+        if (!domains.sites.empty()) {
+            const essb::DomainSet inside = InsideAt(domains, enemy->GetPosition());
+            if (std::any_of(inside.begin(), inside.end(), [](bool b) { return b; })) {
+                Context tc = c;
+                tc.in.body = ReadBody(*enemy, player, TargetFactsOf(*enemy));
+                auto planPtr = std::make_unique<essb::StatusPlan>();
+                essb::StatusPlan& plan = *planPtr;
+                essb::PlanDomainEnemy(plan, board, inside, tc.in, selfBoard, nodes, refund);
+                Executor(player, enemy, c.tuning).Run(plan);
+                board = ReadBoard(*enemy);   // the dose / the wash changed it
+            }
+        }
         const int layers = board.Layers(K::kBleed);
         if (layers > 0 && board.bleedDot.has) {
             const bool vip = TargetFactsOf(*enemy).vip;
@@ -2205,7 +2356,172 @@ void TargetSecond(RE::PlayerCharacter& player, const essb::Board& selfBoard, Con
             spread(*nearest, 1.0f);
         }
     }
-    (void)selfBoard;
+}
+
+// Round 25 (N6): the silence takes the magicka to 0 every second while it lasts (it was ESSBSilence's OnUpdate; v0.4
+// 5.1 沉默中無法施法、不回魔): anyone within 50 m carrying our silence effect.
+void SilenceSecond(RE::PlayerCharacter& player)
+{
+    auto* lists = RE::ProcessLists::GetSingleton();
+    if (!lists || !state.forms.silence) {
+        return;
+    }
+    std::vector<RE::NiPointer<RE::Actor>> silenced;
+    for (auto& handle : lists->highActorHandles) {
+        auto ptr = handle.get();
+        RE::Actor* actor = ptr.get();
+        if (actor && !actor->IsDead() && actor->GetPosition().GetDistance(player.GetPosition()) <= 3500.0f &&
+            HasOurEffect(*actor, state.forms.silence)) {
+            silenced.push_back(ptr);
+        }
+    }
+    for (auto& ptr : silenced) {
+        DrainAllMagicka(*ptr);
+    }
+}
+
+// Round 25 (N6): the allies 長河 reaches (v0.4 5.11「附近同伴」: teammates and your summons within 6 m, 5 at most, nearest
+// first), as op members 1.. of `out` (out[0] stays null: the second's own ops are on you).
+std::vector<essb::Ally> AlliesNear(RE::PlayerCharacter& player, std::vector<RE::Actor*>& out, std::vector<RE::NiPointer<RE::Actor>>& keep)
+{
+    std::vector<std::pair<float, RE::NiPointer<RE::Actor>>> found;
+    if (auto* lists = RE::ProcessLists::GetSingleton()) {
+        for (auto& handle : lists->highActorHandles) {
+            auto ptr = handle.get();
+            RE::Actor* actor = ptr.get();
+            if (!actor || actor == &player || actor->IsDead() || !actor->Is3DLoaded() || !(actor->IsPlayerTeammate() || actor->IsCommandedActor())) {
+                continue;
+            }
+            const float d = actor->GetPosition().GetDistance(player.GetPosition());
+            if (d <= essb::n6::kRiverRadius) {
+                found.push_back({ d, ptr });
+            }
+        }
+    }
+    std::sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    std::vector<essb::Ally> allies;
+    out.assign(1, nullptr);
+    for (auto& [d, ptr] : found) {
+        if (static_cast<int>(allies.size()) >= essb::n6::kRiverAllies) {
+            break;
+        }
+        RE::Actor* actor = ptr.get();
+        allies.push_back(essb::Ally{ static_cast<int>(out.size()), MaxOf(*actor, RE::ActorValue::kHealth), MaxOf(*actor, RE::ActorValue::kStamina) });
+        out.push_back(actor);
+        keep.push_back(ptr);
+    }
+    return allies;
+}
+
+// Round 25 (N6): 1.1 維持費 / 魔力歸零 2 秒 / 血形態扣血, 5.11 長流 and 長河, 2.10 雷雨 -- Timer.h PlanFormSecond.
+template <class Nodes>
+essb::FormSecond FormSecondWork(RE::PlayerCharacter& player, essb::Board& selfBoard, Context& c, const Nodes& nodes, essb::StatusPlan& plan)
+{
+    essb::SecondFacts f;
+    f.form = c.in.formElement;
+    auto* v = player.AsActorValueOwner();
+    f.magicka = v->GetActorValue(RE::ActorValue::kMagicka);
+    f.magickaMax = MaxOf(player, RE::ActorValue::kMagicka);
+    f.health = v->GetActorValue(RE::ActorValue::kHealth);
+    f.healthMax = MaxOf(player, RE::ActorValue::kHealth);
+    f.healthPermanent = v->GetPermanentActorValue(RE::ActorValue::kHealth);
+    f.stamina = v->GetActorValue(RE::ActorValue::kStamina);
+    f.staminaMax = MaxOf(player, RE::ActorValue::kStamina);
+    f.thunder = state.forms.envThunder && state.forms.envThunder->value == 1.0f;   // 審查修正: 雷雨, not any rain or snow
+    const essb::TimerTuning tt = essb::ReadTimerTuning(Global);
+    std::vector<RE::Actor*> members;
+    std::vector<RE::NiPointer<RE::Actor>> keep;
+    std::array<essb::Ally, essb::n6::kRiverAllies> allies{};
+    int allyCount = 0;
+    if (f.form == essb::kWater && c.tuning.syncStage >= 3 && nodes.Rank(essb::node::kWaterLongRiver) > 0) {
+        const auto reached = AlliesNear(player, members, keep);
+        for (const auto& a : reached) {
+            allies[allyCount++] = a;
+        }
+    }
+    auto ownPtr = std::make_unique<essb::StatusPlan>();
+    essb::StatusPlan& own = *ownPtr;
+    const essb::FormSecond out = essb::PlanFormSecond(own, selfBoard, f, c.in, tt, nodes, allies, allyCount);
+    if (allyCount > 0) {
+        Executor(player, nullptr, c.tuning, &members).Run(own);   // 長河's ops name their ally
+    } else {
+        for (int i = 0; i < own.count; ++i) {
+            plan.Push(own.ops[i]);   // the rest joins the second's plan on you
+        }
+    }
+    if (state.forms.debug->value >= 2.0f && (out.spent > 0.0f || out.bled > 0.0f || out.flow > 0.0f || out.closing || out.charged)) {
+        Logf("[ESSB][second][L2] form=%d spent=%.2f bled=%.2f flow=%.4f allies=%d close=%d storm=%d", f.form, out.spent, out.bled, out.flow,
+            allyCount, out.closing ? 1 : 0, out.charged ? 1 : 0);
+    }
+    return out;
+}
+
+// Round 25 (N6): the environment every 5 s (v0.4 2.10, was ESSBController.EnvCheck): the weather's classification, an
+// interior cell, swimming / under water, the game hour -> ESSB_EnvWet / EnvStormy / EnvThunder / EnvNight (the DLL is
+// their writer). 審查修正: 暴風雪 = snow with the weather's wind speed at half or more, 雷雨 = rain with a lightning
+// frequency (255 = none), from the weather record's DATA.
+void EnvironmentCheck(RE::PlayerCharacter& player)
+{
+    essb::EnvFacts facts;
+    if (auto* sky = RE::Sky::GetSingleton(); sky && sky->currentWeather) {
+        const auto& data = sky->currentWeather->data;
+        facts.weather = essb::WeatherClass(static_cast<std::uint8_t>(data.flags.underlying()));
+        facts.lightning = static_cast<std::uint8_t>(data.thunderLightningFrequency);
+        facts.wind = data.windSpeed;
+    }
+    const auto* cell = player.GetParentCell();
+    facts.interior = cell && cell->IsInteriorCell();
+    const auto* actorState = player.AsActorState();
+    facts.swimming = actorState && actorState->IsSwimming();
+    // PO3 IsRefUnderwater's test (the reference's position more than 87.5% under the water level).
+    const RE::TESObjectREFR& ref = player;
+    facts.underwater = ref.IsPointSubmergedMoreThan(player.GetPosition(), player.GetParentCell(), 0.875f);
+    if (auto* calendar = RE::Calendar::GetSingleton()) {
+        facts.hour = calendar->GetHour();
+    }
+    const essb::EnvFlags e = essb::Environment(facts);
+    const auto& f = state.forms;
+    const bool changed = (f.envWet && f.envWet->value != (e.wet ? 1.0f : 0.0f)) || (f.envStormy && f.envStormy->value != (e.stormy ? 1.0f : 0.0f)) ||
+                         (f.envThunder && f.envThunder->value != (e.thunder ? 1.0f : 0.0f)) ||
+                         (f.envNight && f.envNight->value != (e.night ? 1.0f : 0.0f));
+    SetMirror(f.envWet, e.wet ? 1.0f : 0.0f);
+    SetMirror(f.envStormy, e.stormy ? 1.0f : 0.0f);
+    SetMirror(f.envThunder, e.thunder ? 1.0f : 0.0f);
+    SetMirror(f.envNight, e.night ? 1.0f : 0.0f);
+    if (changed && f.debug->value >= 1.0f) {   // v0.4 6.1: 環境加成切換
+        Logf("[ESSB][env][L1] wet=%d stormy=%d thunder=%d night=%d classification=%d lightning=%d wind=%d hour=%.2f interior=%d swimming=%d "
+             "underwater=%d",
+            e.wet ? 1 : 0, e.stormy ? 1 : 0, e.thunder ? 1 : 0, e.night ? 1 : 0, facts.weather, static_cast<int>(facts.lightning),
+            static_cast<int>(facts.wind), facts.hour, facts.interior ? 1 : 0, facts.swimming ? 1 : 0, facts.underwater ? 1 : 0);
+    }
+}
+
+// Round 25 (N6): 冰原「你在其中免疫減速」, 定神, 御風 -- every tick, while immune, your slows are dispelled (Timer.h IsSlow:
+// a timed, detrimental modifier on SpeedMult). Collected first, dispelled after the walk.
+template <class Nodes>
+void SlowImmunity(RE::PlayerCharacter& player, const essb::Board& me, const essb::Tuning& t, const Nodes& nodes)
+{
+    if (!essb::SlowImmune(me, t, nodes)) {
+        return;
+    }
+    std::vector<RE::ActiveEffect*> found;
+    ForEachRunningEffect(player, [&](RE::ActiveEffect& effect, RE::EffectSetting& base) {
+        essb::SlowView v;
+        v.archetype = static_cast<int>(base.GetArchetype());
+        v.primaryAV = static_cast<int>(base.data.primaryAV);
+        v.secondaryAV = static_cast<int>(base.data.secondaryAV);
+        v.detrimental = base.IsDetrimental();
+        v.duration = effect.duration;
+        if (essb::IsSlow(v)) {
+            found.push_back(&effect);
+        }
+    });
+    for (RE::ActiveEffect* effect : found) {
+        effect->Dispel(true);
+    }
+    if (!found.empty() && state.forms.debug->value >= 2.0f) {
+        Logf("[ESSB][slow][L2] immune: %d slow(s) dispelled", static_cast<int>(found.size()));
+    }
 }
 
 // 1.1 風形態 / 5.7 疾風: while you sprint in the wind form, stamina comes back at 20% of the sprint drain (疾風 50%), the
@@ -2218,19 +2534,18 @@ float GameSetting(const char* name, float fallback)
     return setting ? setting->GetFloat() : fallback;
 }
 
+// Round 25: `seconds` is the game-running time of this timer step (Timer.h Step), so a pause refunds nothing.
 template <class Nodes>
-void WindSprint(RE::PlayerCharacter& player, const Context& c, const Nodes& nodes, std::uint64_t now)
+void WindSprint(RE::PlayerCharacter& player, const Context& c, const Nodes& nodes, float seconds)
 {
-    const std::uint64_t last = state.lastTickMs;
-    state.lastTickMs = now;
-    if (last == 0 || now <= last || c.in.formElement != essb::kWind) {
+    if (seconds <= 0.0f || c.in.formElement != essb::kWind) {
         return;
     }
     const auto* actorState = player.AsActorState();
     if (!actorState || !actorState->IsSprinting()) {
         return;
     }
-    const float seconds = (std::min)(static_cast<float>(now - last) / 1000.0f, 0.5f);
+    seconds = (std::min)(seconds, 0.5f);
     const float drain = GameSetting("fSprintStaminaDrainMult", 7.0f) *
                         (GameSetting("fSprintStaminaWeightBase", 1.0f) + GameSetting("fSprintStaminaWeightMult", 0.02f) * player.GetEquippedWeight());
     const float share = nodes.Has(essb::node::kWindGale) ? 0.5f : 0.2f;
@@ -2268,6 +2583,16 @@ void ProbeCasting()
     }
 }
 
+// Round 25 (N6, probe N6-1): the game does not run -- paused (Esc, the inventory, the console, Alt+Tab with the game
+// paused), loading, or between a load's start and its end. The timer counts none of that.
+bool GameStopped(RE::UI* ui)
+{
+    if (!state.inGame) {
+        return true;
+    }
+    return ui && (ui->GameIsPaused() || ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME));
+}
+
 void TickCpp() noexcept
 {
     try {
@@ -2278,10 +2603,29 @@ void TickCpp() noexcept
         }
         auto* ui = RE::UI::GetSingleton();
         auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!player || (ui && ui->GameIsPaused())) {
+        if (!player) {
             return;
         }
+        const bool stopped = GameStopped(ui);
+        const essb::Beat beat = essb::Step(state.cadence, GetTickCount64(), stopped);
+        state.runningMs.fetch_add(static_cast<std::uint64_t>(std::llround(beat.seconds * 1000.0f)));   // 0 while stopped
+        if (stopped) {
+            if (state.forms.debug->value >= 3.0f && !state.stoppedLogged) {   // probe N6-1: the clock stops
+                state.stoppedLogged = true;
+                Logf("[ESSB][N6-1][L3] stopped active=%llu ms", static_cast<unsigned long long>(state.cadence.active));
+            }
+            return;
+        }
+        if (state.stoppedLogged) {
+            state.stoppedLogged = false;
+            if (state.forms.debug->value >= 3.0f) {
+                Logf("[ESSB][N6-1][L3] running again active=%llu ms", static_cast<unsigned long long>(state.cadence.active));
+            }
+        }
         LogThreadOnce(Probe::kTick, "timer task");
+        if (beat.env) {
+            EnvironmentCheck(*player);   // round 25: before the second, so the storm's charge reads this check
+        }
         const auto perks = MakeNodes(*player, FormIsActive());
         Context c = MakeContext(*player, false);
         essb::Board selfBoard = ReadBoard(*player);
@@ -2289,17 +2633,24 @@ void TickCpp() noexcept
         auto planPtr = std::make_unique<essb::StatusPlan>();   // round 24: 28 KB, on the heap
         essb::StatusPlan& plan = *planPtr;
         essb::PlanDecay(plan, selfBoard, c.in, nodes);
-        const std::uint64_t now = GetTickCount64();
-        if (now - state.lastSecondMs >= 1000) {
-            state.lastSecondMs = now;
+        if (beat.second) {
+            // 審查修正: no domain node, no hazard of yours -- skip the 60 m cell walk (read each second, nothing cached).
+            const DomainScan domains = essb::HasDomainNode(nodes) ? ScanDomains(*player, essb::n6::kDomainScan) : DomainScan{};
             FireSecond(*player, selfBoard, c, nodes, plan);
-            TargetSecond(*player, selfBoard, c, nodes);
-        }
-        if (now - state.lastSelfSecondMs >= 1000) {
-            state.lastSelfSecondMs = now;
+            TargetSecond(*player, selfBoard, c, nodes, domains);
+            SilenceSecond(*player);
             essb::PlanSelfSecond(plan, selfBoard, c.player.magickaMax, c.in, nodes);   // round 23: 超載 decays
+            FormSecondWork(*player, selfBoard, c, nodes, plan);                         // round 25: 維持費, 長流, 雷雨
+            const essb::DomainSet inside = InsideAt(domains, player->GetPosition());
+            const essb::DomainSelf self = essb::PlanDomainSelf(plan, selfBoard, inside, c.in, nodes);
+            if (state.forms.debug->value >= 2.0f && (self.fuseExtended || std::any_of(inside.begin(), inside.end(), [](bool b) { return b; }))) {
+                Logf("[ESSB][domain][L2] you in: fire=%d frost=%d blood=%d divine=%d water=%d fuse+5=%d", inside[essb::kFire] ? 1 : 0,
+                    inside[essb::kFrost] ? 1 : 0, inside[essb::kBlood] ? 1 : 0, inside[essb::kDivine] ? 1 : 0, inside[essb::kWater] ? 1 : 0,
+                    self.fuseExtended ? 1 : 0);
+            }
         }
-        WindSprint(*player, c, nodes, now);
+        SlowImmunity(*player, selfBoard, c.tuning, nodes);   // round 25: 冰原 / 定神 / 御風, every tick
+        WindSprint(*player, c, nodes, beat.seconds);
         ProbeCasting();
         Executor(*player, nullptr, c.tuning).Run(plan);
         WriteMirrors(*player, selfBoard, nodes);   // an effect that ran out takes its mirror to 0
@@ -2341,6 +2692,165 @@ void TimerLoop() noexcept
         }
     }
 }
+
+// ---------------------------------------------------------------- round 25 (N6): hotkeys (ruling R6)
+
+// The switch both routes share (v0.4 1.1: 熱鍵與 Z 路線呼叫同一個切換函式): the hotkey sink and ESSBNative.RequestSwitch
+// (the form powers). Main thread. Timer.h PlanSwitch decides; the DLL writes ESSB_CurrentElement / ESSB_FormActive first
+// (the next hit already uses the new element), shows the one-line notice, then ESSB_Switch tells Papyrus to change the
+// form (abilities, sync keep, the burst on a close: v0.4 1.1 形態開關 Papyrus).
+void RequestSwitch(int element, const char* via)
+{
+    auto* player = RE::PlayerCharacter::GetSingleton();
+    auto& f = state.forms;
+    if (!player) {
+        return;
+    }
+    essb::SwitchFacts facts;
+    facts.enabled = f.enabled && f.enabled->value == 1.0f;
+    facts.dead = player->IsDead();
+    facts.active = f.formActive->value == 1.0f;
+    facts.current = static_cast<int>(f.element->value);
+    facts.magicka = player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kMagicka);
+    facts.magickaMax = MaxOf(*player, RE::ActorValue::kMagicka);
+    facts.freePass = MakeNodes(*player, facts.active).Has(essb::node::kCommonSmoothSwitch);
+    facts.freeOpen = f.freeOpen && f.freeOpen->value > 0.0f;
+    const essb::SwitchPlan p = essb::PlanSwitch(facts, element);
+    if (f.debug->value >= 1.0f) {
+        Logf("[ESSB][switch][L1] via=%s wanted=%d kind=%d element=%d active=%d current=%d", via, element, static_cast<int>(p.kind), p.element,
+            facts.active ? 1 : 0, facts.current);
+    }
+    switch (p.kind) {
+    case essb::SwitchKind::kIgnore:
+        return;
+    case essb::SwitchKind::kRefuse:
+        RE::DebugNotification("魔力不足，無法開啟形態");
+        return;
+    case essb::SwitchKind::kClose:
+        f.formActive->value = 0.0f;
+        f.element->value = 0.0f;
+        break;
+    case essb::SwitchKind::kOpen:
+    case essb::SwitchKind::kSwitch:
+        f.element->value = static_cast<float>(p.element);
+        f.formActive->value = 1.0f;
+        break;
+    }
+    if (p.consumeFree && f.freeOpen) {
+        f.freeOpen->value = 0.0f;
+    }
+    if (f.formNotify && f.formNotify->value == 1.0f) {
+        const std::string text = p.kind == essb::SwitchKind::kClose ? std::string("元素魔戰士：關閉形態")
+                                                                     : std::string("元素魔戰士：") + essb::kFormLabels[p.element];
+        RE::DebugNotification(text.c_str());
+    }
+    SendEvent(essb::MakeEvent(essb::Event::kSwitch, static_cast<float>(element), p.kind == essb::SwitchKind::kOpen ? 1.0f : 0.0f), player);
+}
+
+// Probe N6-2: whether input reaches gameplay now (Timer.h InputOpen). A menu that pauses, uses the cursor or the menu
+// input context, or is modal blocks it (Papyrus Utility.IsInMenuMode); so do the console and a text box.
+essb::InputGate GateNow()
+{
+    essb::InputGate g;
+    g.loading = !state.inGame;
+    auto* ui = RE::UI::GetSingleton();
+    if (ui) {
+        g.paused = ui->GameIsPaused();
+        g.console = ui->IsMenuOpen(RE::Console::MENU_NAME);
+        g.loading = g.loading || ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME);
+        using Flag = RE::UI_MENU_FLAGS;
+        for (const auto& menu : ui->menuStack) {
+            if (menu && menu->menuFlags.any(Flag::kPausesGame, Flag::kUsesCursor, Flag::kUsesMenuContext, Flag::kModal)) {
+                g.menu = true;
+                break;
+            }
+        }
+    }
+    if (auto* controls = RE::ControlMap::GetSingleton()) {
+        g.textEntry = controls->textEntryCount > 0;
+    }
+    return g;
+}
+
+essb::Device DeviceOf(RE::INPUT_DEVICE device) noexcept
+{
+    switch (device) {
+    case RE::INPUT_DEVICE::kKeyboard: return essb::Device::kKeyboard;
+    case RE::INPUT_DEVICE::kMouse: return essb::Device::kMouse;
+    case RE::INPUT_DEVICE::kGamepad: return essb::Device::kGamepad;
+    default: return essb::Device::kOther;
+    }
+}
+
+void InputCpp(RE::InputEvent* first) noexcept
+{
+    try {
+        if (!Enabled() || !first) {
+            return;
+        }
+        auto& f = state.forms;
+        const bool enabled = f.hotkeysEnabled && f.hotkeysEnabled->value == 1.0f;
+        if (!enabled) {
+            return;
+        }
+        std::array<int, essb::kElementCount> keys{};
+        for (int i = 0; i < essb::kElementCount; ++i) {
+            keys[i] = f.hotkeys[i] ? static_cast<int>(f.hotkeys[i]->value) : 0;
+        }
+        for (RE::InputEvent* e = first; e; e = e->next) {
+            if (e->GetEventType() != RE::INPUT_EVENT_TYPE::kButton) {
+                continue;
+            }
+            const auto* button = e->AsButtonEvent();
+            if (!button || !button->IsDown()) {
+                continue;
+            }
+            const int code = essb::KeyCodeOf(DeviceOf(e->GetDevice()), button->GetIDCode());
+            const int element = essb::HotkeyElement(code, enabled, keys);
+            if (element == 0) {
+                continue;
+            }
+            LogThreadOnce(Probe::kInput, "input sink");
+            const essb::InputGate gate = GateNow();
+            if (!essb::InputOpen(gate)) {
+                if (f.debug->value >= 3.0f) {   // probe N6-2: a hotkey pressed where gameplay does not get it
+                    Logf("[ESSB][N6-2][L3] key=%d element=%d blocked paused=%d menu=%d console=%d text=%d loading=%d", code, element,
+                        gate.paused ? 1 : 0, gate.menu ? 1 : 0, gate.console ? 1 : 0, gate.textEntry ? 1 : 0, gate.loading ? 1 : 0);
+                }
+                continue;
+            }
+            if (f.debug->value >= 3.0f) {
+                Logf("[ESSB][N6-2][L3] key=%d element=%d accepted thread=%lu", code, element, GetCurrentThreadId());
+            }
+            RequestSwitch(element, "hotkey");
+        }
+    } catch (const std::exception& e) {
+        Fault(e.what());
+    } catch (...) {
+        Fault("unknown C++ exception in the input sink");
+    }
+}
+
+// The input sink (native-verification-3 s13: BSInputDeviceManager sends on the main thread, before the frame's SKSE
+// tasks). Never consumes: every event goes on to the game and other sinks.
+class InputSink final : public RE::BSTEventSink<RE::InputEvent*>
+{
+public:
+    RE::BSEventNotifyControl ProcessEvent(RE::InputEvent* const* ev, RE::BSTEventSource<RE::InputEvent*>*) override
+    {
+        if (!ev || !*ev || state.faulted) {
+            return RE::BSEventNotifyControl::kContinue;
+        }
+        __try {
+            InputCpp(*ev);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            Fault("access violation in the input sink");
+        }
+        return RE::BSEventNotifyControl::kContinue;
+    }
+};
+
+InputSink inputSink;
 
 // ---------------------------------------------------------------- data load
 
@@ -2404,6 +2914,59 @@ void ResolveGlobals(RE::TESDataHandler& data, const nlohmann::json& manifest)
     f.mirrorRock = one("ESSB_RockArmor", essb::glob::kRockArmor);
     f.mirrorWind = one("ESSB_Wind", essb::glob::kWind);
     f.mirrorBracing = one("ESSB_Bracing", essb::glob::kBracing);
+    // Round 25 (N6): the environment (the DLL writes it; 審查修正: ESSB_EnvThunder), 免門檻, the hotkeys and the tuning the
+    // timer reads.
+    f.envWet = one("ESSB_EnvWet", essb::glob::kEnvWet);
+    f.envStormy = one("ESSB_EnvStormy", essb::glob::kEnvStormy);
+    f.envThunder = one("ESSB_EnvThunder", essb::glob::kEnvThunder);
+    f.envNight = one("ESSB_EnvNight", essb::glob::kEnvNight);
+    f.freeOpen = one("ESSB_FreeOpen", essb::glob::kFreeOpen);
+    f.hotkeysEnabled = one("ESSB_HotkeysEnabled", essb::glob::kHotkeysEnabled);
+    f.formNotify = one("ESSB_FormNotify", essb::glob::kFormNotify);
+    static constexpr const char* kHotkeyNames[essb::kElementCount] = { "ESSB_Hotkey_Fire", "ESSB_Hotkey_Frost", "ESSB_Hotkey_Lightning",
+        "ESSB_Hotkey_Earth", "ESSB_Hotkey_Wind", "ESSB_Hotkey_Blood", "ESSB_Hotkey_Divine", "ESSB_Hotkey_Poison", "ESSB_Hotkey_Water",
+        "ESSB_Hotkey_Darkness", "ESSB_Hotkey_Astral" };
+    for (int i = 0; i < essb::kElementCount; ++i) {
+        f.hotkeys[i] = one(kHotkeyNames[i], essb::glob::kHotkey[i]);
+    }
+    bool timer = true;
+    essb::ReadTimerTuning([&](std::uint32_t id) {
+        timer = timer && known(id);
+        return 0.0f;
+    });
+    CheckIdentity(timer, "timer tuning globals");
+}
+
+// Round 25 (N6): the domains' HAZDs and Spawn Hazard effects by element, checked against the manifest (the spawn spells
+// resolve with the other cast spells: StatusEngine.h CastSpells).
+void ResolveDomains(RE::TESDataHandler& data, const nlohmann::json& manifest)
+{
+    auto& f = state.forms;
+    f.domainHazards.fill(nullptr);
+    f.domainSpawn.fill(nullptr);
+    int count = 0;
+    for (const auto& row : manifest.at("status").at("domains")) {
+        const int e = row.at("element").get<int>();
+        CheckIdentity(essb::IsElement(e) && row.at("hazard").get<std::uint32_t>() == essb::status::kDomainHazard[e] &&
+                          row.at("spawn_effect").get<std::uint32_t>() == essb::status::kDomainSpawnEffect[e],
+            "domain record");
+        const auto& spawn = row.at("spawn");
+        CheckIdentity(spawn.size() == static_cast<std::size_t>(essb::kDomainMaxSeconds), "domain spawn spells");
+        for (int s = 0; s < essb::kDomainMaxSeconds; ++s) {
+            CheckIdentity(spawn.at(s).get<std::uint32_t>() == essb::status::kDomainSpawn[e][s], "domain spawn spell");
+        }
+        f.domainHazards[e] = Resolve<RE::BGSHazard>(data, essb::status::kDomainHazard[e], kPlugin, "domain hazard");
+        f.domainSpawn[e] = Resolve<RE::EffectSetting>(data, essb::status::kDomainSpawnEffect[e], kPlugin, "domain spawn effect");
+        CheckIdentity(f.domainSpawn[e]->GetArchetype() == RE::EffectSetting::Archetype::kSpawnHazard &&
+                          f.domainSpawn[e]->data.associatedForm == f.domainHazards[e],
+            "domain spawn effect places its hazard");
+        ++count;
+    }
+    int compiled = 0;
+    for (int e = essb::kFire; e <= essb::kAstral; ++e) {
+        compiled += essb::status::kDomainHazard[e] ? 1 : 0;
+    }
+    CheckIdentity(count == compiled, "domain count");
 }
 
 void ResolveSpells(RE::TESDataHandler& data, const nlohmann::json& manifest)
@@ -2617,6 +3180,7 @@ void LoadManifest()
     ResolveEffects(*data, manifest);
     ResolvePerks(*data, manifest);
     ResolveStatus(*data, manifest);
+    ResolveDomains(*data, manifest);   // round 25 (N6)
 
     LARGE_INTEGER counter{};
     QueryPerformanceCounter(&counter);
@@ -2633,6 +3197,11 @@ void LoadManifest()
     if (auto* ui = RE::UI::GetSingleton()) {
         ui->AddEventSink<RE::MenuOpenCloseEvent>(&menuSink);   // round 23: TrueHUD's menu clears custom widgets on close
     }
+    auto* input = RE::BSInputDeviceManager::GetSingleton();
+    if (!input) {
+        throw std::runtime_error("input device manager unavailable");
+    }
+    input->AddEventSink(&inputSink);   // round 25 (N6): the hotkeys (ESSBInput is gone)
     if (essb::hud::Find()) {
         Log("[ESSB][load] TrueHUD found: the pool and sync bars use its custom widget API");
     } else {
@@ -2644,7 +3213,8 @@ void LoadManifest()
     state.ready = true;
     PublishStatus();
     Log("[ESSB][load] manifest resolved; hit (yours and on you), effect-removed, death and spell-cast sinks registered; timer running; "
-        "round 24: the reaction bodies, the burst and the death handling are native");
+        "round 24: the reaction bodies, the burst and the death handling are native; round 25: the per-second work, the domains "
+        "and the hotkeys are native");
 }
 
 // Once per game load / new game, after the HUD exists.
@@ -2664,6 +3234,7 @@ void AnnounceStatus()
 
 void OnGameReady()
 {
+    state.cadence = essb::Cadence{};   // round 25: the timer's clock starts again after a load (nothing carried over)
     state.inGame = true;
     state.echoDispelQueued = false;
     state.riposteDispelQueued = false;
@@ -2785,7 +3356,8 @@ void PapyrusSetNativeHit(RE::StaticFunctionTag*, bool on)
 //   7 poison doses   8 soak   9 pressure   10 curse   11 star layers   12 ice crystals   13 downed   14 airborne
 //   15 star lock   16 catalysed   17 death-curse fuse   18 nether   19 frozen
 // On the player: 20 heat tier (0..4)   21 聖佑 tier (0..3)   22 熔身
-// Windows (SetWindow): 30 嗜血 (player)   31 連殺 (player)   32 火域 / 33 冰原 / 34 星域 (target)   35 身在火域 (player)
+// Windows (SetWindow): 30 嗜血 (player)   31 連殺 (player)   36 浮空 (target)   37 瘋狂冷卻 (target)
+// (round 25: 32-35, the Papyrus domains' windows, are gone -- the hazards put the markers on, Timer.h keeps yours)
 
 enum class NativeCall
 {
@@ -3231,10 +3803,6 @@ void PapyrusSetWindow(RE::StaticFunctionTag*, RE::Actor* actor, std::int32_t win
                 switch (window) {
                 case 30: essb::Writer{ plan, self, essb::Who::kPlayer }.Set(K::kBloodthirst, 1.0f, s); break;
                 case 31: essb::Writer{ plan, self, essb::Who::kPlayer }.Set(K::kKillStreak, 1.0f, seconds); break;
-                case 32: essb::Writer{ plan, target, essb::Who::kTarget }.Set(K::kDomainFire, 1.0f, seconds); break;
-                case 33: essb::Writer{ plan, target, essb::Who::kTarget }.Set(K::kDomainFrost, 1.0f, seconds); break;
-                case 34: essb::Writer{ plan, target, essb::Who::kTarget }.Set(K::kDomainAstral, 1.0f, seconds); break;
-                case 35: essb::Writer{ plan, self, essb::Who::kPlayer }.Set(K::kFireDomainPlayer, 1.0f, seconds); break;
                 case 36: essb::Writer{ plan, target, essb::Who::kTarget }.Set(K::kAirborne, magnitude, s); break;
                 case 37: essb::Writer{ plan, target, essb::Who::kTarget }.Set(K::kFrenzyCooldown, 1.0f, essb::CooldownOf(c.tuning, seconds)); break;
                 default: break;
@@ -3362,41 +3930,35 @@ void PapyrusSetSync(RE::StaticFunctionTag*, std::int32_t count)
     }, false);
 }
 
-// 火域 (5.3): entering it adds 5 s to the white-hot fuse once (Papyrus calls this on entry).
-void PapyrusExtendFuse(RE::StaticFunctionTag*, float seconds)
+// Round 25 (N6, ruling R6): the Z form powers (ESSBFormPowerEffect) switch through the same DLL function as the hotkeys
+// (RequestSwitch: the magicka gate, the globals, the notice, ESSB_Switch). Queued: it runs on the main thread. The old
+// ExtendFuse native is gone with its only caller (Papyrus TickDomain): 火域's fuse is Timer.h PlanDomainSelf's.
+void PapyrusRequestSwitch(RE::StaticFunctionTag*, std::int32_t element)
 {
-    Guard("ExtendFuse", [&]() -> bool {
-        return QueueNative("ExtendFuse", [seconds]() {
-        RunRule(RE::PlayerCharacter::GetSingleton(), [&](auto& plan, auto&, auto& self, auto&, const auto&) {
-            if (self.Has(essb::StatusKind::kHeat3)) {
-                const essb::Slot fuse = self[essb::StatusKind::kHeat3];
-                essb::Writer{ plan, self, essb::Who::kPlayer }.Set(essb::StatusKind::kHeat3, fuse.magnitude, fuse.Remaining() + seconds);
-            }
-        });
-        });
+    Guard("RequestSwitch", [&]() -> bool {
+        if (!essb::IsElement(element)) {
+            return false;
+        }
+        return QueueNative("RequestSwitch", [element]() { RequestSwitch(element, "power"); });
     }, false);
 }
 
-// A wash of at most `limit` buffs (Papyrus ApplyStrip: 洗滌 and the domains; 淨潮 counts them). Queued; logs the count.
-void PapyrusWashBuffs(RE::StaticFunctionTag*, RE::Actor* actor, std::int32_t limit)
+// 審查修正 (round 25 review): Papyrus's second windows (ESSBController TickTimers: 引燃、淬火、守勢…) count game-running
+// seconds, not real time, so they stop while the game is paused or loading. A read of one atomic: callable from the
+// VM's tasklets (no main-thread wait), no game object touched. Not through Guard: it must answer with the master switch
+// off too (a window that never ends would be worse), and its tasklet thread is not the X1 probe's native thread.
+float PapyrusRunningSeconds(RE::StaticFunctionTag*)
 {
-    Guard("WashBuffs", [&]() -> bool {
-        return QueueNative("WashBuffs", [handle = HandleOf(actor), limit]() {   // review fix 1: queued; the count goes to the log
-            auto* player = RE::PlayerCharacter::GetSingleton();
-            const auto held = handle.get();
-            RE::Actor* actor = held.get();
-            if (!player || !actor || actor->IsDead() || actor == player) {
-                return;
-            }
-            const auto nodes = MakeNodes(*player, FormIsActive());
-            const essb::Tuning tuning = essb::ReadTuning(Global);
-            const float refund = nodes.Has(essb::node::kWaterPurgeTide) ? 2.0f * kConfig.damage[essb::kWater][1] : 0.0f;
-            const int washed = Executor(*player, actor, tuning).Wash(limit, refund);
-            if (state.forms.debug->value >= 1.0f) {
-                Logf("[ESSB][strip][L1] %08X washed=%d", actor->GetFormID(), washed);
-            }
-        });
-    }, false);
+    float out = 0.0f;
+    try {
+        auto read = [&]() { out = static_cast<float>(static_cast<double>(state.runningMs.load()) / 1000.0); };
+        if (!SehInvoke(read)) {
+            Fault("access violation in ESSBNative.RunningSeconds");
+        }
+    } catch (...) {
+        Fault("C++ exception in ESSBNative.RunningSeconds");
+    }
+    return out;
 }
 
 // The MCM status button (Papyrus DumpStatus): every marked actor within `radius` of you, with its status codes, to the log.
@@ -3487,8 +4049,8 @@ bool RegisterPapyrus(RE::BSScript::IVirtualMachine* vm)
         vm->RegisterFunction("MarksOn", kClass, PapyrusMarksOn);
         vm->RegisterFunction("Burst", kClass, PapyrusBurst);
         vm->RegisterFunction("FormLeave", kClass, PapyrusFormLeave);
-        vm->RegisterFunction("ExtendFuse", kClass, PapyrusExtendFuse);
-        vm->RegisterFunction("WashBuffs", kClass, PapyrusWashBuffs);
+        vm->RegisterFunction("RequestSwitch", kClass, PapyrusRequestSwitch);
+        vm->RegisterFunction("RunningSeconds", kClass, PapyrusRunningSeconds, true);   // 審查修正: an atomic read only
         vm->RegisterFunction("DumpTargets", kClass, PapyrusDumpTargets);
         vm->RegisterFunction("CastProc", kClass, PapyrusCastProc);
         vm->RegisterFunction("FormEnter", kClass, PapyrusFormEnter);

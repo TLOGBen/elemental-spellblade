@@ -4,8 +4,8 @@
     "Skyrim.esm"
   ],
   "esl_flagged": false,
-  "record_count": 4761,
-  "next_object_id": "006018",
+  "record_count": 5027,
+  "next_object_id": "00601A",
   "allocation": [
     {
       "range": "0x000800-0x00080F",
@@ -5403,6 +5403,1326 @@
     "ESSB_N5_TimedPoisonResistDebuff_20": {
       "id": "00570B",
       "formid": "0100570B",
+      "type": "SPEL"
+    },
+    "ESSB_N6_DomainEarthEffect": {
+      "id": "005800",
+      "formid": "01005800",
+      "type": "MGEF"
+    },
+    "ESSB_N6_DomainEarth": {
+      "id": "005801",
+      "formid": "01005801",
+      "type": "SPEL"
+    },
+    "ESSB_N6_DomainBloodEffect": {
+      "id": "005802",
+      "formid": "01005802",
+      "type": "MGEF"
+    },
+    "ESSB_N6_DomainBlood": {
+      "id": "005803",
+      "formid": "01005803",
+      "type": "SPEL"
+    },
+    "ESSB_N6_DomainDivineEffect": {
+      "id": "005804",
+      "formid": "01005804",
+      "type": "MGEF"
+    },
+    "ESSB_N6_DomainDivine": {
+      "id": "005805",
+      "formid": "01005805",
+      "type": "SPEL"
+    },
+    "ESSB_N6_DomainPoisonEffect": {
+      "id": "005806",
+      "formid": "01005806",
+      "type": "MGEF"
+    },
+    "ESSB_N6_DomainPoison": {
+      "id": "005807",
+      "formid": "01005807",
+      "type": "SPEL"
+    },
+    "ESSB_N6_DomainWaterEffect": {
+      "id": "005808",
+      "formid": "01005808",
+      "type": "MGEF"
+    },
+    "ESSB_N6_DomainWater": {
+      "id": "005809",
+      "formid": "01005809",
+      "type": "SPEL"
+    },
+    "ESSB_N6_DomainDarkEffect": {
+      "id": "00580A",
+      "formid": "0100580A",
+      "type": "MGEF"
+    },
+    "ESSB_N6_DomainDark": {
+      "id": "00580B",
+      "formid": "0100580B",
+      "type": "SPEL"
+    },
+    "ESSB_N6_FrostDomainPlayerEffect": {
+      "id": "00580C",
+      "formid": "0100580C",
+      "type": "MGEF"
+    },
+    "ESSB_N6_FrostDomainPlayer": {
+      "id": "00580D",
+      "formid": "0100580D",
+      "type": "SPEL"
+    },
+    "ESSB_N6_ManaEmptyEffect": {
+      "id": "00580E",
+      "formid": "0100580E",
+      "type": "MGEF"
+    },
+    "ESSB_N6_ManaEmpty": {
+      "id": "00580F",
+      "formid": "0100580F",
+      "type": "SPEL"
+    },
+    "ESSB_N6_StormCooldownEffect": {
+      "id": "005810",
+      "formid": "01005810",
+      "type": "MGEF"
+    },
+    "ESSB_N6_StormCooldown": {
+      "id": "005811",
+      "formid": "01005811",
+      "type": "SPEL"
+    },
+    "ESSB_EnvThunder": {
+      "id": "005907",
+      "formid": "01005907",
+      "type": "GLOB"
+    },
+    "ESSB_N6_DivineAttackEffect": {
+      "id": "005905",
+      "formid": "01005905",
+      "type": "MGEF"
+    },
+    "ESSB_N6_DivineMagicEffect": {
+      "id": "005906",
+      "formid": "01005906",
+      "type": "MGEF"
+    },
+    "ESSB_N6_HazardSpell_Fire": {
+      "id": "005813",
+      "formid": "01005813",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Hazard_Fire": {
+      "id": "005812",
+      "formid": "01005812",
+      "type": "HAZD"
+    },
+    "ESSB_N6_DomainEffect_Fire": {
+      "id": "005814",
+      "formid": "01005814",
+      "type": "MGEF"
+    },
+    "ESSB_N6_Domain_Fire_1": {
+      "id": "005815",
+      "formid": "01005815",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_2": {
+      "id": "005816",
+      "formid": "01005816",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_3": {
+      "id": "005817",
+      "formid": "01005817",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_4": {
+      "id": "005818",
+      "formid": "01005818",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_5": {
+      "id": "005819",
+      "formid": "01005819",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_6": {
+      "id": "00581A",
+      "formid": "0100581A",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_7": {
+      "id": "00581B",
+      "formid": "0100581B",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_8": {
+      "id": "00581C",
+      "formid": "0100581C",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_9": {
+      "id": "00581D",
+      "formid": "0100581D",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_10": {
+      "id": "00581E",
+      "formid": "0100581E",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_11": {
+      "id": "00581F",
+      "formid": "0100581F",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_12": {
+      "id": "005820",
+      "formid": "01005820",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_13": {
+      "id": "005821",
+      "formid": "01005821",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_14": {
+      "id": "005822",
+      "formid": "01005822",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_15": {
+      "id": "005823",
+      "formid": "01005823",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_16": {
+      "id": "005824",
+      "formid": "01005824",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_17": {
+      "id": "005825",
+      "formid": "01005825",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_18": {
+      "id": "005826",
+      "formid": "01005826",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_19": {
+      "id": "005827",
+      "formid": "01005827",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_20": {
+      "id": "005828",
+      "formid": "01005828",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_21": {
+      "id": "005829",
+      "formid": "01005829",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_22": {
+      "id": "00582A",
+      "formid": "0100582A",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_23": {
+      "id": "00582B",
+      "formid": "0100582B",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Fire_24": {
+      "id": "00582C",
+      "formid": "0100582C",
+      "type": "SPEL"
+    },
+    "ESSB_N6_HazardSpell_Frost": {
+      "id": "00582E",
+      "formid": "0100582E",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Hazard_Frost": {
+      "id": "00582D",
+      "formid": "0100582D",
+      "type": "HAZD"
+    },
+    "ESSB_N6_DomainEffect_Frost": {
+      "id": "00582F",
+      "formid": "0100582F",
+      "type": "MGEF"
+    },
+    "ESSB_N6_Domain_Frost_1": {
+      "id": "005830",
+      "formid": "01005830",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_2": {
+      "id": "005831",
+      "formid": "01005831",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_3": {
+      "id": "005832",
+      "formid": "01005832",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_4": {
+      "id": "005833",
+      "formid": "01005833",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_5": {
+      "id": "005834",
+      "formid": "01005834",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_6": {
+      "id": "005835",
+      "formid": "01005835",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_7": {
+      "id": "005836",
+      "formid": "01005836",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_8": {
+      "id": "005837",
+      "formid": "01005837",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_9": {
+      "id": "005838",
+      "formid": "01005838",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_10": {
+      "id": "005839",
+      "formid": "01005839",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_11": {
+      "id": "00583A",
+      "formid": "0100583A",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_12": {
+      "id": "00583B",
+      "formid": "0100583B",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_13": {
+      "id": "00583C",
+      "formid": "0100583C",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_14": {
+      "id": "00583D",
+      "formid": "0100583D",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_15": {
+      "id": "00583E",
+      "formid": "0100583E",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_16": {
+      "id": "00583F",
+      "formid": "0100583F",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_17": {
+      "id": "005840",
+      "formid": "01005840",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_18": {
+      "id": "005841",
+      "formid": "01005841",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_19": {
+      "id": "005842",
+      "formid": "01005842",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_20": {
+      "id": "005843",
+      "formid": "01005843",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_21": {
+      "id": "005844",
+      "formid": "01005844",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_22": {
+      "id": "005845",
+      "formid": "01005845",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_23": {
+      "id": "005846",
+      "formid": "01005846",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Frost_24": {
+      "id": "005847",
+      "formid": "01005847",
+      "type": "SPEL"
+    },
+    "ESSB_N6_HazardSpell_Earth": {
+      "id": "005849",
+      "formid": "01005849",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Hazard_Earth": {
+      "id": "005848",
+      "formid": "01005848",
+      "type": "HAZD"
+    },
+    "ESSB_N6_DomainEffect_Earth": {
+      "id": "00584A",
+      "formid": "0100584A",
+      "type": "MGEF"
+    },
+    "ESSB_N6_Domain_Earth_1": {
+      "id": "00584B",
+      "formid": "0100584B",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_2": {
+      "id": "00584C",
+      "formid": "0100584C",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_3": {
+      "id": "00584D",
+      "formid": "0100584D",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_4": {
+      "id": "00584E",
+      "formid": "0100584E",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_5": {
+      "id": "00584F",
+      "formid": "0100584F",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_6": {
+      "id": "005850",
+      "formid": "01005850",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_7": {
+      "id": "005851",
+      "formid": "01005851",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_8": {
+      "id": "005852",
+      "formid": "01005852",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_9": {
+      "id": "005853",
+      "formid": "01005853",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_10": {
+      "id": "005854",
+      "formid": "01005854",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_11": {
+      "id": "005855",
+      "formid": "01005855",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_12": {
+      "id": "005856",
+      "formid": "01005856",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_13": {
+      "id": "005857",
+      "formid": "01005857",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_14": {
+      "id": "005858",
+      "formid": "01005858",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_15": {
+      "id": "005859",
+      "formid": "01005859",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_16": {
+      "id": "00585A",
+      "formid": "0100585A",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_17": {
+      "id": "00585B",
+      "formid": "0100585B",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_18": {
+      "id": "00585C",
+      "formid": "0100585C",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_19": {
+      "id": "00585D",
+      "formid": "0100585D",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_20": {
+      "id": "00585E",
+      "formid": "0100585E",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_21": {
+      "id": "00585F",
+      "formid": "0100585F",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_22": {
+      "id": "005860",
+      "formid": "01005860",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_23": {
+      "id": "005861",
+      "formid": "01005861",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Earth_24": {
+      "id": "005862",
+      "formid": "01005862",
+      "type": "SPEL"
+    },
+    "ESSB_N6_HazardSpell_Blood": {
+      "id": "005864",
+      "formid": "01005864",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Hazard_Blood": {
+      "id": "005863",
+      "formid": "01005863",
+      "type": "HAZD"
+    },
+    "ESSB_N6_DomainEffect_Blood": {
+      "id": "005865",
+      "formid": "01005865",
+      "type": "MGEF"
+    },
+    "ESSB_N6_Domain_Blood_1": {
+      "id": "005866",
+      "formid": "01005866",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_2": {
+      "id": "005867",
+      "formid": "01005867",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_3": {
+      "id": "005868",
+      "formid": "01005868",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_4": {
+      "id": "005869",
+      "formid": "01005869",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_5": {
+      "id": "00586A",
+      "formid": "0100586A",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_6": {
+      "id": "00586B",
+      "formid": "0100586B",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_7": {
+      "id": "00586C",
+      "formid": "0100586C",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_8": {
+      "id": "00586D",
+      "formid": "0100586D",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_9": {
+      "id": "00586E",
+      "formid": "0100586E",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_10": {
+      "id": "00586F",
+      "formid": "0100586F",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_11": {
+      "id": "005870",
+      "formid": "01005870",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_12": {
+      "id": "005871",
+      "formid": "01005871",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_13": {
+      "id": "005872",
+      "formid": "01005872",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_14": {
+      "id": "005873",
+      "formid": "01005873",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_15": {
+      "id": "005874",
+      "formid": "01005874",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_16": {
+      "id": "005875",
+      "formid": "01005875",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_17": {
+      "id": "005876",
+      "formid": "01005876",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_18": {
+      "id": "005877",
+      "formid": "01005877",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_19": {
+      "id": "005878",
+      "formid": "01005878",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_20": {
+      "id": "005879",
+      "formid": "01005879",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_21": {
+      "id": "00587A",
+      "formid": "0100587A",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_22": {
+      "id": "00587B",
+      "formid": "0100587B",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_23": {
+      "id": "00587C",
+      "formid": "0100587C",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Blood_24": {
+      "id": "00587D",
+      "formid": "0100587D",
+      "type": "SPEL"
+    },
+    "ESSB_N6_HazardSpell_Divine": {
+      "id": "00587F",
+      "formid": "0100587F",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Hazard_Divine": {
+      "id": "00587E",
+      "formid": "0100587E",
+      "type": "HAZD"
+    },
+    "ESSB_N6_DomainEffect_Divine": {
+      "id": "005880",
+      "formid": "01005880",
+      "type": "MGEF"
+    },
+    "ESSB_N6_Domain_Divine_1": {
+      "id": "005881",
+      "formid": "01005881",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_2": {
+      "id": "005882",
+      "formid": "01005882",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_3": {
+      "id": "005883",
+      "formid": "01005883",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_4": {
+      "id": "005884",
+      "formid": "01005884",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_5": {
+      "id": "005885",
+      "formid": "01005885",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_6": {
+      "id": "005886",
+      "formid": "01005886",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_7": {
+      "id": "005887",
+      "formid": "01005887",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_8": {
+      "id": "005888",
+      "formid": "01005888",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_9": {
+      "id": "005889",
+      "formid": "01005889",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_10": {
+      "id": "00588A",
+      "formid": "0100588A",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_11": {
+      "id": "00588B",
+      "formid": "0100588B",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_12": {
+      "id": "00588C",
+      "formid": "0100588C",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_13": {
+      "id": "00588D",
+      "formid": "0100588D",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_14": {
+      "id": "00588E",
+      "formid": "0100588E",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_15": {
+      "id": "00588F",
+      "formid": "0100588F",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_16": {
+      "id": "005890",
+      "formid": "01005890",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_17": {
+      "id": "005891",
+      "formid": "01005891",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_18": {
+      "id": "005892",
+      "formid": "01005892",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_19": {
+      "id": "005893",
+      "formid": "01005893",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_20": {
+      "id": "005894",
+      "formid": "01005894",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_21": {
+      "id": "005895",
+      "formid": "01005895",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_22": {
+      "id": "005896",
+      "formid": "01005896",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_23": {
+      "id": "005897",
+      "formid": "01005897",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Divine_24": {
+      "id": "005898",
+      "formid": "01005898",
+      "type": "SPEL"
+    },
+    "ESSB_N6_HazardSpell_Poison": {
+      "id": "00589A",
+      "formid": "0100589A",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Hazard_Poison": {
+      "id": "005899",
+      "formid": "01005899",
+      "type": "HAZD"
+    },
+    "ESSB_N6_DomainEffect_Poison": {
+      "id": "00589B",
+      "formid": "0100589B",
+      "type": "MGEF"
+    },
+    "ESSB_N6_Domain_Poison_1": {
+      "id": "00589C",
+      "formid": "0100589C",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_2": {
+      "id": "00589D",
+      "formid": "0100589D",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_3": {
+      "id": "00589E",
+      "formid": "0100589E",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_4": {
+      "id": "00589F",
+      "formid": "0100589F",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_5": {
+      "id": "0058A0",
+      "formid": "010058A0",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_6": {
+      "id": "0058A1",
+      "formid": "010058A1",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_7": {
+      "id": "0058A2",
+      "formid": "010058A2",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_8": {
+      "id": "0058A3",
+      "formid": "010058A3",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_9": {
+      "id": "0058A4",
+      "formid": "010058A4",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_10": {
+      "id": "0058A5",
+      "formid": "010058A5",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_11": {
+      "id": "0058A6",
+      "formid": "010058A6",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_12": {
+      "id": "0058A7",
+      "formid": "010058A7",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_13": {
+      "id": "0058A8",
+      "formid": "010058A8",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_14": {
+      "id": "0058A9",
+      "formid": "010058A9",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_15": {
+      "id": "0058AA",
+      "formid": "010058AA",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_16": {
+      "id": "0058AB",
+      "formid": "010058AB",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_17": {
+      "id": "0058AC",
+      "formid": "010058AC",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_18": {
+      "id": "0058AD",
+      "formid": "010058AD",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_19": {
+      "id": "0058AE",
+      "formid": "010058AE",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_20": {
+      "id": "0058AF",
+      "formid": "010058AF",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_21": {
+      "id": "0058B0",
+      "formid": "010058B0",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_22": {
+      "id": "0058B1",
+      "formid": "010058B1",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_23": {
+      "id": "0058B2",
+      "formid": "010058B2",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Poison_24": {
+      "id": "0058B3",
+      "formid": "010058B3",
+      "type": "SPEL"
+    },
+    "ESSB_N6_HazardSpell_Water": {
+      "id": "0058B5",
+      "formid": "010058B5",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Hazard_Water": {
+      "id": "0058B4",
+      "formid": "010058B4",
+      "type": "HAZD"
+    },
+    "ESSB_N6_DomainEffect_Water": {
+      "id": "0058B6",
+      "formid": "010058B6",
+      "type": "MGEF"
+    },
+    "ESSB_N6_Domain_Water_1": {
+      "id": "0058B7",
+      "formid": "010058B7",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_2": {
+      "id": "0058B8",
+      "formid": "010058B8",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_3": {
+      "id": "0058B9",
+      "formid": "010058B9",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_4": {
+      "id": "0058BA",
+      "formid": "010058BA",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_5": {
+      "id": "0058BB",
+      "formid": "010058BB",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_6": {
+      "id": "0058BC",
+      "formid": "010058BC",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_7": {
+      "id": "0058BD",
+      "formid": "010058BD",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_8": {
+      "id": "0058BE",
+      "formid": "010058BE",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_9": {
+      "id": "0058BF",
+      "formid": "010058BF",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_10": {
+      "id": "0058C0",
+      "formid": "010058C0",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_11": {
+      "id": "0058C1",
+      "formid": "010058C1",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_12": {
+      "id": "0058C2",
+      "formid": "010058C2",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_13": {
+      "id": "0058C3",
+      "formid": "010058C3",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_14": {
+      "id": "0058C4",
+      "formid": "010058C4",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_15": {
+      "id": "0058C5",
+      "formid": "010058C5",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_16": {
+      "id": "0058C6",
+      "formid": "010058C6",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_17": {
+      "id": "0058C7",
+      "formid": "010058C7",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_18": {
+      "id": "0058C8",
+      "formid": "010058C8",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_19": {
+      "id": "0058C9",
+      "formid": "010058C9",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_20": {
+      "id": "0058CA",
+      "formid": "010058CA",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_21": {
+      "id": "0058CB",
+      "formid": "010058CB",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_22": {
+      "id": "0058CC",
+      "formid": "010058CC",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_23": {
+      "id": "0058CD",
+      "formid": "010058CD",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Water_24": {
+      "id": "0058CE",
+      "formid": "010058CE",
+      "type": "SPEL"
+    },
+    "ESSB_N6_HazardSpell_Darkness": {
+      "id": "0058D0",
+      "formid": "010058D0",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Hazard_Darkness": {
+      "id": "0058CF",
+      "formid": "010058CF",
+      "type": "HAZD"
+    },
+    "ESSB_N6_DomainEffect_Darkness": {
+      "id": "0058D1",
+      "formid": "010058D1",
+      "type": "MGEF"
+    },
+    "ESSB_N6_Domain_Darkness_1": {
+      "id": "0058D2",
+      "formid": "010058D2",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_2": {
+      "id": "0058D3",
+      "formid": "010058D3",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_3": {
+      "id": "0058D4",
+      "formid": "010058D4",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_4": {
+      "id": "0058D5",
+      "formid": "010058D5",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_5": {
+      "id": "0058D6",
+      "formid": "010058D6",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_6": {
+      "id": "0058D7",
+      "formid": "010058D7",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_7": {
+      "id": "0058D8",
+      "formid": "010058D8",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_8": {
+      "id": "0058D9",
+      "formid": "010058D9",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_9": {
+      "id": "0058DA",
+      "formid": "010058DA",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_10": {
+      "id": "0058DB",
+      "formid": "010058DB",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_11": {
+      "id": "0058DC",
+      "formid": "010058DC",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_12": {
+      "id": "0058DD",
+      "formid": "010058DD",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_13": {
+      "id": "0058DE",
+      "formid": "010058DE",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_14": {
+      "id": "0058DF",
+      "formid": "010058DF",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_15": {
+      "id": "0058E0",
+      "formid": "010058E0",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_16": {
+      "id": "0058E1",
+      "formid": "010058E1",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_17": {
+      "id": "0058E2",
+      "formid": "010058E2",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_18": {
+      "id": "0058E3",
+      "formid": "010058E3",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_19": {
+      "id": "0058E4",
+      "formid": "010058E4",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_20": {
+      "id": "0058E5",
+      "formid": "010058E5",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_21": {
+      "id": "0058E6",
+      "formid": "010058E6",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_22": {
+      "id": "0058E7",
+      "formid": "010058E7",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_23": {
+      "id": "0058E8",
+      "formid": "010058E8",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Darkness_24": {
+      "id": "0058E9",
+      "formid": "010058E9",
+      "type": "SPEL"
+    },
+    "ESSB_N6_HazardSpell_Astral": {
+      "id": "0058EB",
+      "formid": "010058EB",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Hazard_Astral": {
+      "id": "0058EA",
+      "formid": "010058EA",
+      "type": "HAZD"
+    },
+    "ESSB_N6_DomainEffect_Astral": {
+      "id": "0058EC",
+      "formid": "010058EC",
+      "type": "MGEF"
+    },
+    "ESSB_N6_Domain_Astral_1": {
+      "id": "0058ED",
+      "formid": "010058ED",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_2": {
+      "id": "0058EE",
+      "formid": "010058EE",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_3": {
+      "id": "0058EF",
+      "formid": "010058EF",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_4": {
+      "id": "0058F0",
+      "formid": "010058F0",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_5": {
+      "id": "0058F1",
+      "formid": "010058F1",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_6": {
+      "id": "0058F2",
+      "formid": "010058F2",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_7": {
+      "id": "0058F3",
+      "formid": "010058F3",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_8": {
+      "id": "0058F4",
+      "formid": "010058F4",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_9": {
+      "id": "0058F5",
+      "formid": "010058F5",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_10": {
+      "id": "0058F6",
+      "formid": "010058F6",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_11": {
+      "id": "0058F7",
+      "formid": "010058F7",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_12": {
+      "id": "0058F8",
+      "formid": "010058F8",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_13": {
+      "id": "0058F9",
+      "formid": "010058F9",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_14": {
+      "id": "0058FA",
+      "formid": "010058FA",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_15": {
+      "id": "0058FB",
+      "formid": "010058FB",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_16": {
+      "id": "0058FC",
+      "formid": "010058FC",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_17": {
+      "id": "0058FD",
+      "formid": "010058FD",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_18": {
+      "id": "0058FE",
+      "formid": "010058FE",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_19": {
+      "id": "0058FF",
+      "formid": "010058FF",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_20": {
+      "id": "005900",
+      "formid": "01005900",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_21": {
+      "id": "005901",
+      "formid": "01005901",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_22": {
+      "id": "005902",
+      "formid": "01005902",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_23": {
+      "id": "005903",
+      "formid": "01005903",
+      "type": "SPEL"
+    },
+    "ESSB_N6_Domain_Astral_24": {
+      "id": "005904",
+      "formid": "01005904",
       "type": "SPEL"
     },
     "ESSB_Proc": {
@@ -24196,8 +25516,8 @@
       "type": "PERK"
     },
     "ESSB_MainQuest": {
-      "id": "006016",
-      "formid": "01006016",
+      "id": "006018",
+      "formid": "01006018",
       "type": "QUST"
     },
     "ESSB_MainQuest_Schema1_Stub": {
@@ -24320,9 +25640,19 @@
       "formid": "01006015",
       "type": "QUST"
     },
-    "ESSB_MCMQuest": {
+    "ESSB_MainQuest_Schema13_Stub": {
+      "id": "006016",
+      "formid": "01006016",
+      "type": "QUST"
+    },
+    "ESSB_MCMQuest_Schema13_Stub": {
       "id": "006017",
       "formid": "01006017",
+      "type": "QUST"
+    },
+    "ESSB_MCMQuest": {
+      "id": "006019",
+      "formid": "01006019",
       "type": "QUST"
     }
   }
