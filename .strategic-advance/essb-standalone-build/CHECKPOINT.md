@@ -46,7 +46,8 @@
 1c. 已定（2026-09-25 使用者 OK）：N6 領域＝對敵效果走 Spawn Hazard 原型 MGEF 經 CastSpellImmediate（放在目標腳下、只打敵對、引擎管壽命與上限，不再限 3 個）；對玩家自己的效果（火域熱度、冰原免減速、血池／聖域／潮池回復）由 DLL 每秒計時檢查玩家是否在領域範圍內補上。寫 N6 合約時納入，並同步改 v0.4 §10.3 領域列
 2. T＝round 21 ✅ 2026-09-26 3d22562 提交、已部署 MO2（備份 `.codex/mo2-installed-backup-20260926-080245`）；兩輪審查後 PASS；狀態 DONE 74／KEPT 273／PARTIAL 42／LATER 104（清單在 build/plan-coverage.json）；探針卡 `build/fix21-probes.md` 待實測；提前移除火浴回血、不死、蔓延、亡者歸來（C3，於對應切片重做）。下一步 N3。
 2b. N3＝round 22 ✅ 2026-09-26 20f754d 提交、已部署 MO2（備份 `.codex/mo2-installed-backup-20260926-124537`）；審查 PASS WITH FIXES 已修；探針卡 `build/fix22-probes.md`（約 20 分）。
-2c. N4＝round 23（進行中，合約 `.codex/fix-round23-briefing.md`、紀錄 `.codex/impl-fix-round23.html`）。使用者 2026-09-26：先做完 N3～N6 初步完整，再一次跑全部探針卡；切片之間不停。
+2c. N4＝round 23 ✅ 2026-09-26 d78cb85 提交、已部署（備份 `.codex/mo2-installed-backup-20260926-152433`）；審查抓到護血不死（已修：分擔 50%、溢出可致死）；探針卡 `build/fix23-probes.md`（約 25 分）。裁定：雷神回魔 B_max×電荷×0.5、蓄能 ≥1 即轉、同調門檻讀 GLOB。
+2d. N5＝round 24（進行中，合約 `.codex/fix-round24-briefing.md`、紀錄 `.codex/impl-fix-round24.html`）；含 C3 提前移除四項重做。使用者 2026-09-26：先做完 N3～N6 初步完整，再一次跑全部探針卡；切片之間不停。
 （舊註記：2026-09-25 21:40 額度 99%，可能中斷。恢復：讀 `.codex/impl-fix-round21.html` 最後完成的里程碑，重派 Opus 照合約「If resumed」續做；快照 `.codex/pre-fix21-snapshot/` 不可覆寫；工作樹未提交的改動都是 round 21 的，勿 reset。合約 `.codex/fix-round21-briefing.md`、紀錄 `.codex/impl-fix-round21.html`）：技能樹照 v0.4 重建（ESP perk、Papyrus 樹／MCM、DLL 節點讀取對照）；補上 N2 因節點不存在沒做的無元素四列
 3. N3：目標狀態層（根除舊狀態層幽靈 bug）
 4. N4：受擊與自身資源（超載、蓄勁、護血扣減、電荷→雷 N）
