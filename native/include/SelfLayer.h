@@ -349,7 +349,9 @@ constexpr SelfResult PlanSelfHit(StatusPlan& plan, const SelfHit& hit, const Hit
     case kAstral:
         if (me.Has(StatusKind::kCosmos)) {
             // 闇星：每一次武器命中消耗 1 層闇宙，對該目標打出一次滿層引爆；用完回到一般形態（餘輝：得 3 層共鳴層）。
-            plan.Push(Amount(Op::kDamage, res::DarkStrike(hit.power, target, me, in, nodes), kAstral));
+            StatusOp strike = Amount(Op::kDamage, res::DarkStrike(hit.power, target, me, in, nodes), kAstral);
+            strike.arg[0] = tag::kDarkStrike;   // round 24: 星蝕 echoes it in the body pass
+            plan.Push(strike);
             const int left = me.Layers(StatusKind::kCosmos) - 1;
             if (left > 0) {
                 pw.Set(StatusKind::kCosmos, static_cast<float>(left), Scaled(t, n4::kCosmos));

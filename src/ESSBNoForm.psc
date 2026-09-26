@@ -7,7 +7,7 @@ Scriptname ESSBNoForm Hidden
 v0.4 的無元素命中（基準真傷、吸魔、小滅法、滅法、滅法印、沉默，以及吸魔量、奪魔、滅法倍率、燒魔倍數、枯竭、
 靜寂、燒魔 +5%、低魔增傷、噬命、寂滅）由 DLL 在命中當下計算並施放（round 20 N2、round 21）；斷咒、反咒、戰意、
 超載、法盾、化法為力、逼近、咒返、不屈、餘魔、破護、反擊 round 23（N4）起也在 DLL。
-這裡只剩 v0.3 融斷路線沿用下來的節點（冷寂 N5 前）與真傷倍率。
+這裡只剩真傷倍率、施法判定與冷寂的免門檻／連斷（round 24 起冷寂的其餘節點在 DLL）。
 v0.3 的純武藝路線（重擊碎甲、暴擊率、戰意武器傷害、終結、節奏、處決……）在 v0.4 已整條換成大師路線（多為 N4），
 其效果在 round 21 拿掉。
 
@@ -22,16 +22,6 @@ Int Function TREE() Global
 EndFunction
 
 ; ================================================================== 真實傷害（2.8）
-
-; M_mod(無元素樹)：滅法傳奇主線（目標魔力 <25% 時命中傷害 +3%／點）。Papyrus 這一側只剩反咒等真傷在用；
-; 命中的真傷由 DLL 算同一條主線。
-Float Function TrueMult(ESSBController akCtl, Actor akTarget) Global
-	Float mult = 1.0
-	If akTarget && akTarget.GetActorValuePercentage("Magicka") < 0.25
-		mult = mult + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 11, 1, 4), 0.03) ; @node 目標魔力低於 25% 時命中傷害
-	EndIf
-	Return mult
-EndFunction
 
 ; ================================================================== 滅法（route 1）
 
@@ -73,25 +63,10 @@ EndFunction
 
 ; ================================================================== 冷寂（route 2）
 
-; 新手主線「融斷 +2%／點」、傳奇主線「融斷再 +3%／點」。與通用樹的融斷倍率相乘。
-Float Function BurstMult(ESSBController akCtl) Global
-	Return 1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 11, 2, 0), 0.02) + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 11, 2, 4), 0.03) ; @node 融斷, 融斷再
-EndFunction
-
-; 專精主線：融斷範圍 +0.3 公尺／點；熟練分支「收束」：15 → 20 公尺。
-Float Function BurstRadius(ESSBController akCtl) Global
-	Float metres = 15.0
-	If ESSBNodes.Br(akCtl, 11, 2, 1, 0) ; @node 收束
-		metres = 20.0
-	EndIf
-	metres = metres + 0.3 * ESSBNodes.Rank(akCtl, 11, 2, 2) ; @node 融斷範圍
-	Return metres * 70.0
-EndFunction
-
-; 融斷結束後：免門檻、連斷、回流、雙斷。
-; v0.4 冷寂路線的熟練主線是「寂每層燒魔」、大師主線是「寂上限」（寂是 DLL N5），v0.3 的「餘燼」「淬火」
-; 與已退役的「餘燼延續」已拿掉。
-Function OnBurst(ESSBController akCtl, Int aiElement, Int aiMarks, Int aiSyncBefore) Global
+; 融斷結束後：免門檻、連斷（開形態的代價與同調保留，Papyrus 負責）。
+; round 24（N5）：冷寂路線的融斷倍率、範圍、寂（燒魔、上限、萬寂）、斷界、回流、雙斷都在 DLL（Reactions.h PlanBurst，
+; 雙斷的再開印在 FormEnter 的 PlanAdvent）。
+Function OnBurst(ESSBController akCtl, Int aiSyncBefore) Global
 	; 新手分支「免門檻」：融斷後下一次開形態不需魔力。
 	If ESSBNodes.Br(akCtl, 11, 2, 0, 0) ; @node 免門檻
 		akCtl.SetFreeOpen(1)
@@ -100,19 +75,6 @@ Function OnBurst(ESSBController akCtl, Int aiElement, Int aiMarks, Int aiSyncBef
 	; 專精分支「連斷」：融斷後 5 秒內重開任一形態，保留一半同調。
 	If ESSBNodes.Br(akCtl, 11, 2, 2, 0) ; @node 連斷
 		akCtl.SetSyncKeep(aiSyncBefore / 2, 5)
-	EndIf
-
-	; 大師分支「回流」：融斷回復你魔力，每個印記 B_max ×0.5。
-	If ESSBNodes.Br(akCtl, 11, 2, 3, 1) && aiMarks > 0 ; @node 回流
-		Actor player = akCtl.ThePlayer()
-		If player
-			akCtl.ApplyUtil(5, ESSBReactions.BaseMax(akCtl, aiElement) * 0.5 * aiMarks, 0, player)
-		EndIf
-	EndIf
-
-	; 傳奇分支「雙斷」：融斷後 3 秒內再次按 Z 開任一形態，對範圍內敵人立即開印一次。
-	If ESSBNodes.Br(akCtl, 11, 2, 4, 0) ; @node 雙斷
-		akCtl.SetDoubleBurst(3)
 	EndIf
 EndFunction
 

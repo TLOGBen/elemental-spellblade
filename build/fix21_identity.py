@@ -686,6 +686,11 @@ def run_checks(plan, sources, identity, esp_main, esp_branch, native, arrays=Non
     tree_ids = [t['id'] for t in plan['trees']]
     by_pos, by_name = index(plan)
     table, errors = statuses(by_name)
+    # round 24: after N5 no -N5 / LATER branch is left, so the self test marks one node LATER itself (never in production)
+    if _helpers.get('status_override'):
+        table = dict(table)   # a copy: the production table (plan_coverage.NODES) is never touched
+        for key, status in _helpers['status_override'].items():
+            table[key] = (status,) + tuple(table[key])[1:]
     reads, errs = check_papyrus(sources, by_pos, by_name, table, tree_ids)
     errors += errs
     errors += check_bases(sources)
@@ -728,24 +733,38 @@ def self_test(inputs):
         assert hit, (label, 'fault not caught', errors[:5])
         cases.append(label)
 
+    def later_key(data, branch=True, element=True):
+        """A node whose slice is not live: a real LATER one if any is left, else (round 24: every N5 node landed) a
+        working node marked LATER for this injected fault only."""
+        def fits(k):
+            return (not branch or data['kinds'][k] == 'branch') and (not element or data['trees'].index(k[0]) < 11)
+        key = next((k for k, v in data['plan_status'].items() if v.startswith('LATER') and fits(k)), None)
+        if key is None:
+            key = next(k for k in data['plan_status'] if fits(k))
+            data['status_override'] = {key: 'LATER-N6'}
+            data['plan_status'] = {**data['plan_status'], key: 'LATER-N6'}
+        return key
+
     def first_read(data, script):
         text = data['sources'][script]
         m = re.search(r'ESSBNodes\.Br\(akCtl, (\d+), (\d+), (\d+), (\d+)\)[^\n]*; @node ([^\n,]+)', text)
         return text, m
 
+    # round 24: the fire / frost / lightning branch reads left ESSBElem.psc with the reaction bodies (native/include/
+    # Reactions.h); the same faults are injected into the first branch read left in Papyrus (ESSBElem2.psc).
     def swap_name(data):   # annotation names a different node of the same tree
-        text, m = first_read(data, 'ESSBElem.psc')
-        data['sources']['ESSBElem.psc'] = text[:m.start(5)] + '溫血' + text[m.end(5):]
+        text, m = first_read(data, 'ESSBElem2.psc')
+        data['sources']['ESSBElem2.psc'] = text[:m.start(5)] + '溫血' + text[m.end(5):]
     expect('annotation names another node', swap_name, "annotation says '溫血'")
 
     def slot_shift(data):  # the call reads the neighbouring slot, annotation unchanged
-        text, m = first_read(data, 'ESSBElem.psc')
-        data['sources']['ESSBElem.psc'] = text[:m.start(4)] + str(int(m.group(4)) + 1) + text[m.end(4):]
+        text, m = first_read(data, 'ESSBElem2.psc')
+        data['sources']['ESSBElem2.psc'] = text[:m.start(4)] + str(int(m.group(4)) + 1) + text[m.end(4):]
     expect('read shifted to another slot', slot_shift, 'annotation says')
 
     def unannotated(data):
-        text = data['sources']['ESSBElem.psc']
-        data['sources']['ESSBElem.psc'] = re.sub(r'\s*; @node [^\n]+', '', text, count=1)
+        text = data['sources']['ESSBElem2.psc']
+        data['sources']['ESSBElem2.psc'] = re.sub(r'\s*; @node [^\n]+', '', text, count=1)
     expect('read without annotation', unannotated, '@node name(s)')
 
     def retired(data):     # a read of a retired v0.3 slot (fire 關閉新手 slot 1, 洩壓)
@@ -753,8 +772,7 @@ def self_test(inputs):
     expect('read of a retired slot', retired, 'not a v0.4 node')
 
     def later(data):       # a read of a node whose slice is not live
-        key = next(k for k, v in data['plan_status'].items() if v.startswith('LATER') and data['kinds'][k] == 'branch'
-                   and data['trees'].index(k[0]) < 11)
+        key = later_key(data)
         node = data['nodes'][key]
         data['sources']['ESSBElem.psc'] += (f'\nFunction Probe21(ESSBController akCtl) Global\n\tBool x = ESSBNodes.Br(akCtl, '
                                            f'{node["tree_index"]}, {node["route"]}, {node["tier"]}, {node["slot"]}) ; @node {key[1]}\nEndFunction\n')
@@ -762,11 +780,12 @@ def self_test(inputs):
 
     def skeleton_list(data):   # skeleton read claims a tree that has another node there
         text = data['sources']['ESSBElem.psc']
-        # round 22: the takeover line moved to the DLL; the signature list is a Papyrus skeleton read left (wind's slot
-        # there is 落地傷害)
-        m = re.search(r'@node 爆燃\{([^}]*)\}', text)
-        data['sources']['ESSBElem.psc'] = text[:m.start(1)] + m.group(1) + ' wind' + text[m.end(1):]
-    expect('skeleton tree list includes a tree with a different node', skeleton_list, "wind (tree")
+        # round 22: the takeover line moved to the DLL; round 24: the signature list went with the end bodies -- the
+        # advent radius is the Papyrus skeleton read left (fire's slot there is 火臨, not 地臨)
+        m = re.search(r'/ 地臨\{([^}]*)\}', text)
+        text = text[:m.start(1)] + m.group(1) + ' fire' + text[m.end(1):]
+        data['sources']['ESSBElem.psc'] = text.replace('*臨{fire ', '*臨{', 1)   # fire moves to the 地臨 list
+    expect('skeleton tree list includes a tree with a different node', skeleton_list, "fire (tree")
 
     def skeleton_missing(data):   # skeleton list omits a tree that has the node
         text = data['sources']['ESSBElem.psc']
@@ -786,14 +805,14 @@ def self_test(inputs):
     expect('C++ spells a slot literal', dll_literal, 'built in C++')
 
     def dll_array_later(data):   # round 22: a per-element table read reaches a node whose slice is not live
-        key = next(k for k, v in data['plan_status'].items() if v.startswith('LATER') and data['trees'].index(k[0]) < 11)
+        key = later_key(data, branch=False)
         data['arrays'] = dict(data['arrays'] or {}, kProbe22=[None, key] + [None] * 10)
         path = next(p for p in data['native'] if p.endswith('HitMath.h'))
         data['native'][path] += '\nconst auto probe22 = node::kProbe22[kFire];\n'
     expect('DLL table read of a LATER node', dll_array_later, 'node::kProbe22[kFire] reads')
 
     def esp_later(data):
-        key = next(k for k, v in data['plan_status'].items() if v.startswith('LATER') and data['kinds'][k] == 'branch')
+        key = later_key(data, element=False)
         data['esp_branch'].append(key)
     expect('ESP entry point on a LATER node', esp_later, 'ESP entry points on')
 
@@ -803,7 +822,8 @@ def self_test(inputs):
     expect('working node with no reader', unread, 'nothing reads it')
 
     def perk_math(data):
-        data['sources']['ESSBGuard.psc'] += '\n; x\nFunction Probe21()\n\tForm f = Game.GetFormFromFile(0x2034, "x")\nEndFunction\n'
+        # round 24: ESSBGuard.psc is deleted; any script but ESSBTrees carries the fault
+        data['sources']['ESSBInput.psc'] += '\n; x\nFunction Probe21()\n\tForm f = Game.GetFormFromFile(0x2034, "x")\nEndFunction\n'
     expect('perk FormID arithmetic outside ESSBTrees', perk_math, 'outside ESSBTrees')
 
     # ---- review round 21: the reviewer's escapes, each one must now be caught
@@ -811,7 +831,7 @@ def self_test(inputs):
         data['sources'][script] += '\nFunction Probe21(ESSBController akCtl, Int aiElement) Global\n' + body + '\nEndFunction\n'
 
     def lowercase(data):   # Papyrus is case-insensitive: a lower-case read of a LATER node
-        key = next(k for k, v in data['plan_status'].items() if v.startswith('LATER') and data['kinds'][k] == 'branch')
+        key = later_key(data, element=False)
         node = data['nodes'][key]
         add(data, 'ESSBElem.psc', f'\tBool x = essbnodes.br(akCtl, {node["tree_index"]}, {node["route"]}, {node["tier"]}, {node["slot"]})')
     expect('lower-case reader call', lowercase, '@node name(s)')
@@ -821,7 +841,7 @@ def self_test(inputs):
     expect('ESSBTrees.CachedBranch called outside the tree layer', layer_call, 'is a tree-layer function')
 
     def internal_call(data):
-        add(data, 'ESSBGuard.psc', '\tInt x = akCtl.Trees.mainrankinternal(3, 0, 2)')
+        add(data, 'ESSBInput.psc', '\tInt x = akCtl.Trees.mainrankinternal(3, 0, 2)')
     expect('ESSBTrees.MainRankInternal (lower case) outside the tree layer', internal_call, 'is a tree-layer function')
 
     def cache_read(data):  # the rank cache read directly
@@ -829,11 +849,11 @@ def self_test(inputs):
     expect('rank cache read outside the wrappers', cache_read, "rank cache")
 
     def hex_sum(data):     # perk FormID built from a hex base plus an offset
-        add(data, 'ESSBGuard.psc', '\tForm f = Game.GetFormFromFile(0x002000 + 52, "Elements Spellblade.esp")')
+        add(data, 'ESSBInput.psc', '\tForm f = Game.GetFormFromFile(0x002000 + 52, "Elements Spellblade.esp")')
     expect('perk FormID from hex base + offset', hex_sum, 'outside ESSBTrees')
 
     def decimal_id(data):  # perk FormID as a decimal literal
-        add(data, 'ESSBGuard.psc', '\tForm f = Game.GetFormFromFile(8244, "Elements Spellblade.esp")')
+        add(data, 'ESSBInput.psc', '\tForm f = Game.GetFormFromFile(8244, "Elements Spellblade.esp")')
     expect('perk FormID as a decimal literal', decimal_id, 'outside ESSBTrees')
 
     def skeleton_expr(data):   # skeleton read with a tree argument that is not the element's own tree

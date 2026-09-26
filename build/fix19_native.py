@@ -21,18 +21,22 @@ import fix20_records as hit20
 import fix21_records as hit21
 import fix22_records as hit22
 import fix23_records as hit23
+import fix24_records as hit24
 import fix20_fixture
 import fix22_fixture
 import fix23_fixture
+import fix24_fixture
 import fix20_reference as _ref
 import fix22_reference as _ref22
 import fix23_reference as _ref23
+import fix24_reference as _ref24
 NATIVE = ROOT / 'native'
-NATIVE_VERSION = '0.23.0'
+NATIVE_VERSION = '0.24.0'
 NATIVE_HIT = 0x52d1
 NATIVE_WANTED = 0x52d2
 NATIVE_GLOBALS = {'ESSB_NativeHit', 'ESSB_NativeWanted'}      # round 19: the MCM shows both
-NEW_EDIDS = NATIVE_GLOBALS | hit20.new_edids() | hit21.new_edids() | hit22.new_edids() | hit23.new_edids()   # every record the native slices added
+NEW_EDIDS = (NATIVE_GLOBALS | hit20.new_edids() | hit21.new_edids() | hit22.new_edids() | hit23.new_edids() |
+             hit24.new_edids())   # every record the native slices added
 DEPS = {
     'CommonLibSSE-NG': ('https://github.com/CharmedBaryon/CommonLibSSE-NG', 'b93280e832f263dbef44e44cbe2936622a02f91a'),
     'spdlog': ('https://github.com/gabime/spdlog', '27cb4c76708608465c413f6d0e6b8d99a4d84302'),
@@ -46,14 +50,18 @@ STATUS_TABLE = ROOT / fix22_fixture.TABLE
 STATUS_WIRING = ROOT / fix22_fixture.WIRING
 SELF_TABLE = ROOT / fix23_fixture.TABLE
 SELF_WIRING = ROOT / fix23_fixture.WIRING
+BODY_TABLE = ROOT / fix24_fixture.TABLE
+BODY_WIRING = ROOT / fix24_fixture.WIRING
 ENTRY_POINT = 2  # PRKE effect type: 0 quest stage, 1 ability, 2 entry point
 ENTRY_51 = 51    # Apply Combat Hit Spell
 
 # Every node:: constant the DLL reads -> (tree id, v0.4 node name): the hit formulas' (build/fix20_reference.NODE_NAMES)
 # and, from round 22, the status layer's (build/fix22_reference.NODE_NAMES); the slot of each is looked up by name in
 # the identity table.
-NODE_IDENTITY = dict(_ref.NODE_NAMES) | dict(_ref22.NODE_NAMES) | dict(_ref23.NODE_NAMES)   # round 23 (N4): the self layer's
-assert len(NODE_IDENTITY) == len(_ref.NODE_NAMES) + len(_ref22.NODE_NAMES) + len(_ref23.NODE_NAMES), 'a node constant is named twice'
+NODE_IDENTITY = (dict(_ref.NODE_NAMES) | dict(_ref22.NODE_NAMES) | dict(_ref23.NODE_NAMES) |   # round 23 (N4): the self layer's
+                 dict(_ref24.NODE_NAMES))                                                          # round 24 (N5): the bodies'
+assert len(NODE_IDENTITY) == len(_ref.NODE_NAMES) + len(_ref22.NODE_NAMES) + len(_ref23.NODE_NAMES) + len(_ref24.NODE_NAMES), \
+    'a node constant is named twice'
 ELEMENT_SHORT = ['火', '冰', '雷', '土', '風', '血', '聖', '毒', '水', '暗', '星']
 TREE_IDS = ['fire', 'frost', 'lightning', 'earth', 'wind', 'blood', 'divine', 'poison', 'water', 'darkness', 'astral']
 
@@ -74,6 +82,11 @@ def _array_identity():
                               (TREE_IDS[e - 1], pattern.format(x=ELEMENT_SHORT[e - 1])) for e in range(1, 12)]
     out['kSignature'] = [None] + [(tree, _ref22.SIGNATURE[tree]) for tree in TREE_IDS]
     out['kSustainLegend'] = [None] + [(tree, _ref23.SUSTAIN_LEGEND[tree]) for tree in TREE_IDS]   # round 23 化身
+    for name, (_route, _level, pattern, without) in _ref24.SKELETON.items():   # round 24: the burst lines
+        out[name] = [None] + [None if TREE_IDS[e - 1] in without else
+                              (TREE_IDS[e - 1], pattern.format(x=ELEMENT_SHORT[e - 1])) for e in range(1, 12)]
+    for name, (_route, _level, labels) in _ref24.LABELED.items():   # round 24: the X臨 main lines
+        out[name] = [None] + [(tree, labels[tree]) for tree in TREE_IDS]
     return out
 
 
@@ -178,6 +191,27 @@ def skeleton_tables(b):
         assert cell['main_label'] == _ref23.SUSTAIN_LEGEND[tree['id']], (tree['id'], cell['main_label'])
         cells.append((element - 1, 0, 4))
     out['kSustainLegend'] = cells
+    for name, (route, level, pattern, without) in _ref24.SKELETON.items():   # round 24 (N5)
+        cells = [None]
+        for element in range(1, 12):
+            tree = trees[element - 1]
+            label = pattern.format(x=ELEMENT_SHORT[element - 1])
+            cell = tree['routes'][route]['tiers'][level]
+            if tree['id'] in without:
+                assert cell['main_label'] != label, (name, tree['id'], cell['main_label'])
+                cells.append(None)
+                continue
+            assert cell['main_label'] == label, (name, tree['id'], cell['main_label'], label)
+            cells.append((element - 1, route, level))
+        out[name] = cells
+    for name, (route, level, labels) in _ref24.LABELED.items():   # round 24 (N5): X臨 (earth 地臨)
+        cells = [None]
+        for element in range(1, 12):
+            tree = trees[element - 1]
+            cell = tree['routes'][route]['tiers'][level]
+            assert cell['main_label'] == labels[tree['id']], (name, tree['id'], cell['main_label'])
+            cells.append((element - 1, route, level))
+        out[name] = cells
     return out
 
 
@@ -187,7 +221,8 @@ def globals_(b):
     ids |= {'ESSB_NativeHit': NATIVE_HIT, 'ESSB_NativeWanted': NATIVE_WANTED}
     for name in ['ESSB_BaseDamageMult', 'ESSB_NodeScale', 'ESSB_MultDrain', 'ESSB_MultRecovery', 'ESSB_MultDuration',
                  'ESSB_SlowCapPct', 'ESSB_WaterWetSlowPct', 'ESSB_WaterClearStamina', 'ESSB_ManabreakMaxmagPct',
-                 'ESSB_MultCooldown', 'ESSB_MultDot', 'ESSB_PoisonDotK', 'ESSB_BleedDotK']:
+                 'ESSB_MultCooldown', 'ESSB_MultDot', 'ESSB_PoisonDotK', 'ESSB_BleedDotK',
+                 'ESSB_FrostOpenSlowPct', 'ESSB_WaterOpenStamina']:   # round 24: the open bodies' two tunables
         ids[name] = b.ID_BALANCE_GLOB[name][0]
     mech = [name for name, _ in b.MECH_GLOBALS]
     for name in ['ESSB_SyncStage', 'ESSB_PrevElement', 'ESSB_TwinElement']:
@@ -218,6 +253,7 @@ TUNING_GLOBALS = {
     'multCooldown': 'ESSB_MultCooldown', 'envStormy': 'ESSB_EnvStormy',
     'multDot': 'ESSB_MultDot', 'poisonDotK': 'ESSB_PoisonDotK', 'bleedDotK': 'ESSB_BleedDotK',
     'syncT1': 'ESSB_SyncT1', 'syncT2': 'ESSB_SyncT2', 'syncT3': 'ESSB_SyncT3',
+    'frostOpenSlowPct': 'ESSB_FrostOpenSlowPct', 'waterOpenStamina': 'ESSB_WaterOpenStamina',   # round 24 (N5)
 }
 
 
@@ -240,6 +276,8 @@ def spells(b):
         'kBloodGuard': (hit20.GUARD, 'ESSB_BloodGuard'),
         'kHushSpent': (hit21.HUSH_SPENT, 'ESSB_HushSpent'),
         'kRiposte': (hit21.RIPOSTE, 'ESSB_RiposteWindow'),   # round 23: 反擊's window, cast by the DLL on a block
+        'kHush': (hit21.HUSH, 'ESSB_Hush'),                  # round 24: 寂 (冷寂 at 融斷, 萬寂)
+        'kHealTarget': (0x005151, 'ESSB_UtilTarget_RestoreHealth'),   # round 24: 聖光 heals an ally
     }
     for seconds in range(1, hit20.SILENCE_COUNT + 1):
         rows[f'kSilence{seconds}'] = (hit20.SILENCE + seconds - 1, hit20.silence_edid(seconds))
@@ -259,6 +297,8 @@ def effects(b):
         'kHush': (hit21.HUSH_EFFECT, 'ESSB_HushEffect'),
         'kHushSpent': (hit21.HUSH_SPENT_EFFECT, 'ESSB_HushSpentEffect'),
         'kManaBreak': (b.ID_MANABREAK_EFFECT, 'ESSB_ManaBreakEffect'),   # round 23: 反咒 reads it on a caster
+        'kEngaged': (b.ID_ENGAGED_EFFECT, 'ESSB_EngagedEffect'),     # round 24: 2.9 你主動攻擊過的目標（30 秒）
+        'kReanimate': (b.ID_REANIMATE_EFFECT, 'ESSB_ReanimateEffect'),   # round 24: your raised servant (亡衛)
     }
     return {k: dict(local_id=v[0], editor_id=v[1]) for k, v in rows.items()}
 
@@ -270,6 +310,7 @@ def vanilla(b):
         'kDaedraKeyword': dict(form_id=b.FID_KW_DAEDRA, kind='KYWD'),
         'kArmorSpellKeyword': dict(form_id=b.FID_KW_ARMOR_SPELL, kind='KYWD'),
         'kCloakKeyword': dict(form_id=b.FID_KW_CLOAK, kind='KYWD'),
+        'kDragonKeyword': dict(form_id=b.FID_KW_DRAGON, kind='KYWD'),   # round 24: never knocked, raised or turned to ash
         'kNecroClass': dict(form_id=b.FID_CLASS_NECRO, kind='CLAS'),
         'kNecroFaction': dict(form_id=b.FID_FACT_NECRO, kind='FACT'),
         # round 23: the spell half of the pool PERKs is bound to these keywords (v0.4 5.11), so the hurt path counts a
@@ -370,7 +411,14 @@ def status_ids(b):
                        stub=k[5], editor_id=hit22.edid_spell(k[1])) for k in hit22.KINDS] +
                  # round 23 (N4): your resources, windows and cooldowns (build/fix23_records.py), after round 22's
                  [dict(kind=k[0], effect=hit23.effect_id(k[0]), spell=hit23.spell_id(k[0]), seconds=k[4], player=k[3],
-                       stub=False, editor_id=hit23.edid_spell(k[1])) for k in hit23.KINDS],
+                       stub=False, editor_id=hit23.edid_spell(k[1])) for k in hit23.KINDS] +
+                 # round 24 (N5): the death markers, windows, cooldowns and 血承 (build/fix24_records.py)
+                 [dict(kind=k[0], effect=hit24.effect_id(k[0]), spell=hit24.spell_id(k[0]), seconds=k[4], player=k[3],
+                       stub=False, editor_id=hit24.edid_spell(k[1])) for k in hit24.KINDS],
+        'timed': [dict(name=name, util=util, self=util in hit24.SELF_UTILS,
+                       spells=[hit24.timed_id(name, s) for s in range(1, hit24.TIMED_MAX_SECONDS + 1)],
+                       editor_ids=[hit24.timed_edid(name, s) for s in range(1, hit24.TIMED_MAX_SECONDS + 1)])
+                  for util, name in hit24.TIMED],
         'dots': {key: dict(effect=hit22.dot_effect_id(key),
                            spells=[hit22.dot_spell_id(key, s) for s in range(1, hit22.DOT_MAX_SECONDS + 1)],
                            editor_id=hit22.edid_effect(suffix))
@@ -405,7 +453,20 @@ def status_header(b):
     L.append(f'inline constexpr float kMarkRecordSeconds = {float(MARK_RECORD_SECONDS)}f;  // ESSB_MarkSpell_<X> EFIT duration')
     for name in ('fear', 'frenzy', 'slow'):
         L.append(f'inline constexpr std::uint32_t k{name.capitalize()}Effect = {hex(ids[name]["effect"])};  // {ids[name]["editor_id"]}')
-    L += ['}  // namespace status']
+    timed = ids['timed']
+    L.append(f'inline constexpr std::uint32_t kTimed[{len(timed)}][{hit24.TIMED_MAX_SECONDS}] = {{')
+    for row in timed:
+        L.append('    {' + ', '.join(hex(x) for x in row['spells']) + f'}},  // {row["name"]}: ESSB_N5_Timed<X>_1..{hit24.TIMED_MAX_SECONDS}')
+    L.append('};')
+    L += ['}  // namespace status', '',
+          '// Round 24 (N5): the timed utilities a reaction body casts (build/fix24_records.py TIMED): Op::kTimed element.',
+          f'inline constexpr int kTimedKinds = {len(timed)};',
+          f'inline constexpr int kTimedMaxSeconds = {hit24.TIMED_MAX_SECONDS};',
+          'namespace timed {']
+    for i, row in enumerate(timed):
+        L.append(f'inline constexpr int {row["name"]} = {i};  // ESSB_UtilEffect #{row["util"]}')
+    L += ['}  // namespace timed',
+          'inline constexpr bool kTimedOnPlayer[' + str(len(timed)) + '] = {' + ', '.join('true' if r['self'] else 'false' for r in timed) + '};']
     return L
 
 
@@ -428,6 +489,9 @@ def fixture(b):
     # Round 23 (N4): the self layer's and the hurt path's scenarios (reference model) and record wiring.
     count += fix23_fixture.write(b, settings(), write_if_changed, ROOT)
     fix23_fixture.wiring(b, globals_(b), write_if_changed, ROOT)
+    # Round 24 (N5): the reaction bodies', the burst's and the death handling's scenarios (reference model) and wiring.
+    count += fix24_fixture.write(b, settings(), write_if_changed, ROOT)
+    fix24_fixture.wiring(b, globals_(b), write_if_changed, ROOT)
     return count
 
 
@@ -466,6 +530,8 @@ def input_paths():
              ROOT / 'build/fix20_fixture.py', TABLE, WIRING, ROOT / 'build/fix22_fixture.py', STATUS_TABLE, STATUS_WIRING,
              ROOT / 'build/fix23_records.py', ROOT / 'build/fix23_reference.py', ROOT / 'build/fix23_fixture.py', SELF_TABLE,
              SELF_WIRING,
+             ROOT / 'build/fix24_records.py', ROOT / 'build/fix24_reference.py', ROOT / 'build/fix24_fixture.py', BODY_TABLE,
+             BODY_WIRING,
              NATIVE / 'build.py', NATIVE / 'CMakeLists.txt',
              NATIVE / 'dependencies.lock.json', NATIVE / 'toolchain.lock.json']
     for part in ['src', 'include', 'tests', 'cmake']:
@@ -573,6 +639,10 @@ def verify(b):
                          encoding='utf-8', errors='replace')   # its lines carry the v0.4 names (UTF-8)
     (ROOT / 'build/fix23-native-test.log').write_text(own.stdout + own.stderr, encoding='utf8')
     assert own.returncode == 0, own.stdout + own.stderr
+    body = subprocess.run([str(NATIVE / 'out/Release/reaction_test.exe'), str(BODY_TABLE), str(BODY_WIRING)], text=True,
+                          capture_output=True, encoding='utf-8', errors='replace')
+    (ROOT / 'build/fix24-native-test.log').write_text(body.stdout + body.stderr, encoding='utf8')
+    assert body.returncode == 0, body.stdout + body.stderr
     print(f'NATIVE ok: fresh DLL {NATIVE_VERSION} + exact dependencies + manifest/ESP identities (22 proc spells with one damage '
           f'effect each, {len(m["spells"])} cast spells, {len(m["effects"])} effects, {len(m["globals"])} globals, '
           f'{len(wiring["main_perks"])} main lines + {len(wiring["branch_perks"])} branches by EDID); '
@@ -580,4 +650,5 @@ def verify(b):
     print(result.stdout.strip())
     print(status.stdout.strip())
     print(own.stdout.strip())
+    print(body.stdout.strip())
     return m

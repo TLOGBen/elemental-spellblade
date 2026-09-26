@@ -128,6 +128,16 @@ def make_scripts(folder,ctl):
     ctl.scripts=reg
     return reg
 
+def legacy_src():
+    # Round 24 (N5): the reaction bodies these checks exercise (WetSlow, FlowPercent's neighbours, the burst lines) moved
+    # into the DLL; they run on the scripts round 23 shipped, which build/fix24_history.py ties to today's (declared
+    # changes only), as rounds 22 / 23 did for the older verifiers.
+    import sys
+    sys.path.insert(0,str(ROOT/'build'))
+    import fix24_history
+    return fix24_history.legacy_source()
+
+
 def run():
     import sys
     sys.path.insert(0,str(ROOT))
@@ -200,13 +210,20 @@ def run():
     import fix19_native
     status_h=(ROOT/'native/include/Status.h').read_text(encoding='utf-8')
     n3={m[1]:float(m[2]) for m in re.finditer(r'inline constexpr float (k\w+) = ([\d.]+)f;',status_h)}
+    # Round 24 (N5): the reaction bodies' per-point constants (namespace n5) are coefficients too.
+    reactions_h=(ROOT/'native/include/Reactions.h').read_text(encoding='utf-8')
+    n3.update({m[1]:float(m[2]) for m in re.finditer(r'inline constexpr float (k\w+) = ([\d.]+)f;',reactions_h)})
     elements={n:i for i,n in enumerate(['kFire','kFrost','kLightning','kEarth','kWind','kBlood','kDivine','kPoison','kWater','kDarkness','kAstral'],1)}
     dll_sites=0
-    for rel in ('native/include/Status.h','native/src/Plugin.cpp'):
+    # Round 24 (N5): the reaction bodies' percentage lines (the burst main lines) moved from Papyrus into Reactions.h; the
+    # no-form true-damage line's Papyrus copy (ESSBNoForm.TrueMult) went with the Papyrus true damage, HitMath.h is its site.
+    for rel in ('native/include/Status.h','native/src/Plugin.cpp','native/include/Reactions.h','native/include/HitMath.h'):
         text=(ROOT/rel).read_text(encoding='utf-8')
+        if rel.endswith('Reactions.h'):
+            text=text.replace('Pct(Rank(','Pct(t, nodes.Rank(')   # the Bodies member Pct(rank, perPoint) is essb::Pct(T(), rank, perPoint)
         for m in re.finditer(r'Pct\(\s*[\w.]+,\s*nodes\.Rank\(\s*(?:essb::)?node::(k\w+)(?:\[\s*(?:essb::)?(\w+)\s*\])?\s*\),\s*([^)]+?)\s*\)',text):
             name,index,expr=m[1],m[2],m[3].strip()
-            base=float(expr[:-1]) if re.fullmatch(r'[\d.]+f',expr) else n3[expr.removeprefix('essb::').removeprefix('n3::')]
+            base=float(expr[:-1]) if re.fullmatch(r'[\d.]+f',expr) else n3[expr.removeprefix('essb::').removeprefix('n3::').removeprefix('n5::')]
             if name in fix19_native.NODE_IDENTITY:
                 cells=[fix19_native.NODE_IDENTITY[name]]
             else:
@@ -220,7 +237,9 @@ def run():
                 mapped[pos(cell)].append((f'{rel}:{name}',line,base))
             dll_sites+=1
             pct_sites+=1
-    assert papyrus_sites>=15 and dll_sites>=15 and pct_sites>=30,(papyrus_sites,dll_sites,pct_sites)
+    # Round 24 (N5): the Papyrus sites left are the ones Papyrus still owns (the reaction bodies are the DLL's); the total
+    # stays at 30 or more and the DLL must carry what moved.
+    assert papyrus_sites>=5 and dll_sites>=20 and pct_sites>=30,(papyrus_sites,dll_sites,pct_sites)
     scaled={}
     for row in rows:
         k=row['tree_index'],row['route'],row['tier']
@@ -233,6 +252,9 @@ def run():
             assert any(math.isclose(a[2],expected) for a in mapped[k]),('coefficient',row,mapped[k])
             row['code_sites']=mapped[k];scaled[k]=row
     assert set(mapped)==set(scaled),('extra Pct nodes',set(mapped)-set(scaled))
+    # Round 24 review fix 4: the behaviour checks run on today's scripts wherever the function still exists (Pct,
+    # FlowPercent, ApplyUtil's slow cap); only WetSlow, deleted with the Papyrus bodies (the soaked slow is the DLL's,
+    # HitMath.h SoakSlowPct, tested natively), still runs on the round-23 scripts.
     ctl=Ctl(settings);reg=make_scripts(ROOT/'src',ctl)
     for scale in [1,1.5,3,5]:
         ctl.NodeScale.x=scale
@@ -248,7 +270,8 @@ def run():
     water=[]
     for scale in [1,3,5]:
         ctl=Ctl(settings);ctl.NodeScale.x=scale;reg=make_scripts(ROOT/'src',ctl)
-        value=reg['ESSBElem3'].FlowPercent(ctl);assert math.isclose(value,.08);assert reg['ESSBElem3'].WetSlow(ctl)==settings['water_wet_slow_pct']
+        value=reg['ESSBElem3'].FlowPercent(ctl);assert math.isclose(value,.08)
+        old=make_scripts(legacy_src(),Ctl(settings));assert old['ESSBElem3'].WetSlow(ctl)==settings['water_wet_slow_pct']
         water.append(dict(node_scale=scale,regen_pct=value*100,health_300=value*300,health_500=value*500))
     # Round 20 (N2): GetHitMult no longer exists. The proc multiplier is the DLL's (native group A) plus the
     # Papyrus difference patch for target-side terms, checked against the same reference by build/fix20_verify.py.

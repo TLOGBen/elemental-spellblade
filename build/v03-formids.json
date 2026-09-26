@@ -4,8 +4,8 @@
     "Skyrim.esm"
   ],
   "esl_flagged": false,
-  "record_count": 4490,
-  "next_object_id": "006016",
+  "record_count": 4761,
+  "next_object_id": "006018",
   "allocation": [
     {
       "range": "0x000800-0x00080F",
@@ -4059,6 +4059,1351 @@
       "id": "00557D",
       "formid": "0100557D",
       "type": "MGEF"
+    },
+    "ESSB_N5_CremationEffect": {
+      "id": "005600",
+      "formid": "01005600",
+      "type": "MGEF"
+    },
+    "ESSB_N5_Cremation": {
+      "id": "005601",
+      "formid": "01005601",
+      "type": "SPEL"
+    },
+    "ESSB_N5_CurseKillEffect": {
+      "id": "005602",
+      "formid": "01005602",
+      "type": "MGEF"
+    },
+    "ESSB_N5_CurseKill": {
+      "id": "005603",
+      "formid": "01005603",
+      "type": "SPEL"
+    },
+    "ESSB_N5_UndyingCooldownEffect": {
+      "id": "005604",
+      "formid": "01005604",
+      "type": "MGEF"
+    },
+    "ESSB_N5_UndyingCooldown": {
+      "id": "005605",
+      "formid": "01005605",
+      "type": "SPEL"
+    },
+    "ESSB_N5_DoubleBurstEffect": {
+      "id": "005606",
+      "formid": "01005606",
+      "type": "MGEF"
+    },
+    "ESSB_N5_DoubleBurst": {
+      "id": "005607",
+      "formid": "01005607",
+      "type": "SPEL"
+    },
+    "ESSB_N5_SafetyValveEffect": {
+      "id": "005608",
+      "formid": "01005608",
+      "type": "MGEF"
+    },
+    "ESSB_N5_SafetyValve": {
+      "id": "005609",
+      "formid": "01005609",
+      "type": "SPEL"
+    },
+    "ESSB_N5_RadianceEffect": {
+      "id": "00560A",
+      "formid": "0100560A",
+      "type": "MGEF"
+    },
+    "ESSB_N5_Radiance": {
+      "id": "00560B",
+      "formid": "0100560B",
+      "type": "SPEL"
+    },
+    "ESSB_N5_StarChainCooldownEffect": {
+      "id": "00560C",
+      "formid": "0100560C",
+      "type": "MGEF"
+    },
+    "ESSB_N5_StarChainCooldown": {
+      "id": "00560D",
+      "formid": "0100560D",
+      "type": "SPEL"
+    },
+    "ESSB_N5_InheritFireEffect": {
+      "id": "00560E",
+      "formid": "0100560E",
+      "type": "MGEF"
+    },
+    "ESSB_N5_InheritFire": {
+      "id": "00560F",
+      "formid": "0100560F",
+      "type": "SPEL"
+    },
+    "ESSB_N5_InheritFrostEffect": {
+      "id": "005610",
+      "formid": "01005610",
+      "type": "MGEF"
+    },
+    "ESSB_N5_InheritFrost": {
+      "id": "005611",
+      "formid": "01005611",
+      "type": "SPEL"
+    },
+    "ESSB_N5_InheritShockEffect": {
+      "id": "005612",
+      "formid": "01005612",
+      "type": "MGEF"
+    },
+    "ESSB_N5_InheritShock": {
+      "id": "005613",
+      "formid": "01005613",
+      "type": "SPEL"
+    },
+    "ESSB_N5_InheritPoisonEffect": {
+      "id": "005614",
+      "formid": "01005614",
+      "type": "MGEF"
+    },
+    "ESSB_N5_InheritPoison": {
+      "id": "005615",
+      "formid": "01005615",
+      "type": "SPEL"
+    },
+    "ESSB_N5_InheritMagicEffect": {
+      "id": "005616",
+      "formid": "01005616",
+      "type": "MGEF"
+    },
+    "ESSB_N5_InheritMagic": {
+      "id": "005617",
+      "formid": "01005617",
+      "type": "SPEL"
+    },
+    "ESSB_N5_InheritArmorEffect": {
+      "id": "005618",
+      "formid": "01005618",
+      "type": "MGEF"
+    },
+    "ESSB_N5_InheritArmor": {
+      "id": "005619",
+      "formid": "01005619",
+      "type": "SPEL"
+    },
+    "ESSB_N5_InheritHealthEffect": {
+      "id": "00561A",
+      "formid": "0100561A",
+      "type": "MGEF"
+    },
+    "ESSB_N5_InheritHealth": {
+      "id": "00561B",
+      "formid": "0100561B",
+      "type": "SPEL"
+    },
+    "ESSB_N5_ServantAttackEffect": {
+      "id": "00570C",
+      "formid": "0100570C",
+      "type": "MGEF"
+    },
+    "ESSB_N5_TimedArmorDebuff_1": {
+      "id": "00561C",
+      "formid": "0100561C",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedArmorDebuff_2": {
+      "id": "00561D",
+      "formid": "0100561D",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedArmorDebuff_3": {
+      "id": "00561E",
+      "formid": "0100561E",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedArmorDebuff_4": {
+      "id": "00561F",
+      "formid": "0100561F",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedArmorDebuff_5": {
+      "id": "005620",
+      "formid": "01005620",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedArmorDebuff_6": {
+      "id": "005621",
+      "formid": "01005621",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedArmorDebuff_7": {
+      "id": "005622",
+      "formid": "01005622",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedArmorDebuff_8": {
+      "id": "005623",
+      "formid": "01005623",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedArmorDebuff_9": {
+      "id": "005624",
+      "formid": "01005624",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedArmorDebuff_10": {
+      "id": "005625",
+      "formid": "01005625",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedArmorDebuff_11": {
+      "id": "005626",
+      "formid": "01005626",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedArmorDebuff_12": {
+      "id": "005627",
+      "formid": "01005627",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedArmorDebuff_13": {
+      "id": "005628",
+      "formid": "01005628",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedArmorDebuff_14": {
+      "id": "005629",
+      "formid": "01005629",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedArmorDebuff_15": {
+      "id": "00562A",
+      "formid": "0100562A",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedArmorDebuff_16": {
+      "id": "00562B",
+      "formid": "0100562B",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedArmorDebuff_17": {
+      "id": "00562C",
+      "formid": "0100562C",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedArmorDebuff_18": {
+      "id": "00562D",
+      "formid": "0100562D",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedArmorDebuff_19": {
+      "id": "00562E",
+      "formid": "0100562E",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedArmorDebuff_20": {
+      "id": "00562F",
+      "formid": "0100562F",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_1": {
+      "id": "005630",
+      "formid": "01005630",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_2": {
+      "id": "005631",
+      "formid": "01005631",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_3": {
+      "id": "005632",
+      "formid": "01005632",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_4": {
+      "id": "005633",
+      "formid": "01005633",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_5": {
+      "id": "005634",
+      "formid": "01005634",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_6": {
+      "id": "005635",
+      "formid": "01005635",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_7": {
+      "id": "005636",
+      "formid": "01005636",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_8": {
+      "id": "005637",
+      "formid": "01005637",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_9": {
+      "id": "005638",
+      "formid": "01005638",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_10": {
+      "id": "005639",
+      "formid": "01005639",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_11": {
+      "id": "00563A",
+      "formid": "0100563A",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_12": {
+      "id": "00563B",
+      "formid": "0100563B",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_13": {
+      "id": "00563C",
+      "formid": "0100563C",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_14": {
+      "id": "00563D",
+      "formid": "0100563D",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_15": {
+      "id": "00563E",
+      "formid": "0100563E",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_16": {
+      "id": "00563F",
+      "formid": "0100563F",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_17": {
+      "id": "005640",
+      "formid": "01005640",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_18": {
+      "id": "005641",
+      "formid": "01005641",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_19": {
+      "id": "005642",
+      "formid": "01005642",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistBuff_20": {
+      "id": "005643",
+      "formid": "01005643",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_1": {
+      "id": "005644",
+      "formid": "01005644",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_2": {
+      "id": "005645",
+      "formid": "01005645",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_3": {
+      "id": "005646",
+      "formid": "01005646",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_4": {
+      "id": "005647",
+      "formid": "01005647",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_5": {
+      "id": "005648",
+      "formid": "01005648",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_6": {
+      "id": "005649",
+      "formid": "01005649",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_7": {
+      "id": "00564A",
+      "formid": "0100564A",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_8": {
+      "id": "00564B",
+      "formid": "0100564B",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_9": {
+      "id": "00564C",
+      "formid": "0100564C",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_10": {
+      "id": "00564D",
+      "formid": "0100564D",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_11": {
+      "id": "00564E",
+      "formid": "0100564E",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_12": {
+      "id": "00564F",
+      "formid": "0100564F",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_13": {
+      "id": "005650",
+      "formid": "01005650",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_14": {
+      "id": "005651",
+      "formid": "01005651",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_15": {
+      "id": "005652",
+      "formid": "01005652",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_16": {
+      "id": "005653",
+      "formid": "01005653",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_17": {
+      "id": "005654",
+      "formid": "01005654",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_18": {
+      "id": "005655",
+      "formid": "01005655",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_19": {
+      "id": "005656",
+      "formid": "01005656",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHaste_20": {
+      "id": "005657",
+      "formid": "01005657",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_1": {
+      "id": "005658",
+      "formid": "01005658",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_2": {
+      "id": "005659",
+      "formid": "01005659",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_3": {
+      "id": "00565A",
+      "formid": "0100565A",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_4": {
+      "id": "00565B",
+      "formid": "0100565B",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_5": {
+      "id": "00565C",
+      "formid": "0100565C",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_6": {
+      "id": "00565D",
+      "formid": "0100565D",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_7": {
+      "id": "00565E",
+      "formid": "0100565E",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_8": {
+      "id": "00565F",
+      "formid": "0100565F",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_9": {
+      "id": "005660",
+      "formid": "01005660",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_10": {
+      "id": "005661",
+      "formid": "01005661",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_11": {
+      "id": "005662",
+      "formid": "01005662",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_12": {
+      "id": "005663",
+      "formid": "01005663",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_13": {
+      "id": "005664",
+      "formid": "01005664",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_14": {
+      "id": "005665",
+      "formid": "01005665",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_15": {
+      "id": "005666",
+      "formid": "01005666",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_16": {
+      "id": "005667",
+      "formid": "01005667",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_17": {
+      "id": "005668",
+      "formid": "01005668",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_18": {
+      "id": "005669",
+      "formid": "01005669",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_19": {
+      "id": "00566A",
+      "formid": "0100566A",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFireResistDebuff_20": {
+      "id": "00566B",
+      "formid": "0100566B",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_1": {
+      "id": "00566C",
+      "formid": "0100566C",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_2": {
+      "id": "00566D",
+      "formid": "0100566D",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_3": {
+      "id": "00566E",
+      "formid": "0100566E",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_4": {
+      "id": "00566F",
+      "formid": "0100566F",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_5": {
+      "id": "005670",
+      "formid": "01005670",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_6": {
+      "id": "005671",
+      "formid": "01005671",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_7": {
+      "id": "005672",
+      "formid": "01005672",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_8": {
+      "id": "005673",
+      "formid": "01005673",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_9": {
+      "id": "005674",
+      "formid": "01005674",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_10": {
+      "id": "005675",
+      "formid": "01005675",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_11": {
+      "id": "005676",
+      "formid": "01005676",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_12": {
+      "id": "005677",
+      "formid": "01005677",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_13": {
+      "id": "005678",
+      "formid": "01005678",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_14": {
+      "id": "005679",
+      "formid": "01005679",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_15": {
+      "id": "00567A",
+      "formid": "0100567A",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_16": {
+      "id": "00567B",
+      "formid": "0100567B",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_17": {
+      "id": "00567C",
+      "formid": "0100567C",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_18": {
+      "id": "00567D",
+      "formid": "0100567D",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_19": {
+      "id": "00567E",
+      "formid": "0100567E",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedFrostResistDebuff_20": {
+      "id": "00567F",
+      "formid": "0100567F",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_1": {
+      "id": "005680",
+      "formid": "01005680",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_2": {
+      "id": "005681",
+      "formid": "01005681",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_3": {
+      "id": "005682",
+      "formid": "01005682",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_4": {
+      "id": "005683",
+      "formid": "01005683",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_5": {
+      "id": "005684",
+      "formid": "01005684",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_6": {
+      "id": "005685",
+      "formid": "01005685",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_7": {
+      "id": "005686",
+      "formid": "01005686",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_8": {
+      "id": "005687",
+      "formid": "01005687",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_9": {
+      "id": "005688",
+      "formid": "01005688",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_10": {
+      "id": "005689",
+      "formid": "01005689",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_11": {
+      "id": "00568A",
+      "formid": "0100568A",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_12": {
+      "id": "00568B",
+      "formid": "0100568B",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_13": {
+      "id": "00568C",
+      "formid": "0100568C",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_14": {
+      "id": "00568D",
+      "formid": "0100568D",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_15": {
+      "id": "00568E",
+      "formid": "0100568E",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_16": {
+      "id": "00568F",
+      "formid": "0100568F",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_17": {
+      "id": "005690",
+      "formid": "01005690",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_18": {
+      "id": "005691",
+      "formid": "01005691",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_19": {
+      "id": "005692",
+      "formid": "01005692",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedShockResistDebuff_20": {
+      "id": "005693",
+      "formid": "01005693",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_1": {
+      "id": "005694",
+      "formid": "01005694",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_2": {
+      "id": "005695",
+      "formid": "01005695",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_3": {
+      "id": "005696",
+      "formid": "01005696",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_4": {
+      "id": "005697",
+      "formid": "01005697",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_5": {
+      "id": "005698",
+      "formid": "01005698",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_6": {
+      "id": "005699",
+      "formid": "01005699",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_7": {
+      "id": "00569A",
+      "formid": "0100569A",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_8": {
+      "id": "00569B",
+      "formid": "0100569B",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_9": {
+      "id": "00569C",
+      "formid": "0100569C",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_10": {
+      "id": "00569D",
+      "formid": "0100569D",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_11": {
+      "id": "00569E",
+      "formid": "0100569E",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_12": {
+      "id": "00569F",
+      "formid": "0100569F",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_13": {
+      "id": "0056A0",
+      "formid": "010056A0",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_14": {
+      "id": "0056A1",
+      "formid": "010056A1",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_15": {
+      "id": "0056A2",
+      "formid": "010056A2",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_16": {
+      "id": "0056A3",
+      "formid": "010056A3",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_17": {
+      "id": "0056A4",
+      "formid": "010056A4",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_18": {
+      "id": "0056A5",
+      "formid": "010056A5",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_19": {
+      "id": "0056A6",
+      "formid": "010056A6",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMagicResistDebuff_20": {
+      "id": "0056A7",
+      "formid": "010056A7",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_1": {
+      "id": "0056A8",
+      "formid": "010056A8",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_2": {
+      "id": "0056A9",
+      "formid": "010056A9",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_3": {
+      "id": "0056AA",
+      "formid": "010056AA",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_4": {
+      "id": "0056AB",
+      "formid": "010056AB",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_5": {
+      "id": "0056AC",
+      "formid": "010056AC",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_6": {
+      "id": "0056AD",
+      "formid": "010056AD",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_7": {
+      "id": "0056AE",
+      "formid": "010056AE",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_8": {
+      "id": "0056AF",
+      "formid": "010056AF",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_9": {
+      "id": "0056B0",
+      "formid": "010056B0",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_10": {
+      "id": "0056B1",
+      "formid": "010056B1",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_11": {
+      "id": "0056B2",
+      "formid": "010056B2",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_12": {
+      "id": "0056B3",
+      "formid": "010056B3",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_13": {
+      "id": "0056B4",
+      "formid": "010056B4",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_14": {
+      "id": "0056B5",
+      "formid": "010056B5",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_15": {
+      "id": "0056B6",
+      "formid": "010056B6",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_16": {
+      "id": "0056B7",
+      "formid": "010056B7",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_17": {
+      "id": "0056B8",
+      "formid": "010056B8",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_18": {
+      "id": "0056B9",
+      "formid": "010056B9",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_19": {
+      "id": "0056BA",
+      "formid": "010056BA",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedMeleeDebuff_20": {
+      "id": "0056BB",
+      "formid": "010056BB",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_1": {
+      "id": "0056BC",
+      "formid": "010056BC",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_2": {
+      "id": "0056BD",
+      "formid": "010056BD",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_3": {
+      "id": "0056BE",
+      "formid": "010056BE",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_4": {
+      "id": "0056BF",
+      "formid": "010056BF",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_5": {
+      "id": "0056C0",
+      "formid": "010056C0",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_6": {
+      "id": "0056C1",
+      "formid": "010056C1",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_7": {
+      "id": "0056C2",
+      "formid": "010056C2",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_8": {
+      "id": "0056C3",
+      "formid": "010056C3",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_9": {
+      "id": "0056C4",
+      "formid": "010056C4",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_10": {
+      "id": "0056C5",
+      "formid": "010056C5",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_11": {
+      "id": "0056C6",
+      "formid": "010056C6",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_12": {
+      "id": "0056C7",
+      "formid": "010056C7",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_13": {
+      "id": "0056C8",
+      "formid": "010056C8",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_14": {
+      "id": "0056C9",
+      "formid": "010056C9",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_15": {
+      "id": "0056CA",
+      "formid": "010056CA",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_16": {
+      "id": "0056CB",
+      "formid": "010056CB",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_17": {
+      "id": "0056CC",
+      "formid": "010056CC",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_18": {
+      "id": "0056CD",
+      "formid": "010056CD",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_19": {
+      "id": "0056CE",
+      "formid": "010056CE",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedHealRateDebuff_20": {
+      "id": "0056CF",
+      "formid": "010056CF",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_1": {
+      "id": "0056D0",
+      "formid": "010056D0",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_2": {
+      "id": "0056D1",
+      "formid": "010056D1",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_3": {
+      "id": "0056D2",
+      "formid": "010056D2",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_4": {
+      "id": "0056D3",
+      "formid": "010056D3",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_5": {
+      "id": "0056D4",
+      "formid": "010056D4",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_6": {
+      "id": "0056D5",
+      "formid": "010056D5",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_7": {
+      "id": "0056D6",
+      "formid": "010056D6",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_8": {
+      "id": "0056D7",
+      "formid": "010056D7",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_9": {
+      "id": "0056D8",
+      "formid": "010056D8",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_10": {
+      "id": "0056D9",
+      "formid": "010056D9",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_11": {
+      "id": "0056DA",
+      "formid": "010056DA",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_12": {
+      "id": "0056DB",
+      "formid": "010056DB",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_13": {
+      "id": "0056DC",
+      "formid": "010056DC",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_14": {
+      "id": "0056DD",
+      "formid": "010056DD",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_15": {
+      "id": "0056DE",
+      "formid": "010056DE",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_16": {
+      "id": "0056DF",
+      "formid": "010056DF",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_17": {
+      "id": "0056E0",
+      "formid": "010056E0",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_18": {
+      "id": "0056E1",
+      "formid": "010056E1",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_19": {
+      "id": "0056E2",
+      "formid": "010056E2",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedStaminaRateDebuff_20": {
+      "id": "0056E3",
+      "formid": "010056E3",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_1": {
+      "id": "0056E4",
+      "formid": "010056E4",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_2": {
+      "id": "0056E5",
+      "formid": "010056E5",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_3": {
+      "id": "0056E6",
+      "formid": "010056E6",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_4": {
+      "id": "0056E7",
+      "formid": "010056E7",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_5": {
+      "id": "0056E8",
+      "formid": "010056E8",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_6": {
+      "id": "0056E9",
+      "formid": "010056E9",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_7": {
+      "id": "0056EA",
+      "formid": "010056EA",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_8": {
+      "id": "0056EB",
+      "formid": "010056EB",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_9": {
+      "id": "0056EC",
+      "formid": "010056EC",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_10": {
+      "id": "0056ED",
+      "formid": "010056ED",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_11": {
+      "id": "0056EE",
+      "formid": "010056EE",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_12": {
+      "id": "0056EF",
+      "formid": "010056EF",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_13": {
+      "id": "0056F0",
+      "formid": "010056F0",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_14": {
+      "id": "0056F1",
+      "formid": "010056F1",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_15": {
+      "id": "0056F2",
+      "formid": "010056F2",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_16": {
+      "id": "0056F3",
+      "formid": "010056F3",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_17": {
+      "id": "0056F4",
+      "formid": "010056F4",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_18": {
+      "id": "0056F5",
+      "formid": "010056F5",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_19": {
+      "id": "0056F6",
+      "formid": "010056F6",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistBuff_20": {
+      "id": "0056F7",
+      "formid": "010056F7",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_1": {
+      "id": "0056F8",
+      "formid": "010056F8",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_2": {
+      "id": "0056F9",
+      "formid": "010056F9",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_3": {
+      "id": "0056FA",
+      "formid": "010056FA",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_4": {
+      "id": "0056FB",
+      "formid": "010056FB",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_5": {
+      "id": "0056FC",
+      "formid": "010056FC",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_6": {
+      "id": "0056FD",
+      "formid": "010056FD",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_7": {
+      "id": "0056FE",
+      "formid": "010056FE",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_8": {
+      "id": "0056FF",
+      "formid": "010056FF",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_9": {
+      "id": "005700",
+      "formid": "01005700",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_10": {
+      "id": "005701",
+      "formid": "01005701",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_11": {
+      "id": "005702",
+      "formid": "01005702",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_12": {
+      "id": "005703",
+      "formid": "01005703",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_13": {
+      "id": "005704",
+      "formid": "01005704",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_14": {
+      "id": "005705",
+      "formid": "01005705",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_15": {
+      "id": "005706",
+      "formid": "01005706",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_16": {
+      "id": "005707",
+      "formid": "01005707",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_17": {
+      "id": "005708",
+      "formid": "01005708",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_18": {
+      "id": "005709",
+      "formid": "01005709",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_19": {
+      "id": "00570A",
+      "formid": "0100570A",
+      "type": "SPEL"
+    },
+    "ESSB_N5_TimedPoisonResistDebuff_20": {
+      "id": "00570B",
+      "formid": "0100570B",
+      "type": "SPEL"
     },
     "ESSB_Proc": {
       "id": "000830",
@@ -22851,8 +24196,8 @@
       "type": "PERK"
     },
     "ESSB_MainQuest": {
-      "id": "006014",
-      "formid": "01006014",
+      "id": "006016",
+      "formid": "01006016",
       "type": "QUST"
     },
     "ESSB_MainQuest_Schema1_Stub": {
@@ -22965,9 +24310,19 @@
       "formid": "01006013",
       "type": "QUST"
     },
-    "ESSB_MCMQuest": {
+    "ESSB_MainQuest_Schema12_Stub": {
+      "id": "006014",
+      "formid": "01006014",
+      "type": "QUST"
+    },
+    "ESSB_MCMQuest_Schema12_Stub": {
       "id": "006015",
       "formid": "01006015",
+      "type": "QUST"
+    },
+    "ESSB_MCMQuest": {
+      "id": "006017",
+      "formid": "01006017",
       "type": "QUST"
     }
   }

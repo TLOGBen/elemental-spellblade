@@ -245,7 +245,10 @@ def run():
     assert json.loads((ROOT/'settings.json').read_text(encoding='utf8'))['state_schema_version']==json.loads((ROOT/'settings.json').read_text(encoding='utf8'))['state_schema_version']
     for old in (ROOT/'build/fix11-before').rglob('*'):
         if not old.is_file(): continue
-        p=ROOT/old.relative_to(ROOT/'build/fix11-before');a=old.read_bytes();b=p.read_bytes()
+        rel=old.relative_to(ROOT/'build/fix11-before').as_posix()
+        # Round 24: src/* as the older rounds knew it (the pre-fix22 scripts, tied to today's by the history seals), like
+        # CUR22 in fix8 / fix9 / fix10 -- round 24 deleted ESSBGuard.psc and ESSBReactions.psc (build/fix24_history.FILES).
+        p=SRC22/rel[4:] if rel.startswith('src/') else ROOT/rel;a=old.read_bytes();b=p.read_bytes()
         if p.name=='實作紀錄.md':
             prior=a
             a=(ROOT/'.codex/pre-fix18b-snapshot/實作紀錄.md').read_bytes()

@@ -111,6 +111,39 @@ MUTANTS = [
      'n4::kCrushStamina * TreeG(t, TreeOf(kEarth)) * t.multDrain;', 'n4::kCrushStamina * t.multDrain;'),
     ('三重奏 needs four elements', 'Status.h', 'self',
      '        if (kinds >= 3) {\n            mult *= 3.0f;', '        if (kinds >= 4) {\n            mult *= 3.0f;'),
+    # Round 24 (N5): mutations of the reaction bodies, the burst, the death handling and the range scans (Reactions.h,
+    # the crowd selection of StatusEngine.h); each must fail reaction_test against build/fix24-body-table.json (or
+    # engine_test for the process-list selection).
+    ('the poison death spread gives 60% (not 50%)', 'Reactions.h', 'reaction',
+     'inline constexpr float kDeathShare = 0.5f;', 'inline constexpr float kDeathShare = 0.6f;'),
+    ('K_sync at stage 3 is x2.5 (not x3)', 'Reactions.h', 'reaction',
+     'inline constexpr std::array<float, 4> kSync{ 1.0f, 1.5f, 2.0f, 3.0f };',
+     'inline constexpr std::array<float, 4> kSync{ 1.0f, 1.5f, 2.0f, 2.5f };'),
+    ('a range body picks an ally', 'Reactions.h', 'reaction',
+     'if (k == centre || !x.has || x.ally || !keep(x)) {', 'if (k == centre || !x.has || !keep(x)) {'),
+    ('the burst ignores the end cooldown', 'Reactions.h', 'reaction',
+     'const bool allowed = !target.Has(StatusKind::kEndCooldown);', 'const bool allowed = true;'),
+    ('不死 ignores its 30 s cooldown', 'Reactions.h', 'reaction',
+     'if (bleeding && nodes.Has(node::kBloodUndying) && t.syncStage >= 3 && !self.Has(StatusKind::kUndyingCooldown)) {',
+     'if (bleeding && nodes.Has(node::kBloodUndying) && t.syncStage >= 3) {'),
+    ('寂 burns without 寂每層燒魔', 'Reactions.h', 'reaction',
+     'const float burn = n5::kHushBurn + n5::kHushBurnPerPoint * static_cast<float>(nodes.Rank(node::kNoFormHushBurn));',
+     'const float burn = n5::kHushBurn;'),
+    ('the echo is not x1.5 at night', 'Reactions.h', 'reaction',
+     '        ratio *= n5::kEchoNight;', '        ratio *= 1.0f;'),
+    ('濺血 clears the bleed', 'Reactions.h', 'reaction',
+     'SurgeOn(p.k[i], 0.5f, false);', 'SurgeOn(p.k[i], 0.5f, true);'),
+    ('a neutral you did not attack joins the crowd', 'StatusEngine.h', 'engine',
+     'if (!a.hostile && !a.engaged) {', 'if (false) {'),
+    # Round 24 review: the fusion hit (v0.4 2.7 D_burst), 冰封融斷's shatter switch, the essential exemption.
+    ('a fusion deals the end move of the element again', 'Reactions.h', 'reaction',
+     'const bool fused = reason == EndReason::kBurst && !chain;', 'const bool fused = false;'),
+    ('a fusion shatters without 冰封融斷', 'Status.h', 'reaction',
+     'if (target.Has(StatusKind::kFrozen) && (reason != EndReason::kBurst || nodes.Has(node::kFrostBurstShatter))) {',
+     'if (target.Has(StatusKind::kFrozen)) {'),
+    ('a named (not essential) enemy is exempt from rising again', 'Reactions.h', 'reaction',
+     'if ((!marked && !summon) || corpse.essential || corpse.dragon || f.servant) {',
+     'if ((!marked && !summon) || corpse.essential || corpse.body.vip || corpse.dragon || f.servant) {'),
 ]
 
 
@@ -136,10 +169,11 @@ def run_mutants(log):
             if other.name != header:
                 (folder / other.name).write_bytes(other.read_bytes())
         (folder / header).write_text(text.replace(old, new), encoding='utf-8', newline='\n')
-        source = n.NATIVE / 'tests' / {'status': 'status_test.cpp', 'engine': 'engine_test.cpp', 'self': 'self_test.cpp'}[test]
+        source = n.NATIVE / 'tests' / {'status': 'status_test.cpp', 'engine': 'engine_test.cpp', 'self': 'self_test.cpp',
+                                       'reaction': 'reaction_test.cpp'}[test]
         lines += [f'add_executable(m{i} "{source.as_posix()}")',
                   f'target_include_directories(m{i} PRIVATE "{folder.as_posix()}" "{inc.as_posix()}" "{js.as_posix()}")',
-                  f'target_compile_options(m{i} PRIVATE /EHsc /utf-8)']
+                  f'target_compile_options(m{i} PRIVATE /EHsc /utf-8 /bigobj)']
     (root / 'CMakeLists.txt').write_text('\n'.join(lines) + '\n', encoding='utf-8')
     run([CMAKE, '-S', root, '-B', root / 'build', '-G', 'Visual Studio 17 2022', '-A', 'x64'], log)
     run([CMAKE, '--build', root / 'build', '--config', 'Release', '--parallel', '8'], log)
@@ -147,7 +181,8 @@ def run_mutants(log):
     for i, (name, header, test, *_rest) in enumerate(MUTANTS):
         exe = root / 'build' / 'Release' / f'm{i}.exe'
         tables = {'status': ['build/fix22-status-table.json', 'build/fix22-wiring.json'],
-                  'self': ['build/fix23-self-table.json', 'build/fix23-wiring.json']}.get(test, [])
+                  'self': ['build/fix23-self-table.json', 'build/fix23-wiring.json'],
+                  'reaction': ['build/fix24-body-table.json', 'build/fix24-wiring.json']}.get(test, [])
         args = [exe] + [ROOT / t for t in tables]
         r = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf8', errors='replace')
         log.write(f'$ mutant {i} ({name}): exit {r.returncode}\n{r.stdout}\n')

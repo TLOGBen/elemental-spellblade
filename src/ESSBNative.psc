@@ -21,8 +21,15 @@ codes (GetStatus / GetStatusFloat / AddStatus / SetStatus / ClearStatus on the p
   51 「下一次融斷保留全部同調」(三重奏; ClearStatus uses it up)  52 疾電 (read only)  53 蓄能的地震加成 (float;
   ClearStatus uses it up)  54 last-hit-sneak marker on a target (read only)  55 charge cap  56 wind threshold
   57 岩甲 cap (read only)  58 護血 pool (float, read only)
-FormEnter: opening a form (專一's clock, 雷臨強化, 地臨強化). SetSync: the count a switch or a burst leaves (承接, 連斷,
-永續, 三重奏), set without a stage rise.}
+FormEnter: opening a form (專一's clock, 雷臨強化, 地臨強化; round 24: every 臨, the 臨強化 branches, 臨界, 雙斷).
+SetSync: the count a switch or a burst leaves (承接, 連斷, 永續, 三重奏), set without a stage rise.
+
+Round 24 (slice N5): the reaction bodies, the fusion and the death handling are the DLL's (native/include/Reactions.h).
+Burst(element): closing the form -- the one scan, every mark settled, 寂 and the 冷寂 branches.
+Round 24 review fix 1: every native that scans or casts (Burst, FormEnter, FormLeave, SetSync, AddStatus, SetStatus,
+ClearStatus, SetWindow, ApplyMark, ExtendFuse, WashBuffs, CastProc, DumpTargets) only queues its work on the main thread
+(SKSE AddTask, first in first out) and returns at once; a GetStatus right after one of them reads the state before it.
+BurstMarks, SetGuided, DotRemaining, ForceOpen, EndMark, Shatter and Detonate (the Papyrus bodies' hooks) are gone.}
 
 Bool Function IsNativeHitActive() Global Native
 String Function NativeVersion() Global Native
@@ -36,17 +43,11 @@ Function ClearStatus(Actor akActor, Int aiCode) Global Native
 Function SetWindow(Actor akActor, Int aiWindow, Float afSeconds, Float afMagnitude) Global Native
 Function ApplyMark(Actor akActor, Int aiElement) Global Native
 Int Function MarksOn(Actor akActor) Global Native
-Int Function BurstMarks(Float afRadius, Float afMult) Global Native
+Function Burst(Int aiElement) Global Native
 Function FormLeave(Int aiElement, Bool abBurst) Global Native
 Function ExtendFuse(Float afSeconds) Global Native
-Function SetGuided(Actor akActor, Float afMult) Global Native
-Int Function WashBuffs(Actor akActor, Int aiLimit) Global Native
-Float Function DotRemaining(Actor akActor, Bool abPoison) Global Native
-Actor[] Function MarkedNear(ObjectReference akCenter, Float afRadius, Int aiLimit, Int aiElement) Global Native
-Function ForceOpen(Actor akActor, Int aiElement) Global Native
-Function EndMark(Actor akActor, Int aiElement, Int aiReason, Float afMult) Global Native
+Function WashBuffs(Actor akActor, Int aiLimit) Global Native
+Function DumpTargets(Float afRadius) Global Native
 Function CastProc(Actor akActor, Bool abPower) Global Native
-Function Shatter(Actor akActor) Global Native
-Function Detonate(Actor akActor) Global Native
 Function FormEnter(Int aiElement) Global Native
 Function SetSync(Int aiCount) Global Native

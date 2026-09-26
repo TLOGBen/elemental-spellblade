@@ -1,6 +1,6 @@
 {
   "version": 4,
-  "state_schema_version": 12,
+  "state_schema_version": 13,
   "kill_attribution_seconds": 3.0,
   "normal_damage": 8.0,
   "power_damage": 12.0,

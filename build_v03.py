@@ -47,9 +47,10 @@ VANILLA_ELEMENT_KEYWORD = {0: 0x1CEAD, 1: 0x1CEAE, 2: 0x1CEAF}
 
 # Round 22 (N3): ESSBStatus (status container) and ESSBMark (mark AME) are gone -- the status layer is DLL-applied
 # engine effects; ESSBStub is the empty script on the effects whose expiry the DLL settles (build/fix22_records.py).
-SCRIPTS = ['ESSBLog', 'ESSBStub', 'ESSBReactions', 'ESSBTrees', 'ESSBNodes',
+# round 24 (N5): ESSBReactions (the reaction bodies) and ESSBGuard (the kill event) are deleted -- the DLL owns them.
+SCRIPTS = ['ESSBLog', 'ESSBStub', 'ESSBTrees', 'ESSBNodes',
            'ESSBNoForm', 'ESSBElem', 'ESSBElem2', 'ESSBElem3', 'ESSBCounter', 'ESSBSilence',
-           'ESSBController', 'ESSBGuard', 'ESSBFormPowerEffect', 'ESSBFormRules',
+           'ESSBController', 'ESSBFormPowerEffect', 'ESSBFormRules',
            'ESSBSettingsEffect', 'ESSBState', 'ESSBMCM', 'ESSBInput', 'ESSBNative']
 
 # ---------------------------------------------------------------- 技能樹前線（機制）
@@ -996,8 +997,8 @@ MAIN_ENTRY_NODES = {
 BRANCH_ENTRY_NODES = {
     # 5.2 順轉：切換後 1 秒受傷 -50%（ESSB_GuardSwitch 視窗）。
     ('common', '順轉'): lambda: entry(EP_INCOMING_DAMAGE, 0.5, [(0, guard_window(0))]),
-    # 5.2 安全閥：融斷時你受傷 -50% 持續 2 秒（ESSB_GuardBurst 視窗）。
-    ('common', '安全閥'): lambda: entry(EP_INCOMING_DAMAGE, 0.5, [(0, guard_window(1))]),
+    # 5.2 安全閥：融斷時你受傷 -50% 持續 2 秒（round 24：DLL 在融斷時掛在你身上的 ESSB_N5_SafetyValve）。
+    ('common', '安全閥'): lambda: entry(EP_INCOMING_DAMAGE, 0.5, [(0, has_effect(hit24.effect_id('kSafetyValve')))]),
     # 5.2 不移：同調二段以上時免疫硬直（0x21 受到的擊退幅度 ×0，條件 ESSB_SyncStage ≥2）。
     ('common', '不移'): lambda: entry(EP_INCOMING_STAGGER, 0.0, [(0, gv_ge(mech(0), 2))], tabs=2),
     # 5.6 不動：岩甲 ≥5 時免疫擊退（0x21 ×0）。
@@ -1078,8 +1079,8 @@ def v03_branch_entries_retired(tree_id, route, tier, index):
         # 順轉：切換後 1 秒受傷 -50%。
         return entry(EP_INCOMING_DAMAGE, 0.5, [(0, guard_window(0))])
     if key == ('common', 2, 3, 1):
-        # 安全閥：融斷時你受傷 -50% 持續 2 秒。
-        return entry(EP_INCOMING_DAMAGE, 0.5, [(0, guard_window(1))])
+        # 安全閥：融斷時你受傷 -50% 持續 2 秒（round 24：ESSB_N5_SafetyValve，DLL 在融斷時掛）。
+        return entry(EP_INCOMING_DAMAGE, 0.5, [(0, has_effect(hit24.effect_id('kSafetyValve')))])
     if key == ('fire', 0, 2, 1):
         # 熔身：受傷 -20%。
         return entry(EP_INCOMING_DAMAGE, 0.8, [(0, gv_ge(ID_MECH_GLOB + 5, 1))])
@@ -1447,6 +1448,7 @@ import fix21_records as hit21
 import fix21_identity
 import fix22_records as hit22
 import fix23_records as hit23
+import fix24_records as hit24
 import tree_v04
 
 
@@ -1552,6 +1554,7 @@ def build_esp(plan):
     hit21.add_records(sys.modules[__name__], add)
     hit22.add_records(sys.modules[__name__], add, fx, settings)   # round 22 (N3): the status layer's effects
     hit23.add_records(sys.modules[__name__], add)                 # round 23 (N4): your resources, windows, cooldowns
+    hit24.add_records(sys.modules[__name__], add)                 # round 24 (N5): markers, 雙斷／安全閥, 血承, timed bodies
 
     # -------------------------------------------------------------- KYWD
     add('KYWD', ID_KW_PROC, 'ESSB_Proc', [])
@@ -2063,6 +2066,9 @@ def build_esp(plan):
         ('ETYP', I(ref('Skyrim.esm', 0x13F45))), ('DESC', Z('')),
         ('SPIT', spit(0, 1, 1)),
         ('EFID', I(own(ID_REANIMATE_EFFECT))), ('EFIT', struct.pack('<fII', 6.0, 0, 120)),
+        # round 24 review fix 3: the servant's attack bonus (AttackDamageMult, Peak Value Modifier), same duration, set
+        # by ESSBController.ApplyReanimate; it ends with the reanimation and a re-raise refreshes it (never stacks).
+        ('EFID', I(own(hit24.SERVANT_ATTACK_EFFECT))), ('EFIT', struct.pack('<fII', 0.0, 0, 120)),
     ])
 
     # 洗淨／淨化（規劃 5.11、8）：對自己的那一路**不再依賴** 原型 2 與旗標 0x100
@@ -2267,7 +2273,6 @@ def build_esp(plan):
         # ---- 機制前線 round 2
         'BaseRulesPerk': (1, own(ID_BASE_PERK)),
         'AshSpell': (1, own(ID_ASH_SPELL)),
-        'InheritSpell': (1, own(ID_INHERIT_SPELL)),
         'WindSpeedAbility': (1, own(ID_ABILITY_SPELL + 3)),
         'WindMuffleAbility': (1, own(ID_ABILITY_SPELL + 4)),
         'SilentAbility': (1, own(ID_SILENT_SPELL)),
@@ -2302,7 +2307,7 @@ def build_esp(plan):
         'HitProcPerk': (1, own(hit18.HIT_PERK)),
         'GDivineArmed': (1, own(hit18.DIVINE_ARMED)),
         'FormNotify': (1, own(hit18.NOTIFY)), 'FormSound': (1, own(hit18.SOUND)),
-        'GuardLayer': (1, (own(ID_QUEST), 0)), 'InputLayer': (1, (own(ID_QUEST), 0)),
+        'InputLayer': (1, (own(ID_QUEST), 0)),
         'BloodGuardSpell': (1, own(hit20.GUARD)),
         'EchoPendingSpell': (1, own(hit20.ECHO)),
         'TwinWindowSpell': (1, own(hit20.TWIN)),
@@ -2332,17 +2337,7 @@ def build_esp(plan):
         'ShowLvlGlobals': (11, [own(ID_TREE_GLOB['ShowLvl'] + n) for n in range(len(TREES))]),
         'RespecGlobals': (11, [own(ID_TREE_GLOB['Respec'] + n) for n in range(len(TREES))]),
     }
-    # 玩家受擊與擊殺事件（PO3 OnHitEx／OnActorKilled）：同一個 Player 別名上的第三個腳本。
-    guard_props = {
-        'Ctl': (1, (own(ID_QUEST), 0)),
-    }
-    guard_props.update({
-        'Enabled': (1, own(ID_GLOB['ESSB_Enabled'])),
-        'FormActive': (1, own(ID_GLOB['ESSB_FormActive'])),
-        'DivineArmed': (1, own(hit18.DIVINE_ARMED)),
-        **{name: (1, own(manifest['ESSB_'+name]['id'] and int(manifest['ESSB_'+name]['id'],16)))
-           for name in ['RockArmor','IceShield','WaterMirror','GuardWind']},
-    })
+    # round 24 (N5)：玩家擊殺事件的第三個腳本 ESSBGuard 刪除（死亡處理在 DLL 的死亡 sink）；別名上剩三個腳本。
     input_props = {'Ctl': (1, (own(ID_QUEST), 0)),
         **{name: (1, own(ID_GLOB['ESSB_'+name])) for name in ['Enabled','CurrentElement','FormActive']},
         'HotkeysEnabled': (1, own(hit18.KEY_ENABLE)), 'FormNotify': (1, own(hit18.NOTIFY)),
@@ -2351,10 +2346,9 @@ def build_esp(plan):
     quest_vmad = (struct.pack('<3H', 5, 2, 0)
                   + b'\x02' + struct.pack('<H', 0) + struct.pack('<H', 0)   # 片段：版本 2、0 個片段、空檔名
                   + struct.pack('<H', 1) + obj(own(ID_QUEST), 0)
-                  + struct.pack('<3H', 5, 2, 4)
+                  + struct.pack('<3H', 5, 2, 3)
                   + script('ESSBController', props)
                   + script('ESSBTrees', tree_props)
-                  + script('ESSBGuard', guard_props)
                   + script('ESSBInput', input_props))
     add('QUST', ID_QUEST, 'ESSB_MainQuest', [
         ('VMAD', quest_vmad),
@@ -3468,6 +3462,7 @@ def main():
     runpy.run_path(str(WORK / 'build/fix21_verify.py'))['run'](sys.modules[__name__])   # round 21: R2, entries, retired, R3
     runpy.run_path(str(WORK / 'build/fix22_verify.py'))['run'](sys.modules[__name__])   # round 22: seam, removals, records, guards, faults
     runpy.run_path(str(WORK / 'build/fix23_verify.py'))['run'](sys.modules[__name__])   # round 23: seam, removals, records, resolve, guards, faults, seals
+    runpy.run_path(str(WORK / 'build/fix24_verify.py'))['run'](sys.modules[__name__])   # round 24: bodies seam, removals, records, resolve, guards, faults, seals
     runpy.run_path(str(WORK / 'build/fix18_probes.py'))['run'](sys.modules[__name__])
     perks = sum(1 for r in check if r.sig == 'PERK')
     print(f'READBACK ok: masters={meta["masters"]} records={len(check)} manifest={written["record_count"]} '
@@ -3610,6 +3605,7 @@ def validate_delivery(records):
     # cloak and its aimed payload went in the review fix); the player's ladders and windows are self casts.
     contact_names.update(hit22.contact_edids())
     contact_names.update(hit23.contact_edids())   # round 23: 誓約, the retort / grudge cooldowns, the last-hit-sneak marker
+    contact_names.update(hit24.contact_edids(sys.modules[__name__]))   # round 24: the corpse markers, 光耀, 星鏈, the timed debuffs
     aimed_names |= hit22.aimed_edids()
     groups = {0: [], 1: []}
     rows = []

@@ -10,12 +10,19 @@
 //   resolve   every spell Lower can name is in CastSpells() and every dispelled effect in TaggedEffects() (the adapter
 //             resolves exactly those; ESSB_Util_BleedTick was missing before this test)
 //   judged    聖痕: a target with the divine mark is judged undead / daedra (review fix 4)
+//   crowd     round 24 (N5): SelectCrowd on a fake process list (2.9: the hostile, the hostile faction and the engaged;
+//             never you, the dead, the unloaded, the commanded, a neutral you did not attack; teammates only as allies,
+//             4 at most; nearest first, the limit), RunPlan selects each op's member before casting
+//   death     round 24 (N5): fake death events -- DeathCounts (dead = false only, never you, something of ours / your
+//             kill / your servant) and one death end to end: fake list -> crowd -> PlanDeath (the poison's death spread)
+//             -> RunPlan: the follower and the neutral NPC are never cast on
 #include "StatusEngine.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <iostream>
+#include <memory>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -107,6 +114,9 @@ struct Fake {
         std::snprintf(buf, sizeof(buf), "cast %u on %s mag %.4f eff %.4f", spell, who == Who::kPlayer ? "player" : "target",
             magnitude, effectiveness);
         log.push_back(buf);
+        if (who == Who::kTarget) {
+            castAt.push_back({ current, spell });
+        }
     }
     bool Dead(Who who) { return who == Who::kTarget && deadTarget; }
     void PayHealth(float amount) { log.push_back("pay " + std::to_string(static_cast<int>(amount))); }
@@ -121,6 +131,11 @@ struct Fake {
     void Interrupt(Who who) { log.push_back(std::string("interrupt ") + (who == Who::kPlayer ? "player" : "target")); }
     void CrushArea(const essb::StatusOp& op) { log.push_back("crush " + std::to_string(static_cast<int>(op.magnitude))); }
     void FreezeNearby() { log.push_back("freeze nearby"); }
+
+    void Select(std::uint8_t at) { selected.push_back(at); current = at; }   // round 24: the crowd member of each op
+    std::vector<std::uint8_t> selected;
+    std::uint8_t current = 0;
+    std::vector<std::pair<int, std::uint32_t>> castAt;   // (member, spell) of every target cast
 
     void Add(Who who, EffectView v) { list[Index(who)].push_back(FakeEffect{ v }); }
 };
@@ -197,13 +212,16 @@ void Run()
     p2.Push(essb::Amount(essb::Op::kDamage, 40.0f, essb::kFire));
     p2.Push(essb::MakeOp(essb::Op::kRemoveDots));
     p2.Push(essb::Amount(essb::Op::kPayHealth, 12.0f));
-    p2.Push(essb::MakeEvent(essb::Event::kFrozen, 3.0f));
+    p2.Push(essb::MakeEvent(essb::Event::kKnock, 3.0f));
+    p2.Push(essb::MakeEvent(essb::Event::kFrozen, 3.0f));   // round 24: a body-only event never reaches Papyrus
     essb::engine::RunPlan(g, p2, t);
     Check(std::none_of(g.log.begin(), g.log.end(), [](const std::string& s) { return s.starts_with("cast"); }), "run: no damage cast on the dead");
     Check(std::count_if(g.log.begin(), g.log.end(), [](const std::string& s) { return s.starts_with("dispel"); }) == 2, "run: both DoTs dispelled");
     Check(std::find(g.log.begin(), g.log.end(), "pay 12") != g.log.end(), "run: the cost path pays");
-    Check(std::find(g.log.begin(), g.log.end(), "event " + std::to_string(static_cast<int>(essb::Event::kFrozen))) != g.log.end(),
+    Check(std::find(g.log.begin(), g.log.end(), "event " + std::to_string(static_cast<int>(essb::Event::kKnock))) != g.log.end(),
         "run: the ModEvent goes to the engine");
+    Check(std::find(g.log.begin(), g.log.end(), "event " + std::to_string(static_cast<int>(essb::Event::kFrozen))) == g.log.end(),
+        "run: a body-only event (冰封) stays in the DLL");
     // Probe N3-2's count: re-applying the poison DoT over one running instance takes exactly that one off first.
     Fake h;
     h.Add(Who::kTarget, Ours(essb::status::kPoisonDotEffect, essb::status::kPoisonDot[9], 4.0f, 2.0f, 10.0f));
@@ -386,6 +404,153 @@ void Judged()
     Check(!essb::JudgedTarget(living, marked, FakeNodes{}).undeadOrDaedra, "聖痕: without the node it is not");
 }
 
+essb::engine::ActorView Actor(float x, bool hostile, float y = 0.0f)
+{
+    essb::engine::ActorView a;
+    a.hostile = hostile;
+    a.pos = { x, y, 0.0f };
+    return a;
+}
+
+void Crowd()
+{
+    using essb::engine::ActorView;
+    using essb::engine::SelectCrowd;
+    std::vector<ActorView> list;
+    ActorView you = Actor(0, false);
+    you.you = true;
+    list.push_back(you);                          // 0 you
+    list.push_back(Actor(300, true));             // 1 the primary (read separately)
+    list.push_back(Actor(500, true));             // 2 hostile: in
+    ActorView dead = Actor(400, true);
+    dead.dead = true;
+    list.push_back(dead);                         // 3 dead
+    ActorView far = Actor(450, true);
+    far.loaded = false;
+    list.push_back(far);                          // 4 not loaded
+    ActorView summon = Actor(350, true);
+    summon.commanded = true;
+    list.push_back(summon);                       // 5 commanded (summon, raised servant)
+    ActorView follower = Actor(600, false);
+    follower.teammate = true;
+    list.push_back(follower);                     // 6 follower: an ally
+    ActorView away = Actor(2000, false);
+    away.teammate = true;
+    list.push_back(away);                         // 7 follower beyond 15 m of you
+    list.push_back(Actor(200, false));            // 8 neutral, not attacked: never
+    ActorView engaged = Actor(700, false);
+    engaged.engaged = true;
+    list.push_back(engaged);                      // 9 neutral you attacked (30 s marker): in
+    list.push_back(Actor(1400, true));            // 10 hostile, 15.7 m from the centre, 20 m from you: out
+    list.push_back(Actor(1300, true));            // 11 hostile, 14.3 m from the centre: in
+    const std::array<float, 3> centre{ 300, 0, 0 };
+    const std::array<float, 3> origin{ 0, 0, 0 };
+    auto picks = SelectCrowd(list, 1, centre, 1050.0f, origin, 1050.0f, essb::n5::kCrowdMax);
+    Check(picks.size() == 4 && picks[0].index == 2 && picks[1].index == 9 && picks[2].index == 11 && picks[3].index == 6 &&
+          !picks[0].ally && !picks[2].ally && picks[3].ally, "crowd: 2.9 eligibility, nearest first, the ally last");
+    for (const auto& p : picks) {
+        Check(p.index != 8 && p.index != 3 && p.index != 4 && p.index != 5 && p.index != 0 && p.index != 1 && p.index != 7 &&
+              p.index != 10, "crowd: never the neutral, the dead, the unloaded, the commanded, you, the primary, a far one");
+    }
+    picks = SelectCrowd(list, 1, centre, 1050.0f, origin, 1050.0f, 2);
+    Check(picks.size() == 3 && picks[0].index == 2 && picks[1].index == 9 && picks[2].ally, "crowd: the hostile limit (allies apart)");
+    std::vector<ActorView> many;
+    for (int i = 0; i < 6; ++i) {
+        ActorView a = Actor(100.0f + 10.0f * static_cast<float>(i), false);
+        a.teammate = true;
+        many.push_back(a);
+    }
+    picks = SelectCrowd(many, -1, origin, 1050.0f, origin, 1050.0f, essb::n5::kCrowdMax);
+    Check(picks.size() == 4 && picks[0].index == 0 && picks[3].index == 3, "crowd: 4 allies at most, nearest first");
+    // RunPlan selects the member of every op before running it; a cast goes to that member.
+    Fake f;
+    essb::StatusPlan plan;
+    essb::StatusOp a = essb::Amount(essb::Op::kDamage, 10.0f, essb::kFire);
+    a.at = 2;
+    plan.Push(a);
+    plan.Push(essb::Amount(essb::Op::kDamage, 5.0f, essb::kFrost));
+    essb::StatusOp h = essb::Amount(essb::Op::kHeal, 7.0f);
+    h.at = 3;
+    plan.Push(h);
+    essb::Tuning t;
+    essb::engine::RunPlan(f, plan, t);
+    Check(f.selected.size() == 3 && f.selected[0] == 2 && f.selected[1] == 0 && f.selected[2] == 3, "run: each op selects its member");
+    Check(f.castAt.size() == 2 && f.castAt[0].first == 2 && f.castAt[1].first == 0, "run: the damage goes to the selected member");
+}
+
+void Death()
+{
+    using essb::engine::DeathCounts;
+    using essb::engine::DeathEvent;
+    essb::Board empty;
+    essb::Board poisoned;
+    poisoned.poisonDot = essb::Slot{ true, 2.0f, 0.0f, 5.0f };
+    Check(!DeathCounts(DeathEvent{ true, false, true, false }, poisoned), "death: the dead = true event is not ours (s10)");
+    Check(!DeathCounts(DeathEvent{ false, true, false, false }, poisoned), "death: your own death is never handled");
+    Check(!DeathCounts(DeathEvent{ false, false, false, false }, empty), "death: nothing of ours, not your kill: skipped");
+    Check(DeathCounts(DeathEvent{ false, false, false, false }, poisoned), "death: our poison on the corpse counts");
+    Check(DeathCounts(DeathEvent{ false, false, true, false }, empty), "death: your kill counts (無魔, 飲血, 淨土)");
+    Check(DeathCounts(DeathEvent{ false, false, false, true }, empty), "death: your servant's death counts (亡衛)");
+    essb::Board hushed;
+    hushed.hush = essb::Slot{ true, 2.0f, 0.0f, 10.0f };
+    Check(DeathCounts(DeathEvent{ false, false, false, false }, hushed), "death: 寂 counts as ours");
+    // One death end to end: the corpse carries poison; the process list has a hostile, a follower and a neutral NPC
+    // within 15 m -- only the hostile takes the spread (2.9), and the executor casts on that member only.
+    using essb::engine::ActorView;
+    std::vector<ActorView> list;
+    ActorView you = Actor(0, false);
+    you.you = true;
+    list.push_back(you);
+    list.push_back(Actor(100, true));             // the corpse (member 0; read separately)
+    list.push_back(Actor(300, true));             // a hostile
+    ActorView follower = Actor(150, false);
+    follower.teammate = true;
+    list.push_back(follower);
+    list.push_back(Actor(250, false));            // a neutral NPC
+    const auto picks = essb::engine::SelectCrowd(list, 1, { 100, 0, 0 }, 1050.0f, { 0, 0, 0 }, 1050.0f, essb::n5::kCrowdMax);
+    auto crowd = std::make_unique<essb::Crowd>();
+    crowd->you = { 0, 0, 0 };
+    crowd->m[0].has = true;
+    crowd->m[0].pos = { 100, 0, 0 };
+    crowd->m[0].board = poisoned;
+    crowd->m[0].body.healthMax = 100.0f;
+    crowd->count = 1;
+    for (const auto& p : picks) {
+        essb::Member& m = crowd->m[crowd->count++];
+        m.has = true;
+        m.ally = p.ally;
+        m.pos = list[p.index].pos;
+    }
+    Check(crowd->count == 3 && !crowd->m[1].ally && crowd->m[2].ally, "death: the crowd is the hostile and the follower (ally)");
+    essb::Config c;
+    for (int e = 1; e <= 11; ++e) {
+        c.damage[e] = { 8.0f, 10.0f };
+    }
+    essb::Tuning t;
+    essb::StatusInputs in;
+    in.config = &c;
+    in.tuning = &t;
+    in.n4 = true;
+    essb::BodyInputs bin;
+    bin.in = &in;
+    bin.stamina = bin.staminaMax = 100.0f;
+    bin.magicka = bin.magickaMax = 100.0f;
+    essb::Board self;
+    auto plan = std::make_unique<essb::StatusPlan>();
+    FakeNodes nodes;
+    FixedRng rng;
+    essb::DeathFacts facts;
+    Check(DeathCounts(DeathEvent{ false, false, false, false }, crowd->m[0].board), "death: this one counts");
+    essb::PlanDeath(*plan, *crowd, self, bin, facts, nodes, rng);
+    Check(crowd->m[1].board.poisonDot.has && !crowd->m[2].board.poisonDot.has, "death: the spread reaches the hostile, never the follower");
+    Fake f;
+    essb::engine::RunPlan(f, *plan, t);
+    Check(!f.castAt.empty(), "death: the spread is cast");
+    for (const auto& [member, spell] : f.castAt) {
+        Check(member == 1, "death: every cast goes to the hostile member (never the follower, never the neutral)");
+    }
+}
+
 }  // namespace
 
 int main()
@@ -398,8 +563,10 @@ int main()
         Settle();
         Resolve();
         Judged();
+        Crowd();
+        Death();
         std::printf("NATIVE ENGINE E ok: %d checks (read, run order, wash R5, removal reasons + carried crystals, settle, "
-                    "resolve every lowered spell, 聖痕)\n", checks);
+                    "resolve every lowered spell, 聖痕, the crowd from a fake process list, fake death events)\n", checks);
         return 0;
     } catch (const std::exception& e) {
         std::fprintf(stderr, "ENGINE TEST FAILED: %s\n", e.what());

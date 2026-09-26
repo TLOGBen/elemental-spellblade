@@ -134,6 +134,10 @@ def wiring(b, write_if_changed, root):
     import fix23_records as rec23
     kinds += [dict(kind=k[0], suffix=k[1], effect=rec23.effect_id(k[0]), spell=rec23.spell_id(k[0]), seconds=k[4],
                    on_player=k[3], stub=False) for k in rec23.KINDS]
+    # Round 24 (N5): then build/fix24_records.py's kinds (markers, windows, 血承's AV rows; no stubs).
+    import fix24_records as rec24
+    kinds += [dict(kind=k[0], suffix=k[1], effect=rec24.effect_id(k[0]), spell=rec24.spell_id(k[0]), seconds=k[4],
+                   on_player=k[3], stub=False) for k in rec24.KINDS]
     data = dict(
         kinds=kinds,
         marks=[dict(element=i + 1, effect=b.ID_MARK_EFFECT + i, spell=b.ID_MARK_SPELL + i) for i in range(11)],

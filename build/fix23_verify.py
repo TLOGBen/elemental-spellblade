@@ -65,12 +65,20 @@ def scripts():
 def check_contract(sources, cpp, status_h):
     # The events round 23 sends are built in SelfLayer.h / Hurt.h too (the round-22 check only scanned Status.h).
     headers = status_h + ''.join((ROOT / 'native/include' / h).read_text(encoding='utf-8') for h in ('SelfLayer.h', 'Hurt.h'))
+    # (round 24: fix22's events_sent adds Reactions.h -- the bodies' ModEvents -- and drops the body-only events)
     errors, counts = v22.check_contract(sources, cpp, headers)
     sent = v22.events_sent(cpp, headers)
+    # Round 24 (N5): 放電 and 風刃 became body-only events -- the DLL's body pass consumes them (Reactions.h BodyOnly,
+    # build/fix24_verify.py); only the N4 events Papyrus still handles must be sent.
+    body = re.search(r'constexpr bool BodyOnly\(Event e\) noexcept\s*\{(.*?)\n\}',
+                     (ROOT / 'native/include/Reactions.h').read_text(encoding='utf-8'), re.S)
+    consumed = {'ESSB_' + k[1:] for k in re.findall(r'Event::(k\w+)', body[1])} if body else set()
     for name in N4_EVENTS:
-        if name not in sent:
+        if name not in sent and name not in consumed:
             errors.append(f'{name}: the DLL does not send it')
-    if sent.get('ESSB_Death') != 9:
+    # Round 24 (N5): ESSB_Death is gone -- the death sink reads the last-hit-sneak marker on the corpse itself (連殺,
+    # Reactions.h PlanDeath); build/fix24_verify.py checks that no death snapshot is sent any more.
+    if 'ESSB_Death' in sent and sent.get('ESSB_Death') != 9:
         errors.append(f'ESSB_Death carries {sent.get("ESSB_Death")} values, not 9 (the last-hit-sneak marker)')
     doc = re.search(r'Player\s+codes.*?FormEnter', sources['ESSBNative.psc'], re.S)
     if not doc:
@@ -90,10 +98,12 @@ def check_contract(sources, cpp, status_h):
 
 def check_removed(sources):
     errors = []
-    guard = code_only(sources['ESSBGuard.psc'])
-    if re.search(r'\bEvent OnHitEx\b', guard) or 'RegisterForHitEventEx' in guard:
-        errors.append('ESSBGuard still handles or registers the Papyrus hit event (R6)')
-    if 'UnregisterForAllHitEventsEx' not in guard:
+    # Round 24 (N5): ESSBGuard.psc is deleted (build/fix24_history.FILES); no script may handle the Papyrus hit event.
+    for script, text in sources.items():
+        code = code_only(text)
+        if re.search(r'\bEvent OnHitEx\b', code) or 'RegisterForHitEventEx' in code:
+            errors.append(f'{script} still handles or registers the Papyrus hit event (R6)')
+    if 'ESSBGuard.psc' in sources and 'UnregisterForAllHitEventsEx' not in code_only(sources['ESSBGuard.psc']):
         errors.append('ESSBGuard does not unregister the old saves\' hit event')
     for script, text in sources.items():
         code = code_only(text)

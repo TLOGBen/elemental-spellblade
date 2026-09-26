@@ -10,10 +10,17 @@
 //                 the target's crystal stacks read in the same frame (review fix 2)
 //   PlanSettle    what an expiry does (Status.h's end-of-life rules), on the boards read in the settle task
 //   CastSpells    every spell RunPlan can cast -- the adapter must resolve all of them (a missing one faults the DLL)
+// Round 24 (N5):
+//   SelectCrowd   the crowd an event reads (v0.4 2.9 eligibility, nearest first, at most kCrowdMax), from the process
+//                 list the adapter reports -- the tests feed a fake one
+//   DeathCounts   whether a death event is one the DLL handles (dead = false only, never you, something of ours on it)
+//   RunOp selects the op's crowd member (StatusOp::at) before running it
 #pragma once
 
+#include "Reactions.h"
 #include "Status.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -106,6 +113,7 @@ int Wash(E& engine, Who who, int limit, Log&& log)
 template <class E>
 void RunOp(E& engine, const StatusOp& op, const Tuning& tuning)
 {
+    engine.Select(op.at);   // round 24: the crowd member this op acts on (0 = the plan's own target)
     const Lowered l = Lower(op, tuning.slowCapPct);
     const Who on = l.onPlayer ? Who::kPlayer : Who::kTarget;
     if (l.dispelSpell) {
@@ -137,7 +145,9 @@ void RunOp(E& engine, const StatusOp& op, const Tuning& tuning)
         break;
     }
     case Op::kEvent:
-        engine.Send(op);
+        if (!BodyOnly(op.event)) {
+            engine.Send(op);   // round 24: a body event left over (the body pass bounded) is never sent to Papyrus
+        }
         break;
     // Round 23 (N4): the engine-side ops (stamina, the resonance count, the interrupt task, 碎岩's ring, 冰心's scan).
     case Op::kPayStamina:
@@ -277,6 +287,92 @@ Settled PlanSettle(StatusPlan& plan, const Removed& x, Board& target, Board& sel
     return out;
 }
 
+// ---------------------------------------------------------------- round 24: the crowd and the death event
+
+// One actor of the high process list as the adapter reports it.
+struct ActorView {
+    bool you = false;
+    bool dead = false;
+    bool loaded = true;
+    bool teammate = false;     // IsPlayerTeammate: an ally (聖光 heals it; nothing hostile selects it)
+    bool commanded = false;    // IsCommandedActor: summons, raised servants -- never in the crowd
+    bool hostile = false;      // IsHostileToActor(you): hostile or of a hostile faction
+    bool engaged = false;      // carries our 30 s engaged marker (you attacked it)
+    std::array<float, 3> pos{};
+};
+
+struct CrowdPick {
+    int index = 0;             // into the adapter's list
+    bool ally = false;
+};
+
+// v0.4 2.9: (hostile or engaged) and not a teammate, not commanded, alive, loaded, not you; allies = teammates. Kept when
+// within `aroundCentre` of `centre` or `aroundYou` of you (allies: of you only), nearest first (by the nearer of the two),
+// at most `limit` hostiles and 4 allies. `skip` is the primary's index (member 0, read separately), -1 for none.
+inline std::vector<CrowdPick> SelectCrowd(const std::vector<ActorView>& list, int skip, const std::array<float, 3>& centre, float aroundCentre,
+    const std::array<float, 3>& you, float aroundYou, int limit)
+{
+    std::vector<std::pair<float, CrowdPick>> hostile;
+    std::vector<std::pair<float, CrowdPick>> allies;
+    for (int i = 0; i < static_cast<int>(list.size()); ++i) {
+        const ActorView& a = list[i];
+        if (i == skip || a.you || a.dead || !a.loaded || a.commanded) {
+            continue;
+        }
+        const float toYou = Distance(a.pos, you);
+        if (a.teammate) {
+            if (toYou <= aroundYou) {
+                allies.push_back({ toYou, CrowdPick{ i, true } });
+            }
+            continue;
+        }
+        if (!a.hostile && !a.engaged) {
+            continue;   // 2.9: a neutral you have not attacked is never touched by a range effect
+        }
+        const float toCentre = Distance(a.pos, centre);
+        if (toCentre > aroundCentre && toYou > aroundYou) {
+            continue;
+        }
+        hostile.push_back({ std::min(toCentre, toYou), CrowdPick{ i, false } });
+    }
+    const auto nearer = [](const auto& x, const auto& y) { return x.first < y.first || (x.first == y.first && x.second.index < y.second.index); };
+    std::sort(hostile.begin(), hostile.end(), nearer);
+    std::sort(allies.begin(), allies.end(), nearer);
+    std::vector<CrowdPick> out;
+    for (const auto& h : hostile) {
+        if (static_cast<int>(out.size()) >= limit) {
+            break;
+        }
+        out.push_back(h.second);
+    }
+    for (std::size_t i = 0; i < allies.size() && i < 4 && static_cast<int>(out.size()) < n5::kCrowdMax; ++i) {
+        out.push_back(allies[i].second);
+    }
+    return out;
+}
+
+// The death event the DLL handles (native-verification-3 s10): the dead = false one, sent inside KillImpl while the
+// corpse still carries every effect; never your own; and only when there is something to do -- a status or mark of ours
+// on the corpse, your kill (無魔, 飲血, 淨土...), or your servant (亡衛).
+struct DeathEvent {
+    bool dead = false;
+    bool dyingIsYou = false;
+    bool killerYou = false;
+    bool servant = false;
+};
+
+inline bool DeathCounts(const DeathEvent& e, const Board& corpse)
+{
+    if (e.dead || e.dyingIsYou) {
+        return false;
+    }
+    bool ours = corpse.MarkCount() > 0 || corpse.bleedDot.has || corpse.poisonDot.has || corpse.hush.has;
+    for (int k = 0; k < kStatusKindCount && !ours; ++k) {
+        ours = corpse.slot[k].has;
+    }
+    return ours || e.killerYou || e.servant;
+}
+
 // ---------------------------------------------------------------- what the adapter must resolve
 
 // Every spell (local FormID) Lower can name; Plugin.cpp resolves exactly these at load.
@@ -295,11 +391,21 @@ inline std::vector<std::uint32_t> CastSpells()
         out.push_back(status::kPoisonDot[i]);
     }
     for (const std::uint32_t id : { spell::kTrueDamage, spell::kHeal, spell::kRestoreMagicka, spell::kRestoreStamina, spell::kBleedTick,
-             spell::kSpendMagicka, spell::kDrainStamina, spell::kRiposte, spell::kDispelMark, spell::kBloodGuard }) {
+             spell::kSpendMagicka, spell::kDrainStamina, spell::kRiposte, spell::kDispelMark, spell::kBloodGuard,
+             // round 24 (N5): the bodies' casts
+             spell::kDrainMagicka, spell::kHealTarget, spell::kHush }) {
         out.push_back(id);
     }
     for (const std::uint32_t id : spell::kSoak) {
         out.push_back(id);
+    }
+    for (const std::uint32_t id : spell::kSilence) {
+        out.push_back(id);
+    }
+    for (const auto& family : status::kTimed) {
+        for (const std::uint32_t id : family) {
+            out.push_back(id);
+        }
     }
     return out;
 }
@@ -315,7 +421,7 @@ inline std::vector<std::uint32_t> TaggedEffects()
         out.push_back(status::kMarkEffect[e]);
     }
     for (const std::uint32_t id : { status::kBleedDotEffect, status::kPoisonDotEffect, status::kFearEffect, status::kFrenzyEffect,
-             status::kSlowEffect, effect::kBloodGuard }) {
+             status::kSlowEffect, effect::kBloodGuard, effect::kHush }) {
         out.push_back(id);
     }
     return out;

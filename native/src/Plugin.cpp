@@ -16,12 +16,17 @@
 // same sink to Hurt.h (the facts before the damage in the sink, the damage itself in a follow-up task); the spell-cast
 // sink runs 反咒 and 逼近; the timer decays 超載 and refunds 風's sprint; the resource pools and the sync bar are shown
 // through TrueHUD's custom widget API when TrueHUD is there (TrueHud.h).
+// Round 24 (N5): the reaction bodies, the fusion (融斷) and the death handling are the DLL's (Reactions.h). Every event
+// that has bodies reads ONE crowd (the high process list, main thread, handles collected first; StatusEngine.h
+// SelectCrowd), the body pass turns the plan's body events into casts on the crowd, and only what stays Papyrus (pushes,
+// fear / frenzy, the raise, the ash, keep-sneak, domains, experience, sounds) goes out as ModEvents.
 // The design state lives in those effects; `state` holds only handles, forms and faults. Faults latch the handler OFF
 // until the game restarts.
 #include "EngineFacts.h"
 #include "HitPipeline.h"
 #include "Hurt.h"
 #include "ManifestData.h"
+#include "Reactions.h"
 #include "Selection.h"
 #include "SelfLayer.h"
 #include "Status.h"
@@ -39,6 +44,8 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <stdexcept>
@@ -111,6 +118,9 @@ struct Forms {
     RE::BGSKeyword* daedra{};
     RE::BGSKeyword* armorSpell{};
     RE::BGSKeyword* cloak{};
+    RE::BGSKeyword* dragon{};        // round 24: ActorTypeDragon (never knocked, raised or turned to ash)
+    RE::EffectSetting* engaged{};    // round 24: 2.9 你主動攻擊過的目標 (ESSB_EngagedEffect, 30 s)
+    RE::EffectSetting* reanimate{};  // round 24: your raised servant (ESSB_ReanimateEffect; 亡衛)
     RE::TESClass* necroClass{};
     RE::TESFaction* necroFaction{};
     std::vector<RE::BGSPerk*> mainPerks;    // [localId - kMainPerkBase]
@@ -139,7 +149,7 @@ struct State {
     // Notices raised before the HUD exists (data load). Only touched from SKSE messages (main thread).
     std::vector<std::string> deferredNotices;
     DWORD mainThread = 0;
-    std::array<std::atomic_bool, 7> threadLogged{};  // probe X1: each sink logs its thread once
+    std::array<std::atomic_bool, 8> threadLogged{};  // probe X1: each sink logs its thread once
     // Round 23: the hits you took this frame, between the hit sink (before the damage) and the one task that reads the
     // damage (native-verification-2 s15). Plumbing between two calls of the same frame, not design state.
     std::mutex hurtLock;
@@ -207,6 +217,7 @@ enum class Probe
     kNative,
     kHurt,
     kCast,
+    kNativeTask,   // round 24 review fix 1: the queued native work
 };
 
 void LogThreadOnce(Probe which, const char* name) noexcept
@@ -454,6 +465,8 @@ float MaxOf(RE::Actor& actor, RE::ActorValue av)
            actor.GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kTemporary, av);
 }
 
+std::uint32_t EffectIdOf(const RE::EffectSetting* base) noexcept;   // below (round 22's status table)
+
 essb::PlayerFacts ReadPlayer(RE::PlayerCharacter& player)
 {
     essb::PlayerFacts p;
@@ -475,6 +488,8 @@ essb::PlayerFacts ReadPlayer(RE::PlayerCharacter& player)
             p.twinWindow = true;
         } else if (&base == f.riposteWindow) {
             p.riposteWindow = !state.riposteDispelQueued;
+        } else if (EffectIdOf(&base) == essb::kStatusRecords[static_cast<int>(essb::StatusKind::kBloodthirst)].effect) {
+            p.bloodthirst = true;   // round 24: 飲血's 嗜血 (吸血 +10%)
         }
     });
     return p;
@@ -826,35 +841,57 @@ void QueueMarkerDispel(Marker marker)
 // with '|' (ESSBController parses them with StringUtil.Split).
 constexpr const char* kEventNames[] = { "ESSB_Open", "ESSB_End", "ESSB_Frozen", "ESSB_Hallucinate", "ESSB_Judgment", "ESSB_Splash",
     "ESSB_Shatter", "ESSB_Landing", "ESSB_Rise", "ESSB_Discharge", "ESSB_Blade", "ESSB_Knock", "ESSB_SyncUp", "ESSB_Cleanse",
-    "ESSB_Lethal" };
+    "ESSB_Lethal", "ESSB_Push", "ESSB_Ash", "ESSB_Raise", "ESSB_Sneak", "ESSB_Domain", "ESSB_Overheat" };
 static_assert(std::size(kEventNames) == static_cast<int>(essb::Event::kCount));
 
-void SendEvent(const essb::StatusOp& op, RE::Actor* target)
+void SendEvent(const essb::StatusOp& op, RE::Actor* target, RE::Actor* centre = nullptr)
 {
     auto* source = SKSE::GetModCallbackEventSource();
     if (!source) {
         throw std::runtime_error("ModEvent source unavailable");
     }
+    if (essb::BodyOnly(op.event)) {
+        return;   // round 24: the bodies are the DLL's (Reactions.h); Papyrus has no handler for these any more
+    }
     // Fixed-point: Papyrus' String -> Float cast does not read exponents.
     char text[256];
-    std::snprintf(text, sizeof(text), "%.5f|%.5f|%.5f|%.5f|%.5f|%.5f|%.5f|%.5f", op.arg[0], op.arg[1], op.arg[2], op.arg[3],
-        op.arg[4], op.arg[5], op.arg[6], op.arg[7]);
+    if (op.event == essb::Event::kPush) {
+        // The pull-to centre (風渦) is a crowd member; Papyrus gets its FormID as a signed 32-bit integer (`as Int`, then
+        // Game.GetForm); 0 = none.
+        const std::int32_t id = centre ? static_cast<std::int32_t>(centre->GetFormID()) : 0;
+        std::snprintf(text, sizeof(text), "%.5f|%.5f|%.5f|%d|%.5f", op.arg[0], op.arg[1], op.arg[2], id, op.arg[4]);
+    } else {
+        std::snprintf(text, sizeof(text), "%.5f|%.5f|%.5f|%.5f|%.5f|%.5f|%.5f|%.5f", op.arg[0], op.arg[1], op.arg[2], op.arg[3],
+            op.arg[4], op.arg[5], op.arg[6], op.arg[7]);
+    }
     SKSE::ModCallbackEvent ev{ kEventNames[static_cast<int>(op.event)], text, op.arg[0], target };
     source->SendEvent(&ev);
 }
 
-// Round 23 (N4): the engine-side ops (StatusEngine.h RunOp). Defined after RunRule, which they use.
-void EngineResonance(RE::Actor* center);                            // 共鳴層: count the resonant hostiles, add them
+// Round 23 (N4): the engine-side ops (StatusEngine.h RunOp). Defined below.
 void QueueInterrupt(RE::ActorHandle actor);                         // InterruptCast(false) in a task (s9)
-void EngineCrushArea(RE::Actor& center, const essb::StatusOp& op);  // 碎岩's 3 m ring
-void EngineFreezeNearby();                                          // 冰心
+void CrowdOpOutsideBodies(const char* what) noexcept;               // round 24: the crowd ops belong to the body pass
 
 // The write half of the engine adapter StatusEngine.h runs on: Dispel(true), CastSpellImmediate from the player's
 // instant caster, the cost path, the ModEvent, the self-dispel flag the removal sink reads.
 class RealEngine final : public EffectLists
 {
 public:
-    RealEngine(RE::PlayerCharacter& player, RE::Actor* target) : EffectLists(player, target), playerCharacter_(player), caster_(CasterOf(player)) {}
+    RealEngine(RE::PlayerCharacter& player, RE::Actor* target, const std::vector<RE::Actor*>* crowd = nullptr) :
+        EffectLists(player, target), playerCharacter_(player), caster_(CasterOf(player)), primary_(target), crowd_(crowd)
+    {}
+
+    // Round 24 (N5): the crowd member the next op acts on (StatusOp::at; 0 = the plan's own target).
+    void Select(std::uint8_t at)
+    {
+        if (at == 0) {
+            target_ = primary_;
+        } else if (crowd_ && at < crowd_->size()) {
+            target_ = (*crowd_)[at];
+        } else {
+            throw std::runtime_error("status op on a crowd member the plan did not read");
+        }
+    }
 
     void Dispel(essb::Who, Handle effect) { effect->Dispel(true); }
     bool SelfDispel() const noexcept { return state.selfDispel; }
@@ -885,7 +922,15 @@ public:
         }
     }
 
-    void Send(const essb::StatusOp& op) { SendEvent(op, target_); }
+    void Send(const essb::StatusOp& op)
+    {
+        RE::Actor* centre = nullptr;
+        if (op.event == essb::Event::kPush && op.arg[3] >= 0.5f) {
+            const std::size_t member = static_cast<std::size_t>(op.arg[3] + 0.5f) - 1;
+            centre = member == 0 ? primary_ : (crowd_ && member < crowd_->size() ? (*crowd_)[member] : nullptr);
+        }
+        SendEvent(op, target_, centre);
+    }
 
     // Round 23 review: the part of a hit the pools could not take. The same actor-value path as the console's
     // `damageav health` / Papyrus DamageActorValue, with no clamp: at 0 the engine's death handling runs (inference;
@@ -906,20 +951,17 @@ public:
             values->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kStamina, -pay);
         }
     }
-    void Resonance() { EngineResonance(target_); }
+    // Round 24: the crowd ops are the body pass's (Reactions.h RunBodies consumes them); reaching the engine means a
+    // plan ran without its bodies -- logged, nothing scanned here (ruling R6: one scan per event).
+    void Resonance() { CrowdOpOutsideBodies("resonance"); }
     void Interrupt(essb::Who who)
     {
         if (RE::Actor* actor = ActorOf(who)) {
             QueueInterrupt(actor->GetHandle());
         }
     }
-    void CrushArea(const essb::StatusOp& op)
-    {
-        if (target_) {
-            EngineCrushArea(*target_, op);
-        }
-    }
-    void FreezeNearby() { EngineFreezeNearby(); }
+    void CrushArea(const essb::StatusOp&) { CrowdOpOutsideBodies("crush area"); }
+    void FreezeNearby() { CrowdOpOutsideBodies("freeze nearby"); }
 
     void LogReapply(const essb::StatusOp& op, int dispelled)
     {
@@ -940,12 +982,16 @@ public:
 private:
     RE::PlayerCharacter& playerCharacter_;
     RE::MagicCaster& caster_;
+    RE::Actor* primary_;
+    const std::vector<RE::Actor*>* crowd_;
 };
 
 class Executor
 {
 public:
-    Executor(RE::PlayerCharacter& player, RE::Actor* target, const essb::Tuning& tuning) : engine_(player, target), tuning_(tuning) {}
+    Executor(RE::PlayerCharacter& player, RE::Actor* target, const essb::Tuning& tuning, const std::vector<RE::Actor*>* crowd = nullptr) :
+        engine_(player, target, crowd), tuning_(tuning)
+    {}
 
     void Run(const essb::StatusPlan& plan)
     {
@@ -999,6 +1045,219 @@ Context MakeContext(RE::PlayerCharacter& player, bool iceArmor)
 bool FormIsActive() noexcept
 {
     return state.forms.formActive->value == 1.0f;
+}
+
+// ---------------------------------------------------------------- round 24: the crowd (one scan per event)
+
+std::array<float, 3> PosOf(const RE::Actor& actor)
+{
+    const RE::NiPoint3 p = actor.GetPosition();
+    return { p.x, p.y, p.z };
+}
+
+bool HasOurEffect(RE::Actor& actor, const RE::EffectSetting* wanted)
+{
+    bool found = false;
+    if (wanted) {
+        ForEachRunningEffect(actor, [&](RE::ActiveEffect&, RE::EffectSetting& base) { found = found || &base == wanted; });
+    }
+    return found;
+}
+
+// Probe N5-1: how many of our effects an actor still runs (the death sink logs it for both death events).
+int CountOurEffects(RE::Actor& actor)
+{
+    int count = 0;
+    ForEachRunningEffect(actor, [&](RE::ActiveEffect&, RE::EffectSetting& base) {
+        const auto* file = base.GetFile(0);
+        if (file && file->GetFilename() == kPlugin) {
+            ++count;
+        }
+    });
+    return count;
+}
+
+// 2.9 必要角色 (review fix 2): essential (the reference or its base), or filling a quest-object alias. A unique or
+// protected named enemy is not exempt from being knocked down, raised or turned to ash.
+bool EssentialOf(RE::Actor& actor)
+{
+    if (actor.IsEssential()) {
+        return true;
+    }
+    const auto* base = actor.GetActorBase();
+    if (base && base->IsEssential()) {
+        return true;
+    }
+    if (const auto* aliases = actor.extraList.GetByType<RE::ExtraAliasInstanceArray>()) {
+        RE::BSReadLockGuard lock(aliases->lock);
+        for (const auto* data : aliases->aliases) {
+            if (data && data->alias && data->alias->IsQuestObject()) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// Everything a body reads about one actor (Reactions.h Member).
+void ReadMember(essb::Member& m, RE::Actor& actor, RE::PlayerCharacter& player, bool ally)
+{
+    const essb::TargetFacts facts = TargetFactsOf(actor);
+    m = essb::Member{};
+    m.has = true;
+    m.ally = ally;
+    m.board = ReadBoard(actor);
+    m.body = ReadBody(actor, player, facts);
+    m.pos = PosOf(actor);
+    m.level = actor.GetLevel();
+    m.dragon = state.forms.dragon && actor.HasKeyword(state.forms.dragon);
+    m.essential = EssentialOf(actor);
+    m.spellUser = facts.spellUser;
+    auto* v = actor.AsActorValueOwner();
+    m.armor = v->GetActorValue(RE::ActorValue::kDamageResist);
+    m.resist = { v->GetActorValue(RE::ActorValue::kResistFire), v->GetActorValue(RE::ActorValue::kResistFrost),
+        v->GetActorValue(RE::ActorValue::kResistShock), v->GetActorValue(RE::ActorValue::kPoisonResist),
+        v->GetActorValue(RE::ActorValue::kResistMagic) };
+    m.magicka = v->GetActorValue(RE::ActorValue::kMagicka);
+    m.magickaMax = MaxOf(actor, RE::ActorValue::kMagicka);
+}
+
+// One event's crowd: member 0 = `primary` (its board may come from the planner, which has not been executed yet), the
+// others read from the high process list ONCE (main thread; the handles are collected first, then each actor is read;
+// native-verification-3 s11). The pointers keep the actors alive while the plan runs.
+struct CrowdRead {
+    std::unique_ptr<essb::Crowd> crowd = std::make_unique<essb::Crowd>();
+    std::vector<RE::NiPointer<RE::Actor>> keep;
+    std::vector<RE::Actor*> actors;   // [member]; [0] = the primary (null when none)
+    bool built = false;
+};
+
+void BuildCrowd(CrowdRead& out, RE::PlayerCharacter& player, RE::Actor* primary, const essb::Board* primaryBoard, float aroundPrimary,
+    float aroundYou)
+{
+    out.built = true;
+    essb::Crowd& c = *out.crowd;
+    c = essb::Crowd{};
+    c.you = PosOf(player);
+    out.keep.clear();
+    out.actors.assign(1, primary);
+    if (primary) {
+        ReadMember(c.m[0], *primary, player, false);
+        if (primaryBoard) {
+            c.m[0].board = *primaryBoard;
+        }
+    }
+    auto* lists = RE::ProcessLists::GetSingleton();
+    if (!lists) {
+        return;
+    }
+    std::vector<RE::NiPointer<RE::Actor>> seen;
+    std::vector<essb::engine::ActorView> views;
+    for (auto& handle : lists->highActorHandles) {
+        auto ptr = handle.get();
+        RE::Actor* actor = ptr.get();
+        if (!actor) {
+            continue;
+        }
+        essb::engine::ActorView v;
+        v.you = actor == &player;
+        v.dead = actor->IsDead();
+        v.loaded = actor->Is3DLoaded();
+        v.teammate = actor->IsPlayerTeammate();
+        v.commanded = actor->IsCommandedActor();
+        v.hostile = !v.you && !v.dead && actor->IsHostileToActor(&player);
+        v.pos = PosOf(*actor);
+        views.push_back(v);
+        seen.push_back(ptr);
+    }
+    // the engaged marker is read only for the non-hostile ones near enough to matter (it walks their effect list)
+    const std::array<float, 3> centre = primary ? PosOf(*primary) : c.you;
+    int skip = -1;
+    for (std::size_t i = 0; i < views.size(); ++i) {
+        if (seen[i].get() == primary) {
+            skip = static_cast<int>(i);
+        } else if (!views[i].hostile && !views[i].teammate && !views[i].dead &&
+                   (essb::Distance(views[i].pos, centre) <= aroundPrimary || essb::Distance(views[i].pos, c.you) <= aroundYou)) {
+            views[i].engaged = HasOurEffect(*seen[i], state.forms.engaged);
+        }
+    }
+    const auto picks = essb::engine::SelectCrowd(views, skip, centre, aroundPrimary, c.you, aroundYou, essb::n5::kCrowdMax);
+    for (const auto& pick : picks) {
+        if (c.count >= essb::kCrowdSlots) {
+            break;
+        }
+        RE::Actor* actor = seen[pick.index].get();
+        ReadMember(c.m[c.count], *actor, player, pick.ally);
+        out.keep.push_back(seen[pick.index]);
+        out.actors.push_back(actor);
+        ++c.count;
+    }
+    if (state.forms.debug->value >= 3.0f) {   // probe N5-2: one scan per event; who it picked, how far from you
+        Logf("[ESSB][N5-2][L3] scan high=%d picked=%d centre=%08X", static_cast<int>(views.size()), c.count - 1,
+            primary ? primary->GetFormID() : 0u);
+        for (int k = 1; k < c.count; ++k) {
+            RE::Actor* a = out.actors[k];
+            Logf("[ESSB][N5-2][L3]   %d %08X %s d=%.0f ally=%d", k, a->GetFormID(), a->GetName(), essb::Distance(c.you, c.m[k].pos),
+                c.m[k].ally ? 1 : 0);
+        }
+    }
+}
+
+// Does the plan (from `from`) have anything the body pass needs a crowd for?
+bool NeedsCrowd(const essb::StatusPlan& plan, int from)
+{
+    using essb::Op;
+    for (int i = from; i < plan.count; ++i) {
+        const essb::StatusOp& op = plan.ops[i];
+        if ((op.op == Op::kEvent && (essb::BodyOnly(op.event) || op.event == essb::Event::kOpen || op.event == essb::Event::kEnd ||
+                                        op.event == essb::Event::kHallucinate)) ||
+            op.op == Op::kResonance || op.op == Op::kCrushArea || op.op == Op::kFreezeNearby ||
+            (op.op == Op::kDamage && op.arg[0] > 0.0f)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+essb::BodyInputs BodyInputsOf(RE::PlayerCharacter& player, const Context& c, bool sneak)
+{
+    essb::BodyInputs bin;
+    bin.in = &c.in;
+    bin.hitSneak = sneak;
+    auto* v = player.AsActorValueOwner();
+    bin.stamina = v->GetActorValue(RE::ActorValue::kStamina);
+    bin.staminaMax = MaxOf(player, RE::ActorValue::kStamina);
+    bin.magicka = v->GetActorValue(RE::ActorValue::kMagicka);
+    bin.magickaMax = MaxOf(player, RE::ActorValue::kMagicka);
+    return bin;
+}
+
+// The crowd radii of an event centred on a target: 15 m around it (the "附近" bodies) and 15 m around you (濺血, 血約,
+// 天雷, 冰心, 過熱, 聖光).
+constexpr float kAroundEvent = 1050.0f;
+
+// Runs the body pass on plan.ops[from..] if it has bodies (building the crowd on first need), then executes the plan.
+// `targetBoard` is the planner's board of the primary (kept in step with member 0 both ways).
+template <class Nodes>
+void RunWithBodies(RE::PlayerCharacter& player, RE::Actor* primary, essb::Board* targetBoard, essb::StatusPlan& plan, int from,
+    essb::Board& self, Context& c, const Nodes& nodes, CrowdRead& crowd, bool sneak = false)
+{
+    if (NeedsCrowd(plan, from)) {
+        if (!crowd.built) {
+            BuildCrowd(crowd, player, primary, targetBoard, kAroundEvent, kAroundEvent);
+        } else if (targetBoard && primary) {
+            crowd.crowd->m[0].board = *targetBoard;
+        }
+        if (primary) {
+            c.in.body = crowd.crowd->m[0].body;
+        }
+        const essb::BodyInputs bin = BodyInputsOf(player, c, sneak);
+        essb::RunBodies(plan, from, *crowd.crowd, self, bin, nodes, *state.rng);
+        if (targetBoard && primary) {
+            *targetBoard = crowd.crowd->m[0].board;
+        }
+    }
+    Executor(player, primary, c.tuning, crowd.built ? &crowd.actors : nullptr).Run(plan);
 }
 
 int FormElement() noexcept
@@ -1170,14 +1429,50 @@ void Handle(const RE::TESHitEvent& ev)
     self.crit = plan.crit;
 
     essb::HitStatus status;
-    essb::StatusPlan statusPlan;
+    auto statusPlanPtr = std::make_unique<essb::StatusPlan>();   // 28 KB: on the heap, not on the engine's stack
+    essb::StatusPlan& statusPlan = *statusPlanPtr;
+    CrowdRead crowd;   // round 24: read once, only if a body needs it
     if (essb::IsElement(attack.element)) {
+        // 回聲 (5.13): a star hit on a target that already carried star marks, outside the dark star.
+        const bool echo = markElement == essb::kAstral && targetBoard.Has(K::kStar) && !selfBoard.Has(K::kCosmos);
+        const bool avatarBefore = selfBoard.Has(K::kAvatar);
         status = essb::PlanStatusHit(statusPlan, markElement, attack.power, targetBoard, selfBoard, c.in, nodes, *state.rng);
         if (consumeStreak) {
             essb::Writer{ statusPlan, selfBoard, essb::Who::kPlayer }.Clear(K::kKillStreak);   // 連殺 used up
         }
         const essb::SelfResult result = essb::PlanSelfHit(statusPlan, self, status, targetBoard, selfBoard, c.in, nodes, *state.rng);
-        Executor(*player, target, c.tuning).Run(statusPlan);
+        // Round 24 (N5): the hit's own branch bodies (震擊, 護持, 萎靡, 侵蝕, the curse's erosion) on member 0, then the
+        // crowd bodies: every open / end / frozen ... event this hit produced, 回聲, 印潮, 化身's active legend.
+        const bool surge = status.cutFrom != 0 && status.opened && nodes.Has(essb::node::kCommonSurge);
+        const bool avatar = !avatarBefore && selfBoard.Has(K::kAvatar);
+        if (NeedsCrowd(statusPlan, 0) || echo || surge || avatar) {
+            const essb::Board planned = targetBoard;
+            BuildCrowd(crowd, *player, target, &planned, kAroundEvent, kAroundEvent);
+        } else {
+            crowd.actors.assign(1, target);   // member 0 alone: no scan
+            ReadMember(crowd.crowd->m[0], *target, *player, false);
+            crowd.crowd->m[0].board = targetBoard;
+            crowd.crowd->you = PosOf(*player);
+        }
+        c.in.body = crowd.crowd->m[0].body;
+        {
+            const essb::BodyInputs bin = BodyInputsOf(*player, c, attack.sneakAttack);
+            essb::Crowd& cw = *crowd.crowd;
+            essb::PlanHitBodies(statusPlan, cw, selfBoard, bin, markElement, attack.power, 0, nodes, *state.rng);
+            if (echo) {
+                essb::PlanEcho(statusPlan, cw, 0, plan.magnitude, c.in, nodes);
+            }
+            if (surge) {
+                essb::PlanSurge(statusPlan, cw, selfBoard, bin, markElement, status.cutFrom, nodes, *state.rng);   // 印潮
+            }
+            if (avatar) {
+                const essb::AvatarNodes<std::remove_cvref_t<decltype(perks)>> full{ perks, c.in.formElement };
+                essb::PlanAvatarBurst(statusPlan, cw, selfBoard, bin, c.in.formElement, full, *state.rng);   // 化身
+            }
+            essb::RunBodies(statusPlan, 0, cw, selfBoard, bin, nodes, *state.rng);
+            targetBoard = cw.m[0].board;
+        }
+        Executor(*player, target, c.tuning, &crowd.actors).Run(statusPlan);
         // 風的多段觸發 (2.6): the takeover element's hit effects repeat; damage-type procs ×0.5 each, rolled again.
         for (int i = 0; i < result.repeats && !target->IsDead(); ++i) {
             essb::StatusTerms again = terms;
@@ -1192,18 +1487,32 @@ void Handle(const RE::TESHitEvent& ev)
             Apply(*player, *target, essb::PlanHit(attack, kConfig, c.tuning, once, judged, nodes, *state.rng, again));
             essb::StatusInputs repeatIn = c.in;
             repeatIn.repeat = true;
-            essb::StatusPlan repeatPlan;
+            auto repeatPtr = std::make_unique<essb::StatusPlan>();
+            essb::StatusPlan& repeatPlan = *repeatPtr;
             const essb::HitStatus repeated = essb::PlanStatusHit(repeatPlan, markElement, attack.power, targetBoard, selfBoard, repeatIn,
                 nodes, *state.rng);
             essb::PlanSelfHit(repeatPlan, self, repeated, targetBoard, selfBoard, repeatIn, nodes, *state.rng, true);
-            Executor(*player, target, c.tuning).Run(repeatPlan);
+            RunWithBodies(*player, target, &targetBoard, repeatPlan, 0, selfBoard, c, nodes, crowd);
         }
         if (result.extraProc && !target->IsDead()) {
             ExtraProc(*player, *target, attack, c, judged, terms, nodes);
         }
     } else {
         essb::PlanSelfNoForm(statusPlan, plan, self, targetBoard, selfBoard, c.in, nodes, state.rng->Real(0.0f, 1.0f));
-        Executor(*player, target, c.tuning).Run(statusPlan);
+        // 封印 (5.1, round 24): the dispel's silence reaches every hostile within 3 m of the target.
+        int silence = 0;
+        for (int i = 0; i < plan.count; ++i) {
+            if (plan.steps[i].cast == essb::Cast::kSilence) {
+                silence = plan.steps[i].seconds;
+            }
+        }
+        if (silence > 0 && nodes.Has(essb::node::kNoFormSeal)) {
+            const essb::Board planned = targetBoard;
+            BuildCrowd(crowd, *player, target, &planned, kAroundEvent, kAroundEvent);
+            const essb::BodyInputs bin = BodyInputsOf(*player, c, attack.sneakAttack);
+            essb::PlanHitBodies(statusPlan, *crowd.crowd, selfBoard, bin, 0, attack.power, silence, nodes, *state.rng);
+        }
+        RunWithBodies(*player, target, &targetBoard, statusPlan, 0, selfBoard, c, nodes, crowd);
     }
     WriteMirrors(*player, selfBoard, nodes);
     Report(plan, attack, verdict.weaponType, *target, status);
@@ -1306,9 +1615,11 @@ void HurtCpp() noexcept
             if (f.attacker) {
                 c.in.body = ReadBody(*attacker, *player, TargetFactsOf(*attacker));
             }
-            essb::StatusPlan plan;
+            auto planPtr = std::make_unique<essb::StatusPlan>();
+            essb::StatusPlan& plan = *planPtr;
             essb::PlanHurt(plan, f, foe, me, c.in, nodes, *state.rng);
-            Executor(*player, f.attacker ? attacker : nullptr, c.tuning).Run(plan);
+            CrowdRead crowd;   // round 24: 冰心's scan, a retort's bodies (灼身、寒反…) run in the body pass
+            RunWithBodies(*player, f.attacker ? attacker : nullptr, f.attacker ? &foe : nullptr, plan, 0, me, c, nodes, crowd);
             WriteMirrors(*player, me, nodes);
             if (state.forms.debug->value >= 3.0f) {   // probe P8 / N4: the damage the task measured
                 Logf("[ESSB][hurt][L3] before=%.2f after=%.2f lost=%.2f melee=%d spell=%d blocked=%d guard=%.2f magicka=%.2f dot=%.2f ops=%d",
@@ -1503,40 +1814,6 @@ struct Expiry {
     essb::engine::Removed removed{};
 };
 
-// 跳印 (5.2): the nearest living hostile within `radius` of `from` that carries no mark of ours (main thread only).
-RE::Actor* NearestUnmarked(RE::Actor& from, RE::PlayerCharacter& player, float radius)
-{
-    auto* lists = RE::ProcessLists::GetSingleton();
-    if (!lists) {
-        return nullptr;
-    }
-    const RE::NiPoint3 at = from.GetPosition();
-    RE::Actor* best = nullptr;
-    float bestDistance = radius;
-    for (auto& handle : lists->highActorHandles) {
-        auto ptr = handle.get();
-        RE::Actor* actor = ptr.get();
-        if (!actor || actor == &from || actor->IsDead() || !actor->Is3DLoaded() || actor->IsPlayerTeammate() ||
-            actor->IsCommandedActor() || !actor->IsHostileToActor(&player)) {
-            continue;
-        }
-        const float d = actor->GetPosition().GetDistance(at);
-        if (d > bestDistance) {
-            continue;
-        }
-        const essb::Board board = ReadBoard(*actor);
-        bool marked = false;
-        for (int e = essb::kFire; e <= essb::kAstral && !marked; ++e) {
-            marked = board.mark[e].has;
-        }
-        if (!marked) {
-            best = actor;
-            bestDistance = d;
-        }
-    }
-    return best;
-}
-
 void SettleCpp(const Expiry& expiry) noexcept
 {
     try {
@@ -1558,20 +1835,25 @@ void SettleCpp(const Expiry& expiry) noexcept
         if (target) {
             c.in.body = ReadBody(*target, *player, TargetFactsOf(*target));
         }
-        essb::StatusPlan plan;
+        auto planPtr = std::make_unique<essb::StatusPlan>();
+        essb::StatusPlan& plan = *planPtr;
         const essb::engine::Settled settled =
             essb::engine::PlanSettle(plan, expiry.removed, targetBoard, selfBoard, c.in, nodes, *state.rng);
-        // 跳印：過期終焉照常結算，然後印記跳到 6 公尺內最近一個沒有印記的敵人（剩 4 秒、不開印、只跳一次）。
+        CrowdRead crowd;
+        // 跳印：過期終焉照常結算，然後印記跳到 6 公尺內最近一個沒有印記的敵人（剩 4 秒、不開印、只跳一次）——
+        // round 24: from the same crowd the end's bodies read (one scan per event).
         if (settled.jump && target) {
-            if (RE::Actor* next = NearestUnmarked(*target, *player, essb::n3::kJumpRadius)) {
-                essb::Board nextBoard = ReadBoard(*next);
-                essb::StatusPlan jump;
-                essb::Writer{ jump, nextBoard, essb::Who::kTarget }.FlaggedMark(expiry.removed.tag.index,
+            const essb::Board planned = targetBoard;
+            BuildCrowd(crowd, *player, target, &planned, kAroundEvent, kAroundEvent);
+            const essb::Picked next = essb::Around(*crowd.crowd, 0, essb::n3::kJumpRadius, 1,
+                [](const essb::Member& x) { return x.board.MarkCount() == 0; });
+            if (next.n > 0) {
+                const std::uint8_t at = next.k[0];
+                essb::Writer{ plan, crowd.crowd->m[at].board, essb::Who::kTarget, at }.FlaggedMark(expiry.removed.tag.index,
                     essb::Scaled(c.tuning, essb::n3::kJumpSeconds), essb::n3::kMarkJumped);
-                Executor(*player, next, c.tuning).Run(jump);
             }
         }
-        Executor(*player, target, c.tuning).Run(plan);
+        RunWithBodies(*player, target, target ? &targetBoard : nullptr, plan, 0, selfBoard, c, nodes, crowd);
     } catch (const std::exception& e) {
         Fault(e.what());
     } catch (...) {
@@ -1648,47 +1930,67 @@ public:
 
 RemoveSink removeSink;
 
-// ---------------------------------------------------------------- round 22: death snapshot for the Papyrus kill hooks
+// ---------------------------------------------------------------- round 24: death (v0.4 2.6, 2.7, 5.x)
 
-// TESDeathEvent dead=false is sent inside KillImpl while the corpse still carries every effect (native-verification-3
-// s10). The v0.4 death handling is N5; until then the Papyrus kill hooks (連鎖冰封, 飲血, 血承, ...) read this snapshot
-// instead of the deleted registry: ESSB_Death, sender = the dying actor,
-// strArg = marks bitmask | freeze | bleed layers | poison doses | curse | frozen | nether | killed by the player |
-// (round 23) the last-hit-sneak marker (the form element of a sneak hit in the last second, 12 = no form, 0 = none).
-// Sent when the corpse carries a status of ours or the player is the killer (then it is also the Papyrus kill hook).
+// TESDeathEvent dead = false is sent inside KillImpl while the corpse still carries every effect (native-verification-3
+// s10): the sink reads the corpse (its board, its facts) and the killer, and the task plans from that snapshot -- the
+// corpse's effects are dispelled on its next effect update, so they are not read again. dead = true (sent later, the
+// effects may be gone) is not used. ESSB_Death and the Papyrus kill hooks are gone (ruling R4).
 struct DeathSnapshot {
     RE::ActorHandle actor{};
-    std::array<float, 9> value{};
+    essb::Member corpse{};
+    essb::DeathFacts facts{};
 };
 
-void SendDeathCpp(const DeathSnapshot& snapshot) noexcept
+void DeathCpp(const DeathSnapshot& snapshot) noexcept
 {
     try {
+        if (!Enabled()) {
+            return;
+        }
+        auto* player = RE::PlayerCharacter::GetSingleton();
         auto actorPtr = snapshot.actor.get();
-        if (!actorPtr) {
+        RE::Actor* corpse = actorPtr.get();
+        if (!player || !corpse) {
             return;
         }
-        essb::StatusOp op{};
-        op.op = essb::Op::kEvent;
-        auto* source = SKSE::GetModCallbackEventSource();
-        if (!source) {
-            return;
+        const auto perks = MakeNodes(*player, FormIsActive());
+        Context c = MakeContext(*player, false);
+        essb::Board selfBoard = ReadBoard(*player);
+        const auto nodes = essb::WithAvatar(perks, selfBoard);
+        CrowdRead crowd;
+        BuildCrowd(crowd, *player, corpse, &snapshot.corpse.board, kAroundEvent, kAroundEvent);
+        essb::Member& m0 = crowd.crowd->m[0];
+        const essb::Board board = snapshot.corpse.board;
+        m0 = snapshot.corpse;   // the facts read in the sink (the position is the corpse's now)
+        m0.board = board;
+        m0.pos = PosOf(*corpse);
+        c.in.body = m0.body;
+        const essb::BodyInputs bin = BodyInputsOf(*player, c, false);
+        auto planPtr = std::make_unique<essb::StatusPlan>();
+        essb::StatusPlan& plan = *planPtr;
+        essb::DeathFacts facts = snapshot.facts;
+        facts.curseCap = essb::CurseCap(c.tuning, nodes);
+        essb::PlanDeath(plan, *crowd.crowd, selfBoard, bin, facts, nodes, *state.rng);
+        Executor(*player, corpse, c.tuning, &crowd.actors).Run(plan);
+        WriteMirrors(*player, selfBoard, nodes);
+        if (state.forms.debug->value >= 1.0f) {   // probe N5-1: the corpse, the killer, what was on it
+            Logf("[ESSB][death][L1] %08X killerYou=%d frenzied=%d servant=%d marks=%d curse=%d poison=%d frozen=%d crowd=%d ops=%d",
+                corpse->GetFormID(), facts.killerYou ? 1 : 0, facts.killerFrenzied ? 1 : 0, facts.servant ? 1 : 0, board.MarkCount(),
+                board.Layers(essb::StatusKind::kCurse), board.poisonDot.has ? 1 : 0, board.Has(essb::StatusKind::kFrozen) ? 1 : 0,
+                crowd.crowd->count, plan.count);
         }
-        char text[256];
-        const auto& v = snapshot.value;
-        std::snprintf(text, sizeof(text), "%.5f|%.5f|%.5f|%.5f|%.5f|%.5f|%.5f|%.5f|%.5f", v[0], v[1], v[2], v[3], v[4], v[5],
-            v[6], v[7], v[8]);
-        SKSE::ModCallbackEvent ev{ "ESSB_Death", text, v[0], actorPtr.get() };
-        source->SendEvent(&ev);
+    } catch (const std::exception& e) {
+        Fault(e.what());
     } catch (...) {
         Fault("unknown C++ exception in the death task");
     }
 }
 
-void SendDeathGuarded(const DeathSnapshot& snapshot) noexcept
+void DeathGuarded(const DeathSnapshot& snapshot) noexcept
 {
     __try {
-        SendDeathCpp(snapshot);
+        DeathCpp(snapshot);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         Fault("access violation in the death task");
     }
@@ -1697,34 +1999,42 @@ void SendDeathGuarded(const DeathSnapshot& snapshot) noexcept
 void OnDeathCpp(const RE::TESDeathEvent& ev) noexcept
 {
     try {
-        if (ev.dead || !Enabled() || !ev.actorDying) {   // master switch (review fix 3)
+        if (!Enabled() || !ev.actorDying) {   // master switch (review fix 3)
             return;
         }
         auto* actor = ev.actorDying->As<RE::Actor>();
         auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!actor || actor == player) {
+        if (!actor || !player) {
             return;
         }
         LogThreadOnce(Probe::kDeath, "TESDeathEvent");
-        const essb::Board board = ReadBoard(*actor);
-        int marks = 0;
-        for (int e = essb::kFire; e <= essb::kAstral; ++e) {
-            marks |= board.mark[e].has ? (1 << e) : 0;
+        auto killerRef = ev.actorKiller;
+        RE::Actor* killer = killerRef ? killerRef->As<RE::Actor>() : nullptr;
+        essb::engine::DeathEvent e;
+        e.dead = ev.dead;
+        e.dyingIsYou = actor == player;
+        e.killerYou = killer == player;
+        e.servant = !e.dyingIsYou && HasOurEffect(*actor, state.forms.reanimate);
+        if (state.forms.debug->value >= 3.0f) {   // probe N5-1: both death events, the killer, our effects still on it
+            Logf("[ESSB][N5-1][L3] %08X dead=%d killer=%08X you=%d ours=%d", actor->GetFormID(), ev.dead ? 1 : 0,
+                killer ? killer->GetFormID() : 0u, e.killerYou ? 1 : 0, CountOurEffects(*actor));
         }
-        using K = essb::StatusKind;
-        const float perDose = player ? essb::PerDose(kConfig, essb::ReadTuning(Global), MakeNodes(*player, FormIsActive())) : 0.0f;
-        DeathSnapshot snapshot{ actor->GetHandle(),
-            { static_cast<float>(marks), static_cast<float>(board.Layers(K::kFreeze)), static_cast<float>(board.Layers(K::kBleed)),
-                static_cast<float>(essb::Doses(board, perDose)), static_cast<float>(board.Layers(K::kCurse)),
-                board.Has(K::kFrozen) ? 1.0f : 0.0f, board.Has(K::kNether) ? 1.0f : 0.0f,
-                ev.actorKiller.get() == player ? 1.0f : 0.0f,
-                board.Has(K::kLastHitSneak) ? board[K::kLastHitSneak].magnitude : 0.0f } };
-        if (marks == 0 && snapshot.value[1] + snapshot.value[2] + snapshot.value[3] + snapshot.value[4] <= 0.0f &&
-            snapshot.value[7] < 0.5f) {
+        if (e.dead || e.dyingIsYou) {
             return;
         }
+        DeathSnapshot snapshot;
+        snapshot.actor = actor->GetHandle();
+        ReadMember(snapshot.corpse, *actor, *player, false);   // read-only, in the sink: the effects are all still there
+        if (!essb::engine::DeathCounts(e, snapshot.corpse.board)) {
+            return;
+        }
+        snapshot.facts.killerYou = e.killerYou;
+        snapshot.facts.servant = e.servant;
+        // 狂宴 (5.12; v0.4 10.3 P4): the killer is an NPC under your frenzy (our frenzy effect on it), not you.
+        snapshot.facts.killerFrenzied = killer && killer != player && killer->IsDead() == false &&
+                                        HasOurEffect(*killer, Lookup(state.forms.status.effects, essb::status::kFrenzyEffect));
         if (const auto* tasks = SKSE::GetTaskInterface()) {
-            tasks->AddTask([snapshot]() { SendDeathGuarded(snapshot); });
+            tasks->AddTask([snapshot]() { DeathGuarded(snapshot); });
         }
     } catch (const std::exception& e) {
         Fault(e.what());
@@ -1801,7 +2111,8 @@ void FireSecond(RE::PlayerCharacter& player, essb::Board& selfBoard, Context& c,
                 continue;
             }
             essb::Board enemyBoard = ReadBoard(*enemy);
-            essb::StatusPlan burn;
+            auto burnPtr = std::make_unique<essb::StatusPlan>();   // round 24: 28 KB, on the heap
+            essb::StatusPlan& burn = *burnPtr;
             const float domain = enemyBoard.Has(essb::StatusKind::kDomainFire) ? essb::n3::kDomain : 1.0f;   // 火域：受火傷 +20%
             burn.Push(essb::Amount(essb::Op::kDamage, source.perEnemy * essb::ReactionVulnerability(enemyBoard, selfBoard, c.tuning, nodes) * domain, essb::kFire));
             // 火源掛的火印記不觸發開印，只讓目標成為爆燃與過熱的對象；它不切別的印記（沒有雙印位置就不掛）。
@@ -1816,15 +2127,7 @@ void FireSecond(RE::PlayerCharacter& player, essb::Board& selfBoard, Context& c,
         }
         // 火浴：白熱點燃當下依燒到的人數固定回血量，之後每秒 B_max ×0.1 × 該人數（人數不隨後續增減變動）。
         if (tier >= 3 && nodes.Has(essb::node::kFireBath)) {
-            if (!selfBoard.Has(K::kFireBath)) {
-                if (!hostiles.empty() && selfBoard.Has(K::kHeat3)) {
-                    essb::Writer{ self, selfBoard, essb::Who::kPlayer }.Set(K::kFireBath, static_cast<float>(hostiles.size()),
-                        selfBoard[K::kHeat3].Remaining());
-                }
-            } else {
-                self.Push(essb::Amount(essb::Op::kHeal, kConfig.damage[essb::kFire][1] * essb::n3::kFireBathHeal *
-                                                             selfBoard[K::kFireBath].magnitude * c.tuning.multRecovery));
-            }
+            essb::PlanFireBath(self, selfBoard, static_cast<int>(hostiles.size()), kConfig.damage[essb::kFire][1], c.tuning);   // round 24: tested (reaction_test X)
         }
     }
     if (selfBoard.Has(K::kMoltenBody)) {
@@ -1847,7 +2150,8 @@ void TargetSecond(RE::PlayerCharacter& player, const essb::Board& selfBoard, Con
         essb::Board toBoard = ReadBoard(to);
         Context tc = c;
         tc.in.body = ReadBody(to, player, TargetFactsOf(to));
-        essb::StatusPlan plan;
+        auto planPtr = std::make_unique<essb::StatusPlan>();   // round 24: 28 KB, on the heap
+        essb::StatusPlan& plan = *planPtr;
         essb::rule::SpreadDoses(plan, toBoard, doses, tc.in, nodes);
         Executor(player, &to, c.tuning).Run(plan);
     };
@@ -1863,7 +2167,8 @@ void TargetSecond(RE::PlayerCharacter& player, const essb::Board& selfBoard, Con
             const bool vip = TargetFactsOf(*enemy).vip;
             const float rate = vip ? drainRate * (essb::n3::kBleedDrainVip / essb::n3::kBleedDrain) : drainRate;
             const float health = enemy->AsActorValueOwner()->GetActorValue(RE::ActorValue::kHealth);
-            essb::StatusPlan drain;
+            auto drainPtr = std::make_unique<essb::StatusPlan>();   // round 24: 28 KB, on the heap
+            essb::StatusPlan& drain = *drainPtr;
             drain.Push(essb::Amount(essb::Op::kBleedDrain, static_cast<float>(layers) * rate * health * c.tuning.multDot));
             Executor(player, enemy, c.tuning).Run(drain);
         }
@@ -1981,7 +2286,8 @@ void TickCpp() noexcept
         Context c = MakeContext(*player, false);
         essb::Board selfBoard = ReadBoard(*player);
         const auto nodes = essb::WithAvatar(perks, selfBoard);   // round 23: 化身 (業火、瘟疫 read here)
-        essb::StatusPlan plan;
+        auto planPtr = std::make_unique<essb::StatusPlan>();   // round 24: 28 KB, on the heap
+        essb::StatusPlan& plan = *planPtr;
         essb::PlanDecay(plan, selfBoard, c.in, nodes);
         const std::uint64_t now = GetTickCount64();
         if (now - state.lastSecondMs >= 1000) {
@@ -2147,6 +2453,8 @@ void ResolveEffects(RE::TESDataHandler& data, const nlohmann::json& manifest)
     f.hush = one("kHush", essb::effect::kHush);
     f.hushSpent = one("kHushSpent", essb::effect::kHushSpent);
     f.manaBreak = one("kManaBreak", essb::effect::kManaBreak);
+    f.engaged = one("kEngaged", essb::effect::kEngaged);
+    f.reanimate = one("kReanimate", essb::effect::kReanimate);
 
     const auto& vanilla = manifest.at("vanilla");
     auto id = [&](const char* name, std::uint32_t compiled) {
@@ -2157,6 +2465,7 @@ void ResolveEffects(RE::TESDataHandler& data, const nlohmann::json& manifest)
     f.daedra = Resolve<RE::BGSKeyword>(data, id("kDaedraKeyword", essb::vanilla::kDaedraKeyword), kSkyrim, "ActorTypeDaedra");
     f.armorSpell = Resolve<RE::BGSKeyword>(data, id("kArmorSpellKeyword", essb::vanilla::kArmorSpellKeyword), kSkyrim, "MagicArmorSpell");
     f.cloak = Resolve<RE::BGSKeyword>(data, id("kCloakKeyword", essb::vanilla::kCloakKeyword), kSkyrim, "MagicCloak");
+    f.dragon = Resolve<RE::BGSKeyword>(data, id("kDragonKeyword", essb::vanilla::kDragonKeyword), kSkyrim, "ActorTypeDragon");
     f.necroClass = Resolve<RE::TESClass>(data, id("kNecroClass", essb::vanilla::kNecroClass), kSkyrim, "necromancer class");
     f.necroFaction = Resolve<RE::TESFaction>(data, id("kNecroFaction", essb::vanilla::kNecroFaction), kSkyrim, "necromancer faction");
     f.destructive = { Resolve<RE::BGSKeyword>(data, id("kDamageFireKeyword", essb::vanilla::kDamageFireKeyword), kSkyrim, "MagicDamageFire"),
@@ -2334,7 +2643,8 @@ void LoadManifest()
     std::thread(TimerLoop).detach();
     state.ready = true;
     PublishStatus();
-    Log("[ESSB][load] manifest resolved; hit (yours and on you), effect-removed, death and spell-cast sinks registered; timer running");
+    Log("[ESSB][load] manifest resolved; hit (yours and on you), effect-removed, death and spell-cast sinks registered; timer running; "
+        "round 24: the reaction bodies, the burst and the death handling are native");
 }
 
 // Once per game load / new game, after the HUD exists.
@@ -2525,6 +2835,54 @@ auto Guard(const char* what, Body&& body, decltype(body()) fallback, bool readOn
     return fallback;
 }
 
+// Round 24 review fix 1: a native that scans or casts only queues its work (SKSE AddTask, thread-safe) and returns; the
+// work runs on the main thread whatever thread the VM called the native from (nv3 s10: the process lists and the effect
+// lists are main-thread only), in call order (the task queue is FIFO, so Burst -> FormLeave -> SetSync keep their order).
+struct NativeJob {
+    const char* what;
+    std::function<void()> run;
+};
+
+void NativeJobCpp(NativeJob* job) noexcept
+{
+    try {
+        if (Enabled()) {   // master switch (review fix 3): the switch may have been turned off since the call
+            LogThreadOnce(Probe::kNativeTask, "queued native task");
+            job->run();
+        }
+    } catch (const std::exception& e) {
+        Fault(e.what());
+    } catch (...) {
+        Fault(job->what);
+    }
+}
+
+void NativeJobGuarded(NativeJob* job) noexcept
+{
+    __try {
+        NativeJobCpp(job);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        Fault("access violation in a queued ESSBNative task");
+    }
+    delete job;
+}
+
+bool QueueNative(const char* what, std::function<void()> run)
+{
+    auto* tasks = SKSE::GetTaskInterface();
+    if (!tasks) {
+        return false;
+    }
+    auto* job = new NativeJob{ what, std::move(run) };
+    tasks->AddTask([job]() { NativeJobGuarded(job); });
+    return true;
+}
+
+RE::ActorHandle HandleOf(RE::Actor* actor)
+{
+    return actor ? actor->GetHandle() : RE::ActorHandle{};
+}
+
 // One native call on `actor`: read the boards, run `plan` (a Status.h rule), execute.
 template <class Rule>
 void RunRule(RE::Actor* actor, Rule&& rule)
@@ -2543,64 +2901,22 @@ void RunRule(RE::Actor* actor, Rule&& rule)
     if (target) {
         c.in.body = ReadBody(*target, *player, TargetFactsOf(*target));
     }
-    essb::StatusPlan plan;
+    auto planPtr = std::make_unique<essb::StatusPlan>();
+    essb::StatusPlan& plan = *planPtr;
     rule(plan, targetBoard, selfBoard, c, nodes);
-    Executor(*player, target, c.tuning).Run(plan);
+    CrowdRead crowd;   // round 24: a native that froze / cursed / detonated brings its bodies
+    RunWithBodies(*player, target, target ? &targetBoard : nullptr, plan, 0, selfBoard, c, nodes, crowd);
     WriteMirrors(*player, selfBoard, nodes);   // round 23: a native may have changed your resources
 }
 
 // ---------------------------------------------------------------- round 23: the engine-side ops (SelfLayer.h / Hurt.h)
 
-// Hostile, living, loaded actors within `radius` of `center` (not `center` itself), nearest first, at most `limit`.
-std::vector<RE::ActorHandle> HostilesAround(RE::Actor& center, RE::PlayerCharacter& player, float radius, std::size_t limit)
+// Round 24 (N5): 共鳴層's count, 碎岩's ring and 冰心 are the body pass's (Reactions.h RunBodies) on the event's crowd.
+void CrowdOpOutsideBodies(const char* what) noexcept
 {
-    std::vector<std::pair<float, RE::ActorHandle>> found;
-    auto* lists = RE::ProcessLists::GetSingleton();
-    if (!lists) {
-        return {};
+    if (state.forms.debug && state.forms.debug->value >= 1.0f) {
+        Logf("[ESSB][bodies][L1] a %s op reached the engine without its body pass (skipped)", what);
     }
-    const RE::NiPoint3 at = center.GetPosition();
-    for (auto& handle : lists->highActorHandles) {
-        auto actorPtr = handle.get();
-        RE::Actor* actor = actorPtr.get();
-        if (!actor || actor == &center || actor->IsDead() || !actor->Is3DLoaded() || actor->IsPlayerTeammate() ||
-            actor->IsCommandedActor() || !actor->IsHostileToActor(&player)) {
-            continue;
-        }
-        const float d = actor->GetPosition().GetDistance(at);
-        if (d <= radius) {
-            found.emplace_back(d, handle);
-        }
-    }
-    std::sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-    std::vector<RE::ActorHandle> out;
-    for (const auto& [d, handle] : found) {
-        if (out.size() >= limit) {
-            break;
-        }
-        out.push_back(handle);
-    }
-    return out;
-}
-
-// 共鳴層 (v0.4 2.3, 5.13): one detonation gives the resonance targets within 15 m of it, the detonator included (its
-// stars are already gone when this op runs), at most 8.
-void EngineResonance(RE::Actor* center)
-{
-    auto* player = RE::PlayerCharacter::GetSingleton();
-    if (!player) {
-        return;
-    }
-    int count = 1;
-    if (center) {
-        for (const auto& handle : HostilesAround(*center, *player, essb::n4::kResonanceRadius, 64)) {
-            auto ptr = handle.get();
-            if (ptr && ReadBoard(*ptr).Has(essb::StatusKind::kStar)) {
-                ++count;
-            }
-        }
-    }
-    RunRule(player, [&](auto& plan, auto&, auto& self, auto& c, const auto& nodes) { essb::OnResonance(plan, self, count, c.in, nodes); });
 }
 
 void InterruptCpp(const RE::ActorHandle& handle) noexcept
@@ -2635,53 +2951,6 @@ void QueueInterrupt(RE::ActorHandle actor)
 {
     if (const auto* tasks = SKSE::GetTaskInterface()) {
         tasks->AddTask([actor]() { InterruptGuarded(actor); });
-    }
-}
-
-// 碎岩 (5.6): up to 5 more hostiles within 3 m of the struck target take the earth damage and the stamina cut; a hostile
-// whose stamina the cut floors is knocked down (ESSB_Knock; the push stays Papyrus, ruling R6).
-void EngineCrushArea(RE::Actor& center, const essb::StatusOp& op)
-{
-    auto* player = RE::PlayerCharacter::GetSingleton();
-    if (!player) {
-        return;
-    }
-    const essb::Tuning tuning = essb::ReadTuning(Global);
-    for (const auto& handle : HostilesAround(center, *player, essb::n4::kCrushRadius, essb::n4::kCrushTargets)) {
-        auto ptr = handle.get();
-        RE::Actor* actor = ptr.get();
-        if (!actor) {
-            continue;
-        }
-        const bool floored = actor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStamina) <= op.seconds;
-        essb::StatusPlan ring;
-        ring.Push(essb::Amount(essb::Op::kDamage, op.magnitude, essb::kEarth));
-        ring.Push(essb::Amount(essb::Op::kDrainStamina, op.seconds));
-        if (floored) {
-            ring.Push(essb::MakeEvent(essb::Event::kKnock, essb::n4::kKnockForce));
-        }
-        Executor(*player, actor, tuning).Run(ring);
-    }
-}
-
-// 冰心 (5.4): every hostile within 15 m whose freeze gauge is at least 1 freezes now.
-void EngineFreezeNearby()
-{
-    auto* player = RE::PlayerCharacter::GetSingleton();
-    if (!player) {
-        return;
-    }
-    for (const auto& handle : HostilesAround(*player, *player, essb::n4::kIceHeartRadius, 5)) {
-        auto ptr = handle.get();
-        RE::Actor* actor = ptr.get();
-        if (!actor || ReadBoard(*actor).Layers(essb::StatusKind::kFreeze) < 1) {
-            continue;
-        }
-        RunRule(actor, [&](auto& plan, auto& target, auto&, auto& c, const auto& nodes) {
-            if (!target.Has(essb::StatusKind::kFrozen)) {
-                essb::rule::Freeze(plan, target, essb::rule::FrozenSeconds(c.tuning, nodes), 1.0f, nodes);
-            }
-        });
     }
 }
 
@@ -2878,28 +3147,34 @@ void SelfCode(essb::StatusPlan& plan, essb::Board& self, Context& c, const Nodes
 void PapyrusAddStatus(RE::StaticFunctionTag*, RE::Actor* actor, std::int32_t code, std::int32_t amount)
 {
     Guard("AddStatus", [&]() -> bool {
-        RunRule(actor, [&](auto& plan, auto& target, auto& self, auto& c, const auto& nodes) {
-            if (actor == RE::PlayerCharacter::GetSingleton()) {
-                SelfCode(plan, self, c, nodes, code, amount, false);   // round 23: your resources
-            } else {
-                AddOrSet(plan, target, self, c, nodes, code, amount, false);
-            }
+        return QueueNative("AddStatus", [handle = HandleOf(actor), code, amount]() {
+            const auto held = handle.get();
+            RE::Actor* actor = held.get();
+            RunRule(actor, [&](auto& plan, auto& target, auto& self, auto& c, const auto& nodes) {
+                if (actor == RE::PlayerCharacter::GetSingleton()) {
+                    SelfCode(plan, self, c, nodes, code, amount, false);   // round 23: your resources
+                } else {
+                    AddOrSet(plan, target, self, c, nodes, code, amount, false);
+                }
+            });
         });
-        return true;
     }, false);
 }
 
 void PapyrusSetStatus(RE::StaticFunctionTag*, RE::Actor* actor, std::int32_t code, std::int32_t value)
 {
     Guard("SetStatus", [&]() -> bool {
-        RunRule(actor, [&](auto& plan, auto& target, auto& self, auto& c, const auto& nodes) {
-            if (actor == RE::PlayerCharacter::GetSingleton()) {
-                SelfCode(plan, self, c, nodes, code, value, true);
-            } else {
-                AddOrSet(plan, target, self, c, nodes, code, value, true);
-            }
+        return QueueNative("SetStatus", [handle = HandleOf(actor), code, value]() {
+            const auto held = handle.get();
+            RE::Actor* actor = held.get();
+            RunRule(actor, [&](auto& plan, auto& target, auto& self, auto& c, const auto& nodes) {
+                if (actor == RE::PlayerCharacter::GetSingleton()) {
+                    SelfCode(plan, self, c, nodes, code, value, true);
+                } else {
+                    AddOrSet(plan, target, self, c, nodes, code, value, true);
+                }
+            });
         });
-        return true;
     }, false);
 }
 
@@ -2910,34 +3185,37 @@ void PapyrusClearStatus(RE::StaticFunctionTag*, RE::Actor* actor, std::int32_t c
         { 10, K::kCurse }, { 11, K::kStar }, { 12, K::kCrystal }, { 13, K::kDowned }, { 15, K::kStarLock }, { 16, K::kCatalyzed },
         { 17, K::kDeathCurse }, { 18, K::kNether }, { 19, K::kFrozen } };
     Guard("ClearStatus", [&]() -> bool {
-        RunRule(actor, [&](auto& plan, auto& target, auto& self, auto& c, const auto& nodes) {
-            const essb::Writer tw{ plan, target, essb::Who::kTarget };
-            if (code == 23) {
-                essb::Writer{ plan, self, essb::Who::kPlayer }.Clear(K::kPunish);   // 懲戒 used by 裁決 (on the player)
-            } else if (code >= 40) {
-                SelfCode(plan, self, c, nodes, code, 0, true);   // round 23: your resources to 0
-            } else if (code == 2) {
-                tw.Clear(K::kFreeze);
-                tw.Clear(K::kFrozen);
-                tw.Clear(K::kCrystal);
-            } else if (code == 5) {
-                tw.Clear(K::kBleed);
-                plan.Push(essb::Amount(essb::Op::kBleedDot, 0.0f));
-            } else if (code == 7) {
-                plan.Push(essb::Amount(essb::Op::kPoisonDot, 0.0f));
-                tw.Clear(K::kCatalyzed);
-            } else if (code == 11) {
-                tw.Clear(K::kStar);
-                tw.Clear(K::kStarFuse);
-            } else {
-                for (const auto& [listed, kind] : kCodes) {
-                    if (listed == code) {
-                        tw.Clear(kind);
+        return QueueNative("ClearStatus", [handle = HandleOf(actor), code]() {
+            const auto held = handle.get();
+            RE::Actor* actor = held.get();
+            RunRule(actor, [&](auto& plan, auto& target, auto& self, auto& c, const auto& nodes) {
+                const essb::Writer tw{ plan, target, essb::Who::kTarget };
+                if (code == 23) {
+                    essb::Writer{ plan, self, essb::Who::kPlayer }.Clear(K::kPunish);   // 懲戒 used by 裁決 (on the player)
+                } else if (code >= 40) {
+                    SelfCode(plan, self, c, nodes, code, 0, true);   // round 23: your resources to 0
+                } else if (code == 2) {
+                    tw.Clear(K::kFreeze);
+                    tw.Clear(K::kFrozen);
+                    tw.Clear(K::kCrystal);
+                } else if (code == 5) {
+                    tw.Clear(K::kBleed);
+                    plan.Push(essb::Amount(essb::Op::kBleedDot, 0.0f));
+                } else if (code == 7) {
+                    plan.Push(essb::Amount(essb::Op::kPoisonDot, 0.0f));
+                    tw.Clear(K::kCatalyzed);
+                } else if (code == 11) {
+                    tw.Clear(K::kStar);
+                    tw.Clear(K::kStarFuse);
+                } else {
+                    for (const auto& [listed, kind] : kCodes) {
+                        if (listed == code) {
+                            tw.Clear(kind);
+                        }
                     }
                 }
-            }
+            });
         });
-        return true;
     }, false);
 }
 
@@ -2945,21 +3223,24 @@ void PapyrusSetWindow(RE::StaticFunctionTag*, RE::Actor* actor, std::int32_t win
 {
     using K = essb::StatusKind;
     Guard("SetWindow", [&]() -> bool {
-        RunRule(actor, [&](auto& plan, auto& target, auto& self, auto& c, const auto&) {
-            const float s = essb::Scaled(c.tuning, seconds);
-            switch (window) {
-            case 30: essb::Writer{ plan, self, essb::Who::kPlayer }.Set(K::kBloodthirst, 1.0f, s); break;
-            case 31: essb::Writer{ plan, self, essb::Who::kPlayer }.Set(K::kKillStreak, 1.0f, seconds); break;
-            case 32: essb::Writer{ plan, target, essb::Who::kTarget }.Set(K::kDomainFire, 1.0f, seconds); break;
-            case 33: essb::Writer{ plan, target, essb::Who::kTarget }.Set(K::kDomainFrost, 1.0f, seconds); break;
-            case 34: essb::Writer{ plan, target, essb::Who::kTarget }.Set(K::kDomainAstral, 1.0f, seconds); break;
-            case 35: essb::Writer{ plan, self, essb::Who::kPlayer }.Set(K::kFireDomainPlayer, 1.0f, seconds); break;
-            case 36: essb::Writer{ plan, target, essb::Who::kTarget }.Set(K::kAirborne, magnitude, s); break;
-            case 37: essb::Writer{ plan, target, essb::Who::kTarget }.Set(K::kFrenzyCooldown, 1.0f, essb::CooldownOf(c.tuning, seconds)); break;
-            default: break;
-            }
+        return QueueNative("SetWindow", [handle = HandleOf(actor), window, seconds, magnitude]() {
+            const auto held = handle.get();
+            RE::Actor* actor = held.get();
+            RunRule(actor, [&](auto& plan, auto& target, auto& self, auto& c, const auto&) {
+                const float s = essb::Scaled(c.tuning, seconds);
+                switch (window) {
+                case 30: essb::Writer{ plan, self, essb::Who::kPlayer }.Set(K::kBloodthirst, 1.0f, s); break;
+                case 31: essb::Writer{ plan, self, essb::Who::kPlayer }.Set(K::kKillStreak, 1.0f, seconds); break;
+                case 32: essb::Writer{ plan, target, essb::Who::kTarget }.Set(K::kDomainFire, 1.0f, seconds); break;
+                case 33: essb::Writer{ plan, target, essb::Who::kTarget }.Set(K::kDomainFrost, 1.0f, seconds); break;
+                case 34: essb::Writer{ plan, target, essb::Who::kTarget }.Set(K::kDomainAstral, 1.0f, seconds); break;
+                case 35: essb::Writer{ plan, self, essb::Who::kPlayer }.Set(K::kFireDomainPlayer, 1.0f, seconds); break;
+                case 36: essb::Writer{ plan, target, essb::Who::kTarget }.Set(K::kAirborne, magnitude, s); break;
+                case 37: essb::Writer{ plan, target, essb::Who::kTarget }.Set(K::kFrenzyCooldown, 1.0f, essb::CooldownOf(c.tuning, seconds)); break;
+                default: break;
+                }
+            });
         });
-        return true;
     }, false);
 }
 
@@ -2970,10 +3251,12 @@ void PapyrusApplyMark(RE::StaticFunctionTag*, RE::Actor* actor, std::int32_t ele
         if (!essb::IsElement(element)) {
             return false;
         }
-        RunRule(actor, [&](auto& plan, auto& target, auto&, auto& c, const auto& nodes) {
-            essb::Writer{ plan, target, essb::Who::kTarget }.Mark(element, essb::rule::MarkSeconds(element, c.tuning, nodes, false));
+        return QueueNative("ApplyMark", [handle = HandleOf(actor), element]() {
+            const auto held = handle.get();
+            RunRule(held.get(), [&](auto& plan, auto& target, auto&, auto& c, const auto& nodes) {
+                essb::Writer{ plan, target, essb::Who::kTarget }.Mark(element, essb::rule::MarkSeconds(element, c.tuning, nodes, false));
+            });
         });
-        return true;
     }, false);
 }
 
@@ -2991,83 +3274,79 @@ std::int32_t PapyrusMarksOn(RE::StaticFunctionTag*, RE::Actor* actor)
     return Guard("MarksOn", [&]() -> std::int32_t { return actor ? MarksOf(ReadBoard(*actor)) : 0; }, 0, true);
 }
 
-// 融斷 (2.5): every mark (and 疊印's residual) on actors within `radius` of the player ends with reason "burst" and
-// multiplier `mult`; the state part runs here, the bodies get their end events. Returns the targets settled. The v0.4
-// burst scan is N5; it moved here now because the registry it used is gone (ruling R4).
-std::int32_t PapyrusBurstMarks(RE::StaticFunctionTag*, float radius, float mult)
+// 融斷 (2.5, round 24): Papyrus CloseForm calls this before FormLeave. The DLL reads the crowd once (you and 15 m past the
+// burst radius), settles every mark in range (B_max × K_sync × G × M_mod, v0.4 2.7 D_burst; the end's non-damage part
+// per 2.6) and runs the bodies (冷寂's 寂, 萬寂, 斷界, 回流, 雙斷, 安全閥, 地斷, 颶風, 墜星's burst half). Queued (review fix 1).
+void PapyrusBurst(RE::StaticFunctionTag*, std::int32_t element)
 {
-    return Guard("BurstMarks", [&]() -> std::int32_t {
-        auto* player = RE::PlayerCharacter::GetSingleton();
-        auto* lists = RE::ProcessLists::GetSingleton();
-        if (!player || !lists) {
-            return 0;
-        }
-        std::vector<RE::ActorHandle> marked;
-        const RE::NiPoint3 centre = player->GetPosition();
-        for (auto& handle : lists->highActorHandles) {
-            auto ptr = handle.get();
-            RE::Actor* actor = ptr.get();
-            if (actor && !actor->IsDead() && actor->GetPosition().GetDistance(centre) <= radius) {
-                const essb::Board b = ReadBoard(*actor);
-                if (MarksOf(b) != 0 || b.Has(essb::StatusKind::kResidual)) {
-                    marked.push_back(handle);
-                }
+    Guard("Burst", [&]() -> bool {
+        return QueueNative("Burst", [element]() {   // review fix 1: the scan and the casts run in a task
+            auto* player = RE::PlayerCharacter::GetSingleton();
+            if (!player) {
+                return;
             }
-        }
-        std::int32_t settled = 0;
-        for (auto& handle : marked) {
-            auto ptr = handle.get();
-            RunRule(ptr.get(), [&](auto& plan, auto& target, auto& self, auto& c, const auto& nodes) {
-                // One end-cooldown check for the whole burst of this target (like Papyrus EndBothMarks did): inside
-                // it the marks just go; outside it every mark (and the residual) settles.
-                const bool allowed = !target.Has(essb::StatusKind::kEndCooldown);
-                const essb::Writer tw{ plan, target, essb::Who::kTarget };
-                for (int e = essb::kFire; e <= essb::kAstral; ++e) {
-                    if (!target.mark[e].has) {
-                        continue;
-                    }
-                    tw.Unmark(e);
-                    if (allowed) {
-                        essb::PlanEndBody(plan, e, essb::EndReason::kBurst, mult, false, target, self, c.in, nodes, *state.rng);
-                    }
-                }
-                if (target.Has(essb::StatusKind::kResidual)) {
-                    const int residual = target.Layers(essb::StatusKind::kResidual);
-                    tw.Clear(essb::StatusKind::kResidual);
-                    if (allowed && essb::IsElement(residual)) {
-                        essb::PlanEndBody(plan, residual, essb::EndReason::kBurst, mult, false, target, self, c.in, nodes, *state.rng);
-                    }
-                }
-            });
-            ++settled;
-        }
-        return settled;
-    }, 0);
+            const auto perks = MakeNodes(*player, FormIsActive());
+            Context c = MakeContext(*player, false);
+            essb::Board selfBoard = ReadBoard(*player);
+            const auto nodes = essb::WithAvatar(perks, selfBoard);
+            const int stage = essb::res::StageOf(selfBoard.Layers(essb::StatusKind::kSync), essb::res::Thresholds(c.tuning, selfBoard, nodes));
+            CrowdRead crowd;
+            BuildCrowd(crowd, *player, nullptr, nullptr, 0.0f, essb::BurstRadius(nodes) + kAroundEvent);
+            const essb::BodyInputs bin = BodyInputsOf(*player, c, false);
+            auto planPtr = std::make_unique<essb::StatusPlan>();
+            essb::StatusPlan& plan = *planPtr;
+            const essb::BurstResult r = essb::PlanBurst(plan, *crowd.crowd, selfBoard, bin, stage, element, nodes, *state.rng);
+            Executor(*player, nullptr, c.tuning, &crowd.actors).Run(plan);
+            WriteMirrors(*player, selfBoard, nodes);
+            if (state.forms.debug->value >= 1.0f) {   // v0.4 6.1: 融斷（目標數、同調段）; probe N5-2 reads the crowd size
+                Logf("[ESSB][burst][L1] element=%d stage=%d targets=%d marks=%d crowd=%d ops=%d", element, stage, r.targets, r.marks,
+                    crowd.crowd->count, plan.count);
+            }
+        });
+    }, false);
 }
 
 // Leaving a form (Papyrus OnFormSwitched / CloseForm): 洩壓 and the self ladders (Status.h OnFormLeave).
 void PapyrusFormLeave(RE::StaticFunctionTag*, std::int32_t element, bool burst)
 {
     Guard("FormLeave", [&]() -> bool {
+        return QueueNative("FormLeave", [element, burst]() {
         RunRule(RE::PlayerCharacter::GetSingleton(), [&](auto& plan, auto&, auto& self, auto& c, const auto& nodes) {
             essb::OnFormLeave(plan, element, burst, self, c.in, nodes);
             essb::PlanSelfLeave(plan, element, burst, self, c.in, nodes);   // round 23: your resources (SelfLayer.h)
         });
-        return true;
+        });
     }, false);
 }
 
-// Round 23 (N4): opening a form (Papyrus OnFormOpened): the 專一 clock, 雷臨強化, 地臨強化 (SelfLayer.h PlanSelfEnter).
+// Round 23 (N4): opening a form (Papyrus OnFormOpened): the 專一 clock, 雷臨強化, 地臨強化 (SelfLayer.h PlanSelfEnter);
+// round 24 (N5): the advents (Reactions.h PlanAdvent).
 void PapyrusFormEnter(RE::StaticFunctionTag*, std::int32_t element)
 {
     Guard("FormEnter", [&]() -> bool {
         if (!essb::IsElement(element)) {
             return false;
         }
-        RunRule(RE::PlayerCharacter::GetSingleton(), [&](auto& plan, auto&, auto& self, auto& c, const auto& nodes) {
-            essb::PlanSelfEnter(plan, element, self, c.in, nodes);
+        return QueueNative("FormEnter", [element]() {   // review fix 1: the scan and the casts run in a task
+            auto* player = RE::PlayerCharacter::GetSingleton();
+            if (!player) {
+                return;
+            }
+            const auto perks = MakeNodes(*player, true);
+            Context c = MakeContext(*player, false);
+            essb::Board selfBoard = ReadBoard(*player);
+            const auto nodes = essb::WithAvatar(perks, selfBoard);
+            auto planPtr = std::make_unique<essb::StatusPlan>();
+            essb::StatusPlan& plan = *planPtr;
+            essb::PlanSelfEnter(plan, element, selfBoard, c.in, nodes);
+            // Round 24 (N5): X臨, the 臨強化 branches, 臨界, 雙斷 -- one crowd around you (the burst range covers 雙斷).
+            CrowdRead crowd;
+            BuildCrowd(crowd, *player, nullptr, nullptr, 0.0f, essb::BurstRadius(nodes) + kAroundEvent);
+            const essb::BodyInputs bin = BodyInputsOf(*player, c, false);
+            essb::PlanAdvent(plan, *crowd.crowd, selfBoard, bin, element, nodes, *state.rng);
+            Executor(*player, nullptr, c.tuning, &crowd.actors).Run(plan);
+            WriteMirrors(*player, selfBoard, nodes);
         });
-        return true;
     }, false);
 }
 
@@ -3075,10 +3354,11 @@ void PapyrusFormEnter(RE::StaticFunctionTag*, std::int32_t element)
 void PapyrusSetSync(RE::StaticFunctionTag*, std::int32_t count)
 {
     Guard("SetSync", [&]() -> bool {
+        return QueueNative("SetSync", [count]() {
         RunRule(RE::PlayerCharacter::GetSingleton(), [&](auto& plan, auto&, auto& self, auto& c, const auto& nodes) {
             essb::res::SetSync(plan, self, (std::max)(0, count), c.in, nodes, false);
         });
-        return true;
+        });
     }, false);
 }
 
@@ -3086,128 +3366,73 @@ void PapyrusSetSync(RE::StaticFunctionTag*, std::int32_t count)
 void PapyrusExtendFuse(RE::StaticFunctionTag*, float seconds)
 {
     Guard("ExtendFuse", [&]() -> bool {
+        return QueueNative("ExtendFuse", [seconds]() {
         RunRule(RE::PlayerCharacter::GetSingleton(), [&](auto& plan, auto&, auto& self, auto&, const auto&) {
             if (self.Has(essb::StatusKind::kHeat3)) {
                 const essb::Slot fuse = self[essb::StatusKind::kHeat3];
                 essb::Writer{ plan, self, essb::Who::kPlayer }.Set(essb::StatusKind::kHeat3, fuse.magnitude, fuse.Remaining() + seconds);
             }
         });
-        return true;
-    }, false);
-}
-
-// 大潮 (5.11): the next end on this target is ×mult (the takeover of the guide).
-void PapyrusSetGuided(RE::StaticFunctionTag*, RE::Actor* actor, float mult)
-{
-    Guard("SetGuided", [&]() -> bool {
-        RunRule(actor, [&](auto& plan, auto& target, auto&, auto& c, const auto&) {
-            essb::Writer{ plan, target, essb::Who::kTarget }.Set(essb::StatusKind::kGuided, mult, essb::Scaled(c.tuning, 30.0f));
         });
-        return true;
     }, false);
 }
 
-// A wash of at most `limit` buffs (開印沖刷、洗滌、潮池 go through here so 淨潮 counts them). Returns the count.
-std::int32_t PapyrusWashBuffs(RE::StaticFunctionTag*, RE::Actor* actor, std::int32_t limit)
+// A wash of at most `limit` buffs (Papyrus ApplyStrip: 洗滌 and the domains; 淨潮 counts them). Queued; logs the count.
+void PapyrusWashBuffs(RE::StaticFunctionTag*, RE::Actor* actor, std::int32_t limit)
 {
-    return Guard("WashBuffs", [&]() -> std::int32_t {
-        auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!player || !actor || actor->IsDead() || actor == player) {
-            return 0;
-        }
-        const auto nodes = MakeNodes(*player, FormIsActive());
-        const essb::Tuning tuning = essb::ReadTuning(Global);
-        const float refund = nodes.Has(essb::node::kWaterPurgeTide) ? 2.0f * kConfig.damage[essb::kWater][1] : 0.0f;
-        return Executor(*player, actor, tuning).Wash(limit, refund);
-    }, 0);
-}
-
-// Remaining damage of a DoT (strength × seconds left): 2.7 R = m × (d − t).
-float PapyrusDotRemaining(RE::StaticFunctionTag*, RE::Actor* actor, bool poison)
-{
-    return Guard("DotRemaining", [&]() -> float {
-        if (!actor) {
-            return 0.0f;
-        }
-        const essb::Board b = ReadBoard(*actor);
-        const essb::Slot& dot = poison ? b.poisonDot : b.bleedDot;
-        return dot.magnitude * dot.Remaining();
-    }, 0.0f, true);
-}
-
-// The death curse fuse is set by the dark end in the DLL; Papyrus keeps only its no-heal half.
-// Actors with any mark of `element` (0 = any) within `radius` of `center`, nearest first, at most `limit`.
-std::vector<RE::Actor*> PapyrusMarkedNear(RE::StaticFunctionTag*, RE::TESObjectREFR* center, float radius, std::int32_t limit, std::int32_t element)
-{
-    return Guard("MarkedNear", [&]() -> std::vector<RE::Actor*> {
-        std::vector<std::pair<float, RE::Actor*>> found;
-        auto* lists = RE::ProcessLists::GetSingleton();
-        if (!center || !lists) {
-            return {};
-        }
-        const RE::NiPoint3 at = center->GetPosition();
-        for (auto& handle : lists->highActorHandles) {
-            auto ptr = handle.get();
-            RE::Actor* actor = ptr.get();
-            if (!actor || actor->IsDead() || actor == center) {
-                continue;
-            }
-            const float d = actor->GetPosition().GetDistance(at);
-            if (d > radius) {
-                continue;
-            }
-            const std::int32_t marks = MarksOf(ReadBoard(*actor));
-            if (element == 0 ? marks != 0 : (marks & (1 << element)) != 0) {
-                found.emplace_back(d, actor);
-            }
-        }
-        std::sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-        std::vector<RE::Actor*> out;
-        for (const auto& [d, actor] : found) {
-            if (static_cast<std::int32_t>(out.size()) >= limit) {
-                break;
-            }
-            out.push_back(actor);
-        }
-        return out;
-    }, std::vector<RE::Actor*>{}, true);
-}
-
-// A forced open without a hit (Papyrus 臨 and 雙斷: "對範圍內敵人各開印一次"): the mark with its cut and open.
-void PapyrusForceOpen(RE::StaticFunctionTag*, RE::Actor* actor, std::int32_t element)
-{
-    Guard("ForceOpen", [&]() -> bool {
-        if (!essb::IsElement(element) || actor == RE::PlayerCharacter::GetSingleton()) {
-            return false;
-        }
-        RunRule(actor, [&](auto& plan, auto& target, auto& self, auto& c, const auto& nodes) {
-            const essb::HitStatus opened = essb::PlanStatusHit(plan, element, false, target, self, c.in, nodes, *state.rng, false);
-            if (opened.opened) {
-                essb::PlanSelfOpen(plan, element, target, self, c.in, nodes, *state.rng);   // round 23: 開印 +2 etc.
-            }
-        });
-        return true;
-    }, false);
-}
-
-// A chain end from a Papyrus body (連鎖終焉、焚天、冰河、山崩、雷殛…: the ranged ones are N5 scans the bodies still
-// do): the state part here, then the end event with chain = 1 (no node multipliers, no further chains).
-void PapyrusEndMark(RE::StaticFunctionTag*, RE::Actor* actor, std::int32_t element, std::int32_t reason, float mult)
-{
-    Guard("EndMark", [&]() -> bool {
-        if (!essb::IsElement(element) || reason < 0 || reason > 2) {
-            return false;
-        }
-        RunRule(actor, [&](auto& plan, auto& target, auto& self, auto& c, const auto& nodes) {
-            if (!target.mark[element].has) {
+    Guard("WashBuffs", [&]() -> bool {
+        return QueueNative("WashBuffs", [handle = HandleOf(actor), limit]() {   // review fix 1: queued; the count goes to the log
+            auto* player = RE::PlayerCharacter::GetSingleton();
+            const auto held = handle.get();
+            RE::Actor* actor = held.get();
+            if (!player || !actor || actor->IsDead() || actor == player) {
                 return;
             }
-            essb::Writer{ plan, target, essb::Who::kTarget }.Unmark(element);
-            if (!target.Has(essb::StatusKind::kEndCooldown)) {
-                essb::PlanEndBody(plan, element, static_cast<essb::EndReason>(reason), mult, false, target, self, c.in, nodes, *state.rng, true);
+            const auto nodes = MakeNodes(*player, FormIsActive());
+            const essb::Tuning tuning = essb::ReadTuning(Global);
+            const float refund = nodes.Has(essb::node::kWaterPurgeTide) ? 2.0f * kConfig.damage[essb::kWater][1] : 0.0f;
+            const int washed = Executor(*player, actor, tuning).Wash(limit, refund);
+            if (state.forms.debug->value >= 1.0f) {
+                Logf("[ESSB][strip][L1] %08X washed=%d", actor->GetFormID(), washed);
             }
         });
-        return true;
+    }, false);
+}
+
+// The MCM status button (Papyrus DumpStatus): every marked actor within `radius` of you, with its status codes, to the log.
+void PapyrusDumpTargets(RE::StaticFunctionTag*, float radius)
+{
+    Guard("DumpTargets", [&]() -> bool {
+        return QueueNative("DumpTargets", [radius]() {   // review fix 1: the process-list scan runs in a task
+            auto* player = RE::PlayerCharacter::GetSingleton();
+            auto* lists = RE::ProcessLists::GetSingleton();
+            if (!player || !lists) {
+                return;
+            }
+            int count = 0;
+            for (auto& handle : lists->highActorHandles) {
+                auto held = handle.get();
+                RE::Actor* actor = held.get();
+                if (!actor || actor == player || actor->IsDead()) {
+                    continue;
+                }
+                const float d = actor->GetPosition().GetDistance(player->GetPosition());
+                const std::int32_t marks = MarksOf(ReadBoard(*actor));
+                if (d > radius || marks == 0) {
+                    continue;
+                }
+                ++count;
+                std::string line;
+                for (int code = 2; code <= 19; ++code) {
+                    const int value = static_cast<int>(ReadCode(*actor, code) + 0.001f);
+                    if (value != 0) {
+                        line += " s" + std::to_string(code) + "=" + std::to_string(value);
+                    }
+                }
+                Logf("[ESSB][dump][L0] target=%08X marks=%d dist=%.0f%s", actor->GetFormID(), marks, d, line.c_str());
+            }
+            Logf("[ESSB][dump][L0] status end marked=%d", count);
+        });
     }, false);
 }
 
@@ -3216,10 +3441,13 @@ void PapyrusEndMark(RE::StaticFunctionTag*, RE::Actor* actor, std::int32_t eleme
 void PapyrusCastProc(RE::StaticFunctionTag*, RE::Actor* actor, bool power)
 {
     Guard("CastProc", [&]() -> bool {
+        return QueueNative("CastProc", [handle = HandleOf(actor), power]() {   // review fix 1: queued
+        const auto held = handle.get();
+        RE::Actor* actor = held.get();
         auto* player = RE::PlayerCharacter::GetSingleton();
         const int element = FormElement();
         if (!player || !actor || actor == player || actor->IsDead() || !essb::IsElement(element)) {
-            return false;
+            return;
         }
         const auto nodes = MakeNodes(*player, true);
         Context c = MakeContext(*player, false);
@@ -3235,33 +3463,7 @@ void PapyrusCastProc(RE::StaticFunctionTag*, RE::Actor* actor, bool power)
         const essb::Proc proc = essb::RollProc(element, attack, kConfig, c.tuning, c.player, facts, nodes, *state.rng, terms);
         plan.Add({ essb::Cast::kProc, proc.magnitude, element, attack.power });
         Apply(*player, *actor, plan);
-        return true;
-    }, false);
-}
-
-// 冰崩 / 冰河 (5.4): a frozen target nearby shatters on its own crystals (the range scan is the Papyrus body's, N5).
-void PapyrusShatter(RE::StaticFunctionTag*, RE::Actor* actor)
-{
-    Guard("Shatter", [&]() -> bool {
-        RunRule(actor, [&](auto& plan, auto& target, auto&, auto& c, const auto& nodes) {
-            if (target.Has(essb::StatusKind::kFrozen)) {
-                essb::rule::Shatter(plan, target, c.in, nodes, 2);
-            }
         });
-        return true;
-    }, false);
-}
-
-// 星落 (2.6): the other resonance targets' stars detonate at once (the scan is N5, in Papyrus until then).
-void PapyrusDetonate(RE::StaticFunctionTag*, RE::Actor* actor)
-{
-    Guard("Detonate", [&]() -> bool {
-        RunRule(actor, [&](auto& plan, auto& target, auto& self, auto& c, const auto& nodes) {
-            if (target.Has(essb::StatusKind::kStar)) {
-                essb::rule::DetonateStars(plan, target, self, c.in, nodes, 1.0f);
-            }
-        });
-        return true;
     }, false);
 }
 
@@ -3283,18 +3485,12 @@ bool RegisterPapyrus(RE::BSScript::IVirtualMachine* vm)
         vm->RegisterFunction("SetWindow", kClass, PapyrusSetWindow);
         vm->RegisterFunction("ApplyMark", kClass, PapyrusApplyMark);
         vm->RegisterFunction("MarksOn", kClass, PapyrusMarksOn);
-        vm->RegisterFunction("BurstMarks", kClass, PapyrusBurstMarks);
+        vm->RegisterFunction("Burst", kClass, PapyrusBurst);
         vm->RegisterFunction("FormLeave", kClass, PapyrusFormLeave);
         vm->RegisterFunction("ExtendFuse", kClass, PapyrusExtendFuse);
-        vm->RegisterFunction("SetGuided", kClass, PapyrusSetGuided);
         vm->RegisterFunction("WashBuffs", kClass, PapyrusWashBuffs);
-        vm->RegisterFunction("DotRemaining", kClass, PapyrusDotRemaining);
-        vm->RegisterFunction("MarkedNear", kClass, PapyrusMarkedNear);
-        vm->RegisterFunction("ForceOpen", kClass, PapyrusForceOpen);
-        vm->RegisterFunction("EndMark", kClass, PapyrusEndMark);
+        vm->RegisterFunction("DumpTargets", kClass, PapyrusDumpTargets);
         vm->RegisterFunction("CastProc", kClass, PapyrusCastProc);
-        vm->RegisterFunction("Shatter", kClass, PapyrusShatter);
-        vm->RegisterFunction("Detonate", kClass, PapyrusDetonate);
         vm->RegisterFunction("FormEnter", kClass, PapyrusFormEnter);
         vm->RegisterFunction("SetSync", kClass, PapyrusSetSync);
         return true;
@@ -3403,7 +3599,7 @@ extern "C" __declspec(dllexport) bool SKSEPlugin_Query(const SKSE::QueryInterfac
         }
         info->infoVersion = SKSE::PluginInfo::kVersion;
         info->name = "ElementsSpellblade";
-        info->version = 23;
+        info->version = 24;
         return CheckRuntime(skse);
     } catch (...) {
         Log("[ESSB][refuse] Query failed; native hit OFF");

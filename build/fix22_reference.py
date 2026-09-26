@@ -673,7 +673,8 @@ class World:
             bonus += self.pct(self.rank('fire', '爆燃的消耗加成'), 0.01) * consumed
             value = [heat, bonus, 1.5 if heat >= 3 and self.has('fire', '熾焰') else 1.0]
         elif element == FROST:
-            if t.has('Frozen'):
+            # 冰封融斷 (5.4, round 24 commander ruling): a fusion shatters a frozen target only with the branch
+            if t.has('Frozen') and (reason != BURST or self.has('frost', '冰封融斷')):
                 self.shatter(2, settle)
                 value[0] = 1.0
         elif element == LIGHTNING:
@@ -692,6 +693,8 @@ class World:
         elif element == POISON:
             if t.poison:
                 factor = 3.0 if self.has('poison', '潰爛') else 2.0
+                if reason == BURST and self.has('poison', '毒斷'):
+                    factor = 4.0                                    # 5.10 毒斷（round 24）：融斷的催毒 ×4
                 factor *= 1 + self.pct(self.rank('poison', '催毒期間中毒傷害'), 0.03)
                 remaining = t.poison.remaining() + (self.scaled(4.0) if self.has('poison', '延毒') else 0.0)
                 self.put(t, 'Catalyzed', self.factor() * factor * settle, remaining)

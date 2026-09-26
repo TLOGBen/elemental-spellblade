@@ -81,14 +81,24 @@ def events_sent(cpp, status_h):
     enum = re.search(r'enum class Event : std::uint8_t\s*\{(.*?)\n\};', status_h, re.S)[1]
     kinds = [m for m in re.findall(r'^\s*(k\w+),', enum, re.M) if m != 'kCount']
     assert len(kinds) == len(sent), (kinds, sent)
+    # Round 24 (N5): the events the DLL's own body pass consumes (Reactions.h BodyOnly) never reach Papyrus (SendEvent
+    # refuses them); every other one is still a contract. The bodies' own ModEvents are built in Reactions.h.
+    reactions = ROOT / 'native/include/Reactions.h'
+    body_only = set()
+    if reactions.is_file():
+        rtext = reactions.read_text(encoding='utf-8')
+        status_h += rtext
+        fn = re.search(r'constexpr bool BodyOnly\(Event e\) noexcept\s*\{(.*?)\n\}', rtext, re.S)
+        body_only = set(re.findall(r'Event::(k\w+)', fn[1])) if fn else set()
     # the values each event carries: the MakeEvent calls of Status.h / Plugin.cpp (max argument count per kind)
     count = {}
     for m in re.finditer(r'MakeEvent\(\s*(?:essb::)?Event::(k\w+)((?:,[^;]*?)?)\)\s*\)?;', status_h + cpp):
         args = m[2].count(',')
         count[m[1]] = max(count.get(m[1], 0), args)
-    values = {sent[i]: count.get(k, 0) for i, k in enumerate(kinds)}
+    values = {sent[i]: count.get(k, 0) for i, k in enumerate(kinds) if k not in body_only}
     death = re.search(r'std::array<float, (\d+)> value', cpp)
-    values['ESSB_Death'] = int(death[1])
+    if death:   # round 24: the death snapshot event is gone (the death sink runs the death handling in the DLL)
+        values['ESSB_Death'] = int(death[1])
     return values
 
 
@@ -502,22 +512,23 @@ def self_test(sources, cpp, status_h):
     s['ESSBNative.psc'] += '\nFunction Ghost(Actor akActor) Global Native\n'
     expect('a native nobody registers', check_contract(s, cpp, status_h)[0], 'does not register it')
     s = dict(sources)
-    s['ESSBNative.psc'] = s['ESSBNative.psc'].replace('Function Shatter(Actor akActor) Global Native',
-                                                        'Function Shatter(Actor akActor, Int aiExtra) Global Native')
+    # round 24: the Shatter / Rise / Detonate anchors went with the Papyrus bodies; the same faults on natives and events left
+    s['ESSBNative.psc'] = s['ESSBNative.psc'].replace('Function ApplyMark(Actor akActor, Int aiElement) Global Native',
+                                                        'Function ApplyMark(Actor akActor, Int aiElement, Int aiExtra) Global Native')
     expect('a native with a different argument count', check_contract(s, cpp, status_h)[0], 'Papyrus arguments')
     s = dict(sources)
-    s['ESSBController.psc'] = s['ESSBController.psc'].replace('RegisterForModEvent("ESSB_Rise", "OnESSBRise")', '')
-    expect('a ModEvent nobody listens to', check_contract(s, cpp, status_h)[0], 'ESSB_Rise is sent')
+    s['ESSBController.psc'] = s['ESSBController.psc'].replace('RegisterForModEvent("ESSB_Knock", "OnESSBKnock")', '')
+    expect('a ModEvent nobody listens to', check_contract(s, cpp, status_h)[0], 'ESSB_Knock is sent')
     s = dict(sources)
-    s['ESSBController.psc'] = s['ESSBController.psc'].replace('EventArg(args, 3) > 0.5)', 'EventArg(args, 9) > 0.5)', 1)
+    s['ESSBController.psc'] = s['ESSBController.psc'].replace('EventArg(args, 4) > 0.5', 'EventArg(args, 9) > 0.5', 1)
     expect('a handler reading past the values sent', check_contract(s, cpp, status_h)[0], 'reads value 9')
     s = dict(sources)
     s['ESSBElem.psc'] += '\nFunction Probe22(ESSBController akCtl, Actor akTarget) Global\n\takCtl.ApplyProc(akTarget, 1, False, False, False)\nEndFunction\n'
     expect('a call into the deleted difference patch', check_removed(s), 'still names ApplyProc')
     expect('an event sink without SEH', check_guards(cpp.replace('__try {\n            OnDeathCpp(*ev);', '{\n            OnDeathCpp(*ev);', 1)),
            'without an SEH frame')
-    expect('a native outside Guard', check_guards(re.sub(r'(void PapyrusDetonate\(RE::StaticFunctionTag\*, RE::Actor\* actor\)\s*\{)\s*Guard\("Detonate", ',
-                                                         r'\1 NoGuard("Detonate", ', cpp)), 'outside Guard')
+    expect('a native outside Guard', check_guards(re.sub(r'(void PapyrusApplyMark\(RE::StaticFunctionTag\*, RE::Actor\* actor, std::int32_t element\)\s*\{)\s*Guard\("ApplyMark", ',
+                                                         r'\1 NoGuard("ApplyMark", ', cpp)), 'outside Guard')
     expect('a wash without the hostile test', check_wash(cpp, ENGINE_H.read_text(encoding='utf-8').replace('!v.hostile', 'true')),
            '!v.hostile')
     expect('a status task without the master switch', check_switch(cpp.replace('if (!Enabled()) {   // master switch (review fix 3)',

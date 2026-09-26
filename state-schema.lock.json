@@ -1,6 +1,6 @@
 {
-  "state_schema_version": 12,
-  "signature_sha256": "0cbde6b459539686b78b33b75b14f698492d847071789b0c90c2ad4f623db311",
+  "state_schema_version": 13,
+  "signature_sha256": "7fee0dd65966b4a263092f4186b629564df11c660344cfd1acf3d72fb4f2ec9a",
   "signatures": {
     "ESSBStub": {
       "parent": "activemagiceffect",
@@ -320,11 +320,6 @@
           "auto"
         ],
         [
-          "bloodthirstleft",
-          "float",
-          "member"
-        ],
-        [
           "branchcachea",
           "int[]",
           "auto"
@@ -420,56 +415,6 @@
           "auto"
         ],
         [
-          "damageactor",
-          "actor[]",
-          "member"
-        ],
-        [
-          "damageelement",
-          "int[]",
-          "member"
-        ],
-        [
-          "damagenext",
-          "int",
-          "member"
-        ],
-        [
-          "damagetime",
-          "float[]",
-          "member"
-        ],
-        [
-          "deadactor",
-          "actor[]",
-          "member"
-        ],
-        [
-          "deadbleed",
-          "int[]",
-          "member"
-        ],
-        [
-          "deadelement",
-          "int[]",
-          "member"
-        ],
-        [
-          "deadfreeze",
-          "int[]",
-          "member"
-        ],
-        [
-          "deadmarks",
-          "int[]",
-          "member"
-        ],
-        [
-          "deadnext",
-          "int",
-          "member"
-        ],
-        [
           "debuglevel",
           "globalvariable",
           "auto"
@@ -527,11 +472,6 @@
         [
           "domainz",
           "float[]",
-          "member"
-        ],
-        [
-          "doubleburstleft",
-          "float",
           "member"
         ],
         [
@@ -890,11 +830,6 @@
           "member"
         ],
         [
-          "guardburstleft",
-          "float",
-          "member"
-        ],
-        [
           "guarddarkleft",
           "float",
           "member"
@@ -908,11 +843,6 @@
           "guardiceleft",
           "float",
           "member"
-        ],
-        [
-          "guardlayer",
-          "essbguard",
-          "auto"
         ],
         [
           "guardstarleft",
@@ -945,34 +875,9 @@
           "auto"
         ],
         [
-          "hitactor",
-          "actor[]",
-          "member"
-        ],
-        [
-          "hitform",
-          "int[]",
-          "member"
-        ],
-        [
-          "hitkilldone",
-          "bool[]",
-          "member"
-        ],
-        [
-          "hitnext",
-          "int",
-          "member"
-        ],
-        [
           "hitnormalspells",
           "spell[]",
           "auto"
-        ],
-        [
-          "hitpower",
-          "bool[]",
-          "member"
         ],
         [
           "hitpowerspells",
@@ -983,16 +888,6 @@
           "hitprocperk",
           "perk",
           "auto"
-        ],
-        [
-          "hitsneak",
-          "bool[]",
-          "member"
-        ],
-        [
-          "hitweapon",
-          "int[]",
-          "member"
         ],
         [
           "holyshield",
@@ -1015,11 +910,6 @@
           "auto"
         ],
         [
-          "inheritspell",
-          "spell",
-          "auto"
-        ],
-        [
           "inputlayer",
           "essbinput",
           "auto"
@@ -1032,31 +922,6 @@
         [
           "keepsneakleft",
           "float",
-          "member"
-        ],
-        [
-          "killprocactor",
-          "actor[]",
-          "member"
-        ],
-        [
-          "killprocamount",
-          "float[]",
-          "member"
-        ],
-        [
-          "killprockind",
-          "int[]",
-          "member"
-        ],
-        [
-          "killprocnext",
-          "int",
-          "member"
-        ],
-        [
-          "killprocuntil",
-          "float[]",
           "member"
         ],
         [
@@ -1081,11 +946,6 @@
         ],
         [
           "lasthitpower",
-          "bool",
-          "member"
-        ],
-        [
-          "lasthitsneak",
           "bool",
           "member"
         ],
@@ -1270,21 +1130,6 @@
           "auto"
         ],
         [
-          "pendingkillactor",
-          "actor[]",
-          "member"
-        ],
-        [
-          "pendingkillat",
-          "float[]",
-          "member"
-        ],
-        [
-          "pendingkillnext",
-          "int",
-          "member"
-        ],
-        [
           "pendingservantdue",
           "float[]",
           "member"
@@ -1393,21 +1238,6 @@
           "settingspower",
           "spell",
           "auto"
-        ],
-        [
-          "settleddead",
-          "actor[]",
-          "member"
-        ],
-        [
-          "settledelement",
-          "int[]",
-          "member"
-        ],
-        [
-          "settlednext",
-          "int",
-          "member"
         ],
         [
           "shockleft",
@@ -1616,61 +1446,6 @@
         ]
       ]
     },
-    "ESSBGuard": {
-      "parent": "referencealias",
-      "members": [
-        [
-          "ctl",
-          "essbcontroller",
-          "auto"
-        ],
-        [
-          "divinearmed",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "enabled",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "formactive",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "guardwind",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "iceshield",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "nodebits",
-          "bool",
-          "auto"
-        ],
-        [
-          "ready",
-          "bool",
-          "member"
-        ],
-        [
-          "rockarmor",
-          "globalvariable",
-          "auto"
-        ],
-        [
-          "watermirror",
-          "globalvariable",
-          "auto"
-        ]
-      ]
-    },
     "ESSBFormPowerEffect": {
       "parent": "activemagiceffect",
       "members": [
@@ -1856,8 +1631,8 @@
     }
   },
   "quests": {
-    "ESSB_MainQuest": "006014",
-    "ESSB_MCMQuest": "006015"
+    "ESSB_MainQuest": "006016",
+    "ESSB_MCMQuest": "006017"
   },
   "history": [
     {
@@ -1947,6 +1722,14 @@
       "quests": {
         "ESSB_MainQuest": "006012",
         "ESSB_MCMQuest": "006013"
+      }
+    },
+    {
+      "state_schema_version": 12,
+      "signature_sha256": "0cbde6b459539686b78b33b75b14f698492d847071789b0c90c2ad4f623db311",
+      "quests": {
+        "ESSB_MainQuest": "006014",
+        "ESSB_MCMQuest": "006015"
       }
     }
   ]

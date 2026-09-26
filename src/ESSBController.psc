@@ -1,5 +1,5 @@
 Scriptname ESSBController extends ReferenceAlias
-{元素魔戰士 控制器：形態層、同調、融斷、環境、自身資源與反應本體的事件入口
+{元素魔戰士 控制器：形態層、同調、融斷的觸發、環境、DLL 事件的 Papyrus 那一半
 （規劃 v0.4 第 1、1.1、2.1～2.10、2.13、6.1 節）。
 
 形態切換在同一個腳本幀內完成：移除舊形態能力、加上新形態能力、更新全域變數。
@@ -9,8 +9,10 @@ DoCombatSpellApply 套自有法術，不用 Spell.Cast，避免觸發施法事�
 
 Round 22（N3）起沒有登記表、沒有狀態容器：目標身上的印記、層數、冰封、催毒、死咒、星痕，與你身上的熱度、
 聖佑階梯，都是 DLL 掛的引擎效果（native/include/Status.h）。DLL 在命中那一幀決定開印／刷新／被切，做完開印與
-終焉的狀態部分，再用 ModEvent（ESSB_Open、ESSB_End、ESSB_Frozen、ESSB_Hallucinate、ESSB_Judgment、ESSB_Splash、
-ESSB_Shatter、ESSB_Landing、ESSB_Death）叫這裡的處理函式跑反應本體（ESSBReactions，N5 前在 Papyrus）。
+終焉的狀態部分；round 24（N5）起反應本體、融斷、死亡處理與所有範圍掃描也在 DLL（native/include/Reactions.h）。
+ModEvent 只剩 Papyrus 負責的那一半（裁定 R4）：ESSB_Open／ESSB_End（經驗、終焉特效）、ESSB_Hallucinate（恐懼／瘋狂的 AI）、
+ESSB_Knock／ESSB_Push（推力）、ESSB_Ash（化灰崩解）、ESSB_Raise（復生 AI 與召喚上限）、ESSB_Sneak（不解除潛行）、
+ESSB_Domain（領域，N6）、ESSB_SyncUp、ESSB_Cleanse、ESSB_Lethal（神佑）。
 本腳本讀寫目標狀態一律經 ESSBNative（狀態代碼見 ESSBNative.psc）。
 
 自身資源 aiKind（N4 前留在這裡）：1 電荷 2 岩甲 3 風勢
@@ -121,7 +123,6 @@ Spell Property IceArmorWideAbility Auto
 GlobalVariable Property GDivineArmed Auto
 GlobalVariable Property FormNotify Auto
 GlobalVariable Property FormSound Auto
-ESSBGuard Property GuardLayer Auto
 ESSBInput Property InputLayer Auto
 Int[] Property RankCacheA Auto
 Int[] Property RankCacheB Auto
@@ -138,8 +139,6 @@ Perk Property BaseRulesPerk Auto
 開局 AddPerk 一次，永不移除。}
 Spell Property AshSpell Auto
 {化灰（規劃 5.9、8）：DATA 照抄原版 PerkDisintegrateFFAimed。}
-Spell Property InheritSpell Auto
-{血承：七個 Peak Value Modifier，magnitude 在施放前設定。}
 Spell Property WindSpeedAbility Auto
 {風形態移速（AV 30 SpeedMult）。強度隨節點變動，AddSpell 前 SetNthEffectMagnitude。}
 Spell Property WindMuffleAbility Auto
@@ -252,14 +251,6 @@ Float[] LiftDue
 Float[] LiftForce
 Float[] LiftDamage
 Float NextTickAt
-Int[] SettledElement
-Actor[] SettledDead
-Int SettledNext
-Actor[] DeadActor
-Int[] DeadElement
-Int[] DeadFreeze
-Int[] DeadBleed
-Int DeadNext
 Float[] TrioTimes
 Int PerpetualKeep
 Actor[] PendingServants
@@ -267,40 +258,18 @@ Float[] PendingServantDue
 Bool ReanimateBusy
 
 
-; 擊殺掛勾（round 22）：DLL 的死亡快照（ESSB_Death，屍體還帶著效果時送出）與 PO3 的擊殺回報誰先到都行；
-; 回報了擊殺、快照卻沒來（目標身上沒有任何狀態）時，每秒 tick 在 1 秒後以空快照結算。
-Int[] DeadMarks
-Actor[] PendingKillActor
-Float[] PendingKillAt
-Int PendingKillNext
-; FIX14: damage timestamps parallel to DamageActor[128].
-Float[] DamageTime
 Bool PlayerInFireDomain
 
 
-; FIX15: target-owned facts and once-only death payloads.
-Actor[] HitActor
-Int[] HitForm
-Bool[] HitSneak
-Bool[] HitPower
-Int[] HitWeapon
-Bool[] HitKillDone
-Int HitNext
 Bool DivineArmed
 Actor[] CastActor
 Float[] CastAt
 Int CastNext
-Actor[] KillProcActor
-Int[] KillProcKind
-Float[] KillProcUntil
-Float[] KillProcAmount
-Int KillProcNext
 
 ; 自身資源（電荷、岩甲、風勢、戰意、冰盾、同調……）round 23 起是 DLL 掛在你身上的效果（native/include/SelfLayer.h），
 ; 這裡只剩雷雨天氣的 3 秒計時（它呼叫 DLL 加電荷）。
 Float StormCharge
 Bool LastHitPower
-Bool LastHitSneak
 Int SyncStageShown
 
 Float LastEnvCheck
@@ -330,9 +299,7 @@ Int EmberElem
 Float QuenchLeft
 Float ShockLeft
 Float GuardSwitchLeft
-Float GuardBurstLeft
 Float GuardIceLeft
-Float DoubleBurstLeft
 Float SyncKeepLeft
 Int SyncKeep
 Int PrevElement
@@ -341,17 +308,12 @@ Float TwinTime
 
 ; ---- 機制前線 round 2 的狀態
 Int HolyShield
-Float BloodthirstLeft
 Float GuardWindLeft
 Float GuardDivineLeft
 Float CloakGuardLeft
 Float NoBloodCostLeft
 Float KeepSneakLeft
 Bool DivineSaveUsed
-; FIX10: provenance belongs to the victim, never to the active form.
-Actor[] DamageActor
-Int[] DamageElement
-Int DamageNext
 Bool SneakingNow
 Bool SilentOn
 ; 推力冷卻環（8 格）：kind 0 跌倒／吹飛 8 秒，kind 1 拉近 3 秒（規劃 2.6、8）
@@ -476,69 +438,6 @@ Function InitFixState()
 		Return
 	EndIf
 	; Allocate once on this schema; failure latches and never retries.
-	If !DamageTime
-		DamageTime = new Float[128]
-		If !DamageTime
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !SettledElement
-		SettledElement = new Int[8]
-		If !SettledElement
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !SettledDead
-		SettledDead = new Actor[8]
-		If !SettledDead
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !HitActor
-		HitActor = new Actor[8]
-		If !HitActor
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !HitForm
-		HitForm = new Int[8]
-		If !HitForm
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !HitSneak
-		HitSneak = new Bool[8]
-		If !HitSneak
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !HitPower
-		HitPower = new Bool[8]
-		If !HitPower
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !HitWeapon
-		HitWeapon = new Int[8]
-		If !HitWeapon
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !HitKillDone
-		HitKillDone = new Bool[8]
-		If !HitKillDone
-			BreakState()
-			Return
-		EndIf
-	EndIf
 	If !CastActor
 		CastActor = new Actor[8]
 		If !CastActor
@@ -549,83 +448,6 @@ Function InitFixState()
 	If !CastAt
 		CastAt = new Float[8]
 		If !CastAt
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !KillProcActor
-		KillProcActor = new Actor[8]
-		If !KillProcActor
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !KillProcKind
-		KillProcKind = new Int[8]
-		If !KillProcKind
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !KillProcUntil
-		KillProcUntil = new Float[8]
-		If !KillProcUntil
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !KillProcAmount
-		KillProcAmount = new Float[8]
-		If !KillProcAmount
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !DeadActor
-		DeadActor = new Actor[8]
-		If !DeadActor
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !DeadElement
-		DeadElement = new Int[8]
-		If !DeadElement
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !DeadMarks
-		DeadMarks = new Int[8]
-		If !DeadMarks
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !DeadFreeze
-		DeadFreeze = new Int[8]
-		If !DeadFreeze
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !DeadBleed
-		DeadBleed = new Int[8]
-		If !DeadBleed
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !PendingKillActor
-		PendingKillActor = new Actor[4]
-		If !PendingKillActor
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !PendingKillAt
-		PendingKillAt = new Float[4]
-		If !PendingKillAt
 			BreakState()
 			Return
 		EndIf
@@ -675,20 +497,6 @@ Function InitFixState()
 	If !LiftActor
 		LiftActor = new Actor[8]
 		If !LiftActor
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !DamageActor
-		DamageActor = new Actor[128]
-		If !DamageActor
-			BreakState()
-			Return
-		EndIf
-	EndIf
-	If !DamageElement
-		DamageElement = new Int[128]
-		If !DamageElement
 			BreakState()
 			Return
 		EndIf
@@ -868,16 +676,8 @@ Function Setup()
 	If !IsCurrentController() || StateBroken
 		Return
 	EndIf
-	ESSBGuard guard = GetOwningQuest().GetAlias(0) as ESSBGuard
-	If !guard
-		BreakState()
-		Return
-	EndIf
+	; round 24（N5）：擊殺事件（ESSBGuard 的 OnActorKilled）整個刪除，死亡處理在 DLL 的死亡 sink（裁定 R4）。
 	CachedDebugLevel = DebugLevel.GetValueInt()
-	guard.Setup()
-	If !IsCurrentController() || StateBroken
-		Return
-	EndIf
 	Bool wasLoaded = FirstSetupDone
 	If !FirstSetupDone
 		ReconcileLoadedForm(player)
@@ -930,21 +730,18 @@ Function Setup()
 		InputLayer.Setup()
 	EndIf
 	PO3_Events_Alias.RegisterForWeaponHit(Self)
-	; DLL → 反應本體（round 22）。ModEvent 的登記不隨存檔保存，每次載入由這裡重登。
+	; DLL → Papyrus（round 22 起）。ModEvent 的登記不隨存檔保存，每次載入由這裡重登。
+	; round 24（N5）：反應本體（冰封、聖裁、濺血、越線、碎冰、落地、放電、風刃、死亡）全在 DLL，這裡只剩經驗與特效
+	;（開印、終焉）、推力、幻術 AI、化灰崩解、復生、不解除潛行、領域（N6）、同調升段、洗淨、神佑（裁定 R4）。
 	RegisterForModEvent("ESSB_Open", "OnESSBOpen")
 	RegisterForModEvent("ESSB_End", "OnESSBEnd")
-	RegisterForModEvent("ESSB_Frozen", "OnESSBFrozen")
 	RegisterForModEvent("ESSB_Hallucinate", "OnESSBHallucinate")
-	RegisterForModEvent("ESSB_Judgment", "OnESSBJudgment")
-	RegisterForModEvent("ESSB_Splash", "OnESSBSplash")
-	RegisterForModEvent("ESSB_Shatter", "OnESSBShatter")
-	RegisterForModEvent("ESSB_Landing", "OnESSBLanding")
-	RegisterForModEvent("ESSB_Death", "OnESSBDeath")
-	RegisterForModEvent("ESSB_Rise", "OnESSBRise")
-	; round 23 (N4)：你的資源與受擊的本體。
-	RegisterForModEvent("ESSB_Discharge", "OnESSBDischarge")
-	RegisterForModEvent("ESSB_Blade", "OnESSBBlade")
 	RegisterForModEvent("ESSB_Knock", "OnESSBKnock")
+	RegisterForModEvent("ESSB_Push", "OnESSBPush")
+	RegisterForModEvent("ESSB_Ash", "OnESSBAsh")
+	RegisterForModEvent("ESSB_Raise", "OnESSBRaise")
+	RegisterForModEvent("ESSB_Sneak", "OnESSBSneak")
+	RegisterForModEvent("ESSB_Domain", "OnESSBDomain")
 	RegisterForModEvent("ESSB_SyncUp", "OnESSBSyncUp")
 	RegisterForModEvent("ESSB_Cleanse", "OnESSBCleanse")
 	RegisterForModEvent("ESSB_Lethal", "OnESSBLethal")
@@ -1078,31 +875,11 @@ Function OnFormOpened(Int aiIndex)
 	EndIf
 	FormOpenTime = Utility.GetCurrentRealTime()
 	; round 23 (N4)：DLL 的開形態：專一的計時、雷臨強化（+5 電荷）、地臨強化（岩甲滿層）。
+	; round 24 (N5)：同一個原生函式做各元素的「臨」（範圍內敵人開印）、臨強化、臨界、雙斷的再開印（Reactions.h PlanAdvent）。
 	ESSBNative.FormEnter(aiIndex)
 	RefreshAbilities()
-	; 5.2 開啟大師分支「臨界」。
-	ESSBNodes.OnFormOpened(Self, aiIndex)
-	; 各元素開啟大師主線「火臨／冰臨／雷臨／地臨／風臨／血臨／聖臨」。
-	ESSBElem.OnFormOpened(Self, aiIndex)
+	; 留在 Papyrus 的開形態附加效果：氣旋（推力）、聖臨強化（你與同伴的治療）。
 	ESSBElem.OnFormOpenedExtra(Self, aiIndex)
-	; 5.1 融斷傳奇分支「雙斷」：融斷後 3 秒內再開任一形態，對範圍內敵人立即開印一次。
-	If (DoubleBurstLeft > 0 && DoubleBurstLeft > Utility.GetCurrentRealTime())
-		DoubleBurstLeft = 0
-		Actor player = ThePlayer()
-		If player
-			Actor[] nearby = ScanTargets(player, ESSBNoForm.BurstRadius(Self), 5, player)
-			Int index = 0
-			While index < nearby.Length
-				If nearby[index]
-					ForceOpenOn(nearby[index], aiIndex)
-				EndIf
-				index += 1
-			EndWhile
-			If CachedDebugLevel >= 1
-				LogEvent(1, "burst", "doubleburst reopen element=" + aiIndex)
-			EndIf
-		EndIf
-	EndIf
 EndFunction
 
 Function OnFormSwitched(Int aiOldIndex, Int aiNewIndex)
@@ -1145,16 +922,15 @@ Function OnFormClosed(Int aiIndex)
 	PlayFormSound(FxSoundRelease, aiIndex)
 	Int syncBefore = Sync.GetValueInt()
 	Int stage = SyncStage()
-	; 融斷倍率：K_sync × 通用樹關閉路線 × 無元素樹融斷路線 × 該元素印記的融斷加成（各印記另乘，在 ESSBReactions.End）。
-	Float k = SyncMult() * ESSBNodes.CommonBurstMult(Self) * ESSBNoForm.BurstMult(Self)
-	Float radius = ESSBNoForm.BurstRadius(Self)
-	; DLL：範圍內每個帶印記的目標各結清一次（每目標一次終焉冷卻、融斷的狀態部分），反應本體由 ESSB_End 回來跑。
-	; 5.1 融斷大師分支「斷界」（所有被結清元素的弱化 3 秒）是 DLL N5。
-	Int burst = ESSBNative.BurstMarks(radius, k)
+	; round 24（N5）：融斷整個在 DLL（Reactions.h PlanBurst）：一次掃描（15 公尺、收束 20 公尺 +0.3 公尺／點），範圍內每個
+	; 帶印記的目標每個印記以自己的終焉本體 × K_sync × 融斷主線結清，寂、萬寂、斷界、回流、雙斷、安全閥、地斷、颶風、
+	; 墜星的融斷那一半都在同一個計畫；推力與領域經 ESSB_Push／ESSB_Domain 回來。
+	; 審查修正 1：原生函式只排進 DLL 的主執行緒 task 就回來（掃描與施放都在 task 裡）；目標數寫在 DLL 的 [burst] 行。
+	ESSBNative.Burst(aiIndex)
 	; DLL：離開形態的自身階梯（熱度洩壓、熔心、餘壓、聖佑清空、神聖領域）。
 	ESSBNative.FormLeave(aiIndex, True)
 	If CachedDebugLevel >= 1
-		LogEvent(1, "burst", "targets=" + burst + " stage=" + stage + " k=" + k + " radius=" + radius)
+		LogEvent(1, "burst", "queued stage=" + stage)
 	EndIf
 
 	; 5.2 持續傳奇分支「永續」：Z 關閉時若同調三段，融斷後保留一段同調到下一次開形態。
@@ -1165,12 +941,9 @@ Function OnFormClosed(Int aiIndex)
 		EndIf
 		PerpetualKeep = t1
 	EndIf
-	; 5.2 關閉大師分支「安全閥」：融斷時你受傷 -50% 持續 2 秒。
-	If ESSBNodes.Br(Self, 12, 2, 3, 1) ; @node 安全閥
-		SetGuardBurst(2)
-	EndIf
-	; 5.1 冷寂路線的收尾（免門檻、連斷、回流、雙斷）。
-	ESSBNoForm.OnBurst(Self, aiIndex, burst, syncBefore)
+	; 5.2 安全閥（融斷時你受傷 -50% 2 秒）round 24 起是 DLL 掛在你身上的 ESSB_N5_SafetyValve，PERK 讀它。
+	; 5.1 冷寂路線的收尾（免門檻、連斷；回流與雙斷 round 24 起在 DLL）。
+	ESSBNoForm.OnBurst(Self, syncBefore)
 	; 5.2 關閉專精分支「三重奏」：DLL 在第三種元素的終焉留下 60 秒的「下一次融斷保留全部同調」（碼 51）。
 	Actor closer = ThePlayer()
 	If closer && ESSBNative.GetStatus(closer, 51) > 0
@@ -1307,47 +1080,23 @@ Event OnWeaponHit(ObjectReference akTarget, Form akSource, Projectile akProjecti
 		power = sneak
 	EndIf
 	LastHitPower = power
-	LastHitSneak = sneak
-	Int fact = 0
-	While fact < 8 && HitActor[fact] != targetActor
-		fact += 1
-	EndWhile
-	If fact >= 8
-		fact = HitNext
-		HitNext = (HitNext + 1) % 8
-		HitKillDone[fact] = False
-	EndIf
 	Int hitElement = 0
 	Bool hitActive = FormActive.GetValueInt() == 1
 	If hitActive
 		hitElement = CurrentElement.GetValueInt()
 	EndIf
-	HitForm[fact] = hitElement
-	HitActor[fact] = targetActor
-	HitSneak[fact] = sneak
-	HitPower[fact] = power
-	HitWeapon[fact] = weaponType
 	If targetActor.IsDead()
 		If CachedDebugLevel >= 3
 			LogRejectedHit("invalid-actor", akTarget, akSource, akProjectile, aiHitFlagMask, weaponType)
 		EndIf
-		; Engine weapon damage already killed it: never send corpse damage/open marks.
+		; Engine weapon damage already killed it: never send corpse damage/open marks. Round 24 (N5): the kill itself
+		; (連殺 with the DLL's last-hit-sneak marker, and every other death effect) is the DLL's death sink; a dead
+		; target never opens, so the round-16 lethal-ambush blades are gone (v0.4 奇襲 needs an open).
 		If sneak && hitElement == 5
 			SetSelf(3, ESSBElem2.WindThreshold(Self))
-			ESSBElem2.LethalAmbush(Self, targetActor)
 		EndIf
-		; Kill callback may have arrived before the weapon callback.
-		Int settled = 0
-		While settled < 8
-			If SettledDead[settled] == targetActor
-				SettleSneakKill(targetActor, SettledElement[settled])
-				Return
-			EndIf
-			settled += 1
-		EndWhile
 		Return
 	EndIf
-	HitKillDone[fact] = False
 	; 5.2 關閉傳奇分支「雙生」：雙持時左手武器攜帶前一個形態的元素。
 	; PO3 的 akSource 就是這一擊的武器，和玩家左手武器比對即可分辨是哪一手。
 	Bool leftHand = False
@@ -1377,10 +1126,6 @@ Event OnWeaponHit(ObjectReference akTarget, Form akSource, Projectile akProjecti
 		element = TwinElement
 	EndIf
 
-	Int nativeDamage = NoteDamageElement(targetActor, element)
-	If nativeDamage >= 0
-		DamageTime[nativeDamage] = Utility.GetCurrentRealTime()
-	EndIf
 	; Round 22 (N3): the DLL does the whole hit in the hit frame -- the proc with its magnitude and every target-side
 	; multiplier read from the target's effects, and the mark: open / refresh / cut, layers and ladders (and the twin
 	; element's proc and mark for a 雙生 left-hand hit). Open and end reactions come back as ModEvents (OnESSBOpen /
@@ -1407,23 +1152,6 @@ Bool Function LastHitWasPower()
 	Return LastHitPower
 EndFunction
 
-Bool Function LastHitWasSneak()
-	Return LastHitSneak
-EndFunction
-
-; 土風血聖與毒水暗星八棵樹的每次命中掛勾（火冰雷的在 ESSBElem 裡各自處理）。
-Function ElementHitHook(Actor akTarget, Int aiElement, Bool abPower)
-	If aiElement >= 8 && aiElement <= 11
-		ESSBElem3.OnHit(Self, aiElement, akTarget, abPower)
-		Return
-	EndIf
-	If aiElement < 4 || aiElement > 7
-		Return
-	EndIf
-	ESSBElem2.OnHit(Self, aiElement, akTarget, abPower)
-	; 岩甲與風勢（潛行滿格、到門檻送出風刃）round 23 起是 DLL 的（SelfLayer.h）。
-EndFunction
-
 ; 只掛印記、不做開印反應（傳導、聖輝、暗染、星散、風襲、灼身、靜電……「附近 1 人也帶印記」）。
 Function ApplyMark(Actor akTarget, Int aiElement)
 	If akTarget && aiElement >= 1 && aiElement <= 11
@@ -1431,20 +1159,11 @@ Function ApplyMark(Actor akTarget, Int aiElement)
 	EndIf
 EndFunction
 
-; 對目標直接開印（火臨／冰臨／雷臨、雙斷）：DLL 做開印的狀態部分，反應本體由 ESSB_Open 回來跑。
-Function ForceOpenOn(Actor akTarget, Int aiElement)
-	If !akTarget || akTarget.IsDead() || aiElement < 1 || aiElement > 11
-		Return
-	EndIf
-	MarkEngaged(akTarget)
-	ESSBNative.ForceOpen(akTarget, aiElement)
-EndFunction
-
 ; ---------------------------------------------------------------- 傷害與法術套用封裝
 
 ; 所有反應傷害都走自有的 ESSB_React_<元素>：執行期設 magnitude 後 DoCombatSpellApply。
 ; G(L) 與 BaseDamageMult 在這裡各乘一次；呼叫端與延遲狀態只存未乘倍率的值。
-Function ApplyDamage(Int aiElement, Float afAmount, Actor akTarget, Int aiKillProc = 0)
+Function ApplyDamage(Int aiElement, Float afAmount, Actor akTarget)
 	; 5.7 傳奇分支「御風」與「空中追擊」：失衡／浮空目標受你所有傷害放大。
 	; 5.12 持續專精主線、5.13「星鎖」與「星域」同樣只放大本模組造成的傷害（決定 61）。
 	Float amount = afAmount * BaseDamageMult.GetValue() * GLevel(ESSBNodes.TreeOf(aiElement)) \
@@ -1453,9 +1172,6 @@ Function ApplyDamage(Int aiElement, Float afAmount, Actor akTarget, Int aiKillPr
 	; 5.3 火域：內部敵人受火傷 +20%（附傷與 DLL 結算的火傷由 DLL 讀領域效果）。
 	If aiElement == 1 && DomainActive() && InDomain(akTarget, 1)
 		amount = amount * 1.2
-	EndIf
-	If aiKillProc > 0
-		ArmKillProc(akTarget, aiKillProc, afAmount, amount)
 	EndIf
 	ApplyDamageRaw(aiElement, amount, akTarget)
 EndFunction
@@ -1477,49 +1193,9 @@ Function ApplyDamageRaw(Int aiElement, Float afAmount, Actor akTarget)
 		Return
 	EndIf
 	reactSpell.SetNthEffectMagnitude(0, afAmount)
-	ApplyTrackedDamage(player, reactSpell, akTarget, aiElement)
+	player.DoCombatSpellApply(reactSpell, akTarget)
 	If CachedDebugLevel >= 3
 		LogThrottled(3, "damage", akTarget.GetFormID() + " element=" + aiElement + " amount=" + afAmount)
-	EndIf
-EndFunction
-
-; 真實傷害（規劃 2.8）：D_true = 基準 × G(L_無元素) × M_mod(無元素樹)。
-; 沒有 M_ext、沒有 Res。走自有 ESSB_TrueSpell，是本模組唯一允許扣生命的路徑。
-; aiTree 預設 11（無元素樹）；5.13「星斷」以星樹（10）的 G(L) 計，並且不吃無元素樹的
-; 「目標魔力 <25%」加成，因為那是破魔路線的節點。
-Function ApplyTrueDamage(Float afAmount, Actor akTarget, Int aiTree = 11, Bool abGrantXP = True, Bool abLevelScaled = False, Bool abBaseline = False)
-	If !akTarget || afAmount <= 0.0 || !TrueSpell
-		Return
-	EndIf
-	Actor player = ThePlayer()
-	If !player
-		Return
-	EndIf
-	Float amount = afAmount
-	; ManaBreak has already scaled its drain (and clamped to actual magicka).
-	If !abLevelScaled
-		amount = amount * GLevel(aiTree)
-	EndIf
-	; Baseline has its own exact formula; existing node damage retains TrueMult.
-	If aiTree == 11 && !abBaseline
-		amount = amount * ESSBNoForm.TrueMult(Self, akTarget)
-	EndIf
-	amount = amount * BaseDamageMult.GetValue()
-	If amount <= 0.0
-		Return
-	EndIf
-	TrueSpell.SetNthEffectMagnitude(0, amount)
-	ApplyTrackedDamage(player, TrueSpell, akTarget, 0)
-	; 規劃 4：造成真實傷害練無元素樹。
-	If Trees && abGrantXP
-		Trees.OnValidHitXP(0)
-	EndIf
-	; 5.1 滅法傳奇分支「噬命」：真實傷害的 50% 轉為你的生命（命中的真傷由 DLL 算，這裡是反咒等 Papyrus 真傷）。
-	If ESSBNodes.Br(Self, 11, 1, 4, 1) ; @node 噬命
-		ApplyUtil(4, amount * 0.5, 0, player)
-	EndIf
-	If CachedDebugLevel >= 2
-		LogThrottled(2, "true", akTarget.GetFormID() + " amount=" + amount)
 	EndIf
 EndFunction
 
@@ -1635,41 +1311,30 @@ Function ApplyUtil(Int aiIndex, Float afMagnitude, Int aiDuration, Actor akTarge
 	If aiDuration > 0
 		utilSpell.SetNthEffectDuration(0, DurationInt(aiDuration))
 	EndIf
-	If aiIndex == 7
-		ApplyTrackedDamage(player, utilSpell, akTarget, 6)
-	Else
-		player.DoCombatSpellApply(utilSpell, akTarget)
-	EndIf
-EndFunction
-
-; 碎冰處決（規劃 2.6）：首領與必要角色由呼叫端改走傷害，不會走到這裡。
-; 用自有的高強度傷害法術殺，不用 Kill()：擊殺歸屬、死亡事件、化灰與復生的判定
-; 都與一般擊殺一致，外部天賦（如擊殺回復）也照常成立。
-Function Execute(Actor akTarget, Int aiElement)
-	Actor player = ThePlayer()
-	If !akTarget || !player
-		Return
-	EndIf
-	Float lethal = akTarget.GetActorValue("Health") * 10.0 + 1000.0
-	If CachedDebugLevel >= 1
-		LogEvent(1, "execute", akTarget.GetFormID() + " element=" + aiElement + " magnitude=" + lethal)
-	EndIf
-	If TrueSpell
-		TrueSpell.SetNthEffectMagnitude(0, lethal)
-		ApplyTrackedDamage(player, TrueSpell, akTarget, aiElement)
-	EndIf
+	player.DoCombatSpellApply(utilSpell, akTarget)
 EndFunction
 
 ; ---------------------------------------------------------------- 公式掛勾
+
+; 反應基準 B_max（settings.json element_damage 的上限欄 → QUST VMAD，規劃 2.7）。round 24：反應本體搬進 DLL、
+; ESSBReactions 刪除後，Papyrus 還在用的只有領域的每秒傷害與聖臨強化的治療量。
+Float Function BaseMax(Int aiElement)
+	If aiElement < 1 || aiElement > 11
+		Return 0.0
+	EndIf
+	Return ElementDamageMax[aiElement - 1]
+EndFunction
+
+; D_react 的本模組部分：B_max × K × M_mod（G(L) 由 ApplyDamage 乘上）。
+Float Function ReactDamage(Int aiElement, Float afK)
+	Return BaseMax(aiElement) * afK * GetDamageMult(aiElement)
+EndFunction
 
 ; M_mod：本模組節點加成合計。技能樹屬機制前線，本前線只提供環境加成與血位倍率，
 ; 之後的節點加成接在同一個函式裡，公式其他項不必改（規劃 2.7）。
 Float Function GetDamageMult(Int aiElement)
 	Float mult = 1.0
-	; 5.8 持續熟練分支「飲血」的 10 秒「嗜血」：命中效果 +20%，不受血位影響。
-	If (BloodthirstLeft > 0 && BloodthirstLeft > Utility.GetCurrentRealTime())
-		mult = mult * 1.2
-	EndIf
+	; 5.8 飲血的 10 秒「嗜血」（命中效果 +20%）round 24 起是 DLL 在死亡 sink 掛在你身上的效果，DLL 的反應讀它。
 	If aiElement == 6
 		mult = mult * GetBloodHitMult()
 	ElseIf aiElement == 7 && EnvNight.GetValueInt() == 0
@@ -1865,41 +1530,6 @@ Float Function BloodHitCurve(Float percent)
 	Return 0.6
 EndFunction
 
-; 吸血比例（占附傷）：100% 5%、70% 15%、30% 35%、10% 50%，線性內插。
-; 5.8 持續專精主線「吸血比例各血位 +1%／點」、大師分支「血怒」+15%、飲血的「嗜血」+10%。
-Float Function GetBloodLeechRatio()
-	Actor player = ThePlayer()
-	If !player
-		Return 0.05
-	EndIf
-	Float ratio = BloodLeechCurve(BloodPercent())
-	ratio = ratio + 0.01 * ESSBNodes.Rank(Self, 5, 0, 2) ; @node 吸血比例各血位
-	Float raw = player.GetActorValuePercentage("Health")
-	If ESSBNodes.Br(Self, 5, 0, 3, 1) && raw >= 0.3 && raw <= 0.7 ; @node 血怒
-		ratio = ratio + 0.15
-	EndIf
-	If (BloodthirstLeft > 0 && BloodthirstLeft > Utility.GetCurrentRealTime())
-		ratio = ratio + 0.10
-	EndIf
-	If ratio > 1.0
-		ratio = 1.0
-	EndIf
-	Return ratio
-EndFunction
-
-Float Function BloodLeechCurve(Float percent)
-	If percent >= 1.0
-		Return 0.05
-	ElseIf percent >= 0.7
-		Return 0.15 - (percent - 0.7) * 0.3333
-	ElseIf percent >= 0.3
-		Return 0.35 - (percent - 0.3) * 0.5
-	ElseIf percent >= 0.1
-		Return 0.50 - (percent - 0.1) * 0.75
-	EndIf
-	Return 0.5
-EndFunction
-
 ; ---------------------------------------------------------------- 血形態的損血與吸血（規劃 1.1）
 
 ; 損血曲線（占最大生命）：維持每秒 100% 1.0%／70% 0.6%／30% 0.2%／10% 0，
@@ -1980,25 +1610,6 @@ Function PayBloodCost(Float afPercentOfMax)
 	EndIf
 EndFunction
 
-; 反應的吸血回血（開印、血潮；命中吸血 round 20 起在 DLL）。
-Function Leech(Float afAmount)
-	Actor player = ThePlayer()
-	If !player || afAmount <= 0.0
-		Return
-	EndIf
-	afAmount = RecoveryAmount(afAmount)
-	Float missing = player.GetActorValueMax("Health") - player.GetActorValue("Health")
-	Float heal = afAmount
-	If heal > missing
-		heal = missing
-	EndIf
-	If heal > 0.0
-		ApplyUtil(4, heal, 0, player, True)
-	EndIf
-	; round 20：同一格的節點在 v0.4 是「血溢」（命中吸血的溢出灌進護血池，由 DLL 做）。反應的回血
-	;（開印、血潮）到 N3 進 DLL 之前，溢出不灌池。
-EndFunction
-
 ; ---------------------------------------------------------------- 同調
 
 ; round 23 (N4)：同調是 DLL 掛在你身上的效果；命中 +1、開印的同調、門檻（同調門檻、專一）、升段的 ESSB_SyncUp 與
@@ -2008,18 +1619,6 @@ Function AddSync(Int aiAmount)
 	If player && aiAmount > 0
 		ESSBNative.AddStatus(player, 40, aiAmount)
 	EndIf
-EndFunction
-
-Float Function SyncMult()
-	Int stage = SyncStage()
-	If stage == 3
-		Return 3.0
-	ElseIf stage == 2
-		Return 2.0
-	ElseIf stage == 1
-		Return 1.5
-	EndIf
-	Return 1.0
 EndFunction
 
 ; 同調升段：光暈與武器發光屬特效前線，這裡先送模組事件與紀錄。
@@ -2159,6 +1758,19 @@ Bool Function IsValidTarget(Actor akTarget)
 	Return False
 EndFunction
 
+; 2.9 必要角色（審查修正 2）：essential 的角色（參照或本體）。只有它們不會被跌倒、復生、化灰；有名字的（unique／protected）
+; 敵人不豁免（首領的碎冰、沉默減半、血潮 3% 照舊讀 IsVIPTarget）。任務物件別名由 DLL 判定（Papyrus 讀不到）。
+Bool Function IsEssentialTarget(Actor akTarget)
+	If !akTarget
+		Return False
+	EndIf
+	If akTarget.IsEssential()
+		Return True
+	EndIf
+	ActorBase base = akTarget.GetActorBase()
+	Return base && base.IsEssential()
+EndFunction
+
 Bool Function IsVIPTarget(Actor akTarget)
 	If !akTarget
 		Return False
@@ -2243,22 +1855,6 @@ Actor[] Function ScanTargets(ObjectReference akCenter, Float afRadius, Int aiMax
 	Return result
 EndFunction
 
-; 毒的擴散：每個帶毒目標每次只找一個對象，不做全場掃描（規劃 2.7）。狀態碼 25＝擴散一劑：
-; m' = m + 劑數、d' = max(d - t, 12)（審查修正 5；命中的 +3 秒規則是碼 7）。
-Function SpreadPoison(Actor akFrom, Int aiAmount, Int aiTargets = 1)
-	If !akFrom
-		Return
-	EndIf
-	Actor[] nearby = ScanTargets(akFrom, 210.0, aiTargets, akFrom)
-	Int index = 0
-	While index < nearby.Length
-		If nearby[index] && aiAmount > 0
-			ESSBNative.AddStatus(nearby[index], 25, aiAmount)
-		EndIf
-		index += 1
-	EndWhile
-EndFunction
-
 ; ---------------------------------------------------------------- 每秒 tick 與環境
 
 Function Tick()
@@ -2309,8 +1905,7 @@ Function Tick()
 
 	RefreshDivineProtection()
 	TickTimers()
-	; 印記與目標狀態的過期由 DLL 讀引擎效果的時長結算（ESSB_End 理由 2）；這裡只剩擊殺掛勾的保底。
-	SettleStaleKills(now)
+	; 印記與目標狀態的過期由 DLL 讀引擎效果的時長結算（ESSB_End 理由 2）；死亡處理 round 24 起在 DLL 的死亡 sink。
 
 	; 5.2 持續傳奇主線「化身」是 DLL N4（冷卻後的下一次命中觸發該元素的持續傳奇；被動數值改為 10 秒視同已取得）。
 	; v0.3「每 N 秒自動施放一次」的近似已拿掉。
@@ -2346,7 +1941,7 @@ Function Tick()
 	EndIf
 
 	Float delay = 5.0
-	If FormActive.GetValueInt() == 1 || TimersActive() || KillPending()
+	If FormActive.GetValueInt() == 1 || TimersActive()
 		delay = 1.0
 	EndIf
 	NextTickAt = 0.0
@@ -2388,12 +1983,6 @@ Function TickTimers()
 		EndIf
 		SetGlobal(GGuardSwitch, SecondsLeft(GuardSwitchLeft))
 	EndIf
-	If GuardBurstLeft > 0
-		If now >= GuardBurstLeft
-			GuardBurstLeft = 0.0
-		EndIf
-		SetGlobal(GGuardBurst, SecondsLeft(GuardBurstLeft))
-	EndIf
 	If GuardIceLeft > 0
 		If now >= GuardIceLeft
 			GuardIceLeft = 0.0
@@ -2401,12 +1990,6 @@ Function TickTimers()
 		SetGlobal(GGuardIce, SecondsLeft(GuardIceLeft))
 	EndIf
 	; ---- round 2 的秒計時器
-	If BloodthirstLeft > 0
-		If now >= BloodthirstLeft
-			BloodthirstLeft = 0.0
-		EndIf
-		SetGlobal(GBloodthirst, SecondsLeft(BloodthirstLeft))
-	EndIf
 	If GuardWindLeft > 0
 		If now >= GuardWindLeft
 			GuardWindLeft = 0.0
@@ -2440,11 +2023,6 @@ Function TickTimers()
 			If sneaker
 				PO3_SKSEFunctions.ResetActorDetection(sneaker)
 			EndIf
-		EndIf
-	EndIf
-	If DoubleBurstLeft > 0
-		If now >= DoubleBurstLeft
-			DoubleBurstLeft = 0.0
 		EndIf
 	EndIf
 	; ---- round 3 的秒計時器
@@ -2489,10 +2067,10 @@ Bool Function TimersActive()
 	If (GuardDarkLeft > 0 && GuardDarkLeft > Utility.GetCurrentRealTime()) || (GuardAstralLeft > 0 && GuardAstralLeft > Utility.GetCurrentRealTime()) || (GuardStarLeft > 0 && GuardStarLeft > Utility.GetCurrentRealTime()) || WaterMirror > 0
 		Return True
 	EndIf
-	If (GuardSwitchLeft > 0 && GuardSwitchLeft > Utility.GetCurrentRealTime()) || (GuardBurstLeft > 0 && GuardBurstLeft > Utility.GetCurrentRealTime()) || (GuardIceLeft > 0 && GuardIceLeft > Utility.GetCurrentRealTime()) || (SyncKeepLeft > 0 && SyncKeepLeft > Utility.GetCurrentRealTime()) 		|| ComboHits > 0
+	If (GuardSwitchLeft > 0 && GuardSwitchLeft > Utility.GetCurrentRealTime()) || (GuardIceLeft > 0 && GuardIceLeft > Utility.GetCurrentRealTime()) || (SyncKeepLeft > 0 && SyncKeepLeft > Utility.GetCurrentRealTime()) 		|| ComboHits > 0
 		Return True
 	EndIf
-	If (BloodthirstLeft > 0 && BloodthirstLeft > Utility.GetCurrentRealTime()) || (GuardWindLeft > 0 && GuardWindLeft > Utility.GetCurrentRealTime()) || (GuardDivineLeft > 0 && GuardDivineLeft > Utility.GetCurrentRealTime()) || (CloakGuardLeft > 0 && CloakGuardLeft > Utility.GetCurrentRealTime())
+	If (GuardWindLeft > 0 && GuardWindLeft > Utility.GetCurrentRealTime()) || (GuardDivineLeft > 0 && GuardDivineLeft > Utility.GetCurrentRealTime()) || (CloakGuardLeft > 0 && CloakGuardLeft > Utility.GetCurrentRealTime())
 		Return True
 	EndIf
 	Return (NoBloodCostLeft > 0 && NoBloodCostLeft > Utility.GetCurrentRealTime()) || (KeepSneakLeft > 0 && KeepSneakLeft > Utility.GetCurrentRealTime()) 		|| DivineSaveUsed
@@ -2623,23 +2201,11 @@ Function SetGuardSwitch(Int aiSeconds)
 	ApplyGuardWindow(0, GuardSwitchLeft)
 EndFunction
 
-Function SetGuardBurst(Int aiSeconds)
-	aiSeconds = DurationInt(aiSeconds)
-	GuardBurstLeft = Utility.GetCurrentRealTime() + aiSeconds
-	SetGlobal(GGuardBurst, SecondsLeft(GuardBurstLeft))
-	ApplyGuardWindow(1, GuardBurstLeft)
-EndFunction
-
 Function SetGuardIce(Int aiSeconds)
 	aiSeconds = DurationInt(aiSeconds)
 	GuardIceLeft = Utility.GetCurrentRealTime() + aiSeconds
 	SetGlobal(GGuardIce, SecondsLeft(GuardIceLeft))
 	ApplyGuardWindow(2, GuardIceLeft)
-EndFunction
-
-Function SetDoubleBurst(Int aiSeconds)
-	aiSeconds = DurationInt(aiSeconds)
-	DoubleBurstLeft = Utility.GetCurrentRealTime() + aiSeconds
 EndFunction
 
 Function SetFreeOpen(Int aiValue)
@@ -2683,19 +2249,6 @@ Bool Function HasElementMark(Actor akTarget, Int aiElement)
 		Return False
 	EndIf
 	Return akTarget.HasMagicEffectWithKeyword(mark)
-EndFunction
-
-; 離玩家最近、帶指定元素印記的目標（雷神用）。
-Actor Function NearestMarked(Int aiElement)
-	Actor player = ThePlayer()
-	If !player || aiElement < 1 || aiElement > 11
-		Return None
-	EndIf
-	Actor[] found = ESSBNative.MarkedNear(player, 7000.0, 1, aiElement)
-	If found && found.Length > 0
-		Return found[0]
-	EndIf
-	Return None
 EndFunction
 
 ; ---- 領域（火域、冰原）
@@ -2882,7 +2435,7 @@ Function TickDomain()
 					If element == 10
 						; 5.12 關閉傳奇分支「死域」：內部敵人無法被治療、每秒受 B_max ×0.5 暗傷。
 						ApplyUtil(20, 100.0, 2, victim)
-						ApplyDotDamage(10, ESSBReactions.ReactDamage(Self, 10, 0.5) * ticks, victim)
+						ApplyDotDamage(10, ReactDamage(10, 0.5) * ticks, victim)
 					EndIf
 				EndIf
 				index += 1
@@ -3161,23 +2714,6 @@ Function SetAirborne(Actor akTarget, Int aiSeconds, Float afDamage)
 	ESSBNative.SetWindow(akTarget, 36, aiSeconds as Float, afDamage)
 EndFunction
 
-Int Function GetAirborne(Actor akTarget)
-	If !akTarget
-		Return 0
-	EndIf
-	Return ESSBNative.GetStatus(akTarget, 14)
-EndFunction
-
-; 浮空到期（ESSB_Landing）：落地傷害（5.7 關閉傳奇主線）。
-Function OnLanding(Actor akTarget, Float afAmount)
-	If afAmount > 0.0
-		ApplyDamage(5, afAmount, akTarget)
-		If CachedDebugLevel >= 1
-			LogThrottled(1, "land", akTarget.GetFormID() + " amount=" + afAmount)
-		EndIf
-	EndIf
-EndFunction
-
 ; ---- 聖盾、嗜血、各種視窗
 Int Function GetHolyShield()
 	Return HolyShield
@@ -3189,22 +2725,6 @@ Function AddHolyShield(Int aiAmount)
 		HolyShield = 5
 	EndIf
 	GHolyShield.SetValueInt(HolyShield)
-EndFunction
-
-Function SetBloodthirst(Int aiSeconds)
-	; DLL 讀你身上的嗜血效果（命中效果 +20%）；Papyrus 的反應本體讀這裡的計時（GetDamageMult）。
-	Actor player = ThePlayer()
-	If player
-		ESSBNative.SetWindow(player, 30, aiSeconds as Float, 0.0)
-	EndIf
-	aiSeconds = DurationInt(aiSeconds)
-	BloodthirstLeft = Utility.GetCurrentRealTime() + aiSeconds
-	SetGlobal(GBloodthirst, SecondsLeft(BloodthirstLeft))
-	RefreshSyncStage()
-EndFunction
-
-Int Function GetBloodthirst()
-	Return SecondsLeft(BloodthirstLeft)
 EndFunction
 
 ; 殘影（5.7）與破護（5.1）的視窗 round 23 起是 DLL 在受擊時掛的效果（ESSB_N4_AfterimageEffect、ESSB_N4_CloakGuardEffect），
@@ -3396,10 +2916,8 @@ Function ApplyStrip(Actor akTarget, Bool abEverySecond = False)
 	If !abEverySecond && !TakePush(akTarget, 2)
 		Return
 	EndIf
-	Int washed = ESSBNative.WashBuffs(akTarget, 1)
-	If CachedDebugLevel >= 1
-		LogThrottled(1, "strip", akTarget.GetFormID() + " washed=" + washed)
-	EndIf
+	; 審查修正 1：排進 DLL 的 task；驅散了幾個寫在 DLL 的 [strip] 行。
+	ESSBNative.WashBuffs(akTarget, 1)
 EndFunction
 
 ; ---------------------------------------------------------------- 特效（規劃 2.11、2.12）
@@ -3558,9 +3076,9 @@ Bool Function CanReanimate(Actor akTarget)
 		EndIf
 		Return False
 	EndIf
-	If IsVIPTarget(akTarget)
+	If IsEssentialTarget(akTarget)
 		If CachedDebugLevel >= 2
-			LogThrottled(2, "reanimate-reject", "reason=can-reanimate-vip")
+			LogThrottled(2, "reanimate-reject", "reason=can-reanimate-essential")
 		EndIf
 		Return False
 	EndIf
@@ -3579,7 +3097,7 @@ Bool Function CanReanimate(Actor akTarget)
 	Return True
 EndFunction
 
-Bool Function ApplyReanimate(Actor akTarget, Int aiLevelCap, Int aiSeconds)
+Bool Function ApplyReanimate(Actor akTarget, Int aiLevelCap, Int aiSeconds, Float afAttack = 0.0)
 	; Claim the transaction before native/cross-script calls release our lock.
 	If ReanimateBusy
 		If CachedDebugLevel >= 2
@@ -3630,6 +3148,10 @@ Bool Function ApplyReanimate(Actor akTarget, Int aiLevelCap, Int aiSeconds)
 	PendingServantDue[slot] = Utility.GetCurrentRealTime() + 5.0
 	ReanimateSpell.SetNthEffectMagnitude(0, aiLevelCap as Float)
 	ReanimateSpell.SetNthEffectDuration(0, DurationInt(aiSeconds))
+	; 審查修正 3：僕從攻擊加成是同一個法術的第二個效果（AttackDamageMult 的 Peak Value Modifier）：跟復生一起結束，
+	; 再復生一次是重新套用，不會疊加；0 就是沒有加成。
+	ReanimateSpell.SetNthEffectMagnitude(1, afAttack)
+	ReanimateSpell.SetNthEffectDuration(1, DurationInt(aiSeconds))
 	player.DoCombatSpellApply(ReanimateSpell, akTarget)
 	ReanimateBusy = False
 	If CachedDebugLevel >= 1
@@ -3646,89 +3168,6 @@ Bool Function IsPoisoned(Actor akTarget)
 	Return akTarget.HasMagicEffectWithKeyword(HarmfulKeyword)
 EndFunction
 
-; ---- 化灰與血承
-; FIX14: bounded per-actor recent damage survives registry eviction; no current-form fallback.
-Int Function LastDamageFor(Actor akTarget)
-	If !akTarget || !DamageActor || !DamageTime
-		Return 0
-	EndIf
-	Float now = Utility.GetCurrentRealTime()
-	Int i = 0
-	While i < 128
-		If DamageActor[i] == akTarget
-			Float age = now - DamageTime[i]
-			If DamageElement[i] >= 1 && age >= 0.0 && age <= ESSBState.KillAttributionSeconds()
-				Return DamageElement[i]
-			EndIf
-			Return 0
-		EndIf
-		i += 1
-	EndWhile
-	Return 0
-EndFunction
-
-Bool Function LastDamageWasElement(Actor akTarget, Int aiElement)
-	Return LastDamageFor(akTarget) == aiElement
-EndFunction
-
-Int Function NoteDamageElement(Actor akTarget, Int aiElement, Int aiDamageSlot = -1)
-	If !akTarget || !DamageActor
-		Return -1
-	EndIf
-	If aiDamageSlot >= 0 && DamageActor[aiDamageSlot] == akTarget
-		If aiElement >= 0
-			DamageElement[aiDamageSlot] = aiElement
-		EndIf
-		Return aiDamageSlot
-	EndIf
-	Int i = 0
-	While i < 128
-		If DamageActor[i] == akTarget
-			If aiElement >= 0
-				DamageElement[i] = aiElement
-			EndIf
-			Return i
-		EndIf
-		i += 1
-	EndWhile
-	Int assigned = DamageNext
-	DamageActor[DamageNext] = akTarget
-	DamageElement[DamageNext] = 0
-	DamageTime[DamageNext] = -1.0
-	If aiElement >= 0
-		DamageElement[DamageNext] = aiElement
-	EndIf
-	DamageNext = (DamageNext + 1) % 128
-	Return assigned
-EndFunction
-
-; All damaging spells are instant contact/self delivery (DELIVERY build gate).
-; FIX14: publish before native delivery for lethal callback ordering; keep nonlethal damage.
-; No health loss rolls back the provisional record. Never infer an element from form.
-Function ApplyTrackedDamage(Actor player, Spell akSpell, Actor akTarget, Int aiElement)
-	If StateBroken || !Ready || !player || !akSpell || !akTarget
-		Return
-	EndIf
-	Float beforeHealth = akTarget.GetActorValue("Health")
-	If akTarget.IsDead() || beforeHealth <= 0.0 || !IsOperational()
-		Return
-	EndIf
-	Int damageSlot = NoteDamageElement(akTarget, -1)
-	If damageSlot < 0
-		Return
-	EndIf
-	Int previous = DamageElement[damageSlot]
-	Float previousTime = DamageTime[damageSlot]
-	Float now = Utility.GetCurrentRealTime()
-	DamageElement[damageSlot] = aiElement
-	DamageTime[damageSlot] = now
-	player.DoCombatSpellApply(akSpell, akTarget)
-	If akTarget.GetActorValue("Health") >= beforeHealth && DamageActor[damageSlot] == akTarget && DamageTime[damageSlot] == now && DamageElement[damageSlot] == aiElement
-		DamageElement[damageSlot] = previous
-		DamageTime[damageSlot] = previousTime
-	EndIf
-EndFunction
-
 Bool Function ApplyAsh(Actor akTarget)
 	Actor player = ThePlayer()
 	If !player || !AshSpell || !akTarget
@@ -3737,47 +3176,22 @@ Bool Function ApplyAsh(Actor akTarget)
 		EndIf
 		Return False
 	EndIf
-	; 規劃 8：龍不受崩解，原版即如此；必要角色也不化灰（規劃 2.9 的例外欄）。
+	; 規劃 8：龍不受崩解，原版即如此；必要角色也不化灰（規劃 2.9 的例外欄；有名字的敵人照樣化灰，審查修正 2）。
 	If DragonKeyword && akTarget.HasKeyword(DragonKeyword)
 		If CachedDebugLevel >= 2
 			LogThrottled(2, "ash-reject", "reason=apply-dragon")
 		EndIf
 		Return False
 	EndIf
-	If IsVIPTarget(akTarget)
+	If IsEssentialTarget(akTarget)
 		If CachedDebugLevel >= 2
-			LogThrottled(2, "ash-reject", "reason=apply-vip")
+			LogThrottled(2, "ash-reject", "reason=apply-essential")
 		EndIf
 		Return False
 	EndIf
 	AshSpell.SetNthEffectMagnitude(0, akTarget.GetActorValueMax("Health") + 100.0)
 	player.DoCombatSpellApply(AshSpell, akTarget)
 	Return True
-EndFunction
-
-; 5.8 持續專精分支「血承」：擊殺流血目標時吸收其屬性 15 秒，只保留最近一個。
-; 七個效果的 magnitude 在施放前一次設定完（火冰電毒魔抗各 50%、護甲 20%、最大生命 10%）。
-Function ApplyInherit(Actor akVictim)
-	Actor player = ThePlayer()
-	If !player || !InheritSpell || !akVictim
-		Return
-	EndIf
-	InheritSpell.SetNthEffectMagnitude(0, akVictim.GetActorValue("FireResist") * 0.5)
-	InheritSpell.SetNthEffectMagnitude(1, akVictim.GetActorValue("FrostResist") * 0.5)
-	InheritSpell.SetNthEffectMagnitude(2, akVictim.GetActorValue("ElectricResist") * 0.5)
-	InheritSpell.SetNthEffectMagnitude(3, akVictim.GetActorValue("PoisonResist") * 0.5)
-	InheritSpell.SetNthEffectMagnitude(4, akVictim.GetActorValue("MagicResist") * 0.5)
-	InheritSpell.SetNthEffectMagnitude(5, RecoveryAmount(akVictim.GetActorValue("DamageResist") * 0.2))
-	InheritSpell.SetNthEffectMagnitude(6, RecoveryAmount(akVictim.GetActorValueMax("Health") * 0.1))
-	Int effect = 0
-	While effect < 7
-		InheritSpell.SetNthEffectDuration(effect, DurationInt(15))
-		effect += 1
-	EndWhile
-	player.DoCombatSpellApply(InheritSpell, player)
-	If CachedDebugLevel >= 1
-		LogThrottled(1, "node", "blood inherit from " + akVictim.GetFormID())
-	EndIf
 EndFunction
 
 ; 規劃 8「死靈施法者」判定：原版沒有關鍵字，本模組取三個候選的聯集——
@@ -3796,148 +3210,6 @@ Bool Function IsNecromancer(Actor akTarget)
 	EndIf
 	Actor[] thralls = PO3_SKSEFunctions.GetCommandedActors(akTarget)
 	Return thralls && thralls.Length > 0
-EndFunction
-
-; ---- 擊殺事件
-; 致死元素：最近 3 秒內的本模組傷害優先；沒有時取死亡快照裡的印記（形態元素的印記優先，其次元素序最小的）。
-Int Function KillElementFor(Actor akVictim, Int aiMarks)
-	Int recent = LastDamageFor(akVictim)
-	If recent >= 1
-		Return recent
-	EndIf
-	If aiMarks == 0
-		Return 0
-	EndIf
-	Int current = CurrentElement.GetValueInt()
-	If FormActive.GetValueInt() == 1 && HasMarkBit(aiMarks, current)
-		Return current
-	EndIf
-	Int element = 1
-	While element <= 11
-		If HasMarkBit(aiMarks, element)
-			Return element
-		EndIf
-		element += 1
-	EndWhile
-	Return 0
-EndFunction
-
-Bool Function HasMarkBit(Int aiMarks, Int aiElement)
-	Return aiElement >= 1 && aiElement <= 11 && Math.LogicalAnd(aiMarks, Math.LeftShift(1, aiElement)) != 0
-EndFunction
-
-; PO3 的擊殺回報（ESSBGuard 的 OnActorKilled）。DLL 的死亡快照已經到了就立刻結算，否則等快照（OnESSBDeath），
-; 1 秒內都沒來就以空快照結算（SettleStaleKills）。
-Function OnKillEvent(Actor akVictim, Actor akKiller = None)
-	If !IsOperational()
-		Return
-	EndIf
-	InitFixState()
-	If !IsCurrentController() || StateBroken
-		Return
-	EndIf
-	If !akVictim || akKiller != ThePlayer()
-		Return
-	EndIf
-	If NativeHit.GetValueInt() != 1 || HasDeathSnapshot(akVictim)
-		SettleKill(akVictim)
-		Return
-	EndIf
-	Int i = 0
-	While i < 4
-		If PendingKillActor[i] == akVictim
-			Return
-		EndIf
-		i += 1
-	EndWhile
-	PendingKillActor[PendingKillNext] = akVictim
-	PendingKillAt[PendingKillNext] = Utility.GetCurrentRealTime()
-	PendingKillNext = (PendingKillNext + 1) % 4
-	ScheduleTick(1.0)
-EndFunction
-
-Bool Function HasDeathSnapshot(Actor akVictim)
-	Int i = 0
-	While i < 8
-		If DeadActor[i] == akVictim
-			Return True
-		EndIf
-		i += 1
-	EndWhile
-	Return False
-EndFunction
-
-; 擊殺掛勾（連鎖冰封、飲血、血承、化灰、連殺、焚化、噬魂）：每個死者只結算一次。
-Function SettleKill(Actor akVictim)
-	Int index = 0
-	While index < 8
-		If SettledDead[index] == akVictim
-			Return
-		EndIf
-		index += 1
-	EndWhile
-	; Claim before calling any other script: repeated events cannot grant twice.
-	Int settlement = SettledNext
-	SettledElement[settlement] = 0
-	SettledDead[settlement] = akVictim
-	SettledNext = (SettledNext + 1) % 8
-	index = 0
-	While index < 4
-		If PendingKillActor[index] == akVictim
-			PendingKillActor[index] = None
-		EndIf
-		index += 1
-	EndWhile
-	Int element = LastDamageFor(akVictim)
-	Int marks = 0
-	Int freeze = 0
-	Int bleed = 0
-	index = 0
-	While index < 8
-		If DeadActor[index] == akVictim
-			element = DeadElement[index]
-			marks = DeadMarks[index]
-			freeze = DeadFreeze[index]
-			bleed = DeadBleed[index]
-			DeadActor[index] = None
-		EndIf
-		index += 1
-	EndWhile
-	SettledElement[settlement] = element
-	; v0.4 5.9：帶神聖印記死亡即化灰，不看致死元素；其餘照致死元素（ShouldAsh，含淨土）。
-	Bool ash = ESSBElem2.ShouldAsh(Self, element) || HasMarkBit(marks, 7)
-	ESSBElem.OnKill(Self, element, akVictim, freeze)
-	ESSBElem2.OnKill(Self, element, akVictim, bleed, element, ash)
-	; v0.3 的毒「蔓延」、暗「收割」「亡者歸來」、無元素「無魔」擊殺掛勾在 v0.4 是死亡處理（DLL N5）或已移除。
-	SettleSneakKill(akVictim, element)
-	SettleKillProc(akVictim)
-	If CachedDebugLevel >= 1
-		LogThrottled(1, "kill", akVictim.GetFormID() + " element=" + element + " marks=" + marks)
-	EndIf
-EndFunction
-
-; PO3 回報了擊殺、DLL 的快照 1 秒內沒來（目標身上沒有任何本模組狀態）：以空快照結算。
-Function SettleStaleKills(Float afNow)
-	Int i = 0
-	While i < 4
-		Actor victim = PendingKillActor[i]
-		If victim && afNow - PendingKillAt[i] >= 1.0
-			PendingKillActor[i] = None
-			SettleKill(victim)
-		EndIf
-		i += 1
-	EndWhile
-EndFunction
-
-Bool Function KillPending()
-	Int i = 0
-	While i < 4
-		If PendingKillActor[i]
-			Return True
-		EndIf
-		i += 1
-	EndWhile
-	Return False
 EndFunction
 
 ; ================================================================ DLL → 反應本體（ModEvent）
@@ -3967,7 +3239,8 @@ Int Function UnscaledSeconds(Float afSeconds)
 	Return seconds
 EndFunction
 
-; ESSB_Open：元素、開印倍率、這一擊切掉的元素（0 = 沒有）、1 = 命中開的印（ForceOpen 是 0）。
+; ESSB_Open：元素、開印倍率、這一擊切掉的元素（0 = 沒有）、1 = 命中開的印（強制開印是 0）。
+; round 24（N5）：開印的本體與各樹開印分支在 DLL（Reactions.h Bodies::Open）；這裡只給經驗（規劃 4）。
 Event OnESSBOpen(String asEventName, String asArgs, Float afElement, Form akSender)
 	Actor target = akSender as Actor
 	If !IsOperational() || !target || target.IsDead()
@@ -3982,11 +3255,15 @@ Event OnESSBOpen(String asEventName, String asArgs, Float afElement, Form akSend
 		; 規劃 4：開印給新印記元素樹 + 通用樹。
 		Trees.OnOpenXP(element)
 	EndIf
-	ESSBReactions.Open(Self, element, target, EventArg(args, 1), EventArg(args, 2) as Int, EventArg(args, 3) > 0.5)
+	If CachedDebugLevel >= 1
+		LogThrottled(1, "open", target.GetFormID() + " element=" + element + " mult=" + EventArg(args, 1) + " cut=" + (EventArg(args, 2) as Int))
+	EndIf
 EndEvent
 
 ; ESSB_End：元素、理由（0 被切 1 融斷 2 過期）、終焉倍率（round 23：已乘協奏、三重奏、過載終焉）、旗標（1 連鎖終焉、
-; 2 切換後首次終焉）、三個 DLL 算好的值（ESSBReactions.End）、雷終焉放電用的電荷。
+; 2 切換後首次終焉）、三個 DLL 算好的值、雷終焉放電用的電荷（本體在 DLL 讀這些值，Papyrus 只讀元素、理由、倍率、旗標）。
+; round 24（N5）：終焉的本體、各樹終焉分支、連鎖終焉、大協奏、反哺都在 DLL（Reactions.h Bodies::End）；這裡只給經驗
+;（規劃 4）與放終焉的爆炸特效（規劃 2.12，每 0.5 秒 5 個的預算在 PlaceFx）。
 Event OnESSBEnd(String asEventName, String asArgs, Float afElement, Form akSender)
 	Actor target = akSender as Actor
 	If !IsOperational() || !target || target.IsDead()
@@ -3997,39 +3274,18 @@ Event OnESSBEnd(String asEventName, String asArgs, Float afElement, Form akSende
 	If element < 1 || element > 11
 		Return
 	EndIf
-	Int flags = (EventArg(args, 3) + 0.5) as Int
-	ESSBReactions.End(Self, element, target, EventArg(args, 1) as Int, EventArg(args, 2), Math.LogicalAnd(flags, 1) != 0, \
-		EventArg(args, 4), EventArg(args, 5), EventArg(args, 6), (EventArg(args, 7) + 0.5) as Int, Math.LogicalAnd(flags, 2) != 0)
+	If Trees
+		Trees.OnEndXP(element)
+	EndIf
+	PlaceFx(element, target)
+	If CachedDebugLevel >= 1
+		Int flags = (EventArg(args, 3) + 0.5) as Int
+		LogThrottled(1, "end", target.GetFormID() + " element=" + element + " reason=" + (EventArg(args, 1) as Int) \
+			+ " mult=" + EventArg(args, 2) + " chain=" + (Math.LogicalAnd(flags, 1) != 0))
+	EndIf
 EndEvent
 
 ; ---------------------------------------------------------------- round 23 (N4)：你的資源與受擊的本體
-
-; ESSB_Discharge：電荷數、倍率、重擊倍率 R、暴擊倍率（DLL 已擲；滿格重擊 ×2.5、雷暴、雷神、雷霆 ×0.3、餘電 ×0.5）。
-; 放電本體（每格 30% B_max、削魔、跳躍、天雷）在 ESSBElem.Discharge。
-Event OnESSBDischarge(String asEventName, String asArgs, Float afCharges, Form akSender)
-	Actor target = akSender as Actor
-	If !IsOperational() || !target || target.IsDead()
-		Return
-	EndIf
-	String[] args = StringUtil.Split(asArgs, "|")
-	Int charges = (EventArg(args, 0) + 0.5) as Int
-	ESSBElem.DischargeAll(Self, target, charges, EventArg(args, 1), False, EventArg(args, 2), -1.0, False, EventArg(args, 3))
-EndEvent
-
-; ESSB_Blade：段數、倍率（到門檻、疾風痕、先風、千刃、順勢；暗風的 ×2 已乘）。
-Event OnESSBBlade(String asEventName, String asArgs, Float afCount, Form akSender)
-	Actor target = akSender as Actor
-	If !IsOperational() || !target || target.IsDead()
-		Return
-	EndIf
-	String[] args = StringUtil.Split(asArgs, "|")
-	Int count = (EventArg(args, 0) + 0.5) as Int
-	Float mult = EventArg(args, 1)
-	While count > 0
-		ESSBElem2.WindBlade(Self, target, mult)
-		count -= 1
-	EndWhile
-EndEvent
 
 ; ESSB_Knock：推力（碎岩、反震 3.0，地動 2.0）。跌倒的推力與每目標 8 秒冷卻在 Knockdown；推不倒（龍、騎乘、必要角色）的
 ; 反震改為減速 30% 3 秒（原本 OnEarthRetaliate 的做法）。
@@ -4071,27 +3327,9 @@ Event OnESSBLethal(String asEventName, String asArgs, Float afUnused, Form akSen
 	OnLethalHitWhileArmed()
 EndEvent
 
-; ESSB_Frozen：冰封秒數（冰封期間的強減速與深寒）。
-Event OnESSBFrozen(String asEventName, String asArgs, Float afSeconds, Form akSender)
-	Actor target = akSender as Actor
-	If !IsOperational() || !target || target.IsDead()
-		Return
-	EndIf
-	ESSBElem.OnFrozen(Self, target, UnscaledSeconds(afSeconds))
-	; 5.4 開啟大師分支「霜爆」：目標進入冰封的那一刻，3 公尺內其他凍結量表 ≥1 的敵人凍結 +2（掃描 N5 前在這裡）。
-	If ESSBNodes.Br(Self, 1, 1, 3, 2) ; @node 霜爆
-		Actor[] near = ScanTargets(target, 210.0, 5, target)
-		Int index = 0
-		While index < near.Length
-			If near[index] && ESSBNative.GetStatus(near[index], 2) >= 1
-				AddStackTo(near[index], 2, 2)
-			EndIf
-			index += 1
-		EndWhile
-	EndIf
-EndEvent
-
-; ESSB_Hallucinate：1 恐懼 / 2 瘋狂、秒數（DLL 已比過詛咒門檻與冷卻）。控不到的目標改為 3 秒幻視：攻擊 -20%（v0.4 5.12）。
+; ESSB_Hallucinate：1 恐懼 / 2 瘋狂、秒數（DLL 已比過詛咒門檻與冷卻、乘過持續時間）、1 = 群體（群魔、亡魂、暗臨強化）。
+; 控不到的目標改為 3 秒幻視：攻擊 -20%（v0.4 5.12，只給詛咒階梯本身）；群體的那一份控不到就跳過。
+; round 24（N5）：夢魘（恐懼時 3 公尺內詛咒 +1）與群魔（4 公尺內一起瘋狂）的範圍在 DLL（Reactions.h Bodies::Hallucinate）。
 Event OnESSBHallucinate(String asEventName, String asArgs, Float afKind, Form akSender)
 	Actor target = akSender as Actor
 	If !IsOperational() || !target || target.IsDead()
@@ -4101,6 +3339,9 @@ Event OnESSBHallucinate(String asEventName, String asArgs, Float afKind, Form ak
 	Int kind = EventArg(args, 0) as Int
 	Float seconds = EventArg(args, 1)
 	If !CanCharm(target)
+		If EventArg(args, 2) > 0.5
+			Return
+		EndIf
 		; v0.4 第 1380 行：幻視 3 秒、攻擊 -20%＝攻擊傷害倍率 ×0.8（AttackDamageMult -0.2），不是平減 MeleeDamage。
 		Actor visionCaster = ThePlayer()
 		If VisionSpell && visionCaster
@@ -4117,158 +3358,95 @@ Event OnESSBHallucinate(String asEventName, String asArgs, Float afKind, Form ak
 	EndIf
 	If kind == 2
 		ApplyFrenzy(target, whole, True)
-		; 5.12 開啟傳奇分支「群魔」：同調三段時，目標達到瘋狂門檻那一刻，4 公尺內所有詛咒 ≥3 層的敵人一起瘋狂 3 秒
-		;（各自的瘋狂冷卻照算；掃描 N5 前在這裡）。
-		If ESSBNodes.Br(Self, 9, 1, 4, 0) && SyncStage() >= 3 ; @node 群魔
-			Actor[] crowd = ScanTargets(target, 280.0, 5, target)
-			Int index = 0
-			While index < crowd.Length
-				Actor other = crowd[index]
-				If other && ESSBNative.GetStatus(other, 10) >= 3 && ESSBNative.GetStatus(other, 24) == 0 && CanCharm(other)
-					ApplyFrenzy(other, 3)
-					ESSBNative.SetWindow(other, 37, 20.0, 0.0)
-				EndIf
-				index += 1
-			EndWhile
-		EndIf
 	Else
 		ApplyFear(target, whole, True)
-		; 5.12 開啟新手分支「夢魘」：目標恐懼時，3 公尺內其他敵人詛咒 +1（每次恐懼一次；掃描 N5 前在這裡）。
-		If ESSBNodes.Br(Self, 9, 1, 0, 0) ; @node 夢魘
-			Actor[] near = ScanTargets(target, 210.0, 5, target)
-			Int index = 0
-			While index < near.Length
-				If near[index]
-					AddStackTo(near[index], 10, 1)
-				EndIf
-				index += 1
-			EndWhile
-		EndIf
 	EndIf
 EndEvent
 
-; ESSB_Judgment：聖裁在聖佑 II／III 時的破防：目標護甲 -60、魔抗 -10%，5 秒（v0.4 5.9；III 的 3 公尺聖光爆是範圍掃描，N5）。
-Event OnESSBJudgment(String asEventName, String asArgs, Float afTier, Form akSender)
+; ---------------------------------------------------------------- round 24 (N5)：DLL 的本體留給 Papyrus 的那一半（裁定 R4）
+
+; ESSB_Push：種類（1 吹飛、2 拉近你、3 拉向中心、4 吹上天）、公尺、落地傷害（吹上天：B_max × 落地倍率，G 與目標倍率在
+; 落地時由 DLL 乘）、中心的 FormID（風渦：被終焉的目標）、1 = 推不動時減速 30% 3 秒（吹飛、吹上天、颶風）。
+; 推力的每目標冷卻與免疫名單照舊在 Knockdown／BlowBack／PullTo／LiftUp。
+Event OnESSBPush(String asEventName, String asArgs, Float afKind, Form akSender)
 	Actor target = akSender as Actor
 	If !IsOperational() || !target || target.IsDead()
-		Return
-	EndIf
-	ApplyUtil(1, 60.0, 5, target)
-	ApplyUtil(16, 10.0, 5, target)
-	If CachedDebugLevel >= 1
-		LogThrottled(1, "judgment", target.GetFormID() + " tier=" + (afTier as Int))
-	EndIf
-EndEvent
-
-; ESSB_Splash：往下越線的濺血（v0.4 5.8）：15 公尺內所有流血目標（最多 5）立即結算一次 ×0.5 血潮，不清除血痕
-;（掃描 N5 前在這裡）。
-Event OnESSBSplash(String asEventName, String asArgs, Float afRemaining, Form akSender)
-	If !IsOperational()
-		Return
-	EndIf
-	Splash()
-EndEvent
-
-Function Splash()
-	Actor player = ThePlayer()
-	If !player
-		Return
-	EndIf
-	Actor[] bleeding = ScanTargets(player, 1050.0, 5, None)
-	Int index = 0
-	While index < bleeding.Length
-		If bleeding[index] && ESSBNative.GetStatus(bleeding[index], 5) > 0
-			ESSBReactions.SurgeOn(Self, bleeding[index], 0.5, False)
-		EndIf
-		index += 1
-	EndWhile
-EndFunction
-
-; ESSB_Rise：往上越線（回湧本身是 N4）。5.8 關閉專精分支「血約」：15 公尺內所有流血目標血痕 +2 層（掃描 N5 前在這裡）。
-Event OnESSBRise(String asEventName, String asArgs, Float afUnused, Form akSender)
-	Actor player = ThePlayer()
-	If !IsOperational() || !player || !ESSBNodes.Br(Self, 5, 2, 2, 0) ; @node 血約
-		Return
-	EndIf
-	Actor[] bleeding = ScanTargets(player, 1050.0, 5, None)
-	Int index = 0
-	While index < bleeding.Length
-		If bleeding[index] && ESSBNative.GetStatus(bleeding[index], 5) > 0
-			AddStackTo(bleeding[index], 5, 2)
-		EndIf
-		index += 1
-	EndWhile
-EndEvent
-
-; ESSB_Shatter：碎冰之後的碎甲（1 命中碎冰、2 冰終焉碎冰；DLL 已結算真傷並結束冰封）。
-Event OnESSBShatter(String asEventName, String asArgs, Float afSource, Form akSender)
-	Actor target = akSender as Actor
-	If !IsOperational() || !target || target.IsDead()
-		Return
-	EndIf
-	ESSBElem.OnShatter(Self, target)
-EndEvent
-
-; ESSB_Landing：浮空到期，落地傷害。
-Event OnESSBLanding(String asEventName, String asArgs, Float afDamage, Form akSender)
-	Actor target = akSender as Actor
-	If !IsOperational() || !target || target.IsDead()
-		Return
-	EndIf
-	OnLanding(target, afDamage)
-EndEvent
-
-; ESSB_Death：DLL 在目標死亡、屍體還帶著效果時送出的快照：印記位元、凍結、血痕層、毒劑、詛咒、1 = 冰封中、
-; 1 = 冥蝕、1 = 玩家擊殺。玩家擊殺就結算擊殺掛勾；否則留給稍後到的 PO3 擊殺回報（OnKillEvent）。
-Event OnESSBDeath(String asEventName, String asArgs, Float afMarks, Form akSender)
-	Actor victim = akSender as Actor
-	If !IsOperational() || !victim
-		Return
-	EndIf
-	InitFixState()
-	If !IsCurrentController() || StateBroken
 		Return
 	EndIf
 	String[] args = StringUtil.Split(asArgs, "|")
-	Int marks = EventArg(args, 0) as Int
-	Int freeze = EventArg(args, 1) as Int
-	If EventArg(args, 5) > 0.5
-		; 冰封中死亡＝量表滿（連鎖冰封讀 5）。
-		freeze = 5
-	EndIf
-	Int slot = DeadNext
-	DeadActor[slot] = victim
-	DeadMarks[slot] = marks
-	DeadElement[slot] = KillElementFor(victim, marks)
-	DeadFreeze[slot] = freeze
-	DeadBleed[slot] = EventArg(args, 2) as Int
-	DeadNext = (DeadNext + 1) % 8
-	; round 23：DLL 在潛行命中時掛在目標身上的最後一擊標記（ESSB_N4_LastHitSneak，值＝形態元素，12＝未開形態），
-	; 屍體上讀到就當作這一擊是潛行攻擊（連殺讀它）。
-	Int sneakForm = (EventArg(args, 8) + 0.5) as Int
-	If sneakForm >= 1
-		Int fact = 0
-		While fact < 8
-			If HitActor[fact] == victim && !HitKillDone[fact]
-				HitSneak[fact] = True
-				If sneakForm <= 11
-					HitForm[fact] = sneakForm
-				EndIf
-			EndIf
-			fact += 1
-		EndWhile
-	EndIf
-	Bool pending = False
-	Int i = 0
-	While i < 4
-		If PendingKillActor[i] == victim
-			pending = True
+	Int kind = (EventArg(args, 0) + 0.5) as Int
+	Float metres = EventArg(args, 1)
+	Bool pushed = False
+	If kind == 1
+		pushed = BlowBack(target, metres)
+	ElseIf kind == 2
+		pushed = PullIn(target, metres)
+	ElseIf kind == 3
+		ObjectReference centre = None
+		If args && args.Length > 3
+			centre = Game.GetForm(args[3] as Int) as ObjectReference
 		EndIf
-		i += 1
-	EndWhile
-	If pending || EventArg(args, 7) > 0.5
-		SettleKill(victim)
+		If centre
+			pushed = PullTo(target, centre, metres)
+		EndIf
+	ElseIf kind == 4
+		pushed = LiftUp(target, metres, EventArg(args, 2))
 	EndIf
+	If !pushed && EventArg(args, 4) > 0.5
+		ApplyUtil(0, 30.0, 3, target)
+	EndIf
+EndEvent
+
+; ESSB_Ash：化灰（DLL 的死亡 sink 判定：帶神聖印記死亡，或淨土）。崩解是 Papyrus 的法術（龍與必要角色 DLL 已排除，
+; ApplyAsh 再擋一次）；聖灰、淨灰在 DLL。
+Event OnESSBAsh(String asEventName, String asArgs, Float afUnused, Form akSender)
+	Actor target = akSender as Actor
+	If !IsOperational() || !target
+		Return
+	EndIf
+	If ApplyAsh(target) && CachedDebugLevel >= 1
+		LogThrottled(1, "ash", target.GetFormID() + " turned to ash")
+	EndIf
+EndEvent
+
+; ESSB_Raise：亡者歸來（DLL 判定：階、等級上限、秒數、僕從攻擊加成、1 = 死靈主的永久）。復生的 AI、召喚上限與
+; 不可復生的名單在 ApplyReanimate／CanReanimate（裁定 R4）。
+Event OnESSBRaise(String asEventName, String asArgs, Float afTier, Form akSender)
+	Actor target = akSender as Actor
+	If !IsOperational() || !target
+		Return
+	EndIf
+	String[] args = StringUtil.Split(asArgs, "|")
+	Int levelCap = (EventArg(args, 1) + 0.5) as Int
+	Int seconds = (EventArg(args, 2) + 0.5) as Int
+	Float attack = EventArg(args, 3)
+	If !CanReanimate(target)
+		Return
+	EndIf
+	; 詛咒 5 層以上每層僕從攻擊 +10%（v0.4 5.12）：復生法術的第二個效果（審查修正 3，不改角色本身的數值）。
+	ApplyReanimate(target, levelCap, seconds, attack)
+EndEvent
+
+; ESSB_Sneak：連殺（風印記目標被你的潛行攻擊殺死）：秒數內不解除潛行（DLL 已乘持續時間；下一次潛行攻擊 ×2 是 DLL 的視窗）。
+Event OnESSBSneak(String asEventName, String asArgs, Float afSeconds, Form akSender)
+	If !IsOperational()
+		Return
+	EndIf
+	KeepSneak(UnscaledSeconds(afSeconds))
+EndEvent
+
+; ESSB_Domain：融斷（與聖域）留下的領域：元素、秒數（未乘持續時間）、半徑（領域是 N6，照舊由 Papyrus 管，裁定 R5）。
+Event OnESSBDomain(String asEventName, String asArgs, Float afElement, Form akSender)
+	Actor target = akSender as Actor
+	If !IsOperational() || !target
+		Return
+	EndIf
+	String[] args = StringUtil.Split(asArgs, "|")
+	Int element = (EventArg(args, 0) + 0.5) as Int
+	If element < 1 || element > 11
+		Return
+	EndIf
+	StartDomain(element, target, (EventArg(args, 1) + 0.5) as Int, EventArg(args, 2))
 EndEvent
 
 ; ---- 同伴掃描（祝福、聖光、聖臨強化）。ScanTargets 刻意排除同伴，所以另走這一條。
@@ -4370,28 +3548,8 @@ Function DumpStatus()
 		+ " heat=" + ESSBNative.GetStatus(player, 20) + " holy=" + ESSBNative.GetStatus(player, 21) \
 		+ " molten=" + ESSBNative.GetStatus(player, 22) \
 		+ " wet=" + IsEnvWet() + " stormy=" + IsEnvStormy() + " night=" + IsEnvNight())
-	Actor[] marked = ESSBNative.MarkedNear(player, 3500.0, 16, 0)
-	Int count = 0
-	Int index = 0
-	While marked && index < marked.Length
-		Actor target = marked[index]
-		If target
-			count += 1
-			String line = "[ESSB][dump][L0] target=" + target.GetFormID() + " marks=" + ESSBNative.MarksOn(target) \
-				+ " dist=" + target.GetDistance(player)
-			Int code = 2
-			While code <= 19
-				Int value = ESSBNative.GetStatus(target, code)
-				If value != 0
-					line = line + " s" + code + "=" + value
-				EndIf
-				code += 1
-			EndWhile
-			Debug.Trace(line)
-		EndIf
-		index += 1
-	EndWhile
-	Debug.Trace("[ESSB][dump][L0] status end marked=" + count)
+	; 審查修正 1：帶印記目標的清單由 DLL 在主執行緒 task 裡掃描、寫進 DLL log（[ESSB][dump][L0] target=…）。
+	ESSBNative.DumpTargets(3500.0)
 	; 探針卡「新來的 NPC 沒有殘留狀態」（審查修正 7）：最近一個可打的目標，狀態碼 2～19 全部列在畫面上。
 	Actor nearest = ScanTargets(player, 2100.0, 1, player)[0]
 	String shown = "（附近沒有目標）"
@@ -4403,7 +3561,7 @@ Function DumpStatus()
 			c += 1
 		EndWhile
 	EndIf
-	Debug.MessageBox("元素魔戰士：附近帶印記的目標 " + count + " 個\n最近的目標 " + shown)
+	Debug.MessageBox("元素魔戰士：附近帶印記的目標列在 ElementsSpellblade.log\n最近的目標 " + shown)
 EndFunction
 
 ; ---------------------------------------------------------------- 節流紀錄
@@ -4705,9 +3863,6 @@ Bool Function ValidateBindings()
 	If !AshSpell
 		Return False
 	EndIf
-	If !InheritSpell
-		Return False
-	EndIf
 	If !WindSpeedAbility
 		Return False
 	EndIf
@@ -4933,9 +4088,6 @@ Bool Function ValidateBindings()
 	If !FormSound
 		Return False
 	EndIf
-	If !GuardLayer
-		Return False
-	EndIf
 	If !InputLayer
 		Return False
 	EndIf
@@ -5061,11 +4213,8 @@ Function ResetLoadClock()
 	QuenchLeft = 0.0
 	ShockLeft = 0.0
 	GuardSwitchLeft = 0.0
-	GuardBurstLeft = 0.0
 	GuardIceLeft = 0.0
-	DoubleBurstLeft = 0.0
 	SyncKeepLeft = 0.0
-	BloodthirstLeft = 0.0
 	GuardWindLeft = 0.0
 	GuardDivineLeft = 0.0
 	CloakGuardLeft = 0.0
@@ -5096,29 +4245,14 @@ Function ResetLoadClock()
 	If StateBroken
 		Return
 	EndIf
-	Int damageIndex = 0
-	While damageIndex < 128
-		DamageActor[damageIndex] = None
-		DamageElement[damageIndex] = 0
-		DamageTime[damageIndex] = -1.0
-		damageIndex += 1
-	EndWhile
 	LiftQueued = False
 	Int i = 0
 	While i < 8
-		HitActor[i] = None
 		CastActor[i] = None
-		KillProcActor[i] = None
-		DeadActor[i] = None
 		KnockTime[i] = -1000000.0
 		PullTime[i] = -1000000.0
 		WashTime[i] = -1000000.0
 		LiftActor[i] = None
-		i += 1
-	EndWhile
-	i = 0
-	While i < 4
-		PendingKillActor[i] = None
 		i += 1
 	EndWhile
 	i = 0
@@ -5179,7 +4313,7 @@ Function ScheduleTickInternal(Float afDelay)
 EndFunction
 
 ; 每次有效命中（Papyrus 那一半）：已交戰標記、自身資源的「命中 +1」、各樹命中掛勾、同調與經驗。
-; 印記與目標狀態在 DLL（見 OnWeaponHit）；開印那一擊的「開印 +2」由 ESSB_Open 補足（ESSBReactions.Open）。
+; 印記與目標狀態在 DLL（見 OnWeaponHit）；開印那一擊的「開印 +2」由 DLL 在同一擊裡加（SelfLayer.h OpenGains）。
 ; Internal only: caller is an already guarded event/transaction. Never a saved authorization.
 Function OnValidHitInternal(Actor akTarget, Int aiElement, Bool abPower)
 	Actor player = ThePlayer()
@@ -5192,7 +4326,7 @@ Function OnValidHitInternal(Actor akTarget, Int aiElement, Bool abPower)
 	If aiElement == 1
 		ESSBElem.ApplyFireResistShred(Self, akTarget)
 	EndIf
-	ElementHitHook(akTarget, aiElement, abPower)
+	; round 24（N5）：各樹命中當下的本體（震擊、護持、萎靡、侵蝕、詛咒的抗性侵蝕）在 DLL（Reactions.h PlanHitBodies）。
 	If Trees
 		; 規劃 4：開形態的有效命中給當前元素樹 + 通用樹。
 		Trees.AwardInternal(aiElement)
@@ -5205,66 +4339,6 @@ Function LogEvent(Int aiLevel, String asMechanism, String asMessage)
 	If CachedDebugLevel >= aiLevel
 		Debug.Trace("[ESSB][" + asMechanism + "][L" + aiLevel + "] " + asMessage)
 	EndIf
-EndFunction
-
-Function SettleSneakKill(Actor akVictim, Int aiElement)
-	Int i = 0
-	While i < 8
-		If HitActor[i] == akVictim && !HitKillDone[i] && HitSneak[i] && HitForm[i] == 5
-			HitKillDone[i] = True
-			ESSBElem2.TryKillStreak(Self, HitForm[i], HitSneak[i])
-			Return
-		EndIf
-		i += 1
-	EndWhile
-EndFunction
-
-Function ArmKillProc(Actor akTarget, Int aiKind, Float afAmount, Float afPredicted = -1.0)
-	If !akTarget || akTarget.IsDead()
-		Return
-	EndIf
-	Int i = 0
-	While i < 8 && KillProcActor[i] != akTarget
-		i += 1
-	EndWhile
-	If i == 8
-		i = KillProcNext
-		KillProcNext = (KillProcNext + 1) % 8
-	EndIf
-	KillProcActor[i] = akTarget
-	KillProcKind[i] = aiKind
-	KillProcAmount[i] = afAmount
-	Float beforeHealth = akTarget.GetActorValue("Health")
-	If afPredicted < 0.0
-		afPredicted = afAmount
-	EndIf
-	If beforeHealth > 0.0 && afPredicted >= beforeHealth
-		KillProcUntil[i] = -1.0
-	Else
-		KillProcActor[i] = None
-		KillProcUntil[i] = 0.0
-	EndIf
-EndFunction
-
-Function SettleKillProc(Actor akTarget)
-	Int i = 0
-	Float now = Utility.GetCurrentRealTime()
-	While i < 8
-		If KillProcActor[i] == akTarget
-			Int kind = KillProcKind[i]
-			Float amount = KillProcAmount[i]
-			Float due = KillProcUntil[i]
-			KillProcActor[i] = None
-			If due == -1.0
-				If kind == 1
-					ESSBElem.OnCremation(Self, akTarget, amount)
-				ElseIf kind == 10
-					ESSBElem3.OnDeathSoul(Self, akTarget)
-				EndIf
-			EndIf
-		EndIf
-		i += 1
-	EndWhile
 EndFunction
 
 ; Native deferred kill holds the death transition BEFORE lethal damage, including DOT.

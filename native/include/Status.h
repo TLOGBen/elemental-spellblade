@@ -47,6 +47,7 @@ struct Board {
     Slot bleedDot{};          // blood DoT (2.7): magnitude = damage per second
     Slot poisonDot{};         // poison DoT (2.7): magnitude m = damage per second
     Slot guardPool{};         // round 23: your 護血 pool (ESSB_BloodGuardEffect, round 20's record): magnitude = the pool
+    Slot hush{};              // round 24: 寂 (ESSB_HushEffect, round 21's record): magnitude = layers (冷寂 at 融斷)
     bool fearing = false;     // our fear is running (ESSB_FearEffect)
     bool frenzied = false;    // our frenzy is running (ESSB_FrenzyEffect)
     float maxSlowPct = 0.0f;  // strongest of our slows on it (they share one Peak Value Modifier: the strongest wins)
@@ -131,6 +132,13 @@ enum class Op : std::uint8_t
     kFreezeNearby,    // 冰心: every hostile within 15 m whose freeze gauge is at least 1 freezes (the engine scans)
     kHurtHealth,      // round 23 review: real damage to you, NO keep-1 clamp (it can kill): the part of a hit 護血 / 法盾 /
                       // 水幕 could not pay, and what the pools' PERK cut from a damage-over-time spell (commander ruling)
+    // Round 24 (N5): the reaction bodies' casts (Reactions.h), each on the actor the op's `at` names
+    kDrainMagicka,    // target magicka - magnitude (ESSB_Util_DrainMagicka; the planner applies ESSB_MultDrain)
+    kHealTarget,      // an ally's health + magnitude (ESSB_UtilTarget_RestoreHealth: 聖光)
+    kSilence,         // silence the target for `seconds` whole seconds (ESSB_Native_Silence_<s>: 封印)
+    kHush,            // 寂 on the target: magnitude = layers (ESSB_Hush, its 10 s; the old instance dispelled first)
+    kTimed,           // a timed utility (build/fix24_records.py TIMED): element = TimedKind, magnitude, `seconds`
+    kNoop,            // a body event the body pass consumed (Reactions.h): nothing left to do
 };
 
 enum class Who : std::uint8_t
@@ -160,6 +168,16 @@ enum class Event : std::uint8_t
     kSyncUp,       // stage: your sync rose (sound, 神佑 re-arm)
     kCleanse,      // 1 purge (淨化) / 0 one effect: cleanse yourself (ESSBController.ApplyCleanse)
     kLethal,       // (no values) a hit left you at or below 0 health (神佑's deferred kill)
+    // Round 24 (N5): what stays Papyrus (ruling R4) -- the push, the ash, the raise, the sneak, the domain. The body
+    // events above (kFrozen .. kBlade) and kOverheat below are the DLL's own now: the body pass (Reactions.h) turns
+    // them into casts, so they are never sent (Plugin.cpp refuses to).
+    kPush,         // kind (1 blow back, 2 pull toward you, 3 pull toward `centre`, 4 lift up), metres, landing damage
+                   // (lift: B_max x k, before G), centre FormID (signed 32-bit; kind 3), 1 = slow 30% 3 s if it cannot land
+    kAsh,          // (no values) the corpse turns to ash (ESSBController.ApplyAsh, the disintegration)
+    kRaise,        // tier, level cap, seconds, attack bonus (0.1 a curse layer at 5+), 1 = permanent: 亡者歸來
+    kSneak,        // seconds: 連殺 -- keep sneaking (ESSBController.KeepSneak)
+    kDomain,       // element, seconds, radius (units): a Papyrus domain (N6) centred on the target
+    kOverheat,     // (body only) the white-hot fuse ran out: the fire-marked hostiles within 15 m detonate
     kCount,
 };
 
@@ -179,18 +197,28 @@ struct StatusOp {
     float seconds = 0.0f;
     Event event = Event::kCount;
     std::array<float, 8> arg{};
+    // Round 24 (N5): who the op acts on when it is not the player: 0 = the plan's own target, k >= 1 = the k-th member
+    // of the crowd the body pass read (Reactions.h Crowd); the executor selects that actor before running the op.
+    std::uint8_t at = 0;
 };
 
-inline constexpr int kMaxStatusOps = 96;
+// Round 24 (N5): a hit, a burst or a death carries its reaction bodies and their range scans in the same plan.
+inline constexpr int kMaxStatusOps = 512;
 
 struct StatusPlan {
     std::array<StatusOp, kMaxStatusOps> ops{};
     int count = 0;
     bool overflow = false;  // more ops than fit: the handler faults rather than silently dropping one
     bool consumeKillStreak = false;
+    // Round 24 (N5): the crowd member the rules being run act on (Reactions.h Bodies::On); every op pushed while it is
+    // set and has no `at` of its own is stamped with it.
+    std::uint8_t at = 0;
 
-    constexpr void Push(const StatusOp& op) noexcept
+    constexpr void Push(StatusOp op) noexcept
     {
+        if (op.at == 0) {
+            op.at = at;
+        }
         if (count < kMaxStatusOps) {
             ops[count++] = op;
         } else {
@@ -198,6 +226,12 @@ struct StatusPlan {
         }
     }
 };
+
+// Round 24 (N5): what a damage op carries in arg[0] for the body pass (Reactions.h RunBodies).
+namespace tag {
+inline constexpr float kStarBurst = 1.0f;    // a star detonation (聚星 multiplies it)
+inline constexpr float kDarkStrike = 2.0f;   // 闇星一擊 (星蝕 echoes it)
+}  // namespace tag
 
 // ================================================================ v0.4 numbers
 
@@ -323,6 +357,7 @@ inline constexpr int kMercy = 2;                    // 慈光：開印時懲戒 
 
 // Poison (2.3, 2.7, 5.10)
 inline constexpr int kDoseCap = 10;
+inline constexpr float kPoisonSever = 4.0f;       // 5.10 毒斷：融斷的催毒 ×4
 inline constexpr int kDoseOpen = 3;
 inline constexpr float kPoisonOpen = 12.0f;         // 開印 3 劑 12 秒
 inline constexpr float kPoisonAdd = 3.0f;           // 時長 = 剩餘 +3 秒
@@ -603,10 +638,12 @@ struct Writer {
     StatusPlan& plan;
     Board& board;
     Who who;
+    std::uint8_t at = 0;   // round 24: a crowd member (StatusOp::at)
 
     constexpr void Set(StatusKind kind, float magnitude, float seconds) const noexcept
     {
         StatusOp op = MakeOp(Op::kApply, who);
+        op.at = at;
         op.kind = kind;
         op.magnitude = magnitude;
         op.seconds = seconds;
@@ -617,6 +654,7 @@ struct Writer {
     {
         if (board.Has(kind)) {
             StatusOp op = MakeOp(Op::kRemove, who);
+            op.at = at;
             op.kind = kind;
             plan.Push(op);
         }
@@ -625,6 +663,7 @@ struct Writer {
     constexpr void Mark(int element, float seconds) const noexcept
     {
         StatusOp op = MakeOp(Op::kApplyMark);
+        op.at = at;
         op.element = element;
         op.seconds = seconds;
         plan.Push(op);
@@ -634,6 +673,7 @@ struct Writer {
     constexpr void FlaggedMark(int element, float seconds, int flags) const noexcept
     {
         StatusOp op = MakeOp(Op::kApplyMark);
+        op.at = at;
         op.element = element;
         op.seconds = seconds;
         op.magnitude = static_cast<float>(flags);
@@ -644,6 +684,7 @@ struct Writer {
     {
         if (board.mark[element].has) {
             StatusOp op = MakeOp(Op::kRemoveMark);
+            op.at = at;
             op.element = element;
             plan.Push(op);
         }
@@ -995,7 +1036,9 @@ constexpr void DetonateStars(StatusPlan& plan, Board& target, const Board& self,
     }
     const float amount = static_cast<float>(layers) * in.config->damage[kAstral][1] *
                          ReactionScale(kAstral, *in.tuning, in.player, nodes) * Omni(nodes) * mult * vulnerability;
-    plan.Push(Amount(Op::kDamage, amount, kAstral));
+    StatusOp detonation = Amount(Op::kDamage, amount, kAstral);
+    detonation.arg[0] = tag::kStarBurst;   // round 24: 聚星 reads the crowd in the body pass
+    plan.Push(detonation);
     if (in.n4 && !self.Has(StatusKind::kCosmos)) {
         // 共鳴層 (v0.4 2.3, 5.13): each detonation outside the dark star gives the resonance targets within 15 m (the
         // engine counts them, SelfLayer.h OnResonance adds them); the dark star's own detonations give none.
@@ -1971,7 +2014,8 @@ constexpr void PlanEndBody(StatusPlan& plan, int element, EndReason reason, floa
         break;
     }
     case kFrost:
-        if (target.Has(StatusKind::kFrozen)) {
+        // 冰封融斷 (5.4, commander ruling): a fusion shatters a frozen target only with the branch.
+        if (target.Has(StatusKind::kFrozen) && (reason != EndReason::kBurst || nodes.Has(node::kFrostBurstShatter))) {
             rule::Shatter(plan, target, in, nodes, 2, settle);
             value[0] = 1.0f;
         }
@@ -1999,6 +2043,9 @@ constexpr void PlanEndBody(StatusPlan& plan, int element, EndReason reason, floa
         if (target.poisonDot.has) {
             // 催毒：同一顆效果重套，強度 ×2（潰爛 ×3；催毒期間中毒傷害 +3%／點）、時長＝剩餘（延毒 +4 秒）。
             float factor = nodes.Has(node::kPoisonFester) ? n3::kFester : n3::kCatalyze;
+            if (reason == EndReason::kBurst && nodes.Has(node::kPoisonSever)) {
+                factor = n3::kPoisonSever;   // round 24 (N5) 毒斷：融斷的催毒改為強度 ×4（取代 ×2／潰爛 ×3）
+            }
             factor *= 1.0f + Pct(t, nodes.Rank(node::kSignature[kPoison]), 0.03f);
             const float remaining = target.poisonDot.Remaining() + (nodes.Has(node::kPoisonLinger) ? Scaled(t, n3::kPoisonLinger) : 0.0f);
             // The marker keeps the whole multiplier on the base doses (a second catalysis multiplies it again).
@@ -2213,7 +2260,7 @@ constexpr HitStatus PlanStatusHit(StatusPlan& plan, int element, bool power, Boa
             }
             plan.Push(Amount(Op::kDamage, damage, kDivine));
             if (holy >= 2) {
-                plan.Push(MakeEvent(Event::kJudgment, holy));
+                plan.Push(MakeEvent(Event::kJudgment, holy, damage));   // round 24: the damage (破邪斬 splashes half of it)
             }
         } else {
             tw.Set(StatusKind::kJudge, static_cast<float>(count), Scaled(t, n3::kJudge));
@@ -2343,6 +2390,8 @@ constexpr void OnFuseEnd(StatusPlan& plan, int tier, Board& self, const StatusIn
         return;
     }
     pw.Clear(StatusKind::kFireBath);
+    // Round 24 (N5): 過熱's 15 m detonation of every fire-marked target (the body pass scans; 熔身 only waives the cost).
+    plan.Push(MakeEvent(Event::kOverheat));
     if (nodes.Has(node::kFireMoltenBody)) {
         rule::SetHeat(plan, self, 0, in, nodes);
         pw.Set(StatusKind::kMoltenBody, 1.0f, Scaled(*in.tuning, n3::kMolten));
@@ -2451,6 +2500,7 @@ enum class TagKind : std::uint8_t
     kFrenzy,
     kSlow,       // our shared slow (the strongest of them is Board::maxSlowPct)
     kGuardPool,  // round 23: the 護血 pool (the DLL dispels it before re-applying, and reads it on a hurt)
+    kHush,       // round 24: 寂 (冷寂 at 融斷, 萬寂; HitMath's 寂滅 and silence read it on the target)
 };
 
 struct Tag {
@@ -2489,6 +2539,9 @@ constexpr Tag TagOf(std::uint32_t effect) noexcept
     }
     if (effect == effect::kBloodGuard) {
         return { TagKind::kGuardPool, 0 };
+    }
+    if (effect == effect::kHush) {
+        return { TagKind::kHush, 0 };
     }
     return {};
 }
@@ -2547,6 +2600,9 @@ constexpr void Read(Board& board, const RawEffect& effect) noexcept
         break;
     case TagKind::kGuardPool:
         Keep(board.guardPool, effect);
+        break;
+    case TagKind::kHush:
+        Keep(board.hush, effect);
         break;
     case TagKind::kNone:
         break;
@@ -2672,8 +2728,33 @@ constexpr Lowered Lower(const StatusOp& op, float slowCapPct) noexcept
             out.magnitude = op.magnitude;
         }
         break;
+    case Op::kDrainMagicka:
+    case Op::kHealTarget:
+        if (op.magnitude > 0.0f) {
+            out.spell = op.op == Op::kDrainMagicka ? spell::kDrainMagicka : spell::kHealTarget;
+            out.magnitude = op.magnitude;
+        }
+        break;
+    case Op::kSilence:
+        out.spell = spell::kSilence[WholeSeconds(op.seconds, kSilenceSpellCount) - 1];   // the record's magnitudes, no override
+        break;
+    case Op::kHush:
+        out.dispelSpell = spell::kHush;   // the old 寂 first (native-verification-3 s5); 0 layers only removes it
+        if (op.magnitude > 0.0f) {
+            out.spell = spell::kHush;
+            out.magnitude = op.magnitude;
+        }
+        break;
+    case Op::kTimed:
+        if (op.magnitude > 0.0f && op.element >= 0 && op.element < kTimedKinds) {
+            out.spell = status::kTimed[op.element][WholeSeconds(op.seconds, kTimedMaxSeconds) - 1];
+            out.magnitude = op.magnitude;
+            out.onPlayer = kTimedOnPlayer[op.element];
+        }
+        break;
     case Op::kPayHealth:
     case Op::kWash:
+    case Op::kNoop:
     case Op::kEvent:
     case Op::kPayStamina:
     case Op::kHurtHealth:

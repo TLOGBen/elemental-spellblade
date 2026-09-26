@@ -217,3 +217,43 @@ snapshot 的 74 段中，R5→R1 priority 遞減；按 smoke 證實的最低 pri
 | 同調門檻 | 指揮官裁定 | DLL 讀 `ESSB_SyncT1..3`（預設 5／15／30），與 Papyrus 永續用的是同一份。 |
 
 測試：SELF S 123 個情境／215 個預期操作（新增：巨大一擊穿過小池致死、池部分擋住、法盾／水幕魔力不夠、DoT 扣回、蓄能 ≥1、SyncT 3／8／12），手算錨點 23 個；C++ 突變 21 個（Hurt.h 新增 2 個：付不出的魔力、DoT 扣回）全部讓測試失敗。仍未實測：上面四項的遊戲內行為（`build/fix23-probes.md`）。
+
+## Round 24（N5：融斷、死亡處理、反應本體，2026-09-26）
+
+本輪的 DLL 做法（0.24.0），每一項標出依據（`nv3`＝native-verification-3、「推論」＝沒有直接查證）。實作者沒有進遊戲；遊戲內要看的列在 `build/fix24-probes.md`。
+
+| 項目 | 依據 | 做法 |
+|---|---|---|
+| 範圍掃描 | nv3 §10（`ProcessLists::highActorHandles` 只能在主執行緒；先收集 handle 再動手）；v0.4 2.9 | 每個事件（命中、受擊、過期、融斷、死亡、開形態、原生函式）在主執行緒 task 裡**只掃一次**：`BuildCrowd` 逐一 `handle.get()` 收集 `NiPointer`（保住生命期）、讀位置與敵意，`StatusEngine.h SelectCrowd` 依 2.9 篩（敵意或敵對陣營、或帶 30 秒「已交戰」自有標記；不是你、不是隨從（隨從另列為盟友，只給聖光治療，最多 4 人）、不是受命者、活著、已載入），依距離排序、上限 24；之後才讀每個人的效果（Board、身體、抗性），純函式（`native/include/Reactions.h`）算出整份計畫，最後才施放。sink 裡不掃描。 |
+| 群體計畫 | round 22 的效果層（Dispel(true) → 重套） | `StatusOp::at`／`StatusPlan::at`：每個 op 記它作用在群體第幾人（0＝事件本身的演員）；`RunOp` 先 `Select(at)` 再照舊 Lower／Dispel／Cast。計畫上限 96 → 512（放堆積，不壓引擎的堆疊）。 |
+| 本體事件 | 裁定 R4 | 冰封、聖裁、濺血、越線、碎冰、落地、放電、風刃、過熱九種事件由 DLL 的本體流程（`RunBodies`）當場消耗，`SendEvent` 拒送（`BodyOnly`）；開印、終焉、幻覺照送（經驗、特效、恐懼／瘋狂 AI）。本體推出的新事件（連鎖終焉、強制開印）同一輪走完，最多 160 個。 |
+| 留給 Papyrus 的一半 | 裁定 R4（推力、恐懼 AI、復生 AI 與召喚上限、化灰崩解、不解除潛行留 Papyrus；神佑、領域照舊） | 新 ModEvent：`ESSB_Push`（種類、公尺、落地傷害、中心的 FormID、推不動時減速）、`ESSB_Ash`、`ESSB_Raise`（階、等級上限、秒數、攻擊加成、永久）、`ESSB_Sneak`、`ESSB_Domain`。推力中心在計畫裡是群體成員編號（浮點數裝不下 FormID），送事件時換成那個演員的 FormID。 |
+| 死亡處理 | nv3 §9（`dead=false` 在 `KillImpl` 裡同步送出，效果還在；兇手已寫好） | 死亡 sink 只處理 `dead=false`、不是你、而且屍體上有本模組的東西或是你殺的／你的僕從（`DeathCounts`）；sink 裡只讀屍體（Board、身體、抗性、等級）與兇手（你、你的瘋狂 NPC＝狂宴、你的僕從＝亡衛），交給 task；task 掃一次群體、`PlanDeath`、施放。Papyrus 的 `ESSB_Death` 快照與擊殺掛勾（`ESSBGuard.OnActorKilled`）刪除。爆燃與死咒結算在傷害**之前**先在目標掛 1 秒標記（火葬、亡魂、冥召讀它），同一幀的死亡看得到。 |
+| 融斷 | v0.4 2.5、5.1、5.2 | 原生函式 `Burst(元素)` 取代 `BurstMarks(半徑, K)`：一次掃描（15 公尺、收束 20 公尺，+0.3 公尺／點），範圍內每個帶印記（或疊印殘印）的目標，每個印記照自己的終焉本體 × K_sync（1／1.5／2／3）× 通用與冷寂融斷主線 × 該樹「X印記的融斷」主線（雷斷另加電荷）；每目標一次終焉冷卻判定；寂（每清一種 +1，上限 5，寂上限 +1／每 5 點）與燒魔、萬寂、斷界、地斷、颶風、墜星的融斷那一半、回流（溢出進超載）、雙斷與安全閥的視窗都在同一份計畫。 |
+| 有時限的數值效果 | 反組譯 0x140540360（非雙持施放時 effectiveness 只縮放強度，不縮放時長）；round 21 減速的先例 | 碎甲、攻擊削弱、各抗性削減、治療削減、耐力凝滯、移速、毒抗、魔抗增益：每種 20 個整秒法術（`build/fix24_records.py`，共用原本的 Util 效果），時長照持續時間倍率取整秒。 |
+| 新狀態種類 | round 22 的效果層 | 14 個（0x005600 起）：火葬／死咒擊殺的 1 秒標記、不死冷卻、雙斷、安全閥、光耀、星鏈冷卻、血承 7 個 AV（Peak Value Modifier，只保留最新一個）。安全閥的 PERK 改讀 `ESSB_N5_SafetyValve`。 |
+| 火浴 | v0.4 5.3（C3 重做） | 計算從計時器裡抽成純函式 `PlanFireBath`（首秒定人數、之後每秒 B_max × 0.1 × 人數），可以離線測。 |
+| 原生函式的執行緒 | nv3 §10；round 22 的原生函式同一做法 | `Burst`、`FormEnter` 註冊時沒標 callable-from-tasklets，VM 在主執行緒執行，所以它們裡面的一次掃描也在主執行緒（R3）。 |
+| 防護 | — | 死亡 sink（SEH＋C++ catch）→ task（`DeathGuarded`：SEH → `DeathCpp`：C++ catch）；所有新增的掃描都在既有 task 內；新原生函式 `Burst` 經 `Guard`；刪掉 7 個 Papyrus 本體用的原生函式（BurstMarks、SetGuided、DotRemaining、ForceOpen、EndMark、Shatter、Detonate）與註冊。沒有 hook、trampoline、vtable 修補，也不寫遊戲記憶體；DLL 不存任何設計狀態、沒有存檔序列化。 |
+
+測試：原有的 A0／A／B／C／D、S（status）、E、SELF 照過；新增 `native/tests/reaction_test.cpp`：R 組 85 個情境（460 個預期操作，每個群體成員與你的 board 都比對；對 `build/fix24_reference.py` 另寫的 v0.4 模型，三種擲骰模式；25 個手算錨點由 `build/fix24_fixture.py` 逐一核對）、W 組 328 個接線檢查、X 組 13 個直接檢查（距離、Around、at 蓋章、本體專用事件、融斷範圍與 K_sync、火浴）；`engine_test.cpp` 加假 process list（2.9 資格、最近優先、上限、盟友）與假死亡事件（`DeathCounts`、一次完整死亡：隨從與中立 NPC 沒被施放）；9 個新原始碼突變（Reactions.h 8、StatusEngine.h 1），30/30 突變全被抓；`build/fix24_verify.py` 的來源錯誤與反應表錯誤注入全被抓。
+
+### 仍未實測（探針卡 `build/fix24-probes.md`）
+
+- N5-1：`TESDeathEvent` 兩次（dead=0／1）時屍體上本模組效果的數量、兇手；主控台 `kill` 是否只送 dead=1（那樣就沒有死亡處理）。
+- N5-2：`highActorHandles` 的名單（只有敵人與身邊隨從、沒有你與路人）、戰鬥中連續掃描不崩潰；一個事件只掃一次。
+- 推力中心換成 FormID 後 `Game.GetForm` 取得的參照（風渦）。
+- 復生僕從的攻擊加成（`ModActorValue("AttackDamageMult")` 加在被復生的那具屍體上）。
+
+### Round 24 審查修正（2026-09-26）
+
+| 項目 | 依據 | 做法 |
+|---|---|---|
+| 融斷的傷害 | 指揮官裁定；v0.4 2.7 D_burst | 每個被融斷的印記打一次 **B_max × K_sync × G × M_mod**（M_mod 含融斷主線、終焉主線、導引；雷斷加電荷），沒有 K_react；元素自己的終焉招式（爆燃、碎冰 ×1.0、放電、地震、風刃、血潮、裁決、星落）不再打出。終焉的非傷害部分照 2.6：狀態部分（消耗、催毒〔毒斷 ×4〕、導引、死咒引信與不能治療、星痕引爆）以 ×1 跑（K_sync 只進融斷那一擊）、2.5 的吹上天、各分支。血潮的「當前生命 10%」與裁決／星落的 K_react 不乘 K_sync。水斷＝治療＋耐力 B_max × K × G；星斷＝真實傷害 ×0.6；血斷＝治療融斷傷害 50%。 |
+| 冰封融斷 | 指揮官裁定；v0.4 5.4 | 融斷時冰封的目標**只有持有冰封融斷**才碎冰（一般碎冰：最大生命 20%、首領 10%、冰晶照加，不乘 K_sync）；沒有就只受融斷那一擊、維持冰封。`Status.h PlanEndBody` 讀 `node::kFrostBurstShatter`。 |
+| 原生函式的執行緒 | 審查修正 1；nv3 §10 | 會掃描或施放的原生函式（Burst、FormEnter、FormLeave、SetSync、AddStatus、SetStatus、ClearStatus、SetWindow、ApplyMark、ExtendFuse、WashBuffs、CastProc、DumpTargets）在 Guard 裡只把工作包成 `NativeJob` 交給 SKSE `AddTask` 就回來；task 在主執行緒（SEH `NativeJobGuarded` → C++ catch `NativeJobCpp`，再檢查一次總開關）。佇列先進先出，所以 Burst → FormLeave → SetSync 的順序不變；代價是 Papyrus 在這些呼叫之後立刻 GetStatus 會讀到執行前的值（目前沒有這種寫法；三重奏的「保留全部同調」若是這次融斷才掛上，要到下一次融斷才讀到）。`MarkedNear`（在 VM 呼叫緒掃描、回傳陣列）刪除，MCM 狀態按鈕改用排隊的 `DumpTargets` 寫 log；`WashBuffs`、`Burst` 沒有回傳值了。新增 X1 探針行 `queued native task`。 |
+| 必要角色 | 審查修正 2；v0.4 2.9、5.12 | 跌倒、復生、化灰只排除 **essential**（參照或本體）或正在填任務物件別名（`ExtraAliasInstanceArray` 裡 `BGSBaseAlias::IsQuestObject()`）的角色；有名字的（unique／protected）敵人不再豁免。首領的碎冰 10%、血潮 3%、沉默減半照舊讀 `vip`。Papyrus `CanReanimate`、`ApplyAsh` 改讀新的 `IsEssentialTarget`（任務別名 Papyrus 讀不到，DLL 那邊先擋）；推力的免疫名單（`CanRagdoll`）沒動。 |
+| 僕從攻擊加成 | 審查修正 3；v0.4 5.12 | 不再 `ModActorValue`：`ESSB_ReanimateSpell` 多一個效果 `ESSB_N5_ServantAttackEffect`（AttackDamageMult 的 Peak Value Modifier、No Death Dispel，因為落地時屍體還是死的），強度與時長在施放前設定；跟復生一起結束，再復生是重新套用、不疊加。 |
+| 已知邊界（裁定：記錄） | 指揮官裁定 | 主控台 `kill` 若只送 `dead=true`，那次死亡**沒有**死亡處理；火葬／亡魂／冥召靠 1 秒標記判斷「被爆燃／死咒殺死」：標記後 1 秒內被別的東西殺死也算。斷界＝對應抗性 −10% 3 秒（火／冰／電／毒自己的抗性，其餘魔抗），列為文件缺口。 |
+
+測試：reaction_test R 組 92 個情境（467 個預期操作），手算錨點 33 個（新增：三段融斷打冰封目標有／沒有冰封融斷與首領、三段聖與星、有名字的敵人復生與化灰、essential 不復生不化灰）；3 個新原始碼突變（融斷又打出終焉招式、沒有冰封融斷也碎冰、有名字的敵人被豁免），全部 33/33 被抓；`build/fix24_verify.py` 加：13 個原生函式必須經 `QueueNative`（注入錯誤：Burst 在 VM 緒直接施放）、復生法術的第二個效果、今天腳本上的行為檢查（GetDamageMult 不再有 Papyrus 嗜血 ×1.2、晝夜 ×1.2、BaseMax、ReactDamage、ApplyUtil 的減速上限）；fix6 的 Pct／FlowPercent／ApplyUtil 改在今天的腳本上跑（只剩被刪的 WetSlow 在 round 23 的腳本上）。

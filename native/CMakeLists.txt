@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(ElementsSpellblade VERSION 0.23.0 LANGUAGES CXX)
+project(ElementsSpellblade VERSION 0.24.0 LANGUAGES CXX)
 if(NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   message(FATAL_ERROR "MSVC x64 is required")
 endif()
@@ -45,3 +45,9 @@ add_executable(self_test tests/self_test.cpp)
 target_include_directories(self_test PRIVATE include deps/json/single_include)
 target_compile_options(self_test PRIVATE /W4 /WX /EHsc /utf-8)
 add_test(NAME self_layer COMMAND self_test "${CMAKE_CURRENT_SOURCE_DIR}/../build/fix23-self-table.json" "${CMAKE_CURRENT_SOURCE_DIR}/../build/fix23-wiring.json")
+# Round 24 (N5): the reaction bodies, the fusion, the death handling and the range scans (Reactions.h) against
+# build/fix24_reference.py and the generator's round-24 record identities.
+add_executable(reaction_test tests/reaction_test.cpp)
+target_include_directories(reaction_test PRIVATE include deps/json/single_include)
+target_compile_options(reaction_test PRIVATE /W4 /WX /EHsc /utf-8 /bigobj)
+add_test(NAME reaction_bodies COMMAND reaction_test "${CMAKE_CURRENT_SOURCE_DIR}/../build/fix24-body-table.json" "${CMAKE_CURRENT_SOURCE_DIR}/../build/fix24-wiring.json")

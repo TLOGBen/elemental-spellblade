@@ -105,22 +105,6 @@ Float Function CommonHitMult(ESSBController akCtl, Int aiElement, Bool abPower) 
 	Return mult
 EndFunction
 
-; 5.2 關閉新手 +1%／點、關閉大師再 +1%／點。終焉與融斷都吃。
-; （持續專精主線「同調三段時終焉 +1%／點」是 DLL N3，v0.3 的「同調三段時受傷 -0.5%／點」已拿掉。）
-Float Function CommonEndMult(ESSBController akCtl) Global
-	Float mult = 1.0 + ESSBNodes.Pct(akCtl, Rank(akCtl, 12, 2, 0), 0.01) + ESSBNodes.Pct(akCtl, Rank(akCtl, 12, 2, 3), 0.01) ; @node 終焉, 終焉再
-	; 5.2 持續專精主線：同調三段時終焉 +1%／點（融斷的那一份是 N5，這裡照一般終焉算）。
-	If akCtl.SyncStage() >= 3
-		mult = mult + ESSBNodes.Pct(akCtl, Rank(akCtl, 12, 0, 2), 0.01) ; @node 同調三段時終焉
-	EndIf
-	Return mult
-EndFunction
-
-; 5.2 關閉熟練 融斷 +1%／點、關閉傳奇 再 +2%／點。
-Float Function CommonBurstMult(ESSBController akCtl) Global
-	Return 1.0 + ESSBNodes.Pct(akCtl, Rank(akCtl, 12, 2, 1), 0.01) + ESSBNodes.Pct(akCtl, Rank(akCtl, 12, 2, 4), 0.02) ; @node 融斷, 融斷再
-EndFunction
-
 ; ================================================================== 通用樹：狀態上限與萬象
 
 ; 5.2 開啟傳奇主線：每種元素狀態上限 +1 層／每 5 點，最多 +3（規劃 2.3）。
@@ -132,14 +116,6 @@ Int Function StatusCapBonus(ESSBController akCtl) Global
 	Return bonus
 EndFunction
 
-; 5.2 開啟傳奇分支「萬象」：所有元素狀態的層數效果 +25%。
-Float Function OmniMult(ESSBController akCtl) Global
-	If Br(akCtl, 12, 1, 4, 0) ; @node 萬象
-		Return 1.25
-	EndIf
-	Return 1.0
-EndFunction
-
 ; ================================================================== 通用樹：印記與開印
 
 ; 5.2 開啟熟練分支「先制」（開印 +2 同調）與開啟專精主線（+1 同調／每 5 點）round 23 起在 DLL。
@@ -149,53 +125,10 @@ EndFunction
 
 ; 5.2 開啟熟練主線「印記持續」、開啟專精分支「雙印」、關閉熟練分支「疊印」都在 DLL（native/include/Status.h）。
 
-; 5.2 開啟大師分支「臨界」：開形態那一刻附近敵人減速 30% 2 秒。
-Function OnFormOpened(ESSBController akCtl, Int aiElement) Global
-	If !Br(akCtl, 12, 1, 3, 1) ; @node 臨界
-		Return
-	EndIf
-	Actor player = akCtl.ThePlayer()
-	If !player
-		Return
-	EndIf
-	Actor[] nearby = akCtl.ScanTargets(player, 1050.0, 5, player)
-	Int index = 0
-	While index < nearby.Length
-		If nearby[index]
-			akCtl.ApplyUtil(0, 30.0, 2, nearby[index])
-		EndIf
-		index += 1
-	EndWhile
-	If akCtl.CachedDebugLevel >= 2
-		akCtl.LogThrottled(2, "node", "common threshold slow element=" + aiElement)
-	EndIf
-EndFunction
-
 ; ================================================================== 通用樹：終焉週邊
-
-; 5.2 關閉熟練分支「反哺」：每次終焉回復你 B_max 魔力。
-Function OnEndReward(ESSBController akCtl, Int aiElement) Global
-	If !Br(akCtl, 12, 2, 1, 0) ; @node 反哺
-		Return
-	EndIf
-	Actor player = akCtl.ThePlayer()
-	If player
-		akCtl.ApplyUtil(5, ESSBReactions.BaseMax(akCtl, aiElement), 0, player)
-	EndIf
-EndFunction
 
 ; 5.2 關閉專精分支「三重奏」（10 秒內三種不同元素終焉，第三次 ×3，下一次融斷保留全部同調）與關閉大師分支「協奏」
 ;（切換後首次終焉 ×1.5）round 23 起在 DLL：終焉倍率已乘，保留全部同調是你身上的標記（控制器在融斷時讀碼 51）。
-
-; 5.2 關閉專精分支「連鎖終焉」：終焉時附近帶同一印記的目標也終焉 ×0.5。
-Bool Function HasChainEnd(ESSBController akCtl) Global
-	Return Br(akCtl, 12, 2, 2, 0) ; @node 連鎖終焉
-EndFunction
-
-; 5.2 關閉傳奇分支「大協奏」：切換後首次終焉讓範圍內帶舊印記的敵人各觸發一次終焉。
-Bool Function HasGrandConcert(ESSBController akCtl) Global
-	Return Br(akCtl, 12, 2, 4, 0) ; @node 大協奏
-EndFunction
 
 ; 5.2 關閉新手分支「餘響」：切換後首次命中附帶前一元素 50% 附傷；
 ; 關閉專精主線：切換後首次命中附帶前一元素附傷 +3%／點。

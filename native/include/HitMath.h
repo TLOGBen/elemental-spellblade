@@ -89,6 +89,8 @@ struct Tuning {
     float poisonDotK = 0.2116f;      // ESSB_PoisonDotK (2.7 k_dot, MCM)
     float bleedDotK = 0.1143f;       // ESSB_BleedDotK
     std::array<int, 3> syncT{ 5, 15, 30 };  // ESSB_SyncT1..3 (round 23 review: the DLL's sync thresholds read them)
+    float frostOpenSlowPct = 25.0f;  // ESSB_FrostOpenSlowPct (round 24: 霜結's slow, the open body is the DLL's)
+    float waterOpenStamina = 80.0f;  // ESSB_WaterOpenStamina (round 24: 湧泉)
 };
 
 // Round 22 (N3): what the statuses on the target and the player do to each element's proc this hit (Status.h
@@ -127,6 +129,7 @@ struct PlayerFacts {
     float bloodGuard = 0.0f;   // magnitude of the ESSB_BloodGuard effect on the player (0 = none)
     float overload = 0.0f;     // round 23: your 超載 pool (magnitude of ESSB_N4_OverloadEffect)
     float overloadCap = 0.0f;  // 50% of max magicka, +2% per point of 超載上限 (v0.4 5.1)
+    bool bloodthirst = false;  // round 24: 飲血's 嗜血 on you (ESSB_N3_Bloodthirst): 吸血 +10%, 不受血位影響
 };
 
 struct TargetFacts {
@@ -403,6 +406,9 @@ constexpr float LeechRatio(const PlayerFacts& p, const Nodes& nodes)
     if (BloodRage(p, nodes)) {
         ratio += 0.15f;
     }
+    if (p.bloodthirst) {
+        ratio += 0.10f;   // round 24 (N5): 飲血的嗜血：吸血 +10%
+    }
     return ratio;
 }
 
@@ -587,7 +593,9 @@ constexpr float BurnBonus(const TargetFacts& target, const Nodes& nodes)
 template <NodeReader Nodes>
 constexpr int SilenceSeconds(const TargetFacts& target, const Tuning& t, const Nodes& nodes)
 {
-    const float wanted = std::min(1.0f + 0.2f * static_cast<float>(nodes.Rank(node::kNoFormSilence)), static_cast<float>(kMaxSilenceSeconds));
+    // Round 24 (N5): 冷寂's 寂 makes every later silence +0.5 s a layer (v0.4 5.1).
+    const float wanted = std::min(1.0f + 0.2f * static_cast<float>(nodes.Rank(node::kNoFormSilence)), static_cast<float>(kMaxSilenceSeconds)) +
+                         0.5f * static_cast<float>(target.hushLayers);
     int seconds = static_cast<int>(wanted + 0.5f);
     if (target.vip) {
         seconds = std::max(1, seconds / 2);
@@ -703,7 +711,8 @@ constexpr void PlanNoFormHit(Plan& plan, const Attack& a, const Config& c, const
         }
         int silenceSeconds = targetMagicka - y <= 0.0f ? SilenceSeconds(target, t, nodes) : 0;
         if (breakForm) {
-            const int broken = std::clamp(static_cast<int>(static_cast<float>(kBreakFormSilence) * t.multDuration + 0.5f), 1, kSilenceSpellCount);
+            const float breakSeconds = static_cast<float>(kBreakFormSilence) + 0.5f * static_cast<float>(target.hushLayers);   // round 24: 寂
+            const int broken = std::clamp(static_cast<int>(breakSeconds * t.multDuration + 0.5f), 1, kSilenceSpellCount);
             silenceSeconds = std::max(silenceSeconds, broken);
         }
         if (silenceSeconds > 0) {
