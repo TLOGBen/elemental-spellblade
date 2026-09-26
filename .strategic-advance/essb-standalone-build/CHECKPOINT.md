@@ -47,7 +47,8 @@
 2. T＝round 21 ✅ 2026-09-26 3d22562 提交、已部署 MO2（備份 `.codex/mo2-installed-backup-20260926-080245`）；兩輪審查後 PASS；狀態 DONE 74／KEPT 273／PARTIAL 42／LATER 104（清單在 build/plan-coverage.json）；探針卡 `build/fix21-probes.md` 待實測；提前移除火浴回血、不死、蔓延、亡者歸來（C3，於對應切片重做）。下一步 N3。
 2b. N3＝round 22 ✅ 2026-09-26 20f754d 提交、已部署 MO2（備份 `.codex/mo2-installed-backup-20260926-124537`）；審查 PASS WITH FIXES 已修；探針卡 `build/fix22-probes.md`（約 20 分）。
 2c. N4＝round 23 ✅ 2026-09-26 d78cb85 提交、已部署（備份 `.codex/mo2-installed-backup-20260926-152433`）；審查抓到護血不死（已修：分擔 50%、溢出可致死）；探針卡 `build/fix23-probes.md`（約 25 分）。裁定：雷神回魔 B_max×電荷×0.5、蓄能 ≥1 即轉、同調門檻讀 GLOB。
-2d. N5＝round 24（進行中，合約 `.codex/fix-round24-briefing.md`、紀錄 `.codex/impl-fix-round24.html`）；含 C3 提前移除四項重做。使用者 2026-09-26：先做完 N3～N6 初步完整，再一次跑全部探針卡；切片之間不停。
+2d. N5＝round 24 ✅ 2026-09-26 e53f280 提交、已部署（備份 `.codex/mo2-installed-backup-20260926-185123`）；裁定：融斷傷害照 v0.4 2.7（B_max×K_sync×G×M_mod），各元素終焉只取非傷害部分，碎冰只在「冰封融斷」；附近＝15 m／5 人（v0.4 2.9 明文）；斷界弱化＝對應抗性 −10% 3 秒（待寫回文件）。探針卡 `build/fix24-probes.md`（約 30 分，第一步 X1）。
+2e. N6＝round 25（進行中，合約 `.codex/fix-round25-briefing.md`、紀錄 `.codex/impl-fix-round25.html`）；毒霧劑數併入裁定照瘟疫。做完＝初步完整 → 整理全部探針卡成一張總表給使用者；v0.4 文件待修清單（負責欄偏離、52 列反應本體、斷界弱化、毒霧）交 Sonnet。使用者 2026-09-26：先做完 N3～N6 初步完整，再一次跑全部探針卡；切片之間不停。
 （舊註記：2026-09-25 21:40 額度 99%，可能中斷。恢復：讀 `.codex/impl-fix-round21.html` 最後完成的里程碑，重派 Opus 照合約「If resumed」續做；快照 `.codex/pre-fix21-snapshot/` 不可覆寫；工作樹未提交的改動都是 round 21 的，勿 reset。合約 `.codex/fix-round21-briefing.md`、紀錄 `.codex/impl-fix-round21.html`）：技能樹照 v0.4 重建（ESP perk、Papyrus 樹／MCM、DLL 節點讀取對照）；補上 N2 因節點不存在沒做的無元素四列
 3. N3：目標狀態層（根除舊狀態層幽靈 bug）
 4. N4：受擊與自身資源（超載、蓄勁、護血扣減、電荷→雷 N）
