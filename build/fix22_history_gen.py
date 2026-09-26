@@ -12,7 +12,8 @@ sys.path[:0] = [str(ROOT / 'build'), str(ROOT)]
 import fix21_history as h21
 
 SNAP = ROOT / '.codex/pre-fix22-snapshot/src'
-SRC = ROOT / 'src'
+# Round 23: round 22's scripts as shipped are the pre-fix23 snapshot (today's src/ is round 23; build/fix23_history.py).
+SRC = ROOT / '.codex/pre-fix23-snapshot/src'
 
 R4_REGISTRY = 'R4：印記登記表刪除（v0.4 沒有 8 目標名額；印記是 DLL 掛的引擎效果，開印／刷新／被切在命中那一幀由 DLL 決定）'
 R4_STATUS = 'R4：狀態容器 ESSBStatus、換宿、pending、備份銀行刪除；層數與計時是 DLL 寫的引擎效果（讀–疊–重套）'

@@ -58,14 +58,23 @@ def check(rel: str, data: bytes) -> None:
     assert _sha(data) == sha, (rel, state, 'differs from the sealed bytes (edited after sealing; regenerate with a reason)')
 
 
+def base() -> Path:
+    """Round 23 moved "now" for this seal to the pre-fix23 snapshot (round 22 as shipped): build/fix23_native_history.py
+    first proves today's bytes differ from it only by round 23's declared changes."""
+    import fix23_native_history
+    fix23_native_history.verify()
+    return fix23_native_history.SNAP
+
+
 def verify() -> dict:
+    root = base()
     for rel in FILES:
-        path = ROOT / rel
+        path = root / rel
         assert path.is_file(), (rel, 'sealed file is missing')
         check(rel, path.read_bytes())
     for folder in FOLDERS:
-        for path in (ROOT / folder).glob('*.*'):
-            rel = path.relative_to(ROOT).as_posix()
+        for path in (root / folder).glob('*.*'):
+            rel = path.relative_to(root).as_posix()
             assert rel in FILES, (rel, 'new file in a sealed folder, not in the seal')
     return {s: sum(1 for v in FILES.values() if v[0] == s) for s in ('unchanged', 'changed', 'added')}
 
@@ -84,7 +93,7 @@ def self_check() -> dict:
     counts = verify()
     caught = []
     for rel, old, new in SILENT_EDITS:
-        data = (ROOT / rel).read_bytes()
+        data = (base() / rel).read_bytes()
         assert old.encode('utf-8') in data, (rel, old)
         try:
             check(rel, data.replace(old.encode('utf-8'), new.encode('utf-8'), 1))

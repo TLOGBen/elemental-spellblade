@@ -12,7 +12,17 @@ Status codes (the old aiKind numbering with v0.4 meanings):
   25 AddStatus only: spread poison doses (2.7 擴散一劑: m' = m + doses, d' = max(d - t, 12)); 7 is the hit growth (+3 s)
 Windows (SetWindow): 30 嗜血 / 31 連殺 (player)  32 火域 / 33 冰原 / 34 星域 (target)  35 in a 火域 (player)
   36 浮空 (target; magnitude = landing damage)  37 瘋狂冷卻 (target; seconds before the MCM cooldown multiplier)
-End reasons: 0 cut, 1 burst, 2 expiry.}
+End reasons: 0 cut, 1 burst, 2 expiry.
+
+Round 23 (slice N4): your own resources are engine effects on you the DLL applies (native/include/SelfLayer.h). Player
+codes (GetStatus / GetStatusFloat / AddStatus / SetStatus / ClearStatus on the player):
+  40 sync count (AddStatus announces a stage rise: ESSB_SyncUp + 回饋)  41 sync stage (read only)  42 charges
+  43 岩甲  44 風勢  45 戰意  46 冰盾  47 共鳴層  48 闇宙  49 超載 (float, read only)  50 蓄勁
+  51 「下一次融斷保留全部同調」(三重奏; ClearStatus uses it up)  52 疾電 (read only)  53 蓄能的地震加成 (float;
+  ClearStatus uses it up)  54 last-hit-sneak marker on a target (read only)  55 charge cap  56 wind threshold
+  57 岩甲 cap (read only)  58 護血 pool (float, read only)
+FormEnter: opening a form (專一's clock, 雷臨強化, 地臨強化). SetSync: the count a switch or a burst leaves (承接, 連斷,
+永續, 三重奏), set without a stage rise.}
 
 Bool Function IsNativeHitActive() Global Native
 String Function NativeVersion() Global Native
@@ -38,3 +48,5 @@ Function EndMark(Actor akActor, Int aiElement, Int aiReason, Float afMult) Globa
 Function CastProc(Actor akActor, Bool abPower) Global Native
 Function Shatter(Actor akActor) Global Native
 Function Detonate(Actor akActor) Global Native
+Function FormEnter(Int aiElement) Global Native
+Function SetSync(Int aiCount) Global Native

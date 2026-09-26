@@ -74,26 +74,7 @@ Float Function HolyTierBonus(ESSBController akCtl, Int aiTier) Global
 	Return bonus + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 6, 0, 0), 0.01) * aiTier ; @node 聖佑各階武器傷害與聖傷加成
 EndFunction
 
-; ================================================================== 開印時的層數
-
-; 土 開印岩甲 +2（岩膚 +4），開啟新手主線再 +1／每 5 點。
-; 風 開印風勢 +2（疾風痕直接滿），開啟新手主線 +1／每 5 點。
-; （岩甲與風勢是你身上的資源，N4 前在 Papyrus；血痕、聖印在 DLL。）
-Int Function OpenStacks(ESSBController akCtl, Int aiElement) Global
-	If aiElement == 4
-		Int rock = 2
-		If ESSBNodes.Br(akCtl, 3, 1, 1, 1) ; @node 岩膚
-			rock = 4
-		EndIf
-		Return rock + ESSBNodes.Rank(akCtl, 3, 1, 0) / 5 ; @node 開印岩甲
-	ElseIf aiElement == 5
-		If ESSBNodes.Br(akCtl, 4, 1, 1, 0) ; @node 疾風痕
-			Return WindThreshold(akCtl)
-		EndIf
-		Return 2 + ESSBNodes.Rank(akCtl, 4, 1, 0) / 5 ; @node 開印風勢
-	EndIf
-	Return 0
-EndFunction
+; 開印的岩甲（+2，岩膚 +4，開啟新手主線 +1／每 5 點）與風勢（+2，疾風痕直接滿）round 23 起在 DLL（SelfLayer.h）。
 
 
 ; ================================================================== 每次命中（元素專屬）
@@ -123,23 +104,12 @@ Function OnEarthHit(ESSBController akCtl, Actor akTarget, Bool abPower) Global
 			akCtl.LogThrottled(2, "node", "earth quakestrike " + akTarget.GetFormID())
 		EndIf
 	EndIf
-	; 5.6 持續傳奇主線「地動」：同調三段時重擊對耐力低於 30% 的目標跌倒，機率 5%／點。
-	Int rank = ESSBNodes.Rank(akCtl, 3, 0, 4) ; @node 地動
-	If rank > 0 && akCtl.SyncStage() >= 3 && akTarget.GetActorValuePercentage("Stamina") < 0.3
-		If Utility.RandomFloat(0.0, 1.0) < 0.05 * rank
-			akCtl.Knockdown(akTarget, 2.0)
-		EndIf
-	EndIf
+	; 5.6 持續傳奇主線「地動」（同調三段重擊、目標耐力 <30%、5%／點跌倒）round 23 起由 DLL 擲，推力經 ESSB_Knock 回來。
 EndFunction
 
 Function OnWindHit(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	; 5.7 持續熟練分支「順風」（命中回復耐力）round 20 起由 DLL 在命中當下施放。
-	; 5.7 持續傳奇主線「千刃」：同調三段時每次命中附帶風刃，機率 5%／點。
-	Int rank = ESSBNodes.Rank(akCtl, 4, 0, 4) ; @node 千刃
-	If rank > 0 && akCtl.SyncStage() >= 3 && Utility.RandomFloat(0.0, 1.0) < 0.05 * rank
-		WindBlade(akCtl, akTarget, 1.0)
-	EndIf
-	; 5.7 關閉大師分支「順勢」的視窗在接管元素身上，不在風形態，見 OnEnd。
+	; 5.7 持續熟練分支「順風」（命中回復耐力）round 20 起由 DLL 在命中當下施放；持續傳奇主線「千刃」與關閉大師分支
+	; 「順勢」round 23 起由 DLL 判定，風刃經 ESSB_Blade 回來。
 EndFunction
 
 ; v0.4 的神聖以聖佑三階與聖裁為核心：聖佑升階、II／III 命中回血、聖裁計數與聖裁本身（含聖裁傷害、神罰）都在 DLL；
@@ -245,10 +215,7 @@ Function OpenWind(ESSBController akCtl, Actor akTarget, Float afMult = 1.0) Glob
 	If ESSBNodes.Br(akCtl, 4, 1, 3, 1) && player ; @node 氣流
 		akCtl.ApplyUtil(6, 10.0, 0, player)
 	EndIf
-	; 5.7 開啟傳奇分支「先風」：同調三段時開印附帶一段風刃。
-	If ESSBNodes.Br(akCtl, 4, 1, 4, 0) && akCtl.SyncStage() >= 3 ; @node 先風
-		WindBlade(akCtl, akTarget, afMult)
-	EndIf
+	; 5.7 開啟傳奇分支「先風」（同調三段時開印附帶一段風刃）round 23 起由 DLL 在開印那一擊送出（ESSB_Blade）。
 	If ambush
 		; 一刀開印兼吹飛：立即結算一次風終焉的本體（不再往外連鎖），失衡照吹飛的規則吹掉。
 		ESSBNative.ClearStatus(akTarget, 4)
@@ -280,10 +247,7 @@ Function OpenBlood(ESSBController akCtl, Actor akTarget) Global
 	If ESSBNodes.Br(akCtl, 5, 1, 3, 0) ; @node 血咒
 		akCtl.ApplyUtil(20, 50.0, 5, akTarget)
 	EndIf
-	; 5.8 開啟大師分支「血脈」：開印時 +2 同調。
-	If ESSBNodes.Br(akCtl, 5, 1, 3, 1) ; @node 血脈
-		akCtl.AddSync(2)
-	EndIf
+	; 5.8 開啟大師分支「血脈」（開印 +2 同調）round 23 起在 DLL。
 	; 5.8 開啟熟練分支「深血痕」的吸血那一半（層數在 DLL）：中血區吸血一次、低血區吸血兩次。
 	If ESSBNodes.Br(akCtl, 5, 1, 1, 0) && player ; @node 深血痕
 		Float health = player.GetActorValuePercentage("Health")
@@ -348,10 +312,9 @@ Function OnFormOpened(ESSBController akCtl, Int aiElement) Global
 		Return
 	EndIf
 	If aiElement == 4
-		; 5.6 開啟專精分支「地臨強化」：地臨時岩甲滿層（開場就能碎岩），範圍內敵人耐力 -50%（最大耐力的一半）。
-		; 岩甲仍是 v0.3 的腳本資源（N4 改成你身上的效果）；範圍掃描 N5 前由這裡做。
+		; 5.6 開啟專精分支「地臨強化」：地臨時岩甲滿層（開場就能碎岩；round 23 起由 DLL 在開形態時補滿），範圍內敵人
+		; 耐力 -50%（最大耐力的一半；範圍掃描 N5 前由這裡做）。
 		If ESSBNodes.Br(akCtl, 3, 1, 2, 0) ; @node 地臨強化
-			akCtl.SetSelf(2, RockCap(akCtl))
 			Actor[] nearby = akCtl.ScanTargets(player, ESSBElem.AdventRadiusOf(akCtl, 4), 5, player)
 			Int index = 0
 			While index < nearby.Length
@@ -452,35 +415,14 @@ Function QuakeOne(ESSBController akCtl, Actor akTarget, Float afAmount, Float af
 	EndIf
 EndFunction
 
-; 5.6 持續大師分支「反震」：岩甲滿層時被近戰命中反震一次土傷並使攻擊者跌倒，
-; 每 10 秒一次，清空岩甲。由 ESSBGuard 在玩家受擊時呼叫。
-Bool Function OnEarthRetaliate(ESSBController akCtl, Actor akAttacker, Int aiRockBefore) Global
-	If !ESSBNodes.Br(akCtl, 3, 0, 3, 1) || !akAttacker ; @node 反震
-		Return False
-	EndIf
-	If aiRockBefore < RockCap(akCtl) || !akCtl.TakeRetaliate()
-		Return False
-	EndIf
-	akCtl.ClearSelf(2)
-	akCtl.ApplyDamage(4, ESSBReactions.ReactDamage(akCtl, 4, 2.0), akAttacker)
-	If !akCtl.Knockdown(akAttacker, 3.0)
-		akCtl.ApplyUtil(0, 30.0, 3, akAttacker)
-	EndIf
-	If akCtl.CachedDebugLevel >= 1
-		akCtl.LogThrottled(1, "node", "earth retaliate " + akAttacker.GetFormID())
-	EndIf
-	Return True
-EndFunction
+; 5.6 持續大師分支「反震」round 23 起由 DLL 在受擊時結算（土傷、清空岩甲、10 秒冷卻；推力經 ESSB_Knock 回來）。
 
 ; ================================================================== 風：風刃、吹飛、吹上天
 
-; 5.7 持續新手主線：風刃傷害 +2%／點；暗風讓潛行送出的風刃 ×2。
+; 5.7 持續新手主線：風刃傷害 +2%／點。暗風（潛行送出的風刃 ×2）round 23 起由 DLL 乘在 ESSB_Blade 的倍率上；
+; Papyrus 自己送的潛行風刃（致命潛行的奇襲）在 LethalAmbush 另乘。
 Float Function WindBladeMult(ESSBController akCtl) Global
-	Float mult = 1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 4, 0, 0), 0.02) ; @node 風刃傷害
-	If ESSBNodes.Br(akCtl, 4, 0, 3, 2) && akCtl.LastHitWasSneak() ; @node 暗風
-		mult = mult * 2.0
-	EndIf
-	Return mult
+	Return 1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 4, 0, 0), 0.02) ; @node 風刃傷害
 EndFunction
 
 ; 風刃：單體一段 B_max ×1.0；迴旋分支改為對附近 2 人各一段。
@@ -526,14 +468,7 @@ Function WindBladeOne(ESSBController akCtl, Actor akTarget, Float afAmount) Glob
 	EndIf
 EndFunction
 
-; 風勢到門檻就送出風刃並歸零（規劃 2.3）。由控制器在命中後呼叫。
-Function CheckWindGauge(ESSBController akCtl, Actor akTarget) Global
-	If akCtl.GetSelf(3) < WindThreshold(akCtl)
-		Return
-	EndIf
-	akCtl.ClearSelf(3)
-	WindBlade(akCtl, akTarget, 1.0)
-EndFunction
+; 風勢到門檻送出風刃並歸零（規劃 2.3）round 23 起由 DLL 判定（ESSB_Blade）。
 
 ; 吹飛距離：v0.4 固定 3 公尺（5.7 定位）。關閉專精主線 v0.4 是「多段觸發」（DLL N4），
 ; v0.3 的「吹飛距離 +0.2 公尺／點」已拿掉。
@@ -642,10 +577,7 @@ Function OnEnd(ESSBController akCtl, Int aiElement, Actor akTarget, Int aiReason
 EndFunction
 
 Function EndEarthNodes(ESSBController akCtl, Actor akTarget, Int aiReason, Float afMult) Global
-	; 5.6 關閉熟練分支「固土」：土終焉後你岩甲滿層。
-	If ESSBNodes.Br(akCtl, 3, 2, 1, 1) ; @node 固土
-		akCtl.SetSelf(2, RockCap(akCtl))
-	EndIf
+	; 5.6 關閉熟練分支「固土」（土終焉後岩甲滿層）round 23 起由 DLL 在終焉時補滿。
 	; 5.6 關閉大師分支「山崩」：土終焉對範圍內所有帶裂痕的目標各一次地震。
 	If ESSBNodes.Br(akCtl, 3, 2, 3, 0) ; @node 山崩
 		Actor[] nearby = akCtl.ScanTargets(akTarget, QuakeRadius(akCtl), 5, akTarget)
@@ -679,10 +611,7 @@ Function EndWindNodes(ESSBController akCtl, Actor akTarget, Int aiReason, Float 
 			index += 1
 		EndWhile
 	EndIf
-	; 5.7 關閉大師分支「順勢」：風終焉後 5 秒內接管元素的命中皆附帶一段風刃。
-	If aiReason == 0 && ESSBNodes.Br(akCtl, 4, 2, 3, 1) ; @node 順勢
-		akCtl.SetWindFollow(5)
-	EndIf
+	; 5.7 關閉大師分支「順勢」（風被切後 5 秒內接管元素的命中各附一段風刃）round 23 起由 DLL 記在你身上。
 	If aiReason != 1
 		Return
 	EndIf
@@ -949,10 +878,15 @@ Function LethalAmbush(ESSBController akCtl, Actor akTarget) Global
 		Return
 	EndIf
 	Actor[] nearby = akCtl.ScanTargets(akTarget, 210.0, 2, akTarget)
+	; 5.7 持續大師分支「暗風」：潛行攻擊送出的風刃 ×2（DLL 的風刃已自己乘；這是 Papyrus 送的那一段）。
+	Float bladeMult = 1.0
+	If ESSBNodes.Br(akCtl, 4, 0, 3, 2) ; @node 暗風
+		bladeMult = 2.0
+	EndIf
 	Int i = 0
 	While i < nearby.Length
 		If nearby[i]
-			WindBlade(akCtl, nearby[i], 1.0)
+			WindBlade(akCtl, nearby[i], bladeMult)
 			BlowAway(akCtl, nearby[i], 1.0)
 		EndIf
 		i += 1

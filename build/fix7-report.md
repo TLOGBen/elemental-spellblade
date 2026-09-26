@@ -22,25 +22,25 @@
 | ID | 效果 | 舊基準 | 新基準 | 程式位置 |
 |---|---|---|---|---|
 | 01 | 血痕開印吸血 | 10 × 吸血比 × 開印倍率；基礎 0.5–5 | 50 × 原吸血比 × 開印倍率 | `src/ESSBReactions.psc:Open`（行 103） |
-| 02 | 命中流血目標吸血（固定 B 基準） | B_max 10 × 吸血比 × 血位命中倍率；基礎滿血 0.65，低血 3；吸血主線滿點滿血 2.6、低血 3.9 | B_max ×5 × 原吸血比 × 血位命中倍率 | `native/include/HitMath.h:AddBloodLeech`（行 401） |
+| 02 | 命中流血目標吸血（固定 B 基準） | B_max 10 × 吸血比 × 血位命中倍率；基礎滿血 0.65，低血 3；吸血主線滿點滿血 2.6、低血 3.9 | B_max ×5 × 原吸血比 × 血位命中倍率 | `native/include/HitMath.h:AddBloodLeech`（行 416） |
 | 03 | 切換受傷 -50% 視窗 | 1 秒 | 2 秒 | `src/ESSBController.psc:SwitchForm`（行 1384） |
 | 04 | 斷咒附帶沉默 | 1 秒（每 5 秒至多一次） | 1 秒（保留） | `src/ESSBNoForm.psc:OnInterruptCast`（行 46） |
-| 05 | 低點數沉默及首領折半 | 1+0.2×rank，四捨五入；rank1–2 實際 1 秒，首領最少1秒 | 1+0.2×rank，原四捨五入及首領折半（保留） | `native/include/HitMath.h:SilenceSeconds`（行 572） |
+| 05 | 低點數沉默及首領折半 | 1+0.2×rank，四捨五入；rank1–2 實際 1 秒，首領最少1秒 | 1+0.2×rank，原四捨五入及首領折半（保留） | `native/include/HitMath.h:SilenceSeconds`（行 590） |
 | 06 | B_max 固定基準命中回血 | 10 × 0.02 × rank，滿點 3／擊 | 1 × rank | `src/ESSBElem2.psc:OnDivineHit（round 21 已移除）`（行 0） |
 | 07 | 風刃命中回耐 | 3／次 | 15／次 | `src/ESSBElem2.psc:WindBladeOne`（行 532） |
 | 08 | 融斷每個印記回魔 | B_max ×0.5；依元素 = 3.5–12.5／印記 | B_max ×2／印記 | `src/ESSBNoForm.psc:OnBurst`（行 142） |
 | 09 | 附近每名中毒敵人每秒回血 | 4.5／人／秒，最多 5 人 = 22.5 | 6／人／秒，最多 5 人 | `src/ESSBElem3.psc:PoisonFormTick`（行 788） |
 | 10 | 開印回血 | B_max 9 × 0.5 = 4.5 | 25 | `src/ESSBElem3.psc:OpenPoison`（行 262） |
-| 11 | 命中削耐的一半回耐 | 0.25 × rank，滿點 3.75／擊 | 1.5 × rank | `native/include/HitMath.h:AddFlatHitNodes`（行 429） |
+| 11 | 命中削耐的一半回耐 | 0.25 × rank，滿點 3.75／擊 | 1.5 × rank | `native/include/HitMath.h:AddFlatHitNodes`（行 444） |
 | 12 | 開印固定回血 | 10 × 0.5 = 5；低血位 ×2 = 10 | 25，低血位 50 | `src/ESSBElem2.psc:OpenBlood`（行 291） |
 | 13 | 聖印開印基礎回血 | B_max 10 ×0.5 ×環境 M ×開印 M；無分支滿點白天 8.7、夜晚 7.25 | 25 × 環境 M × 開印 M | `src/ESSBReactions.psc:Open`（行 108） |
 | 14 | 熔身每秒回耐 | 5／秒 ×10 秒 = 50 | 20／秒 | `src/ESSBController.psc:TickTimers`（行 4031） |
 | 15 | 冰封期間每秒削耐 | 5／秒 | 25／秒 | `src/ESSBElem.psc:OnFrozenTick`（行 468） |
-| 16 | 命中回耐 | 5／擊 | 25／擊 | `native/include/HitMath.h:AddFlatHitNodes`（行 438） |
+| 16 | 命中回耐 | 5／擊 | 25／擊 | `native/include/HitMath.h:AddFlatHitNodes`（行 453） |
 | 17 | 水域每秒回生命與耐力 | 各 B_max = 7／秒，5 秒各 35 | 生命與耐力各 15／秒 | `src/ESSBController.psc:TickDomain`（行 4773） |
 | 18 | 開印額外回血 | 10 × 0.05 × rank，滿點 7.5 | 2 × rank | `src/ESSBElem2.psc:OpenDivine`（行 321） |
 | 19 | 每次終焉回魔 | B_max；依元素 = 7–25 | B_max ×3 | `src/ESSBNodes.psc:OnEndReward`（行 223） |
-| 20 | 每擊固定削耐 | 0.5 × rank；滿點 7.5 | 3 × rank | `native/include/HitMath.h:AddFlatHitNodes`（行 429） |
+| 20 | 每擊固定削耐 | 0.5 × rank；滿點 7.5 | 3 × rank | `native/include/HitMath.h:AddFlatHitNodes`（行 444） |
 | 21 | 引爆臨時生命護盾 | B_max 10 ×當次引爆層數，10 秒；同款 Peak Value Modifier 不逐次相加 | 25／引爆層 | `src/ESSBElem3.psc:OnAstralDetonate（round 21 已移除）`（行 0） |
 | 22 | 星痕引爆回血 | B_max 10 ×當次層數 | 20／引爆層 | `src/ESSBElem3.psc:OnAstralDetonate（round 21 已移除）`（行 0） |
 | 23 | 血池每秒回血 | B_max 10／秒，5 秒共 50 | 20／秒 | `src/ESSBController.psc:TickDomain`（行 4767） |
@@ -89,25 +89,25 @@
 | ID | 所屬樹 | 唯一 G 來源（原碼） | 下游路徑 | G 次數 |
 |---|---|---|---|---|
 | 01 | 豁免 | `akCtl.Leech(50.0 * akCtl.GetBloodLeechRatio() * mult)   ; v0.4 沒寫量也沒寫 G(L)：沿用 50、拿掉 G`；`src/ESSBReactions.psc:Open`（行 103） | round 21 審查修正（裁定 C1）：2.x 血痕開印：依血位吸血，v0.4 沒寫量也沒寫 G（審查修正）；不乘 G(L) | 0 |
-| 02 | 5 | `const float heal = procMagnitude * LeechRatio(p, nodes) * t.multRecovery;`；`native/include/HitMath.h:AddBloodLeech`（行 401） | Cast::kHeal / kBloodGuard；G 在附傷強度（RollProc）裡乘過一次 | 1 |
+| 02 | 5 | `const float heal = procMagnitude * LeechRatio(p, nodes) * t.multRecovery;`；`native/include/HitMath.h:AddBloodLeech`（行 416） | Cast::kHeal / kBloodGuard；G 在附傷強度（RollProc）裡乘過一次 | 1 |
 | 03 | 豁免 | `SetGuardSwitch(1)`；`src/ESSBController.psc:SwitchForm`（行 1384） | round 21 審查修正（裁定 C1）：5.2 順轉：切換後 1 秒；不乘 G(L) | 0 |
 | 04 | 豁免 | `akTarget.InterruptCast()`；`src/ESSBNoForm.psc:OnInterruptCast`（行 46） | round 21 審查修正（裁定 C1）：5.1 斷咒：打斷施法（不是沉默）；不乘 G(L) | 0 |
-| 05 | 豁免 | `const float wanted = std::min(1.0f + 0.2f * static_cast<float>(nodes.Rank(node::kNoFormSilence)), static_cast<float>(kMaxSilenceSeconds));`；`native/include/HitMath.h:SilenceSeconds`（行 572） | Cast::kSilence（固定時長法術）；G 豁免 | 0 |
+| 05 | 豁免 | `const float wanted = std::min(1.0f + 0.2f * static_cast<float>(nodes.Rank(node::kNoFormSilence)), static_cast<float>(kMaxSilenceSeconds));`；`native/include/HitMath.h:SilenceSeconds`（行 590） | Cast::kSilence（固定時長法術）；G 豁免 | 0 |
 | 06 | 6 | `—`；`src/ESSBElem2.psc:OnDivineHit（round 21 已移除）`（行 0） | 聖 命中回血主線：v0.4 主線換成別的效果（ESSBElem2.OnDivineHit 只留護持） | 0 |
 | 07 | 豁免 | `akCtl.ApplyUtil(6, 3.0, 0, player)`；`src/ESSBElem2.psc:WindBladeOne`（行 532） | round 21 審查修正（裁定 C1）：5.7 追風：回耐力 3；不乘 G(L) | 0 |
 | 08 | 豁免 | `akCtl.ApplyUtil(5, ESSBReactions.BaseMax(akCtl, aiElement) * 0.5 * aiMarks, 0, player)`；`src/ESSBNoForm.psc:OnBurst`（行 142） | round 21 審查修正（裁定 C1）：5.1 回流：每個印記 B_max ×0.5；不乘 G(L) | 0 |
 | 09 | 豁免 | `heal = heal + 6.0`；`src/ESSBElem3.psc:PoisonFormTick`（行 788） | round 21 審查修正（裁定 C1）：5.10 百毒不侵：v0.4 沒寫量，沿用 6、不乘 G；不乘 G(L) | 0 |
 | 10 | 豁免 | `akCtl.ApplyUtil(4, ESSBReactions.BaseMax(akCtl, 8) * 0.5, 0, player)`；`src/ESSBElem3.psc:OpenPoison`（行 262） | round 21 審查修正（裁定 C1）：5.10 毒血：B_max ×0.5；不乘 G(L) | 0 |
-| 11 | 3 | `const float cut = 3.0f * static_cast<float>(nodes.Rank(node::kEarthStaminaCut)) * TreeG(t, TreeOf(kEarth));`；`native/include/HitMath.h:AddFlatHitNodes`（行 429） | Cast::kDrainStamina；回耐 ×0.5 另一步 | 1 |
+| 11 | 3 | `const float cut = 3.0f * static_cast<float>(nodes.Rank(node::kEarthStaminaCut)) * TreeG(t, TreeOf(kEarth));`；`native/include/HitMath.h:AddFlatHitNodes`（行 444） | Cast::kDrainStamina；回耐 ×0.5 另一步 | 1 |
 | 12 | 豁免 | `Float heal = ESSBReactions.BaseMax(akCtl, 6) * 0.5`；`src/ESSBElem2.psc:OpenBlood`（行 291） | round 21 審查修正（裁定 C1）：5.8 開印回血：B_max ×0.5；不乘 G(L) | 0 |
 | 13 | 豁免 | `akCtl.ApplyUtil(4, BaseMax(akCtl, 7) * 0.5 * mult, 0, player)`；`src/ESSBReactions.psc:Open`（行 108） | round 21 審查修正（裁定 C1）：2.x 聖印開印：回血 B_max ×0.5；不乘 G(L) | 0 |
 | 14 | 豁免 | `ApplyUtil(6, 5.0 * ticks, 0, player)`；`src/ESSBController.psc:TickTimers`（行 4031） | round 21 審查修正（裁定 C1）：5.3 熔身：每秒回耐力 5；不乘 G(L) | 0 |
 | 15 | 豁免 | `akCtl.ApplyUtil(21, 100.0, 2, akTarget)`；`src/ESSBElem.psc:OnFrozenTick`（行 468） | round 21 審查修正（裁定 C1）：5.4 深寒：耐力不回復（不是主動削耐）；不乘 G(L) | 0 |
-| 16 | 4 | `plan.Add({ Cast::kRestoreStamina, 25.0f * TreeG(t, TreeOf(kWind)) * t.multRecovery });`；`native/include/HitMath.h:AddFlatHitNodes`（行 438） | Cast::kRestoreStamina | 1 |
+| 16 | 4 | `plan.Add({ Cast::kRestoreStamina, 25.0f * TreeG(t, TreeOf(kWind)) * t.multRecovery });`；`native/include/HitMath.h:AddFlatHitNodes`（行 453） | Cast::kRestoreStamina | 1 |
 | 17 | 豁免 | `ApplyUtil(4, 15.0 * ticks, 0, player)`；`src/ESSBController.psc:TickDomain`（行 4773） | round 21 審查修正（裁定 C1）：5.11 潮池：v0.4 沒寫量，不乘 G；不乘 G(L) | 0 |
 | 18 | 豁免 | `akCtl.ApplyUtil(4, ESSBReactions.BaseMax(akCtl, 7) * 0.05 * rank, 0, player)`；`src/ESSBElem2.psc:OpenDivine`（行 321） | round 21 審查修正（裁定 C1）：5.9 開印回血 +5%／點（B_max 為基準）；不乘 G(L) | 0 |
 | 19 | 豁免 | `akCtl.ApplyUtil(5, ESSBReactions.BaseMax(akCtl, aiElement), 0, player)`；`src/ESSBNodes.psc:OnEndReward`（行 223） | round 21 審查修正（裁定 C1）：5.2 反哺：B_max 魔力；不乘 G(L) | 0 |
-| 20 | 3 | `const float cut = 3.0f * static_cast<float>(nodes.Rank(node::kEarthStaminaCut)) * TreeG(t, TreeOf(kEarth));`；`native/include/HitMath.h:AddFlatHitNodes`（行 429） | Cast::kDrainStamina；Cast::kRestoreStamina 取同一 cut ×0.5 | 1 |
+| 20 | 3 | `const float cut = 3.0f * static_cast<float>(nodes.Rank(node::kEarthStaminaCut)) * TreeG(t, TreeOf(kEarth));`；`native/include/HitMath.h:AddFlatHitNodes`（行 444） | Cast::kDrainStamina；Cast::kRestoreStamina 取同一 cut ×0.5 | 1 |
 | 21 | 10 | `—`；`src/ESSBElem3.psc:OnAstralDetonate（round 21 已移除）`（行 0） | 星 引爆（OnAstralDetonate）：v0.4 星樹改版，星爆連鎖屬 N5 | 0 |
 | 22 | 10 | `—`；`src/ESSBElem3.psc:OnAstralDetonate（round 21 已移除）`（行 0） | 星 引爆（OnAstralDetonate）：同 21 | 0 |
 | 23 | 豁免 | `ApplyUtil(4, 20.0 * ticks, 0, player)`；`src/ESSBController.psc:TickDomain`（行 4767） | round 21 審查修正（裁定 C1）：5.8 血池：v0.4 沒寫量，不乘 G；不乘 G(L) | 0 |

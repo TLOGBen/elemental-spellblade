@@ -4,8 +4,8 @@
     "Skyrim.esm"
   ],
   "esl_flagged": false,
-  "record_count": 4362,
-  "next_object_id": "006014",
+  "record_count": 4490,
+  "next_object_id": "006016",
   "allocation": [
     {
       "range": "0x000800-0x00080F",
@@ -3429,6 +3429,636 @@
       "id": "0054C3",
       "formid": "010054C3",
       "type": "SPEL"
+    },
+    "ESSB_N4_SyncEffect": {
+      "id": "005500",
+      "formid": "01005500",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Sync": {
+      "id": "005501",
+      "formid": "01005501",
+      "type": "SPEL"
+    },
+    "ESSB_N4_ChargeEffect": {
+      "id": "005502",
+      "formid": "01005502",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Charge": {
+      "id": "005503",
+      "formid": "01005503",
+      "type": "SPEL"
+    },
+    "ESSB_N4_RockArmorEffect": {
+      "id": "005504",
+      "formid": "01005504",
+      "type": "MGEF"
+    },
+    "ESSB_N4_RockArmor": {
+      "id": "005505",
+      "formid": "01005505",
+      "type": "SPEL"
+    },
+    "ESSB_N4_WindGaugeEffect": {
+      "id": "005506",
+      "formid": "01005506",
+      "type": "MGEF"
+    },
+    "ESSB_N4_WindGauge": {
+      "id": "005507",
+      "formid": "01005507",
+      "type": "SPEL"
+    },
+    "ESSB_N4_ResolveEffect": {
+      "id": "005508",
+      "formid": "01005508",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Resolve": {
+      "id": "005509",
+      "formid": "01005509",
+      "type": "SPEL"
+    },
+    "ESSB_N4_IceShieldEffect": {
+      "id": "00550A",
+      "formid": "0100550A",
+      "type": "MGEF"
+    },
+    "ESSB_N4_IceShield": {
+      "id": "00550B",
+      "formid": "0100550B",
+      "type": "SPEL"
+    },
+    "ESSB_N4_ResonanceEffect": {
+      "id": "00550C",
+      "formid": "0100550C",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Resonance": {
+      "id": "00550D",
+      "formid": "0100550D",
+      "type": "SPEL"
+    },
+    "ESSB_N4_CosmosEffect": {
+      "id": "00550E",
+      "formid": "0100550E",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Cosmos": {
+      "id": "00550F",
+      "formid": "0100550F",
+      "type": "SPEL"
+    },
+    "ESSB_N4_OverloadEffect": {
+      "id": "005510",
+      "formid": "01005510",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Overload": {
+      "id": "005511",
+      "formid": "01005511",
+      "type": "SPEL"
+    },
+    "ESSB_N4_OverloadWaitEffect": {
+      "id": "005512",
+      "formid": "01005512",
+      "type": "MGEF"
+    },
+    "ESSB_N4_OverloadWait": {
+      "id": "005513",
+      "formid": "01005513",
+      "type": "SPEL"
+    },
+    "ESSB_N4_StoredForceEffect": {
+      "id": "005514",
+      "formid": "01005514",
+      "type": "MGEF"
+    },
+    "ESSB_N4_StoredForce": {
+      "id": "005515",
+      "formid": "01005515",
+      "type": "SPEL"
+    },
+    "ESSB_N4_ExtremeEffect": {
+      "id": "005516",
+      "formid": "01005516",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Extreme": {
+      "id": "005517",
+      "formid": "01005517",
+      "type": "SPEL"
+    },
+    "ESSB_N4_AvatarEffect": {
+      "id": "005518",
+      "formid": "01005518",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Avatar": {
+      "id": "005519",
+      "formid": "01005519",
+      "type": "SPEL"
+    },
+    "ESSB_N4_AvatarCooldownEffect": {
+      "id": "00551A",
+      "formid": "0100551A",
+      "type": "MGEF"
+    },
+    "ESSB_N4_AvatarCooldown": {
+      "id": "00551B",
+      "formid": "0100551B",
+      "type": "SPEL"
+    },
+    "ESSB_N4_FormHeldEffect": {
+      "id": "00551C",
+      "formid": "0100551C",
+      "type": "MGEF"
+    },
+    "ESSB_N4_FormHeld": {
+      "id": "00551D",
+      "formid": "0100551D",
+      "type": "SPEL"
+    },
+    "ESSB_N4_SwitchChargeEffect": {
+      "id": "00551E",
+      "formid": "0100551E",
+      "type": "MGEF"
+    },
+    "ESSB_N4_SwitchCharge": {
+      "id": "00551F",
+      "formid": "0100551F",
+      "type": "SPEL"
+    },
+    "ESSB_N4_PendingDischargeEffect": {
+      "id": "005520",
+      "formid": "01005520",
+      "type": "MGEF"
+    },
+    "ESSB_N4_PendingDischarge": {
+      "id": "005521",
+      "formid": "01005521",
+      "type": "SPEL"
+    },
+    "ESSB_N4_ThunderEffect": {
+      "id": "005522",
+      "formid": "01005522",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Thunder": {
+      "id": "005523",
+      "formid": "01005523",
+      "type": "SPEL"
+    },
+    "ESSB_N4_QuickShockEffect": {
+      "id": "005524",
+      "formid": "01005524",
+      "type": "MGEF"
+    },
+    "ESSB_N4_QuickShock": {
+      "id": "005525",
+      "formid": "01005525",
+      "type": "SPEL"
+    },
+    "ESSB_N4_StrongShockCooldownEffect": {
+      "id": "005526",
+      "formid": "01005526",
+      "type": "MGEF"
+    },
+    "ESSB_N4_StrongShockCooldown": {
+      "id": "005527",
+      "formid": "01005527",
+      "type": "SPEL"
+    },
+    "ESSB_N4_WindFollowEffect": {
+      "id": "005528",
+      "formid": "01005528",
+      "type": "MGEF"
+    },
+    "ESSB_N4_WindFollow": {
+      "id": "005529",
+      "formid": "01005529",
+      "type": "SPEL"
+    },
+    "ESSB_N4_ConcertEffect": {
+      "id": "00552A",
+      "formid": "0100552A",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Concert": {
+      "id": "00552B",
+      "formid": "0100552B",
+      "type": "SPEL"
+    },
+    "ESSB_N4_SyncKeepAllEffect": {
+      "id": "00552C",
+      "formid": "0100552C",
+      "type": "MGEF"
+    },
+    "ESSB_N4_SyncKeepAll": {
+      "id": "00552D",
+      "formid": "0100552D",
+      "type": "SPEL"
+    },
+    "ESSB_N4_FallingStarEffect": {
+      "id": "00552E",
+      "formid": "0100552E",
+      "type": "MGEF"
+    },
+    "ESSB_N4_FallingStar": {
+      "id": "00552F",
+      "formid": "0100552F",
+      "type": "SPEL"
+    },
+    "ESSB_N4_SurgeUpEffect": {
+      "id": "005530",
+      "formid": "01005530",
+      "type": "MGEF"
+    },
+    "ESSB_N4_SurgeUp": {
+      "id": "005531",
+      "formid": "01005531",
+      "type": "SPEL"
+    },
+    "ESSB_N4_ChargedQuakeEffect": {
+      "id": "005532",
+      "formid": "01005532",
+      "type": "MGEF"
+    },
+    "ESSB_N4_ChargedQuake": {
+      "id": "005533",
+      "formid": "01005533",
+      "type": "SPEL"
+    },
+    "ESSB_N4_BracingEffect": {
+      "id": "005534",
+      "formid": "01005534",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Bracing": {
+      "id": "005535",
+      "formid": "01005535",
+      "type": "SPEL"
+    },
+    "ESSB_N4_InterruptCooldownEffect": {
+      "id": "005536",
+      "formid": "01005536",
+      "type": "MGEF"
+    },
+    "ESSB_N4_InterruptCooldown": {
+      "id": "005537",
+      "formid": "01005537",
+      "type": "SPEL"
+    },
+    "ESSB_N4_IceHeartCooldownEffect": {
+      "id": "005538",
+      "formid": "01005538",
+      "type": "MGEF"
+    },
+    "ESSB_N4_IceHeartCooldown": {
+      "id": "005539",
+      "formid": "01005539",
+      "type": "SPEL"
+    },
+    "ESSB_N4_SanctuaryCooldownEffect": {
+      "id": "00553A",
+      "formid": "0100553A",
+      "type": "MGEF"
+    },
+    "ESSB_N4_SanctuaryCooldown": {
+      "id": "00553B",
+      "formid": "0100553B",
+      "type": "SPEL"
+    },
+    "ESSB_N4_RetaliateCooldownEffect": {
+      "id": "00553C",
+      "formid": "0100553C",
+      "type": "MGEF"
+    },
+    "ESSB_N4_RetaliateCooldown": {
+      "id": "00553D",
+      "formid": "0100553D",
+      "type": "SPEL"
+    },
+    "ESSB_N4_ReverseCooldownEffect": {
+      "id": "00553E",
+      "formid": "0100553E",
+      "type": "MGEF"
+    },
+    "ESSB_N4_ReverseCooldown": {
+      "id": "00553F",
+      "formid": "0100553F",
+      "type": "SPEL"
+    },
+    "ESSB_N4_UnyieldCooldownEffect": {
+      "id": "005540",
+      "formid": "01005540",
+      "type": "MGEF"
+    },
+    "ESSB_N4_UnyieldCooldown": {
+      "id": "005541",
+      "formid": "01005541",
+      "type": "SPEL"
+    },
+    "ESSB_N4_SpellReturnCooldownEffect": {
+      "id": "005542",
+      "formid": "01005542",
+      "type": "MGEF"
+    },
+    "ESSB_N4_SpellReturnCooldown": {
+      "id": "005543",
+      "formid": "01005543",
+      "type": "SPEL"
+    },
+    "ESSB_N4_PunishCooldownEffect": {
+      "id": "005544",
+      "formid": "01005544",
+      "type": "MGEF"
+    },
+    "ESSB_N4_PunishCooldown": {
+      "id": "005545",
+      "formid": "01005545",
+      "type": "SPEL"
+    },
+    "ESSB_N4_CloseInEffect": {
+      "id": "005546",
+      "formid": "01005546",
+      "type": "MGEF"
+    },
+    "ESSB_N4_CloseIn": {
+      "id": "005547",
+      "formid": "01005547",
+      "type": "SPEL"
+    },
+    "ESSB_N4_CloseInCooldownEffect": {
+      "id": "005548",
+      "formid": "01005548",
+      "type": "MGEF"
+    },
+    "ESSB_N4_CloseInCooldown": {
+      "id": "005549",
+      "formid": "01005549",
+      "type": "SPEL"
+    },
+    "ESSB_N4_TideBodyCooldownEffect": {
+      "id": "00554A",
+      "formid": "0100554A",
+      "type": "MGEF"
+    },
+    "ESSB_N4_TideBodyCooldown": {
+      "id": "00554B",
+      "formid": "0100554B",
+      "type": "SPEL"
+    },
+    "ESSB_N4_LingerCooldownEffect": {
+      "id": "00554C",
+      "formid": "0100554C",
+      "type": "MGEF"
+    },
+    "ESSB_N4_LingerCooldown": {
+      "id": "00554D",
+      "formid": "0100554D",
+      "type": "SPEL"
+    },
+    "ESSB_N4_LingerShieldEffect": {
+      "id": "00554E",
+      "formid": "0100554E",
+      "type": "MGEF"
+    },
+    "ESSB_N4_LingerShield": {
+      "id": "00554F",
+      "formid": "0100554F",
+      "type": "SPEL"
+    },
+    "ESSB_N4_CleanseCooldownEffect": {
+      "id": "005550",
+      "formid": "01005550",
+      "type": "MGEF"
+    },
+    "ESSB_N4_CleanseCooldown": {
+      "id": "005551",
+      "formid": "01005551",
+      "type": "SPEL"
+    },
+    "ESSB_N4_AfterimageEffect": {
+      "id": "005552",
+      "formid": "01005552",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Afterimage": {
+      "id": "005553",
+      "formid": "01005553",
+      "type": "SPEL"
+    },
+    "ESSB_N4_CloakGuardEffect": {
+      "id": "005554",
+      "formid": "01005554",
+      "type": "MGEF"
+    },
+    "ESSB_N4_CloakGuard": {
+      "id": "005555",
+      "formid": "01005555",
+      "type": "SPEL"
+    },
+    "ESSB_N4_RockArmorAVEffect": {
+      "id": "005556",
+      "formid": "01005556",
+      "type": "MGEF"
+    },
+    "ESSB_N4_RockArmorAV": {
+      "id": "005557",
+      "formid": "01005557",
+      "type": "SPEL"
+    },
+    "ESSB_N4_IceShieldArmorAVEffect": {
+      "id": "005558",
+      "formid": "01005558",
+      "type": "MGEF"
+    },
+    "ESSB_N4_IceShieldArmorAV": {
+      "id": "005559",
+      "formid": "01005559",
+      "type": "SPEL"
+    },
+    "ESSB_N4_IceShieldMagicAVEffect": {
+      "id": "00555A",
+      "formid": "0100555A",
+      "type": "MGEF"
+    },
+    "ESSB_N4_IceShieldMagicAV": {
+      "id": "00555B",
+      "formid": "0100555B",
+      "type": "SPEL"
+    },
+    "ESSB_N4_CloseInSpeedEffect": {
+      "id": "00555C",
+      "formid": "0100555C",
+      "type": "MGEF"
+    },
+    "ESSB_N4_CloseInSpeed": {
+      "id": "00555D",
+      "formid": "0100555D",
+      "type": "SPEL"
+    },
+    "ESSB_N4_RetortCooldownEffect": {
+      "id": "00555E",
+      "formid": "0100555E",
+      "type": "MGEF"
+    },
+    "ESSB_N4_RetortCooldown": {
+      "id": "00555F",
+      "formid": "0100555F",
+      "type": "SPEL"
+    },
+    "ESSB_N4_GrudgeCooldownEffect": {
+      "id": "005560",
+      "formid": "01005560",
+      "type": "MGEF"
+    },
+    "ESSB_N4_GrudgeCooldown": {
+      "id": "005561",
+      "formid": "01005561",
+      "type": "SPEL"
+    },
+    "ESSB_N4_OathEffect": {
+      "id": "005562",
+      "formid": "01005562",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Oath": {
+      "id": "005563",
+      "formid": "01005563",
+      "type": "SPEL"
+    },
+    "ESSB_N4_LastHitSneakEffect": {
+      "id": "005564",
+      "formid": "01005564",
+      "type": "MGEF"
+    },
+    "ESSB_N4_LastHitSneak": {
+      "id": "005565",
+      "formid": "01005565",
+      "type": "SPEL"
+    },
+    "ESSB_N4_Trio1Effect": {
+      "id": "005566",
+      "formid": "01005566",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Trio1": {
+      "id": "005567",
+      "formid": "01005567",
+      "type": "SPEL"
+    },
+    "ESSB_N4_Trio2Effect": {
+      "id": "005568",
+      "formid": "01005568",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Trio2": {
+      "id": "005569",
+      "formid": "01005569",
+      "type": "SPEL"
+    },
+    "ESSB_N4_Trio3Effect": {
+      "id": "00556A",
+      "formid": "0100556A",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Trio3": {
+      "id": "00556B",
+      "formid": "0100556B",
+      "type": "SPEL"
+    },
+    "ESSB_N4_Trio4Effect": {
+      "id": "00556C",
+      "formid": "0100556C",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Trio4": {
+      "id": "00556D",
+      "formid": "0100556D",
+      "type": "SPEL"
+    },
+    "ESSB_N4_Trio5Effect": {
+      "id": "00556E",
+      "formid": "0100556E",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Trio5": {
+      "id": "00556F",
+      "formid": "0100556F",
+      "type": "SPEL"
+    },
+    "ESSB_N4_Trio6Effect": {
+      "id": "005570",
+      "formid": "01005570",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Trio6": {
+      "id": "005571",
+      "formid": "01005571",
+      "type": "SPEL"
+    },
+    "ESSB_N4_Trio7Effect": {
+      "id": "005572",
+      "formid": "01005572",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Trio7": {
+      "id": "005573",
+      "formid": "01005573",
+      "type": "SPEL"
+    },
+    "ESSB_N4_Trio8Effect": {
+      "id": "005574",
+      "formid": "01005574",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Trio8": {
+      "id": "005575",
+      "formid": "01005575",
+      "type": "SPEL"
+    },
+    "ESSB_N4_Trio9Effect": {
+      "id": "005576",
+      "formid": "01005576",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Trio9": {
+      "id": "005577",
+      "formid": "01005577",
+      "type": "SPEL"
+    },
+    "ESSB_N4_Trio10Effect": {
+      "id": "005578",
+      "formid": "01005578",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Trio10": {
+      "id": "005579",
+      "formid": "01005579",
+      "type": "SPEL"
+    },
+    "ESSB_N4_Trio11Effect": {
+      "id": "00557A",
+      "formid": "0100557A",
+      "type": "MGEF"
+    },
+    "ESSB_N4_Trio11": {
+      "id": "00557B",
+      "formid": "0100557B",
+      "type": "SPEL"
+    },
+    "ESSB_Bracing": {
+      "id": "00557C",
+      "formid": "0100557C",
+      "type": "GLOB"
+    },
+    "ESSB_N4_HolyMagicEffect": {
+      "id": "00557D",
+      "formid": "0100557D",
+      "type": "MGEF"
     },
     "ESSB_Proc": {
       "id": "000830",
@@ -22221,8 +22851,8 @@
       "type": "PERK"
     },
     "ESSB_MainQuest": {
-      "id": "006012",
-      "formid": "01006012",
+      "id": "006014",
+      "formid": "01006014",
       "type": "QUST"
     },
     "ESSB_MainQuest_Schema1_Stub": {
@@ -22325,9 +22955,19 @@
       "formid": "01006011",
       "type": "QUST"
     },
-    "ESSB_MCMQuest": {
+    "ESSB_MainQuest_Schema11_Stub": {
+      "id": "006012",
+      "formid": "01006012",
+      "type": "QUST"
+    },
+    "ESSB_MCMQuest_Schema11_Stub": {
       "id": "006013",
       "formid": "01006013",
+      "type": "QUST"
+    },
+    "ESSB_MCMQuest": {
+      "id": "006015",
+      "formid": "01006015",
       "type": "QUST"
     }
   }

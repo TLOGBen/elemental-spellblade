@@ -77,17 +77,7 @@ EndFunction
 
 ; ================================================================== 通用樹：同調
 
-; 5.2 持續新手：同調門檻 -2%／點；持續熟練分支「專一」：同一形態超過 60 秒再降一半。
-Float Function SyncThresholdScale(ESSBController akCtl) Global
-	Float scale = 1.0 - 0.02 * Rank(akCtl, 12, 0, 0) ; @node 同調門檻
-	If scale < 0.4
-		scale = 0.4
-	EndIf
-	If Br(akCtl, 12, 0, 1, 1) && akCtl.FormHeldSeconds() >= 60.0 ; @node 專一
-		scale = scale * 0.5
-	EndIf
-	Return scale
-EndFunction
+; 5.2 持續新手主線「同調門檻 -2%／點」與持續熟練分支「專一」round 23 起在 DLL（Status.h res::Thresholds）。
 
 ; 5.2 持續新手分支「承接」：切換時保留前一形態三分之一同調。
 Int Function CarryOverSync(ESSBController akCtl, Int aiBefore) Global
@@ -97,20 +87,7 @@ Int Function CarryOverSync(ESSBController akCtl, Int aiBefore) Global
 	Return aiBefore / 3
 EndFunction
 
-; 5.2 持續大師分支「回饋」：同調升段時回復生命與魔力各 B_max ×2。
-Function OnSyncStage(ESSBController akCtl, Int aiStage) Global
-	If Br(akCtl, 12, 0, 3, 1) ; @node 回饋
-		Actor player = akCtl.ThePlayer()
-		Float amount = ESSBReactions.BaseMax(akCtl, akCtl.CurrentElement.GetValueInt()) * 2.0
-		If player && amount > 0.0
-			akCtl.ApplyUtil(4, amount, 0, player)
-			akCtl.ApplyUtil(5, amount, 0, player)
-			If akCtl.CachedDebugLevel >= 2
-				akCtl.LogThrottled(2, "node", "common feedback stage=" + aiStage + " amount=" + amount)
-			EndIf
-		EndIf
-	EndIf
-EndFunction
+; 5.2 持續大師分支「回饋」（升段回生命與魔力各 B_max ×2）round 23 起在 DLL。
 
 ; ================================================================== 通用樹：附傷倍率
 
@@ -165,14 +142,7 @@ EndFunction
 
 ; ================================================================== 通用樹：印記與開印
 
-; 5.2 開啟熟練分支「先制」（開印 +2 同調）與開啟專精主線（+1 同調／每 5 點）。
-Int Function OpenSyncBonus(ESSBController akCtl) Global
-	Int gain = Rank(akCtl, 12, 1, 2) / 5 ; @node 開印時
-	If Br(akCtl, 12, 1, 1, 1) ; @node 先制
-		gain += 2
-	EndIf
-	Return gain
-EndFunction
+; 5.2 開啟熟練分支「先制」（開印 +2 同調）與開啟專精主線（+1 同調／每 5 點）round 23 起在 DLL。
 
 ; v0.3 的開啟新手分支「廣印」與開啟大師分支「深印」（開印那一擊 ×1.5）v0.4 已移除
 ; （同格改為「跳印」「印潮」，DLL N3／N5）。
@@ -214,30 +184,8 @@ Function OnEndReward(ESSBController akCtl, Int aiElement) Global
 	EndIf
 EndFunction
 
-; 5.2 關閉專精分支「三重奏」：10 秒內觸發三種不同元素的終焉，第三次 ×3，
-; 且下一次融斷後保留全部同調。回傳這一次的額外倍率。
-Float Function TrioMult(ESSBController akCtl, Int aiElement) Global
-	If !Br(akCtl, 12, 2, 2, 1) ; @node 三重奏
-		Return 1.0
-	EndIf
-	Int count = akCtl.PushTrio(aiElement)
-	If count >= 3
-		akCtl.SetSyncKeepAll()
-		If akCtl.CachedDebugLevel >= 1
-			akCtl.LogThrottled(1, "node", "common trio element=" + aiElement + " x3")
-		EndIf
-		Return 3.0
-	EndIf
-	Return 1.0
-EndFunction
-
-; 5.2 關閉大師分支「協奏」：切換後首次終焉傷害 ×1.5。
-Float Function ConcertMult(ESSBController akCtl) Global
-	If Br(akCtl, 12, 2, 3, 0) && akCtl.TakeSwitchEnd() ; @node 協奏
-		Return 1.5
-	EndIf
-	Return 1.0
-EndFunction
+; 5.2 關閉專精分支「三重奏」（10 秒內三種不同元素終焉，第三次 ×3，下一次融斷保留全部同調）與關閉大師分支「協奏」
+;（切換後首次終焉 ×1.5）round 23 起在 DLL：終焉倍率已乘，保留全部同調是你身上的標記（控制器在融斷時讀碼 51）。
 
 ; 5.2 關閉專精分支「連鎖終焉」：終焉時附近帶同一印記的目標也終焉 ×0.5。
 Bool Function HasChainEnd(ESSBController akCtl) Global
@@ -261,10 +209,7 @@ Float Function EchoRatio(ESSBController akCtl) Global
 	Return ratio
 EndFunction
 
-; 5.2 持續大師分支「極致」：同調三段時每 10 次命中額外一次全額附傷。
-Bool Function HasExtreme(ESSBController akCtl) Global
-	Return Br(akCtl, 12, 0, 3, 0) ; @node 極致
-EndFunction
+; 5.2 持續大師分支「極致」（同調三段每 10 次命中額外一次全額附傷）round 23 起在 DLL。
 
 
 ; 5.2 持續傳奇分支「永續」：Z 關閉時若同調三段，融斷後保留一段同調。

@@ -866,9 +866,131 @@ def holy_weapon_entries(rank, gate):
     return out
 
 
+# ---------------------------------------------------------------- round 23 (N4): the pools and the defences on you
+# v0.4 5.1 法盾、5.8 護血、5.11 水幕: a PERK cuts the hit by the share BEFORE the engine takes health (physical: 0x24 受到的
+# 傷害; spells: 0x29 受到的法術強度, only for a spell carrying MagicDamageFire / Frost / Shock -- the Spell tab, as vanilla
+# ElementalProtection -- so heals and buffs cast on you are untouched); the DLL's hurt task reads the health it lost and
+# charges the pool (native/include/Hurt.h ShareOf uses the same conditions). 聖佑 / 冰盾 physical reduction, 蓄能's
+# bracing, 殘影 and 破護 read the DLL's effects and mirrors.
+FUNC_GET_ACTOR_VALUE = 14
+FUNC_HAS_MAGIC_EFFECT = 214
+AV_MAGICKA = 25
+CTDA_GT = 0x40
+CTDA_OR = 0x01
+SHIELD_SHARE, SHIELD_SHARE_OVERLOAD, SHIELD_SHARE_PER_POINT = 0.30, 0.45, 0.01
+VEIL_SHARE, SHIELD_VEIL_SHARE, STILL_WATER = 0.20, 0.30, 0.15
+GUARD_SHARE = 0.50
+LINGER_SHARE = 0.30
+HOLY_PHYSICAL = [0.05, 0.10, 0.15]        # R7: 聖佑 I／II／III 受到物理傷害 -5／-10／-15%
+ICE_SHIELD_DR_PER_LAYER = 0.04            # 5.4: 冰盾每層物理減傷 +4%
+ICE_SHIELD_MAX_LAYERS = 8                 # 冰鎧
+BRACING_DR_PER_POINT = 0.01               # 5.6 蓄能（格擋）：每點物理減傷 +1%
+
+
+def or_(cond):
+    """This condition OR the next one (CTDA flag bit 0)."""
+    return bytes([cond[0] | CTDA_OR]) + cond[1:]
+
+
+def has_effect(fid, value=1.0):
+    return ctda(CTDA_EQ, value, FUNC_HAS_MAGIC_EFFECT, param1=own(fid))
+
+
+def magicka_above_zero():
+    return ctda(CTDA_GT, 0.0, FUNC_GET_ACTOR_VALUE, param1=AV_MAGICKA)
+
+
+def destructive_spell():
+    """Spell tab (1): the incoming spell carries a destruction damage keyword (OR of the three)."""
+    return [(1, or_(ctda(CTDA_EQ, 1.0, FUNC_HAS_MAGIC_EFFECT_KEYWORD, param1=ref('Skyrim.esm', FID_KW_DAMAGE_FIRE)))),
+            (1, or_(ctda(CTDA_EQ, 1.0, FUNC_HAS_MAGIC_EFFECT_KEYWORD, param1=ref('Skyrim.esm', FID_KW_DAMAGE_FROST)))),
+            (1, ctda(CTDA_EQ, 1.0, FUNC_HAS_MAGIC_EFFECT_KEYWORD, param1=ref('Skyrim.esm', FID_KW_DAMAGE_SHOCK)))]
+
+
+def pool_entries(value, owner):
+    """Both halves of a pool's cut: the physical entry and the destructive-spell entry, same owner conditions. The master
+    switch gates them too (the DLL charges nothing while it is off, so the cut must stop with it)."""
+    owner = [(0, gv_eq(ID_GLOB['ESSB_Enabled'], 1))] + owner
+    return entry(EP_INCOMING_DAMAGE, value, owner) + entry(EP_INCOMING_SPELL, value, owner + destructive_spell(), tabs=2)
+
+
+def no_form():
+    return (0, gv_eq(ID_GLOB['ESSB_FormActive'], 0))
+
+
+def in_form(element):
+    return [(0, gv_eq(ID_GLOB['ESSB_FormActive'], 1)), (0, gv_eq(ID_GLOB['ESSB_CurrentElement'], element))]
+
+
+def shield_owner():
+    """法盾: no form, and magicka > 0 OR the overload pool is up."""
+    return [no_form(), (0, or_(magicka_above_zero())), (0, has_effect(hit23.effect_id('kOverload')))]
+
+
+def branch_perk_fid(tree_id, name):
+    for tree in plan_trees.parse()['trees']:
+        if tree['id'] != tree_id:
+            continue
+        for route in tree['routes']:
+            for tier in route['tiers']:
+                for branch in tier['branches']:
+                    if branch['name'] == name:
+                        node = (tree['index'] * 3 + route['index']) * 5 + tier['index']
+                        return ID_BRANCH_PERK + node * plan_trees.MAX_BRANCH + branch['slot']
+    raise KeyError((tree_id, name))
+
+
+def shield_share_entries(rank, gate):
+    """5.1 法盾分擔 main line: +1%／point on the share (30% -> 30 + r, overload 45% -> 45 + r); the base rule gives 0.70 /
+    0.55, so each rank multiplies by the ratio (only the chain's top rank counts)."""
+    share = SHIELD_SHARE_PER_POINT * rank
+    plain = (1.0 - SHIELD_SHARE - share) / (1.0 - SHIELD_SHARE)
+    over = (1.0 - SHIELD_SHARE_OVERLOAD - share) / (1.0 - SHIELD_SHARE_OVERLOAD)
+    out = pool_entries(plain, gate + [no_form(), (0, magicka_above_zero()), (0, has_effect(hit23.effect_id('kOverload'), 0.0))])
+    out += pool_entries(over, gate + [no_form(), (0, has_effect(hit23.effect_id('kOverload')))])
+    return out
+
+
+def still_water_entries():
+    """5.11 止水: at sync stage 3 the veil's share +15% (水盾 30% -> 45%, else 20% -> 35%)."""
+    veil = in_form(9) + [(0, magicka_above_zero()), (0, gv_ge(mech(0), 3))]
+    shield = branch_perk_fid('water', '水盾')
+    out = pool_entries((1.0 - SHIELD_VEIL_SHARE - STILL_WATER) / (1.0 - SHIELD_VEIL_SHARE),
+                       veil + [(0, ctda(CTDA_EQ, 1.0, FUNC_HAS_PERK, param1=own(shield)))])
+    out += pool_entries((1.0 - VEIL_SHARE - STILL_WATER) / (1.0 - VEIL_SHARE),
+                        veil + [(0, ctda(CTDA_EQ, 0.0, FUNC_HAS_PERK, param1=own(shield)))])
+    return out
+
+
+def bracing_entries():
+    """5.6 蓄能 (block): the stored force becomes physical reduction +1%／point for 3 s (the DLL mirrors the points in
+    ESSB_Bracing while its effect lasts)."""
+    out = []
+    for points in range(1, 11):
+        out += entry(EP_INCOMING_DAMAGE, 1.0 - BRACING_DR_PER_POINT * points, [(0, gv_eq(hit23.global_id('ESSB_Bracing'), points))])
+    return out
+
+
+def n4_base_entries():
+    """The base rules round 23 adds to ESSB_P_BaseRules (v0.4 5.1 法盾, 5.4 冰盾, 5.8 護血, 5.9 聖佑, 5.11 水幕)."""
+    out = pool_entries(1.0 - SHIELD_SHARE, shield_owner())
+    out += pool_entries((1.0 - SHIELD_SHARE_OVERLOAD) / (1.0 - SHIELD_SHARE),
+                        [no_form(), (0, has_effect(hit23.effect_id('kOverload')))])
+    out += pool_entries(1.0 - VEIL_SHARE, in_form(9) + [(0, magicka_above_zero())])
+    out += pool_entries(1.0 - GUARD_SHARE, in_form(6) + [(0, has_effect(hit20.GUARD_EFFECT))])
+    for tier in (1, 2, 3):
+        out += entry(EP_INCOMING_DAMAGE, 1.0 - HOLY_PHYSICAL[tier - 1],
+                     [(0, has_effect(hit22.effect_id(f'kHoly{tier}')))])
+    for layers in range(1, ICE_SHIELD_MAX_LAYERS + 1):
+        out += entry(EP_INCOMING_DAMAGE, 1.0 - ICE_SHIELD_DR_PER_LAYER * layers, [(0, gv_eq(mech(4), layers))])
+    return out
+
+
 MAIN_ENTRY_NODES = {
     # round 22：聖佑各階的武器傷害加成（主線每一階的 perk 各帶自己那一點的進入點，只有最高那一階生效）。
     ('divine', '聖佑各階武器傷害與聖傷加成'): holy_weapon_entries,
+    # round 23：5.1 法盾分擔 +1%／點（未開形態時的法盾）。
+    ('noform', '法盾分擔'): shield_share_entries,
 }
 
 BRANCH_ENTRY_NODES = {
@@ -882,11 +1004,22 @@ BRANCH_ENTRY_NODES = {
     ('earth', '不動'): lambda: entry(EP_INCOMING_STAGGER, 0.0, [(0, gv_ge(mech2(0), 5))], tabs=2),
     # 5.6 山岳：同調三段時岩甲每層物理減傷 +5%。
     ('earth', '山岳'): mountain_entries,
-    # 5.7 殘影：風勢滿時被近戰命中 30% 機率讓那一擊無效。擲骰在 ESSBGuard，命中就開一個受傷 ×0 的短視窗。
-    ('wind', '殘影'): lambda: entry(EP_INCOMING_DAMAGE, 0.0, [(0, guard_window(3))]),
-    # 5.1 破護：不受元素披風反傷（ESSBGuard 認出披風那一跳，開 2 秒「受到的法術強度 ×0」視窗）。
-    ('noform', '破護'): lambda: entry(EP_INCOMING_SPELL, 0.0, [(0, gv_eq(ID_GLOB['ESSB_FormActive'], 0)),
-                                                               (0, guard_window(5))], tabs=2),
+    # 5.7 殘影：風勢滿時被近戰命中 30% 機率讓下一次攻擊無效。round 23：擲骰在 DLL 受擊（Hurt.h），命中就掛 2 秒的
+    # ESSB_N4_AfterimageEffect；有它時受傷 ×0，下一次受擊時 DLL 把它拿掉。
+    ('wind', '殘影'): lambda: entry(EP_INCOMING_DAMAGE, 0.0, [(0, has_effect(hit23.effect_id('kAfterimage')))]),
+    # 5.1 破護：不受元素披風反傷。round 23：DLL 受擊認出披風那一跳（法術、沒有投射物、攻擊者帶 MagicCloak），掛 2 秒的
+    # ESSB_N4_CloakGuardEffect，每一跳刷新；有它時受到的法術強度 ×0。
+    ('noform', '破護'): lambda: entry(EP_INCOMING_SPELL, 0.0, [no_form(), (0, has_effect(hit23.effect_id('kCloakGuard')))], tabs=2),
+    # round 23 -- 5.1 餘魔：法盾把魔力扣到 0 的那一刻不中斷，再以 30% 分擔 2 秒（改扣耐力）：DLL 掛的視窗效果在、魔力為 0、
+    # 沒有超載時照樣切 30%（有魔力或超載時是法盾本身那一條）。
+    ('noform', '餘魔'): lambda: pool_entries(1.0 - LINGER_SHARE, [
+        no_form(), (0, has_effect(hit23.effect_id('kLingerShield'))),
+        (0, ctda(CTDA_EQ, 0.0, FUNC_GET_ACTOR_VALUE, param1=AV_MAGICKA)), (0, has_effect(hit23.effect_id('kOverload'), 0.0))]),
+    # round 23 -- 5.11 水盾：水幕的分擔 20% → 30%（基礎規則給 0.8，這裡再乘 0.7／0.8）；止水：同調三段再 +15%。
+    ('water', '水盾'): lambda: pool_entries((1.0 - SHIELD_VEIL_SHARE) / (1.0 - VEIL_SHARE), in_form(9) + [(0, magicka_above_zero())]),
+    ('water', '止水'): still_water_entries,
+    # round 23 -- 5.6 蓄能：格擋把滿的蓄勁換成每點物理減傷 +1%、3 秒（DLL 鏡射在 ESSB_Bracing）。
+    ('earth', '蓄能'): bracing_entries,
     # 5.9 神佑：留 1 血之後 2 秒受傷 ×0。
     ('divine', '神佑'): lambda: entry(EP_INCOMING_DAMAGE, 0.0, [(0, guard_window(4))]),
     # 5.9 聖域／神聖領域：其中敵人傷害 -20%（＝你在聖域內受傷 -20%），共用 ESSB_DomainDivine。
@@ -901,6 +1034,9 @@ BRANCH_ENTRY_NODES = {
     # 條件：對手身上有 DLL 的失衡效果）；附傷與反應那一份在 DLL／Papyrus。v0.4 第 1091 行：只有「免疫減速」看同調三段
     # （審查修正：原本這裡也要同調三段）。
     ('wind', '御風'): lambda: entry(EP_ATTACK_DAMAGE, 1.3, [(2, ctda(CTDA_EQ, 1.0, 214, param1=own(hit22.effect_id('kUnbalance'))))]),
+    # round 23 (N4) -- 5.7 空中追擊：浮空目標受你的所有傷害 ×1.5「含武器傷害」：武器那一份是這個進入點（條件：目標身上有
+    # DLL 的浮空效果 ESSB_N3_AirborneEffect）；附傷與反應那一份在 DLL（Status.h ReactionVulnerability／ProcTerms）。
+    ('wind', '空中追擊'): lambda: entry(EP_ATTACK_DAMAGE, 1.5, [(2, ctda(CTDA_EQ, 1.0, 214, param1=own(hit22.effect_id('kAirborne'))))]),
     # 審查修正（指揮官裁定 (c)）-- 5.12 幻影：開印後 3 秒目標對你的命中 30% 落空。受到的傷害 ×0，條件在攻擊者分頁：
     # 攻擊者帶 DLL 的幻影效果（ESSB_N3_PhantomEffect），且 GetRandomPercent < 30——條件每一擊各評估一次，所以每擊各擲一次。
     ('darkness', '幻影'): lambda: entry(EP_INCOMING_DAMAGE, 0.0,
@@ -1072,6 +1208,8 @@ def base_rule_entries():
     for layers in range(1, ROCK_ARMOR_MAX_LAYERS + 1):
         out += entry(EP_INCOMING_DAMAGE, 1.0 - rock_armor_reduction(layers, ROCK_ARMOR_DR_PER_LAYER),
                      [(0, gv_eq(mech2(0), layers))])
+    # round 23 (N4)：法盾、水幕、護血的分擔，聖佑的物理減傷，冰盾每層物理減傷（見 n4_base_entries）。
+    out += n4_base_entries()
     return out
 
 
@@ -1308,6 +1446,7 @@ import fix20_records as hit20
 import fix21_records as hit21
 import fix21_identity
 import fix22_records as hit22
+import fix23_records as hit23
 import tree_v04
 
 
@@ -1412,6 +1551,7 @@ def build_esp(plan):
     hit20.add_records(sys.modules[__name__], add)
     hit21.add_records(sys.modules[__name__], add)
     hit22.add_records(sys.modules[__name__], add, fx, settings)   # round 22 (N3): the status layer's effects
+    hit23.add_records(sys.modules[__name__], add)                 # round 23 (N4): your resources, windows, cooldowns
 
     # -------------------------------------------------------------- KYWD
     add('KYWD', ID_KW_PROC, 'ESSB_Proc', [])
@@ -2004,7 +2144,7 @@ def build_esp(plan):
     entry_count += sum(1 for sig, _ in base_entries if sig == 'PRKE')
     add('PERK', ID_BASE_PERK, 'ESSB_P_BaseRules', [
         ('FULL', Z('元素魔戰士：基礎規則')),
-        ('DESC', Z('血形態的重擊改扣生命；岩甲每層物理減傷 +4%（合計上限 60%）。')),
+        ('DESC', Z('血形態的重擊改扣生命；岩甲每層物理減傷 +4%（合計上限 60%）；法盾、水幕、護血分擔傷害；聖佑與冰盾的物理減傷。')),
         ('DATA', perk_data(playable=0, hidden=1)),
     ] + base_entries)
 
@@ -3327,6 +3467,7 @@ def main():
     runpy.run_path(str(WORK / 'build/fix20_verify.py'))['run']()
     runpy.run_path(str(WORK / 'build/fix21_verify.py'))['run'](sys.modules[__name__])   # round 21: R2, entries, retired, R3
     runpy.run_path(str(WORK / 'build/fix22_verify.py'))['run'](sys.modules[__name__])   # round 22: seam, removals, records, guards, faults
+    runpy.run_path(str(WORK / 'build/fix23_verify.py'))['run'](sys.modules[__name__])   # round 23: seam, removals, records, resolve, guards, faults, seals
     runpy.run_path(str(WORK / 'build/fix18_probes.py'))['run'](sys.modules[__name__])
     perks = sum(1 for r in check if r.sig == 'PERK')
     print(f'READBACK ok: masters={meta["masters"]} records={len(check)} manifest={written["record_count"]} '
@@ -3468,6 +3609,7 @@ def validate_delivery(records):
     # Round 22: the status layer's target effects, the DoTs and 狂刃 are contact casts on the target (the miasma
     # cloak and its aimed payload went in the review fix); the player's ladders and windows are self casts.
     contact_names.update(hit22.contact_edids())
+    contact_names.update(hit23.contact_edids())   # round 23: 誓約, the retort / grudge cooldowns, the last-hit-sneak marker
     aimed_names |= hit22.aimed_edids()
     groups = {0: [], 1: []}
     rows = []

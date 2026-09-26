@@ -114,6 +114,13 @@ struct Fake {
     void LogWash(const EffectView&, bool) { ++washLooked; }
     void LogReapply(const essb::StatusOp&, int dispelled) { reapplied.push_back(dispelled); }
     std::vector<int> reapplied;
+    // Round 23 (N4): the engine-side ops of the self layer and the hurt path.
+    void PayStamina(float amount) { log.push_back("stamina " + std::to_string(static_cast<int>(amount))); }
+    void HurtHealth(float amount) { log.push_back("hurt " + std::to_string(static_cast<int>(amount))); }
+    void Resonance() { log.push_back("resonance"); }
+    void Interrupt(Who who) { log.push_back(std::string("interrupt ") + (who == Who::kPlayer ? "player" : "target")); }
+    void CrushArea(const essb::StatusOp& op) { log.push_back("crush " + std::to_string(static_cast<int>(op.magnitude))); }
+    void FreezeNearby() { log.push_back("freeze nearby"); }
 
     void Add(Who who, EffectView v) { list[Index(who)].push_back(FakeEffect{ v }); }
 };
@@ -356,6 +363,15 @@ void Resolve()
     lowered(essb::Amount(essb::Op::kDamage, 5.0f, 0), "true damage");
     lowered(essb::MakeOp(essb::Op::kRemoveDots), "remove DoTs");
     Check(has(spells, essb::spell::kBleedTick), "resolve: ESSB_Util_BleedTick (放血) is resolved");
+    // Round 23 (N4): every op the self layer and the hurt path can push.
+    for (const essb::Op op : { essb::Op::kSpendMagicka, essb::Op::kDrainStamina, essb::Op::kBloodGuardPool, essb::Op::kPayStamina,
+             essb::Op::kResonance, essb::Op::kInterrupt, essb::Op::kCrushArea, essb::Op::kFreezeNearby }) {
+        lowered(essb::Amount(op, 5.0f), "round 23 op " + std::to_string(static_cast<int>(op)));
+    }
+    lowered(essb::Amount(essb::Op::kBloodGuardPool, 0.0f), "護血 pool removed");
+    lowered(essb::MakeOp(essb::Op::kRiposte, Who::kPlayer), "反擊 window");
+    lowered(essb::MakeOp(essb::Op::kDispelMarkOn), "咒返 滅法印");
+    Check(has(effects, essb::effect::kBloodGuard), "resolve: the 護血 pool effect is tagged (it is dispelled before a re-apply)");
 }
 
 void Judged()

@@ -4,7 +4,7 @@ The receipt (native/out/build-receipt.json) records what was actually used, read
 build itself: CMake version, the compiler CMake detected, the Windows SDK, and the CTest result.
 """
 from pathlib import Path
-import sys, subprocess, json, re
+import sys, subprocess, json, re, shutil
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / 'build')]
@@ -80,13 +80,47 @@ MUTANTS = [
     ('the removal forgets the crystals', 'StatusEngine.h', 'engine',
      'out.crystals = board.Layers(StatusKind::kCrystal);', 'out.crystals = 0;'),
     ('the bleed tick is not resolved', 'StatusEngine.h', 'engine',
-     'spell::kRestoreStamina, spell::kBleedTick }) {', 'spell::kRestoreStamina }) {'),
+     'spell::kRestoreStamina, spell::kBleedTick,\n', 'spell::kRestoreStamina,\n'),
+    # Round 23 (N4): mutations of your resources and the hits you take (SelfLayer.h, Hurt.h, the N4 part of Status.h),
+    # each must fail self_test against build/fix23-self-table.json.
+    ('pools: blocked = the share of what reached you (not h x s / (1 - s))', 'Hurt.h', 'self',
+     'blocked = lost * share.share / (1.0f - share.share);', 'blocked = lost * share.share;'),
+    ('法盾 does not spend the overload first', 'Hurt.h', 'self',
+     'const float fromPool = std::min(pool, owed);', 'const float fromPool = 0.0f;'),
+    ('寒反 only on melee', 'Hurt.h', 'self',
+     'if (retort && form == kFrost && nodes.Has(node::kFrostColdRetort)) {',
+     'if (retort && f.melee && form == kFrost && nodes.Has(node::kFrostColdRetort)) {'),
+    ('護血 overflow is not paid from health', 'Hurt.h', 'self',
+     '            if (left < 0.0f) {\n                hurtYou(-left);',
+     '            if (left < -1.0e9f) {\n                hurtYou(-left);'),
+    # Round 23 review: the unpaid magicka and the DoT add-back.
+    ('法盾／水幕 out of magicka: the unpaid part is not dealt', 'Hurt.h', 'self',
+     'hurtYou((owed - paid) / share.cost);', '(void)paid;'),
+    ('a DoT keeps the pools\' cut (not dealt back)', 'Hurt.h', 'self',
+     'hurtYou(f.dotDamage * share.share / (1.0f - share.share));', '(void)share;'),
+    ('the full power discharge is not a sure crit', 'SelfLayer.h', 'self',
+     'plan.Push(res::Discharge(before, 1.0f, n4::kPower, n4::kPowerCrit));',
+     'plan.Push(res::Discharge(before, 1.0f, n4::kPower, 1.5f));'),
+    ('a sneak attack does not fill the wind gauge', 'SelfLayer.h', 'self',
+     'res::SetWind(plan, me, threshold, in, nodes);   // 1.1',
+     'res::SetWind(plan, me, me.Layers(StatusKind::kWindGauge) + 1, in, nodes);   // 1.1'),
+    ('協奏 pending after a burst instead of a switch', 'SelfLayer.h', 'self',
+     '    if (!burst) {\n        pw.Set(StatusKind::kConcert, 1.0f, 3600.0f);',
+     '    if (burst) {\n        pw.Set(StatusKind::kConcert, 1.0f, 3600.0f);'),
+    ('碎岩 stamina without G(L)', 'SelfLayer.h', 'self',
+     'n4::kCrushStamina * TreeG(t, TreeOf(kEarth)) * t.multDrain;', 'n4::kCrushStamina * t.multDrain;'),
+    ('三重奏 needs four elements', 'Status.h', 'self',
+     '        if (kinds >= 3) {\n            mult *= 3.0f;', '        if (kinds >= 4) {\n            mult *= 3.0f;'),
 ]
 
 
 def run_mutants(log):
     """Builds one test binary per mutant (a separate CMake tree under native/out/mutants) and requires each to fail."""
     root = OUT / 'mutants'
+    # A fresh tree every time: MSBuild tracks the headers a compile read, not the folder a mutant header appears in,
+    # so a stale object would hide a mutant (round 23 saw one survive that way).
+    if root.exists():
+        shutil.rmtree(root)
     lines = ['cmake_minimum_required(VERSION 3.24)', 'project(ESSBMutants LANGUAGES CXX)', 'set(CMAKE_CXX_STANDARD 23)',
              'set(CMAKE_CXX_STANDARD_REQUIRED ON)', 'set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")']
     inc = n.NATIVE / 'include'
@@ -96,8 +130,13 @@ def run_mutants(log):
         assert text.count(old) == 1, ('mutant text not found exactly once', name)
         folder = root / f'm{i}'
         folder.mkdir(parents=True, exist_ok=True)
+        # Every header is copied next to the mutant: a quoted include resolves in the including header's own folder
+        # first, so a mutant reached through another header (SelfLayer.h through Hurt.h) needs its includer beside it.
+        for other in inc.glob('*.h'):
+            if other.name != header:
+                (folder / other.name).write_bytes(other.read_bytes())
         (folder / header).write_text(text.replace(old, new), encoding='utf-8', newline='\n')
-        source = n.NATIVE / 'tests' / ('status_test.cpp' if test == 'status' else 'engine_test.cpp')
+        source = n.NATIVE / 'tests' / {'status': 'status_test.cpp', 'engine': 'engine_test.cpp', 'self': 'self_test.cpp'}[test]
         lines += [f'add_executable(m{i} "{source.as_posix()}")',
                   f'target_include_directories(m{i} PRIVATE "{folder.as_posix()}" "{inc.as_posix()}" "{js.as_posix()}")',
                   f'target_compile_options(m{i} PRIVATE /EHsc /utf-8)']
@@ -107,7 +146,9 @@ def run_mutants(log):
     results = []
     for i, (name, header, test, *_rest) in enumerate(MUTANTS):
         exe = root / 'build' / 'Release' / f'm{i}.exe'
-        args = [exe] + ([ROOT / 'build/fix22-status-table.json', ROOT / 'build/fix22-wiring.json'] if test == 'status' else [])
+        tables = {'status': ['build/fix22-status-table.json', 'build/fix22-wiring.json'],
+                  'self': ['build/fix23-self-table.json', 'build/fix23-wiring.json']}.get(test, [])
+        args = [exe] + [ROOT / t for t in tables]
         r = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf8', errors='replace')
         log.write(f'$ mutant {i} ({name}): exit {r.returncode}\n{r.stdout}\n')
         if r.returncode == 0:
@@ -153,9 +194,11 @@ def main():
         'magnitude_scenarios': cases,
         'mutants': mutants,
     }, indent=2, ensure_ascii=False) + '\n', encoding='utf8')
-    by = {h: sum(1 for m in mutants if m['header'] == h) for h in ('Status.h', 'StatusEngine.h')}
+    by = {}
+    for m in mutants:
+        by[m['header']] = by.get(m['header'], 0) + 1
     print(f'NATIVE MUTANTS ok: {len(mutants)}/{len(mutants)} source mutations make the tests fail '
-          f'(Status.h {by["Status.h"]}, StatusEngine.h {by["StatusEngine.h"]})')
+          f'({", ".join(f"{h} {k}" for h, k in by.items())})')
     print(f'Native build ok: cl {cl_version}, cmake {cmake_version}, SDK {sdk}; ctest {summary[3]} test(s), 0 failed; receipt written.')
 
 

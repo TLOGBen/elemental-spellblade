@@ -5,8 +5,9 @@ Scriptname ESSBNoForm Hidden
 弓弩的「重擊」由潛行射擊取代（控制器已在 OnWeaponHit 換算好 abPower）。
 
 v0.4 的無元素命中（基準真傷、吸魔、小滅法、滅法、滅法印、沉默，以及吸魔量、奪魔、滅法倍率、燒魔倍數、枯竭、
-靜寂、燒魔 +5%、低魔增傷、噬命、寂滅）由 DLL 在命中當下計算並施放（round 20 N2、round 21）。
-這裡只剩 DLL 還沒接手的：斷咒（N4）、反咒（N4）與 v0.3 融斷路線沿用下來的節點（冷寂 N5 前）。
+靜寂、燒魔 +5%、低魔增傷、噬命、寂滅）由 DLL 在命中當下計算並施放（round 20 N2、round 21）；斷咒、反咒、戰意、
+超載、法盾、化法為力、逼近、咒返、不屈、餘魔、破護、反擊 round 23（N4）起也在 DLL。
+這裡只剩 v0.3 融斷路線沿用下來的節點（冷寂 N5 前）與真傷倍率。
 v0.3 的純武藝路線（重擊碎甲、暴擊率、戰意武器傷害、終結、節奏、處決……）在 v0.4 已整條換成大師路線（多為 N4），
 其效果在 round 21 拿掉。
 
@@ -34,22 +35,7 @@ EndFunction
 
 ; ================================================================== 滅法（route 1）
 
-; 熟練分支「斷咒」：命中施法中的敵人打斷其施法，每 5 秒一次（v0.4 列為 DLL N4，到那時才搬）。
-; round 20 前它掛在破魔主線裡、要先有破魔點數才生效；破魔主線在 N2 由 DLL 的吸魔／滅法取代後，
-; 斷咒只看自己的分支。
-Function OnInterruptCast(ESSBController akCtl, Actor akTarget, Bool abHitCasting) Global
-	If !abHitCasting || !ESSBNodes.Br(akCtl, 11, 1, 1, 0) ; @node 斷咒
-		Return
-	EndIf
-	If akCtl.TakeInterrupt()
-		; v0.4 5.1：打斷其施法（原版 InterruptCast），每 5 秒一次，成功時戰意 +1。
-		akTarget.InterruptCast()
-		akCtl.AddResolve(1)
-		If akCtl.CachedDebugLevel >= 1
-			akCtl.LogThrottled(1, "node", "noform interrupt " + akTarget.GetFormID())
-		EndIf
-	EndIf
-EndFunction
+; 熟練分支「斷咒」round 23 起在 DLL：命中當下讀目標的施法狀態、打斷、每 5 秒一次、戰意 +1（SelfLayer.h PlanSelfNoForm）。
 
 ; 施法者／帶魔法護盾或元素披風：只讀原版關鍵字與裝備欄，不讀其他模組的狀態。
 Bool Function IsSpellUser(ESSBController akCtl, Actor akTarget) Global
@@ -82,27 +68,8 @@ Bool Function IsCasting(Actor akTarget) Global
 	Return voice && PO3_SKSEFunctions.IsCasting(akTarget, voice)
 EndFunction
 
-; 反咒（熟練分支 B2，由 ESSBCounter 在目標施法的動畫事件上呼叫）：
-; 受其該次施法消耗魔力 100% 的真實傷害，每無元素樹等級 +2%，100 級為 300%。
-Function OnCounterSpell(ESSBController akCtl, Actor akTarget, Float afCost) Global
-	If afCost <= 0.0 || !ESSBNodes.Br(akCtl, 11, 1, 1, 2) ; @node 反咒
-		Return
-	EndIf
-	Int level = 1
-	If akCtl.Trees
-		level = akCtl.Trees.TreeLevel(11)
-	EndIf
-	Float ratio = 1.0 + 0.02 * level
-	; Tree/branch queries yield too: expiry still wins immediately before damage.
-	If !akCtl.IsOperational() || !akCtl.CounterEligible(akTarget)
-		Return
-	EndIf
-	akCtl.ApplyTrueDamage(afCost * ratio, akTarget)
-	akCtl.AddResolve(1)   ; v0.4 5.1：反咒觸發，戰意 +1
-	If akCtl.CachedDebugLevel >= 1
-		akCtl.LogThrottled(1, "node", "noform counter " + akTarget.GetFormID() + " cost=" + afCost + " ratio=" + ratio)
-	EndIf
-EndFunction
+; 熟練分支「反咒」round 23 起在 DLL 的施法事件（施法者帶破魔印時，受該次施法消耗魔力 ×（100% +2%／無元素樹等級）的
+; 真實傷害、戰意 +1；Hurt.h PlanSpellCast，裁定 R7）。
 
 ; ================================================================== 冷寂（route 2）
 

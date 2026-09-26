@@ -129,6 +129,11 @@ def write(b, settings, write_if_changed, root):
 def wiring(b, write_if_changed, root):
     kinds = [dict(kind=k[0], suffix=k[1], effect=rec.effect_id(k[0]), spell=rec.spell_id(k[0]), seconds=k[4],
                   on_player=k[3], stub=k[5]) for k in rec.KINDS]
+    # Round 23 (N4): the StatusKind enum continues with build/fix23_records.py's kinds (no stubs), so the wiring the
+    # status test checks TagOf / Read / Lower against is the whole table.
+    import fix23_records as rec23
+    kinds += [dict(kind=k[0], suffix=k[1], effect=rec23.effect_id(k[0]), spell=rec23.spell_id(k[0]), seconds=k[4],
+                   on_player=k[3], stub=False) for k in rec23.KINDS]
     data = dict(
         kinds=kinds,
         marks=[dict(element=i + 1, effect=b.ID_MARK_EFFECT + i, spell=b.ID_MARK_SPELL + i) for i in range(11)],

@@ -175,3 +175,45 @@ snapshot 的 74 段中，R5→R1 priority 遞減；按 smoke 證實的最低 pri
 | 瘴氣／瘟疫 | 披風記錄與 `Op::kMiasma` 拿掉；`TargetSecond` 每秒讀每個中毒敵人（`MiasmaDoses`／`PlagueChance`），對 3 公尺內的敵人 `SpreadDoses`（讀—長—先驅散再重套，同 R3）。 |
 
 測試：E 組（假引擎）與 C++ 突變 10 個見 `native/out/build-receipt.json` 的 `mutants`。仍未實測：上面全部的遊戲內行為（探針卡 `build/fix22-probes.md`）。
+
+## Round 23（N4：你的資源與受擊，2026-09-26）
+
+本輪的 DLL 做法，每一項標出依據（`nv2`＝native-verification-2、`nv3`＝native-verification-3、`thud`＝truehud-verification、「推論」＝沒有直接查證）。實作者沒有進遊戲；「待實測」的項目寫在探針卡 `build/fix23-probes.md`。
+
+| 項目 | 依據 | 做法 |
+|---|---|---|
+| 你被打（受擊） | nv2 §15（TESHitEvent 在扣血之前送出，近戰／投射物／法術三條路都是）；nv3 §18 P8 | 命中 sink 分兩支：攻擊者是你（原本）與**目標是你**（新）。目標是你的那支只讀事實（攻擊者、法術或武器、有沒有投射物、格擋旗標、你當下的生命／魔力／超載／護血／殘影與餘魔視窗），排一個 task；task 讀扣血後的生命，`lost = before − after`。同一幀多下依序接起來（下一下的 before 當上一下的 after）。純邏輯在 `native/include/Hurt.h`。 |
+| 分擔池（法盾、水幕、護血） | v0.4 5.1／5.8／5.11「PERK 先減、DLL 反推」；nv2 §15 | PERK（`ESSB_P_BaseRules` 與分支）在扣血前把傷害乘 (1 − s)，法術那一半 Spell 分頁條件是 MagicDamageFire／Frost／Shock 三個關鍵字 OR；DLL 用 `h × s ÷ (1 − s)` 反推擋下的量並扣魔力（法盾先花超載）／耐力（餘魔）／護血池（不夠的部分立刻從生命補）。DLL 的 `hurt::ShareOf` 用跟 PERK 同一組條件判斷 s。v0.4 接受這是估計值。總開關關著時 PERK 也不切（條件加 `ESSB_Enabled == 1`）。 |
+| 你的資源是效果 | R3；round 22 的效果層（Dispel(true) → 重套、強度＝計數、時長用 effectiveness） | 62 個新狀態種類（`build/fix23_records.py`，0x005500 起）接在 round 22 的 `StatusKind` 後面，同一套 Read／Lower／先驅散再施放。AV 類（岩甲護甲、冰盾護甲與魔抗、逼近移速）是 Peak Value Modifier，強度＝值、時長用記錄的秒數。 |
+| 鏡射全域變數 | v0.4 2.3「PERK 條件要讀的門檻由 DLL 鏡射」；先例 `ESSB_NativeHit` | DLL 在每個會改你資源的計畫之後、以及每個計時器 tick，把 ESSB_Sync、ESSB_SyncStage、ESSB_Charge、ESSB_Resolve、ESSB_IceShield、ESSB_RockArmor、ESSB_Wind、ESSB_Bracing 寫成效果的值（`TESGlobal::value`，不是 hook）。Papyrus 不再寫它們（只有新 schema 的歸零）。 |
+| 目標正在詠唱（法術麻痺、斷咒） | nv3 §8 | 讀目標 `magicCasters[0..3]`：state 1–4，或 state 6 且法術是專注型，算「正在詠唱」。打斷用 nv3 §9 的 `InterruptCast(false)`，排 task 做。探針 N4-2 在除錯等級 3 逐次記錄狀態變化。 |
+| 反咒 | nv2 §6、nv3 §18 N4-1；R7 | `TESSpellCastEvent`（施法已扣魔之後送出）：施法者帶你的破魔印（`ESSB_ManaBreakEffect`）時，`CalculateMagickaCost(caster)`（雙手施放再乘 GMST `fMagicDualCastingCostMult`）× (1 + 2%／無元素樹等級) × 真傷倍率的真實傷害，戰意 +1。未開形態才生效。舊的 Papyrus 施法動畫事件路徑刪除。 |
+| 逼近 | nv2 §6 | 同一個施法事件：15 公尺內敵對的施法者 → 2 秒移速 +30%（AV 效果）與化法為力 ×2，每 6 秒一次。 |
+| 共鳴層 | v0.4 2.3、5.13；推論（掃描用 round 22 的 `HostilesAround`） | 星痕引爆送 `Op::kResonance`，引擎端數 15 公尺內身上有星痕的敵人（加上被引爆的那個，最多 8），加成共鳴層；到門檻（10，天穹 7）1：1 換成闇宙（上限 15）。 |
+| 碎岩的 3 公尺環、冰心 | 推論（同 `HostilesAround`） | 引擎端掃描、對每個目標各施放傷害／削耐或把凍結量表補滿。 |
+| 超載每秒衰減、風形態衝刺回補 | round 22 的 100 ms 計時器（每次一個 AddTask） | 計時器 task 每秒一次：超載在等待效果（3 秒，蓄流 6 秒）消失後每秒扣最大魔力 5%（不竭 −0.2%／點，最低 2%）。衝刺中（`IsSprinting`）每 100 ms 依 GMST 的衝刺耗耐算回補（20%，疾風 50%）。 |
+| TrueHUD 資源條 | thud；本機 `MO2/mods/TrueHUD/SKSE/Plugins/TrueHUD.pdb`（1.1.10）以 llvm-pdbutil 讀出 `IVTrueHUD1` 的 21 個虛擬函式與位移、`WidgetBase` 的成員位移與大小 176 | 自寫宣告（`native/include/TrueHud.h`，`static_assert` 釘住版面；TrueHUD 是 GPL-3.0-or-later，不 vendor 它的標頭）。`RequestPluginAPI(0)`，沒有 TrueHUD 就整段不做（不報錯）。載入 `TrueHUD_Widgets.swf`、借它的 `ResourceBar`，四條（超載紫、護血暗紅、蓄勁金、同調淡藍）只有顏色、沒有文字；空池隱藏；TrueHUD 選單重開（讀檔、換場景）時重新載入。不動特殊資源條（Valhalla 在用）。**待實測**：位置不重疊、即時更新、讀檔後恢復。 |
+| 化身 | v0.4 5.2；推論 | 10 秒視窗內，DLL 的節點讀取把當前形態元素的持續傳奇主線讀成滿點（被動數值、機率型的立即生效）。主動型的持續傳奇效果（範圍本體）沒有強制觸發一次 → 節點 PARTIAL-N5。 |
+| 多段觸發 | v0.4 2.6、5.7 | 切掉風印記的那一擊：同一個 task 裡把這一擊的附傷再跑 N−1 次（第 2 次起 ×0.5、各自擲骰）、狀態與你的資源的 +1 照算（聖佑逐次升階，不等成熟）。 |
+| 死亡快照 | round 22 的 `TESDeathEvent dead=false`（nv3 §10） | 加第 9 個值：屍體上的最後一擊潛行標記（`ESSB_N4_LastHitSneak`，1 秒，值＝形態元素）；Papyrus 的連殺讀它。 |
+| 防護 | — | 新 sink（受擊支線、施法、選單）與新 task（受擊、施法、打斷、碎岩、冰心）都是 SEH 外框＋C++ catch；新原生函式 `FormEnter`、`SetSync` 經 `Guard`。 |
+
+測試：原生 A0／A／B／C／D、S（round 22）、E 照過；新增 `native/tests/self_test.cpp`：S 組 115 個情境（198 個預期操作，每一列後比對你與目標兩邊的 board，對 `build/fix23_reference.py` 另寫的模型；三種擲骰模式）、W 組 84 筆（鏡射全域變數、新 op 的施放、護血池、N4 記錄）、X 組 10 筆直接檢查；手算錨點 14 個（`build/fix23_fixture.py HAND`）。C++ 原始碼突變共 19 個（round 23 新增 9 個：SelfLayer.h 4、Hurt.h 4、Status.h 的三重奏 1）全部讓測試失敗。參考模型與 C++ 是同一個實作者寫的，可能有同一個理解錯誤；手算錨點與突變是對這一點的補強。
+
+### 仍未實測（探針卡 `build/fix23-probes.md`）
+
+- 受擊反推的估計（`lost` 與畫面上的扣血一致）、分擔比例在遊戲裡的實際扣魔。
+- N4-1（`CalculateMagickaCost` 與 NPC 實際少的魔力）、N4-2（詠唱狀態序列、中斷時魔力不退）。
+- TrueHUD 資源條的位置與恢復；沒有 TrueHUD 時不壞。
+- X1：受擊 sink、受擊 task、施法 sink 的執行緒。
+
+### Round 23 審查修正（2026-09-26）
+
+| 項目 | 依據 | 做法 |
+|---|---|---|
+| 分擔池付不出來的部分 | 指揮官裁定；推論（與主控台 `damageav health`／Papyrus DamageActorValue 同一條 actor value 路徑） | 新 `Op::kHurtHealth`：`RestoreActorValue(kDamage, Health, −x)`，**不留 1 點**。護血池不夠（護血改 50%）、法盾／水幕魔力不夠（付不出的魔力 ÷ 每點成本＝傷害），都照實扣血；扣到 0 以下時 `ESSB_Lethal` 照常送出（神佑照常處理）。這條路在 0 生命時會不會觸發引擎的死亡處理**沒有直接查證**，探針卡「護血致死」一格驗證。 |
+| 持續傷（DoT）不分擔 | 指揮官裁定；`vendor/wbDefinitionsTES5.pas` 的條件函式清單 | PERK 的條件函式裡**沒有能讀效果持續時間的**（有 HasMagicEffectKeyword、EPMagic_SpellHasKeyword、GetCurrentCastingType 等，沒有 duration），所以法術那一半的條件做不到「排除有持續時間的效果」。改在 DLL：受擊 task 讀剛打中你的那個法術在你身上、帶持續時間的扣血效果（ValueModifier／DualValueModifier、主數值生命、有害），Σ 強度 ×剩餘秒數＝PERK 切過之後的持續傷；把 PERK 切掉的那一份（× s ÷ (1 − s)）**當下一次扣回來**，不向池收費。**剩下的差距**：時間點被提前（持續傷原本分幾秒扣，切掉的那份一次扣完）；持續傷中途被解除（藥水、法術）時，已提前扣的不會退；只看「同一個法術」的效果，法術以外的來源（附魔、毒）本來就不在毀滅關鍵字條件內。 |
+| TrueHUD 版本 | thud；本機 1.1.10 的 PDB | `GetFileVersionInfoW` 讀 TrueHUD.dll 的檔案版本，低於 1.1.10 就不啟用小工具（不報錯）；`LoadCustomWidgets` 送出後 10 秒（100 個計時器 tick）沒有回呼就放棄這次、再送一次。 |
+| 同調門檻 | 指揮官裁定 | DLL 讀 `ESSB_SyncT1..3`（預設 5／15／30），與 Papyrus 永續用的是同一份。 |
+
+測試：SELF S 123 個情境／215 個預期操作（新增：巨大一擊穿過小池致死、池部分擋住、法盾／水幕魔力不夠、DoT 扣回、蓄能 ≥1、SyncT 3／8／12），手算錨點 23 個；C++ 突變 21 個（Hurt.h 新增 2 個：付不出的魔力、DoT 扣回）全部讓測試失敗。仍未實測：上面四項的遊戲內行為（`build/fix23-probes.md`）。

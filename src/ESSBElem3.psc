@@ -82,12 +82,9 @@ Function OnPoisonHit(ESSBController akCtl, Actor akTarget, Bool abPower) Global
 	EndIf
 EndFunction
 
-; v0.3 的「水牢」「水鏡」v0.4 已移除；清流（命中回耐力）round 20 起、水壓（命中浸濕目標 +1、滿格沖刷）round 22 起在 DLL。
+; v0.3 的「水牢」「水鏡」v0.4 已移除；清流（命中回耐力）round 20 起、水壓（命中浸濕目標 +1、滿格沖刷）round 22 起、
+; 洗淨／淨化（命中清自身負面，每 3 秒一次）round 23 起在 DLL（ESSB_Cleanse 回來由控制器清）。
 Function OnWaterHit(ESSBController akCtl, Actor akTarget, Bool abPower) Global
-	; 5.11 持續專精分支「洗淨」／大師分支「淨化」：命中時清除自身負面，每 3 秒一次。
-	If ESSBNodes.Br(akCtl, 8, 0, 2, 0) && akCtl.TakeCleanse() ; @node 洗淨
-		akCtl.ApplyCleanse(ESSBNodes.Br(akCtl, 8, 0, 3, 1)) ; @node 淨化
-	EndIf
 EndFunction
 
 ; v0.3 的「蝕魔」「衰弱」「腐朽」（暗的持續分支）v0.4 已移除；命中只剩詛咒本身的抗性侵蝕。
@@ -355,10 +352,7 @@ Float Function FlowPercent(ESSBController akCtl) Global
 EndFunction
 
 
-; 導引給接管元素的同調（v0.3 基礎 +5）。v0.3 的「潮引」（+10）v0.4 已移除。
-Int Function GuideSync(ESSBController akCtl) Global
-	Return 5
-EndFunction
+; 導引的同調跳段（v0.4 2.6：同調立即跳到下一段門檻）round 23 起在 DLL（Status.h PlanEndSelf）。
 
 ; ================================================================== 暗：死咒周邊
 
@@ -663,16 +657,7 @@ Bool Function HasPoisonImmunity(ESSBController akCtl) Global
 	Return ESSBNodes.Br(akCtl, 7, 0, 0, 0) ; @node 免疫
 EndFunction
 
-; 5.10 持續熟練分支「毒皮」：被近戰命中時攻擊者中毒 +2 劑（受擊 N4 前由 ESSBGuard 呼叫；劑數照 DLL 的成長公式）。
-Function OnPoisonSkin(ESSBController akCtl, Actor akAttacker) Global
-	If !ESSBNodes.Br(akCtl, 7, 0, 1, 1) || !akAttacker ; @node 毒皮
-		Return
-	EndIf
-	akCtl.AddStackTo(akAttacker, 7, 2)
-	If akCtl.CachedDebugLevel >= 2
-		akCtl.LogThrottled(2, "node", "poison skin " + akAttacker.GetFormID())
-	EndIf
-EndFunction
+; 5.10 持續熟練分支「毒皮」（被近戰命中時攻擊者中毒 +2 劑）round 23 起在 DLL 受擊（Hurt.h）。
 
 Function OnDeathSoul(ESSBController akCtl, Actor akTarget) Global
 	; 5.12 關閉專精分支「亡魂」：死咒殺死目標時附近敵人恐懼 2 秒。

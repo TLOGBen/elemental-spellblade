@@ -11,7 +11,8 @@ Round 22（N3）起，印記、層數、階梯都是 DLL 掛在目標與玩家�
   所以本檔算出來的都是「還沒乘 G(L)」的值。M_ext 與 (1 − Res) 由引擎結算。
 
 終焉理由 aiReason：0 被切掉、1 融斷、2 自然過期（第 9 目標逐出隨登記表一起消失）。
-自身資源 aiKind（AddSelf／GetSelf，N4 前留在 Papyrus）：1 電荷 2 岩甲 3 風勢}
+Round 23（N4）起你的資源（電荷、岩甲、風勢、同調）也是 DLL 的效果：開印的 +2、導引的同調跳段、協奏／三重奏／
+過載終焉的倍率、雷終焉放電用哪一份電荷與它的消耗都在 DLL，這裡只拿 ESSB_End 帶來的值。}
 
 ; fix round 4: settings.json element_damage -> QUST VMAD float arrays.
 Float Function BaseMax(ESSBController akCtl, Int aiElement) Global
@@ -46,11 +47,7 @@ Function Open(ESSBController akCtl, Int aiElement, Actor akTarget, Float afMult,
 		Return
 	EndIf
 	Float mult = afMult
-	; 電荷／岩甲／風勢的「開印 +2」：命中開的印，那一擊的「命中 +1」已由控制器加過（OnValidHitInternal），這裡補差額。
-	Int already = 0
-	If abFromHit
-		already = 1
-	EndIf
+	; 電荷／岩甲／風勢的「開印 +2」round 23 起由 DLL 在開印那一擊加（SelfLayer.h OpenGains）。
 	If aiElement == 1
 		; 點燃：你的熱度升一階（DLL），並立即一次 B_max ×0.5 火傷
 		akCtl.ApplyDamage(1, ReactDamage(akCtl, 1, 0.5) * mult, akTarget)
@@ -58,18 +55,15 @@ Function Open(ESSBController akCtl, Int aiElement, Actor akTarget, Float afMult,
 		; 霜結：凍結 +3（DLL），減速 25% 3 秒
 		akCtl.ApplyUtil(0, akCtl.FrostOpenSlowPct.GetValue() * mult, 3, akTarget)
 	ElseIf aiElement == 3
-		; 感電：你 +2 電荷（開啟新手主線 +1／每 5 點；電荷 N4 前在 Papyrus），目標魔力 -B_max ×1.0
-		AddOpenSelf(akCtl, 1, ESSBElem.RoundStochastic(ESSBElem.OpenStacks(akCtl, 3) * mult) - already)
+		; 感電：你 +2 電荷（DLL），目標魔力 -B_max ×1.0
 		akCtl.ApplyUtil(2, BaseMax(akCtl, 3) * mult, 0, akTarget)
 	ElseIf aiElement == 4
 		; 裂痕（DLL）：目標護甲 -30（持續新手主線 +2／點）、耐力 -10，你回復 10 耐力並 +2 岩甲
 		akCtl.ApplyUtil(1, ESSBElem2.FissureArmor(akCtl) * mult, 8, akTarget)
 		akCtl.ApplyUtil(3, 10.0 * mult, 0, akTarget)
 		akCtl.ApplyUtil(6, 10.0 * mult, 0, player)
-		AddOpenSelf(akCtl, 2, ESSBElem.RoundStochastic(ESSBElem.OpenStacks(akCtl, 4) * mult) - already)
 	ElseIf aiElement == 5
 		; 風痕：你風勢 +2、失衡（DLL），並把目標拉近（拉近在 ESSBElem2.OpenWind，奇襲要在同一處決定不拉近）
-		AddOpenSelf(akCtl, 3, ESSBElem.RoundStochastic(ESSBElem.OpenStacks(akCtl, 5) * mult) - already)
 	ElseIf aiElement == 6
 		; 血痕：流血 2 層（DLL），並依血位吸血
 		akCtl.Leech(50.0 * akCtl.GetBloodLeechRatio() * mult)   ; v0.4 沒寫量也沒寫 G(L)：沿用 50、拿掉 G
@@ -92,19 +86,15 @@ Function Open(ESSBController akCtl, Int aiElement, Actor akTarget, Float afMult,
 	EndIf
 EndFunction
 
-Function AddOpenSelf(ESSBController akCtl, Int aiKind, Int aiAmount) Global
-	If aiAmount > 0
-		akCtl.AddSelf(aiKind, aiAmount)
-	EndIf
-EndFunction
-
 ; ================================================================== 終焉
 
 ; DLL 已經做完終焉的狀態部分，afV1..afV3 是它算好的值（見 native/include/Status.h PlanEndBody）：
 ;   火 afV1 熱度階、afV2 消耗加成、afV3 熾焰倍率；冰 afV1 = 1 已碎冰；雷 afV1 重擊倍率 R、afV2 暴擊擲骰、afV3 = 1 切換的重擊；
 ;   血 afV1 血痕剩餘傷害；聖 afV1 聖佑階。abChain：連鎖來的終焉，不再乘節點、不再往外連鎖。
+; round 23：afMult 已乘協奏、三重奏、過載終焉；aiCharge 是雷終焉放電用的電荷（被切＝切換當下的快照、融斷／過期＝當下的，
+; 消耗與蓄餘都在 DLL）；abAfterSwitch＝切換後首次終焉（大協奏讀它）。
 Function End(ESSBController akCtl, Int aiElement, Actor akTarget, Int aiReason, Float afMult, Bool abChain, \
-	Float afV1, Float afV2, Float afV3) Global
+	Float afV1, Float afV2, Float afV3, Int aiCharge = 0, Bool abAfterSwitch = False) Global
 	If !akCtl || !akTarget || akTarget.IsDead() || aiElement < 1 || aiElement > 11
 		Return
 	EndIf
@@ -115,17 +105,14 @@ Function End(ESSBController akCtl, Int aiElement, Actor akTarget, Int aiReason, 
 	Float mult = afMult
 	Int charge = -1
 	If aiElement == 3
-		; 被切＝切換當下的電荷、融斷＝融斷當下的電荷（這個事件在融斷清空自身資源之後才到）、過期＝現在的電荷。
-		charge = akCtl.EndCharge(aiReason)
+		charge = aiCharge
 	EndIf
 	If !abChain
 		; 規劃 2.6：關閉路線放大終焉與融斷。通用樹關閉路線 × 該元素關閉新手主線；融斷時再乘該元素「印記的融斷」兩階與雷斷。
 		mult = mult * ESSBNodes.CommonEndMult(akCtl) * ESSBElem.EndMult(akCtl, aiElement)
-		mult = mult * ESSBElem.OverloadMult(akCtl, aiElement, charge)
 		If aiReason == 1
-			mult = mult * ESSBElem.BurstMult(akCtl, aiElement) * ESSBElem.ShockBurstBonus(akCtl, aiElement, aiReason)
+			mult = mult * ESSBElem.BurstMult(akCtl, aiElement) * ESSBElem.ShockBurstBonus(akCtl, aiElement, aiReason, aiCharge)
 		EndIf
-		mult = mult * ESSBNodes.TrioMult(akCtl, aiElement) * ESSBNodes.ConcertMult(akCtl)
 	EndIf
 	If akCtl.Trees
 		akCtl.Trees.OnEndXP(aiElement)
@@ -144,6 +131,12 @@ Function End(ESSBController akCtl, Int aiElement, Actor akTarget, Int aiReason, 
 		EndIf
 	ElseIf aiElement == 4
 		; 地震：裂痕不消耗（規劃 2.6 明寫「地震不消耗」）。
+		; 5.6 蓄能（round 23）：重擊把滿的蓄勁換成下一次地震／碎岩 +5%／點，DLL 記在你身上（玩家碼 53），這裡用掉。
+		Float charged = ESSBNative.GetStatusFloat(player, 53)
+		If charged > 0.0 && !abChain
+			ESSBNative.ClearStatus(player, 53)
+			mult = mult * (1.0 + charged)
+		EndIf
 		ESSBElem2.Quake(akCtl, akTarget, mult, True)
 	ElseIf aiElement == 5
 		EndWind(akCtl, akTarget, mult)
@@ -152,8 +145,7 @@ Function End(ESSBController akCtl, Int aiElement, Actor akTarget, Int aiReason, 
 	ElseIf aiElement == 7
 		ESSBElem2.JudgeArea(akCtl, akTarget, mult, afV1 as Int)
 	ElseIf aiElement == 9
-		; 導引：接管元素的下一次終焉 ×1.5 已由 DLL 掛在目標身上；同調立即跳段（N4 前在 Papyrus）。
-		akCtl.AddSync(ESSBElem3.GuideSync(akCtl))
+		; 導引：接管元素的下一次終焉 ×1.5 已由 DLL 掛在目標身上；同調跳段 round 23 起也在 DLL。
 	ElseIf aiElement == 10
 		; 死咒：3 秒引信（DLL），引信期間目標無法被治療（生命回復速率 -100%，不治延長到 6 秒）。
 		akCtl.ApplyUtil(20, 100.0, ESSBElem3.DeathCurseSeconds(akCtl), akTarget)
@@ -166,16 +158,10 @@ Function End(ESSBController akCtl, Int aiElement, Actor akTarget, Int aiReason, 
 		akCtl.LogThrottled(1, "end", akTarget.GetFormID() + " element=" + aiElement + " reason=" + aiReason + " mult=" + mult + " chain=" + abChain)
 	EndIf
 	If abChain
-		If aiElement == 3 && aiReason != 0
-			akCtl.ConsumeEndCharge(charge, aiReason)
-		EndIf
 		Return
 	EndIf
 	; 各元素樹的終焉分支（範圍版本、領域）。
 	ESSBElem.OnEnd(akCtl, aiElement, akTarget, aiReason, mult, charge)
-	If aiElement == 3 && aiReason != 0
-		akCtl.ConsumeEndCharge(charge, aiReason)
-	EndIf
 	; 5.2 關閉熟練分支「反哺」：每次終焉回復你 B_max 魔力。
 	ESSBNodes.OnEndReward(akCtl, aiElement)
 	; 5.2 關閉專精分支「連鎖終焉」：附近帶同一印記的目標也終焉 ×0.5。
@@ -183,7 +169,7 @@ Function End(ESSBController akCtl, Int aiElement, Actor akTarget, Int aiReason, 
 		ChainEnd(akCtl, aiElement, akTarget, mult * 0.5, 5)
 	EndIf
 	; 5.2 關閉傳奇分支「大協奏」：切換後首次終焉讓範圍內帶舊印記的敵人各觸發一次終焉。
-	If ESSBNodes.HasGrandConcert(akCtl) && akCtl.TakeGrandConcert()
+	If ESSBNodes.HasGrandConcert(akCtl) && abAfterSwitch
 		ChainEnd(akCtl, aiElement, akTarget, mult, 5)
 	EndIf
 EndFunction

@@ -46,6 +46,7 @@ struct Board {
     std::array<Slot, 12> mark{};
     Slot bleedDot{};          // blood DoT (2.7): magnitude = damage per second
     Slot poisonDot{};         // poison DoT (2.7): magnitude m = damage per second
+    Slot guardPool{};         // round 23: your 護血 pool (ESSB_BloodGuardEffect, round 20's record): magnitude = the pool
     bool fearing = false;     // our fear is running (ESSB_FearEffect)
     bool frenzied = false;    // our frenzy is running (ESSB_FrenzyEffect)
     float maxSlowPct = 0.0f;  // strongest of our slows on it (they share one Peak Value Modifier: the strongest wins)
@@ -116,6 +117,20 @@ enum class Op : std::uint8_t
     kWash,            // strip the target's hand-cast timed buffs (ruling R5); magnitude = 淨潮 heal per buff (0 none)
     kEvent,           // a ModEvent for the Papyrus reaction bodies
     kBleedDrain,      // 放血: ESSB_Util_BleedTick on the target (no resist, no G(L)) with this magnitude
+    // Round 23 (N4)
+    kResonance,       // a star detonation outside the dark star: the engine counts resonance targets, SelfLayer adds them
+    kInterrupt,       // interrupt the target's cast (Actor::InterruptCast(false), in a task; native-verification-3 s8-9)
+    kSpendMagicka,    // player magicka - magnitude (法盾 / 水幕 paid in magicka)
+    kPayStamina,      // player stamina - magnitude, never below 0 (餘魔 pays in stamina)
+    kDrainStamina,    // target stamina - magnitude (碎岩)
+    kRiposte,         // the 反擊 window on the player (ESSB_RiposteWindow, 3 s)
+    kDispelMarkOn,    // 滅法印 on the target (咒返)
+    kBloodGuardPool,  // the 護血 pool on the player: magnitude = the new pool, 0 removes it
+    kCrushArea,       // 碎岩's 3 m ring around the target (the engine finds up to 5 more): magnitude = earth damage,
+                      // seconds = stamina cut; a hostile the cut floors is knocked down (ESSB_Knock)
+    kFreezeNearby,    // 冰心: every hostile within 15 m whose freeze gauge is at least 1 freezes (the engine scans)
+    kHurtHealth,      // round 23 review: real damage to you, NO keep-1 clamp (it can kill): the part of a hit 護血 / 法盾 /
+                      // 水幕 could not pay, and what the pools' PERK cut from a damage-over-time spell (commander ruling)
 };
 
 enum class Who : std::uint8_t
@@ -137,7 +152,14 @@ enum class Event : std::uint8_t
                    // blood surge, no clear, on every bleeding target within 15 m (the scan is N5)
     kShatter,      // 1 in-hit, 2 by the frost end: the target shattered (Papyrus applies 碎甲)
     kLanding,      // landing damage: 浮空 ran out (Papyrus OnLanding)
-    kRise,         // (no values) you crossed 70% / 30% upwards: 回湧 is N4; Papyrus runs 血約 (the scan is N5)
+    kRise,         // (no values) you crossed 70% / 30% upwards: 回湧 is the DLL's (N4); Papyrus runs 血約 (the scan is N5)
+    // Round 23 (N4): the DLL decides, the Papyrus body acts (ruling R6: reactions and pushes stay Papyrus until N5)
+    kDischarge,    // charges, multiplier, R, crit multiplier (1 / 1.5 / 2.5): a discharge on the target (ESSBElem.Discharge)
+    kBlade,        // count, multiplier: wind blades on the target (ESSBElem2.WindBlade)
+    kKnock,        // force: knock the target down (ESSBController.Knockdown; KnockExplosion is unverified, R6)
+    kSyncUp,       // stage: your sync rose (sound, 神佑 re-arm)
+    kCleanse,      // 1 purge (淨化) / 0 one effect: cleanse yourself (ESSBController.ApplyCleanse)
+    kLethal,       // (no values) a hit left you at or below 0 health (神佑's deferred kill)
     kCount,
 };
 
@@ -555,7 +577,9 @@ constexpr StatusOp MakeOp(Op kind, Who who = Who::kTarget) noexcept
 
 constexpr StatusOp Amount(Op kind, float magnitude, int element = 0, float seconds = 0.0f) noexcept
 {
-    const bool self = kind == Op::kHeal || kind == Op::kRestoreMagicka || kind == Op::kRestoreStamina || kind == Op::kPayHealth;
+    const bool self = kind == Op::kHeal || kind == Op::kRestoreMagicka || kind == Op::kRestoreStamina || kind == Op::kPayHealth ||
+                      kind == Op::kSpendMagicka || kind == Op::kPayStamina || kind == Op::kBloodGuardPool || kind == Op::kRiposte ||
+                      kind == Op::kHurtHealth;
     StatusOp op = MakeOp(kind, self ? Who::kPlayer : Who::kTarget);
     op.magnitude = magnitude;
     op.element = element;
@@ -637,6 +661,13 @@ struct StatusInputs {
     Self self{};
     Body body{};
     bool iceArmor = false;    // frost form with 冰甲: the 3 m chill cloak is on you (霜膚: 5 m)
+    // Round 23 (N4). `n4` turns the N4 layer on (production always; the round-22 scenario tables run with it off, so
+    // they still pin the N3 behaviour): the dark star, resonance tracking, the end multipliers and the self parts of
+    // an end. `repeat` is a 多段觸發 repetition (聖佑 rises without waiting for maturity). `formElement` is the form's
+    // element (0 none) for 回饋 and 化身.
+    bool n4 = false;
+    bool repeat = false;
+    int formElement = 0;
 };
 
 // ================================================================ single-status rules
@@ -965,6 +996,13 @@ constexpr void DetonateStars(StatusPlan& plan, Board& target, const Board& self,
     const float amount = static_cast<float>(layers) * in.config->damage[kAstral][1] *
                          ReactionScale(kAstral, *in.tuning, in.player, nodes) * Omni(nodes) * mult * vulnerability;
     plan.Push(Amount(Op::kDamage, amount, kAstral));
+    if (in.n4 && !self.Has(StatusKind::kCosmos)) {
+        // 共鳴層 (v0.4 2.3, 5.13): each detonation outside the dark star gives the resonance targets within 15 m (the
+        // engine counts them, SelfLayer.h OnResonance adds them); the dark star's own detonations give none.
+        StatusOp op = MakeOp(Op::kResonance, Who::kPlayer);
+        op.magnitude = 1.0f;
+        plan.Push(op);
+    }
 }
 
 // ---- earth
@@ -1065,11 +1103,471 @@ template <NodeReader Nodes>
 constexpr void RaiseHoly(StatusPlan& plan, Board& self, int steps, const StatusInputs& in, const Nodes& nodes)
 {
     const int tier = HolyTier(self);
-    const bool mature = tier == 0 || self[HolyKind(tier)].elapsed >= n3::kHolyMature;
+    const bool mature = tier == 0 || self[HolyKind(tier)].elapsed >= n3::kHolyMature || in.repeat;   // 多段觸發：聖佑升 N 階
     SetHoly(plan, self, mature ? std::min(3, tier + steps) : tier, in, nodes);
 }
 
 }  // namespace rule
+
+// ================================================================ N4 (round 23): your own resources
+//
+// v0.4 2.3 "你身上的資源": each is one effect on the player whose magnitude is the count (build/fix23_records.py). These
+// are the numbers and the small writers the hit, open, end, hurt and leave planners share (SelfLayer.h, Hurt.h, and
+// PlanEndBody below). Every number is v0.4's; the comment names the section.
+
+namespace n4 {
+// 2.4 / 5.2 同調
+inline constexpr std::array<int, 3> kSyncStages{ 5, 15, 30 };  // 一段 5、二段 15、三段 30
+inline constexpr float kSyncThresholdPerPoint = 0.02f;         // 同調門檻 -2%／點
+inline constexpr float kSyncThresholdFloor = 0.4f;             // 門檻最多降到 0.4 倍（同 Papyrus ESSBNodes.SyncThresholdScale）
+inline constexpr float kFocusAfter = 60.0f;                    // 專一：同一形態 60 秒後門檻再 ×0.5
+inline constexpr float kFocusScale = 0.5f;
+inline constexpr int kPreempt = 2;                             // 先制：開印 +2 同調
+inline constexpr int kBloodVein = 2;                           // 血脈：開印 +2 同調
+inline constexpr float kFeedback = 2.0f;                       // 回饋：升段回生命與魔力各 B_max ×2
+inline constexpr int kExtremeHits = 10;                        // 極致：同調三段每 10 次命中
+inline constexpr float kAvatarCooldown = 30.0f;                // 化身：30 秒冷卻（-1 秒／點）
+inline constexpr float kAvatarPerPoint = 1.0f;
+inline constexpr float kAvatar = 10.0f;                        // 10 秒視同已取得
+// 2.1 / 2.3 / 5.5 雷
+inline constexpr int kChargeCap = 6;                           // 電荷上限 6（主線 +1／每 3 點）
+inline constexpr int kChargeOpen = 2;                          // 開印 +2（開啟新手主線 +1／每 5 點）
+inline constexpr float kCharge = 10.0f;                        // 10 秒未命中歸零
+inline constexpr float kStorm = 0.3f;                          // 雷暴：滿格普攻 30% 放電
+inline constexpr float kParalysis = 0.3f;                      // 滿格法術麻痺：30% 中斷詠唱
+inline constexpr float kThunderMult = 0.3f;                    // 雷霆：融斷後 5 秒每次命中放電 ×0.3
+inline constexpr float kThunder = 5.0f;
+inline constexpr float kQuickShock = 0.15f;                    // 疾電：放電後 3 秒暴擊率 +15%
+inline constexpr float kQuickShockSeconds = 3.0f;
+inline constexpr float kStrongShockCooldown = 15.0f;           // 強感電：每 15 秒一次
+inline constexpr int kThunderclap = 2;                         // 雷鳴：開印那一擊暴擊，電荷 +2
+inline constexpr int kAdventCharges = 5;                       // 雷臨強化：雷臨時 +5 電荷
+inline constexpr float kGodMagicka = 0.5f;                     // 雷神回魔：B_max × 電荷數 × 0.5（可調；v0.4 沒寫量，指揮官裁定）
+inline constexpr int kOverloadEndCharges = 8;                  // 過載終焉：電荷 ≥8 時終焉 ×2
+inline constexpr float kOverloadEnd = 2.0f;
+inline constexpr float kPowerCrit = 2.5f;                      // 滿格重擊放電必定暴擊 ×2.5
+inline constexpr float kPower = 1.5f;                          // R
+// 2.3 / 5.6 土
+inline constexpr int kRockCap = 5;                             // 岩甲上限 5，厚土 10
+inline constexpr int kThickEarth = 10;
+inline constexpr int kRockOpen = 2;                            // 開印 +2（岩膚 +4；開啟新手主線 +1／每 5 點）
+inline constexpr int kRockSkin = 4;
+inline constexpr float kRockArmor = 25.0f;                     // 每層護甲 +25（磐石 +40）；物理減傷 4%／層是 PERK
+inline constexpr float kBedrock = 40.0f;
+inline constexpr float kRetaliate = 2.0f;                      // 反震：B_max ×2.0 土傷（v0.4 沒寫量，沿用 round 21 的 KEPT 值）
+inline constexpr float kRetaliateCooldown = 10.0f;
+inline constexpr float kQuakeKnockStamina = 0.3f;              // 地動：耐力低於 30%
+inline constexpr float kQuakeKnockPerPoint = 0.05f;            // 機率 5%／點
+inline constexpr float kKnockForce = 3.0f;                     // 跌倒推力（ESSBController.Knockdown 的力道）
+inline constexpr int kForceCap = 10;                           // 蓄勁上限 10
+inline constexpr int kForceBlock = 2;                          // 格擋 +2
+inline constexpr int kForcePower = 3;                          // 重擊命中 +3
+inline constexpr float kBracing = 3.0f;                        // 蓄能（格擋）：每點物理減傷 +1%，3 秒
+inline constexpr float kQuakeChargePerPoint = 0.05f;           // 蓄能（重擊）：每點下一次地震／碎岩 +5%
+inline constexpr float kCrushDamage = 0.3f;                    // 碎岩：每層 B_max ×0.3 土傷
+inline constexpr float kCrushStamina = 0.5f;                   // 　　　每層 B_max ×0.5 削耐
+inline constexpr float kCrushRadius = 210.0f;                  // 　　　3 公尺、最多 5 人
+inline constexpr int kCrushTargets = 5;
+// 2.3 / 5.7 風
+inline constexpr int kWindThreshold = 4;                       // 門檻 4（亂舞 3）
+inline constexpr int kWindFrenzy = 3;
+inline constexpr int kWindOpen = 2;                            // 開印 +2（開啟新手主線 +1／每 5 點）
+inline constexpr float kWind = 5.0f;                           // 5 秒未命中歸零
+inline constexpr float kThousandPerPoint = 0.05f;              // 千刃：同調三段每次命中 5%／點
+inline constexpr float kAfterimage = 0.3f;                     // 殘影：風勢滿被近戰命中 30%
+inline constexpr float kAfterimageSeconds = 2.0f;
+inline constexpr int kMultiBase = 2;                           // 多段觸發：基礎 2（+1／每 5 點，最多 5）
+inline constexpr int kMultiMax = 5;
+inline constexpr float kMultiRepeat = 0.5f;                    // 傷害型附傷第 2 次起每次 ×0.5
+inline constexpr float kDarkWindBlade = 2.0f;                  // 暗風：潛行攻擊送出的風刃 ×2
+inline constexpr float kWindFollow = 5.0f;                     // 順勢：風終焉後 5 秒
+// 2.3 / 5.4 冰
+inline constexpr int kIceShieldCap = 5;                        // 冰盾上限 5（冰鎧 8），不吃狀態上限主線
+inline constexpr int kIceArmor = 8;
+inline constexpr float kIceShield = 8.0f;
+inline constexpr float kIceShieldArmor = 20.0f;                // 每層護甲 +20、魔抗 +4%（物理減傷 4%／層是 PERK）
+inline constexpr float kIceShieldMagic = 4.0f;
+inline constexpr float kColdRetortSlow = 30.0f;                // 寒反：減速 30% 3 秒、凍結 +1
+inline constexpr float kColdRetort = 3.0f;
+inline constexpr float kIceHeartHealth = 0.3f;                 // 冰心：生命低於 30%
+inline constexpr float kIceHeartCooldown = 30.0f;
+inline constexpr float kIceHeartRadius = 1050.0f;
+// 5.3 火
+inline constexpr float kScorch = 1.0f;                         // 灼身：B_max ×1.0 火傷
+inline constexpr float kRetortCooldown = 3.0f;                 // 灼身／寒反／靜電／毒皮：每個攻擊者 3 秒一次
+// 1.1 / 5.8 血
+inline constexpr std::array<std::array<float, 2>, 4> kBloodPowerCost{ { { 1.0f, 0.08f }, { 0.7f, 0.05f }, { 0.3f, 0.02f }, { 0.1f, 0.0f } } };
+inline constexpr float kSurgeUp = 8.0f;                        // 回湧：8 秒內下一次重擊
+inline constexpr float kSurgeUpMult = 1.5f;
+inline constexpr int kSurgeUpBleed = 2;
+inline constexpr float kBloodBlade = 0.5f;                     // 血刃：重擊扣的生命 50% 加進血附傷
+inline constexpr float kGuardShare = 0.5f;                     // 護血 PERK 每擊先擋 50%（指揮官裁定，審查修正；v0.4 沒寫比例）
+// 5.9 聖
+inline constexpr int kPunishHit = 1;                           // 懲戒：聖佑 II 以上被命中 +1（誓約目標 +2）
+inline constexpr int kOathPunish = 2;
+inline constexpr int kHeavenCap = 8;                           // 天誅：懲戒上限 8
+inline constexpr float kPunishInterval = 0.5f;                 // 每 0.5 秒最多一層
+inline constexpr float kSanctuaryHealth = 0.3f;                // 庇護：生命低於 30% 聖佑直接 III，每 30 秒一次
+inline constexpr float kSanctuaryCooldown = 30.0f;
+inline constexpr float kOath = 8.0f;                           // 誓約：開印的目標 8 秒內
+// 5.10 毒
+inline constexpr float kPoisonSkin = 2.0f;                     // 毒皮：攻擊者中毒 +2 劑
+// 5.11 水
+inline constexpr float kVeilShare = 0.2f;                      // 水幕：傷害 20% 由魔力分擔（水盾 30%，止水 +15%）
+inline constexpr float kShieldVeil = 0.3f;
+inline constexpr float kStillWater = 0.15f;
+inline constexpr float kVeilCost = 1.5f;                       // 每擋 1 點花 1.5 魔力（水盾 1.0）
+inline constexpr float kShieldVeilCost = 1.0f;
+inline constexpr float kTideBody = 0.2f;                       // 潮身：回復最大魔力 20%，每 30 秒一次
+inline constexpr float kTideBodyCooldown = 30.0f;
+inline constexpr float kCleanseCooldown = 3.0f;                // 洗淨：每 3 秒一次
+// 5.12 暗
+inline constexpr float kGrudgeCooldown = 2.0f;                 // 怨縛：每目標 2 秒一次
+// 2.3 / 5.13 星
+inline constexpr int kResonanceGate = 10;                      // 共鳴層門檻 10（天穹：同調三段 7）
+inline constexpr int kDome = 7;
+inline constexpr int kResonanceCount = 8;                      // 每次引爆最多計 8 個共鳴目標
+inline constexpr float kResonanceRadius = 1050.0f;             // 15 公尺
+inline constexpr float kResonance = 20.0f;                     // 20 秒沒有新增就歸零
+inline constexpr int kCosmosCap = 15;                          // 闇宙上限 15
+inline constexpr float kCosmos = 10.0f;                        // 10 秒未命中歸零
+inline constexpr int kAfterglow = 3;                           // 餘輝：闇宙用完得 3 層共鳴層
+inline constexpr float kEternalPerPoint = 0.03f;               // 永夜：闇星每一擊 +3%／點
+inline constexpr int kStarGate = 1;                            // 星門：開印 +1 共鳴層
+inline constexpr float kStarRemnant = 15.0f;                   // 星殘：共鳴層保留 15 秒
+inline constexpr float kFallingStar = 0.5f;                    // 墜星：每層 ×0.5 闇星一擊
+// 5.1 無元素
+inline constexpr float kOverloadCap = 0.5f;                    // 超載上限：最大魔力 50%（主線 +2%／點，不吃節點倍率）
+inline constexpr float kOverloadCapPerPoint = 0.02f;
+inline constexpr float kOverloadWait = 3.0f;                   // 最後一次灌魔 3 秒後開始衰減（蓄流 6 秒）
+inline constexpr float kAccumulateWait = 6.0f;
+inline constexpr float kOverloadDecay = 0.05f;                 // 每秒 -5% 最大魔力（不竭 -0.2%／點，最低 2%）
+inline constexpr float kEndlessPerPoint = 0.002f;
+inline constexpr float kEndlessFloor = 0.02f;
+inline constexpr float kShieldShare = 0.30f;                   // 法盾：分擔 30%（超載 45%；主線 +1%／點）
+inline constexpr float kShieldShareOverload = 0.45f;
+inline constexpr float kShieldSharePerPoint = 0.01f;
+inline constexpr float kShieldCost = 1.0f;                     // 每擋 1 點花 1.0 魔力（超載 0.75；效率主線 -2%／點）
+inline constexpr float kShieldCostOverload = 0.75f;
+inline constexpr float kShieldCostPerPoint = 0.02f;
+inline constexpr float kTransmute = 0.3f;                      // 化法為力：法術傷害 30%（化勁 60%；逼近期間 ×2）
+inline constexpr float kTransmuteStrong = 0.6f;
+inline constexpr float kCloseInRadius = 1050.0f;               // 逼近：15 公尺內敵人施法
+inline constexpr float kCloseInSpeed = 30.0f;                  // 　　　2 秒移速 +30%，每 6 秒一次
+inline constexpr float kCloseIn = 2.0f;
+inline constexpr float kCloseInCooldown = 6.0f;
+inline constexpr int kResolveCap = 5;                          // 戰意 0～5，10 秒未命中歸零
+inline constexpr float kResolve = 10.0f;
+inline constexpr float kUnyieldCooldown = 3.0f;                // 不屈：每 3 秒一次
+inline constexpr float kLingerShare = 0.3f;                    // 餘魔：再以 30% 分擔 2 秒（改扣耐力），每 30 秒一次
+inline constexpr float kLinger = 2.0f;
+inline constexpr float kLingerCooldown = 30.0f;
+inline constexpr float kInterruptCooldown = 5.0f;              // 斷咒：每 5 秒一次
+inline constexpr float kCounterPerLevel = 0.02f;               // 反咒：消耗魔力 100% +2%／無元素樹等級
+inline constexpr float kSpellReturnCooldown = 5.0f;            // 咒返：每 5 秒一次
+inline constexpr float kForever = 86400.0f;                    // 不隨時間衰減的資源（岩甲、同調、超載、蓄勁）
+}  // namespace n4
+
+namespace res {
+
+// ---- caps and thresholds
+
+template <NodeReader Nodes>
+constexpr int ChargeCap(const Nodes& nodes)
+{
+    return n4::kChargeCap + nodes.Rank(node::kLightningChargeCap) / 3 + CapBonus(nodes);   // ESSBElem.ChargeCap (KEPT)
+}
+
+template <NodeReader Nodes>
+constexpr int RockCap(const Nodes& nodes)
+{
+    return (nodes.Has(node::kEarthThick) ? n4::kThickEarth : n4::kRockCap) + CapBonus(nodes);
+}
+
+template <NodeReader Nodes>
+constexpr int WindThreshold(const Nodes& nodes)
+{
+    return nodes.Has(node::kWindFrenzy) ? n4::kWindFrenzy : n4::kWindThreshold;   // 量表：不吃狀態上限主線
+}
+
+template <NodeReader Nodes>
+constexpr int IceShieldCap(const Nodes& nodes)
+{
+    return nodes.Has(node::kFrostIceMail) ? n4::kIceArmor : n4::kIceShieldCap;   // 冰盾不吃萬象與上限主線（2.3、5.4）
+}
+
+template <NodeReader Nodes>
+constexpr int ResonanceGate(const Tuning& t, const Nodes& nodes)
+{
+    return nodes.Has(node::kAstralDome) && t.syncStage >= 3 ? n4::kDome : n4::kResonanceGate;
+}
+
+template <NodeReader Nodes>
+constexpr int PunishCap(const Nodes& nodes)
+{
+    return nodes.Has(node::kDivineHeaven) ? n4::kHeavenCap : n3::kPunishCap;
+}
+
+// 2.4 / 5.2: the three thresholds (ESSB_SyncT1..3, default 5 / 15 / 30 -- one source of truth with Papyrus 永續; review
+// ruling) after 同調門檻 (-2%／點, floor ×0.4) and 專一 (60 s in the same form: ×0.5), rounded down as
+// ESSBController.ComputeSyncStage did (t1 ≥ 1, each above the one before).
+struct SyncThresholds {
+    std::array<int, 3> at{ n4::kSyncStages };
+};
+
+template <NodeReader Nodes>
+constexpr SyncThresholds Thresholds(const Tuning& t, const Board& me, const Nodes& nodes)
+{
+    float scale = std::max(n4::kSyncThresholdFloor, 1.0f - n4::kSyncThresholdPerPoint * static_cast<float>(nodes.Rank(node::kCommonSyncThreshold)));
+    if (nodes.Has(node::kCommonFocus) && me.Has(StatusKind::kFormHeld) && me[StatusKind::kFormHeld].elapsed >= n4::kFocusAfter) {
+        scale *= n4::kFocusScale;
+    }
+    SyncThresholds out;
+    for (int i = 0; i < 3; ++i) {
+        out.at[i] = std::max(1, t.syncT[i]);
+    }
+    if (scale < 1.0f) {
+        for (int i = 0; i < 3; ++i) {
+            out.at[i] = static_cast<int>(static_cast<float>(out.at[i]) * scale);
+        }
+        out.at[0] = std::max(1, out.at[0]);
+        out.at[1] = std::max(out.at[0] + 1, out.at[1]);
+        out.at[2] = std::max(out.at[1] + 1, out.at[2]);
+    }
+    return out;
+}
+
+constexpr int StageOf(int count, const SyncThresholds& th) noexcept
+{
+    return count >= th.at[2] ? 3 : count >= th.at[1] ? 2 : count >= th.at[0] ? 1 : 0;
+}
+
+// The next threshold above `count` (導引：同調立即跳到下一段門檻), or `count` at stage 3.
+constexpr int NextThreshold(int count, const SyncThresholds& th) noexcept
+{
+    for (const int at : th.at) {
+        if (count < at) {
+            return at;
+        }
+    }
+    return count;
+}
+
+// ---- writers (each updates the board the planner holds, like Status.h's Writer)
+
+// The sync count; a stage rise sends ESSB_SyncUp (sound, 神佑) and pays 回饋 (B_max of the form's element ×2 health
+// and magicka). `announce` false: the count a switch keeps (承接 etc.) is set without a rise (it was earned before).
+template <NodeReader Nodes>
+constexpr void SetSync(StatusPlan& plan, Board& me, int count, const StatusInputs& in, const Nodes& nodes, bool announce = true)
+{
+    const SyncThresholds th = Thresholds(*in.tuning, me, nodes);
+    const int before = StageOf(me.Layers(StatusKind::kSync), th);
+    const Writer w{ plan, me, Who::kPlayer };
+    if (count <= 0) {
+        w.Clear(StatusKind::kSync);
+        return;
+    }
+    w.Set(StatusKind::kSync, static_cast<float>(count), n4::kForever);
+    const int after = StageOf(count, th);
+    if (after > before && announce) {
+        plan.Push(MakeEvent(Event::kSyncUp, after));
+        if (nodes.Has(node::kCommonFeedback) && IsElement(in.formElement)) {
+            const float amount = in.config->damage[in.formElement][1] * n4::kFeedback * in.tuning->multRecovery;
+            plan.Push(Amount(Op::kHeal, amount));
+            plan.Push(Amount(Op::kRestoreMagicka, amount));
+        }
+    }
+}
+
+template <NodeReader Nodes>
+constexpr void AddSync(StatusPlan& plan, Board& me, int amount, const StatusInputs& in, const Nodes& nodes)
+{
+    if (amount > 0) {
+        SetSync(plan, me, me.Layers(StatusKind::kSync) + amount, in, nodes);
+    }
+}
+
+// A counter resource: `count` <= 0 removes it, else it is re-applied for `seconds`.
+constexpr void SetCount(StatusPlan& plan, Board& me, StatusKind kind, int count, float seconds)
+{
+    const Writer w{ plan, me, Who::kPlayer };
+    if (count <= 0) {
+        w.Clear(kind);
+    } else {
+        w.Set(kind, static_cast<float>(count), seconds);
+    }
+}
+
+template <NodeReader Nodes>
+constexpr void SetCharges(StatusPlan& plan, Board& me, int count, const StatusInputs& in, const Nodes& nodes)
+{
+    SetCount(plan, me, StatusKind::kCharge, std::min(count, ChargeCap(nodes)), Scaled(*in.tuning, n4::kCharge));
+}
+
+// 岩甲: the count and its armour (+25 a layer, 磐石 +40) as a Peak Value Modifier; the 4% physical reduction a layer is
+// ESSB_P_BaseRules' entry on the ESSB_RockArmor mirror.
+template <NodeReader Nodes>
+constexpr void SetRock(StatusPlan& plan, Board& me, int count, const StatusInputs& in, const Nodes& nodes)
+{
+    count = std::clamp(count, 0, RockCap(nodes));
+    SetCount(plan, me, StatusKind::kRockArmor, count, n4::kForever);
+    const float armor = static_cast<float>(count) * (nodes.Has(node::kEarthBedrock) ? n4::kBedrock : n4::kRockArmor);
+    const Writer w{ plan, me, Who::kPlayer };
+    if (count <= 0) {
+        w.Clear(StatusKind::kRockArmorAV);
+    } else if (!me.Has(StatusKind::kRockArmorAV) || me[StatusKind::kRockArmorAV].magnitude != armor) {
+        w.Set(StatusKind::kRockArmorAV, armor, n4::kForever);
+    }
+    (void)in;
+}
+
+template <NodeReader Nodes>
+constexpr void SetWind(StatusPlan& plan, Board& me, int count, const StatusInputs& in, const Nodes& nodes)
+{
+    SetCount(plan, me, StatusKind::kWindGauge, std::min(count, WindThreshold(nodes)), Scaled(*in.tuning, n4::kWind));
+}
+
+// 冰盾: the count and its armour (+20) and magic resist (+4%) a layer, lasting 8 s from this hit.
+template <NodeReader Nodes>
+constexpr void SetIceShield(StatusPlan& plan, Board& me, int count, const StatusInputs& in, const Nodes& nodes)
+{
+    count = std::clamp(count, 0, IceShieldCap(nodes));
+    SetCount(plan, me, StatusKind::kIceShield, count, Scaled(*in.tuning, n4::kIceShield));
+    const Writer w{ plan, me, Who::kPlayer };
+    if (count <= 0) {
+        w.Clear(StatusKind::kIceShieldArmorAV);
+        w.Clear(StatusKind::kIceShieldMagicAV);
+        return;
+    }
+    // The AV halves carry a real magnitude, so they keep their record time (8 s; effectiveness only scales a No
+    // Magnitude effect's time). They are re-applied with the counter on every frost hit.
+    w.Set(StatusKind::kIceShieldArmorAV, static_cast<float>(count) * n4::kIceShieldArmor, n4::kIceShield);
+    w.Set(StatusKind::kIceShieldMagicAV, static_cast<float>(count) * n4::kIceShieldMagic, n4::kIceShield);
+}
+
+template <NodeReader Nodes>
+constexpr void AddResolve(StatusPlan& plan, Board& me, int amount, const StatusInputs& in, const Nodes& nodes)
+{
+    SetCount(plan, me, StatusKind::kResolve, std::min(n4::kResolveCap, me.Layers(StatusKind::kResolve) + amount),
+        Scaled(*in.tuning, n4::kResolve));
+    (void)nodes;
+}
+
+// 超載: the pool (an amount of magicka, not a count) and the wait before it decays (3 s, 蓄流 6 s) when it was filled.
+template <NodeReader Nodes>
+constexpr void SetOverload(StatusPlan& plan, Board& me, float pool, bool infused, const StatusInputs& in, const Nodes& nodes)
+{
+    const Writer w{ plan, me, Who::kPlayer };
+    if (pool <= 0.01f) {
+        w.Clear(StatusKind::kOverload);
+        w.Clear(StatusKind::kOverloadWait);
+        return;
+    }
+    w.Set(StatusKind::kOverload, pool, n4::kForever);
+    if (infused) {
+        w.Set(StatusKind::kOverloadWait, 1.0f, nodes.Has(node::kNoFormAccumulate) ? n4::kAccumulateWait : n4::kOverloadWait);
+    }
+    (void)in;
+}
+
+template <NodeReader Nodes>
+constexpr float OverloadCap(float magickaMax, const Nodes& nodes)
+{
+    return magickaMax * (n4::kOverloadCap + n4::kOverloadCapPerPoint * static_cast<float>(nodes.Rank(node::kNoFormOverloadCap)));
+}
+
+// 共鳴層 and the dark star (5.13): layers added outside the dark star; reaching the gate turns every layer into 闇宙 1:1
+// (up to 15) -- the dark star is simply "you carry 闇宙".
+template <NodeReader Nodes>
+constexpr void AddResonance(StatusPlan& plan, Board& me, int layers, const StatusInputs& in, const Nodes& nodes)
+{
+    if (layers <= 0 || me.Has(StatusKind::kCosmos)) {
+        return;
+    }
+    const int total = me.Layers(StatusKind::kResonance) + layers;
+    const Writer w{ plan, me, Who::kPlayer };
+    if (total >= ResonanceGate(*in.tuning, nodes)) {
+        w.Clear(StatusKind::kResonance);
+        w.Set(StatusKind::kCosmos, static_cast<float>(std::min(total, n4::kCosmosCap)), Scaled(*in.tuning, n4::kCosmos));
+        return;
+    }
+    w.Set(StatusKind::kResonance, static_cast<float>(total), Scaled(*in.tuning, n4::kResonance));
+}
+
+// 闇星一擊 (5.13): 星痕上限 × B_max × 1.0（延遲星傷）× G × M_mod（永夜 +3%／點）× 萬象; 星痕弱點 on a power hit at the
+// star cap; not the random B, not R.
+template <NodeReader Nodes>
+constexpr float DarkStrike(bool power, const Board& target, const Board& me, const StatusInputs& in, const Nodes& nodes)
+{
+    const Tuning& t = *in.tuning;
+    const int cap = StarCap(nodes);
+    // 永夜 +3%／點 (n4::kEternalPerPoint; written as the literal so build/fix6_verify.py binds the per-point coefficient)
+    float amount = static_cast<float>(cap) * in.config->damage[kAstral][1] * ReactionScale(kAstral, t, in.player, nodes) *
+                   Omni(nodes) * (1.0f + Pct(t, nodes.Rank(node::kAstralEternal), 0.03f));
+    if (power && nodes.Has(node::kAstralWeakness)) {
+        amount *= 1.0f + n3::kStarWeakness * static_cast<float>(cap) * Omni(nodes);
+    }
+    return amount * ReactionVulnerability(target, me, *in.tuning, nodes);
+}
+
+// A discharge the Papyrus body settles on the target (ESSBElem.Discharge: charges × 30% B_max, the jumps, the drain).
+constexpr StatusOp Discharge(int charges, float mult, float power, float crit)
+{
+    return MakeEvent(Event::kDischarge, charges, mult, power, crit);
+}
+
+// The wind blades a hit or an open sends (ESSB_Blade: count, multiplier; the body is ESSBElem2.WindBlade).
+constexpr void Blades(StatusPlan& plan, int count, float mult)
+{
+    if (count > 0) {
+        plan.Push(MakeEvent(Event::kBlade, count, mult));
+    }
+}
+
+constexpr StatusKind TrioKind(int element) noexcept
+{
+    return static_cast<StatusKind>(static_cast<int>(StatusKind::kTrio1) + element - 1);
+}
+
+// The end multipliers that live on you (5.2, 5.5; round 22 left them on the Papyrus bodies only, decision 9):
+//   協奏    the first end after a switch ×1.5 (the switch leaves ESSB_N4_Concert; 大協奏 gets flag bit 2 for its body)
+//   三重奏  three different elements' ends within 10 s: the third ×3, and the next burst keeps all sync
+//   過載終焉 any end while you hold 8+ charges ×2
+template <NodeReader Nodes>
+constexpr float EndExtra(StatusPlan& plan, int element, int charge, Board& me, const StatusInputs& in, const Nodes& nodes, int& flags)
+{
+    float mult = 1.0f;
+    const Writer pw{ plan, me, Who::kPlayer };
+    if (me.Has(StatusKind::kConcert)) {
+        flags |= 2;
+        if (nodes.Has(node::kCommonConcert)) {
+            mult *= 1.5f;
+        }
+        pw.Clear(StatusKind::kConcert);
+    }
+    if (nodes.Has(node::kCommonTrio) && IsElement(element)) {
+        int kinds = 1;
+        for (int e = kFire; e <= kAstral; ++e) {
+            kinds += e != element && me.Has(TrioKind(e)) ? 1 : 0;
+        }
+        if (kinds >= 3) {
+            mult *= 3.0f;
+            for (int e = kFire; e <= kAstral; ++e) {
+                pw.Clear(TrioKind(e));
+            }
+            pw.Set(StatusKind::kSyncKeepAll, 1.0f, 60.0f);
+        } else {
+            pw.Set(TrioKind(element), 1.0f, 10.0f);   // this element's end, 10 s (a sliding window per element)
+        }
+    }
+    if (nodes.Has(node::kLightningOverloadEnd) && charge >= n4::kOverloadEndCharges) {
+        mult *= n4::kOverloadEnd;
+    }
+    (void)in;
+    return mult;
+}
+
+}  // namespace res
 
 // ================================================================ proc terms (replaces the difference patch)
 
@@ -1286,7 +1784,9 @@ constexpr void PlanOpenState(StatusPlan& plan, int element, float mult, int cutF
         }
         break;
     case kAstral:
-        rule::AddStars(plan, target, 1, in, nodes);   // 星痕 1 層並進入共鳴
+        if (!(in.n4 && self.Has(StatusKind::kCosmos))) {   // 闇星中開印不給星痕（5.13）
+            rule::AddStars(plan, target, 1, in, nodes);    // 星痕 1 層並進入共鳴
+        }
         if (nodes.Has(node::kAstralLock)) {
             tw.Set(StatusKind::kStarLock, 1.0f, Scaled(t, n3::kStarLock));   // 星鎖
         }
@@ -1331,6 +1831,59 @@ constexpr float EndNodeMult(int element, const Tuning& t, const Nodes& nodes)
     return common * (1.0f + Pct(t, nodes.Rank(node::kEndMain[element]), 0.02f));
 }
 
+// Round 23 (N4): the self part of an end (after its event): the lightning charges it used (蓄餘 keeps them), 餘電、雷霆、
+// 疾電; 固土; 順勢; 導引's sync jump (5→15→30, only a cut); 墜星 (the 闇宙 kept at the switch settle on the cut target).
+template <NodeReader Nodes>
+constexpr void PlanEndSelf(StatusPlan& plan, int element, EndReason reason, int charge, bool power, bool chain, Board& target,
+    Board& self, const StatusInputs& in, const Nodes& nodes)
+{
+    const Tuning& t = *in.tuning;
+    const Writer pw{ plan, self, Who::kPlayer };
+    const bool cut = reason == EndReason::kCut;
+    switch (element) {
+    case kLightning:
+        if (!nodes.Has(node::kLightningResidual)) {   // 蓄餘：雷終焉不消耗電荷
+            pw.Clear(StatusKind::kSwitchCharge);
+            res::SetCharges(plan, self, 0, in, nodes);
+        }
+        if (cut && !chain && charge > 0 && nodes.Has(node::kLightningAfterShock)) {
+            pw.Set(StatusKind::kPendingDischarge, static_cast<float>(charge), 30.0f);   // 餘電：接管元素的下一次開印放電 ×0.5
+        }
+        if (reason == EndReason::kBurst && !chain && nodes.Has(node::kLightningThunder)) {
+            pw.Set(StatusKind::kThunder, static_cast<float>(charge), Scaled(t, n4::kThunder));   // 雷霆：融斷後 5 秒
+        }
+        if (charge > 0 && nodes.Has(node::kLightningQuick)) {
+            pw.Set(StatusKind::kQuickShock, 1.0f, Scaled(t, n4::kQuickShockSeconds));   // 疾電：放電後 3 秒暴擊 +15%
+        }
+        break;
+    case kEarth:
+        if (nodes.Has(node::kEarthFirm)) {
+            res::SetRock(plan, self, res::RockCap(nodes), in, nodes);   // 固土：土終焉後岩甲滿層
+        }
+        break;
+    case kWind:
+        if (cut && !chain && nodes.Has(node::kWindFollow)) {
+            pw.Set(StatusKind::kWindFollow, 1.0f, Scaled(t, n4::kWindFollow));   // 順勢
+        }
+        break;
+    case kWater:
+        if (cut && !chain) {
+            const int now = self.Layers(StatusKind::kSync);
+            res::SetSync(plan, self, res::NextThreshold(now, res::Thresholds(t, self, nodes)), in, nodes);   // 導引：同調跳段
+        }
+        break;
+    case kAstral:
+        if (cut && self.Has(StatusKind::kFallingStar)) {
+            const int layers = self.Layers(StatusKind::kFallingStar);   // 墜星：每層 ×0.5 闇星一擊
+            plan.Push(Amount(Op::kDamage, static_cast<float>(layers) * n4::kFallingStar * res::DarkStrike(power, target, self, in, nodes), kAstral));
+            pw.Clear(StatusKind::kFallingStar);
+        }
+        break;
+    default:
+        break;
+    }
+}
+
 template <NodeReader Nodes, RandomSource Rng>
 constexpr void PlanEndBody(StatusPlan& plan, int element, EndReason reason, float mult, bool power, Board& target,
     Board& self, const StatusInputs& in, const Nodes& nodes, Rng& rng, bool chain = false)
@@ -1343,6 +1896,16 @@ constexpr void PlanEndBody(StatusPlan& plan, int element, EndReason reason, floa
     if (target.Has(StatusKind::kGuided)) {
         mult *= target[StatusKind::kGuided].magnitude;   // 導引：接管元素的下一次終焉 ×1.5
         tw.Clear(StatusKind::kGuided);
+    }
+    // Round 23 (N4): the charge this end sees (a cut reads the snapshot taken when you left lightning, a burst or an
+    // expiry the current one) and the end multipliers that live on you (協奏、三重奏、過載終焉; chain ends take none).
+    int flags = chain ? 1 : 0;
+    int charge = 0;
+    if (in.n4) {
+        charge = cut && self.Has(StatusKind::kSwitchCharge) ? self.Layers(StatusKind::kSwitchCharge) : self.Layers(StatusKind::kCharge);
+        if (!chain) {
+            mult *= res::EndExtra(plan, element, charge, self, in, nodes, flags);
+        }
     }
     // The end's own damage the DLL settles (the end shatter, the fire end's DoT conversion, catalysis, the death curse)
     // takes the end node multipliers of 2.7 (common 終焉 / 終焉再 / 同調三段時終焉 × the tree's 終焉 main line), like the
@@ -1489,7 +2052,11 @@ constexpr void PlanEndBody(StatusPlan& plan, int element, EndReason reason, floa
     if (cut && !chain && nodes.Has(node::kCommonResidual) && !target.Has(StatusKind::kResidual)) {
         tw.Set(StatusKind::kResidual, static_cast<float>(element), Scaled(t, n3::kResidualSeconds));   // 疊印
     }
-    plan.Push(MakeEvent(Event::kEnd, element, static_cast<int>(reason), mult, chain ? 1 : 0, value[0], value[1], value[2]));
+    // arg 3 = flags (1 chain, 2 the first end after a switch), arg 7 = the charges the lightning body discharges.
+    plan.Push(MakeEvent(Event::kEnd, element, static_cast<int>(reason), mult, flags, value[0], value[1], value[2], charge));
+    if (in.n4) {
+        PlanEndSelf(plan, element, reason, charge, power, chain, target, self, in, nodes);
+    }
 }
 
 // One mark's end by a cut or a burst: the mark goes; inside the target's 1 s end cooldown nothing else happens.
@@ -1593,7 +2160,9 @@ constexpr HitStatus PlanStatusHit(StatusPlan& plan, int element, bool power, Boa
             rule::AddCurse(plan, target, 1 + (target.frenzied && nodes.Has(node::kDarkConfusion) ? n3::kConfusion : 0), in, nodes);
             break;
         case kAstral:
-            rule::AddStars(plan, target, 1, in, nodes);
+            if (!(in.n4 && self.Has(StatusKind::kCosmos))) {   // 闇星期間命中不加星痕
+                rule::AddStars(plan, target, 1, in, nodes);
+            }
             break;
         default:
             break;
@@ -1661,8 +2230,11 @@ constexpr HitStatus PlanStatusHit(StatusPlan& plan, int element, bool power, Boa
                 // 濺血：15 公尺內所有流血目標（最多 5）一次 ×0.5 血潮、不清除血痕（掃描 N5 前在 Papyrus）。
                 plan.Push(MakeEvent(Event::kSplash, target.bleedDot.magnitude * target.bleedDot.Remaining()));
             } else if (marked != 0 && zone < marked && !self.Has(StatusKind::kCrossCooldown)) {
-                pw.Set(StatusKind::kCrossCooldown, 1.0f, CooldownOf(t, n3::kCross));   // 回湧的效果是 N4
+                pw.Set(StatusKind::kCrossCooldown, 1.0f, CooldownOf(t, n3::kCross));
                 plan.Push(MakeEvent(Event::kRise));   // 血約（往上越線時 15 公尺內流血目標 +2 層）的掃描在 Papyrus
+                if (in.n4) {
+                    pw.Set(StatusKind::kSurgeUp, 1.0f, Scaled(t, n4::kSurgeUp));   // 回湧（N4）：8 秒內下一次重擊
+                }
             }
         }
     }
@@ -1878,6 +2450,7 @@ enum class TagKind : std::uint8_t
     kFear,
     kFrenzy,
     kSlow,       // our shared slow (the strongest of them is Board::maxSlowPct)
+    kGuardPool,  // round 23: the 護血 pool (the DLL dispels it before re-applying, and reads it on a hurt)
 };
 
 struct Tag {
@@ -1913,6 +2486,9 @@ constexpr Tag TagOf(std::uint32_t effect) noexcept
     }
     if (effect == status::kSlowEffect) {
         return { TagKind::kSlow, 0 };
+    }
+    if (effect == effect::kBloodGuard) {
+        return { TagKind::kGuardPool, 0 };
     }
     return {};
 }
@@ -1968,6 +2544,9 @@ constexpr void Read(Board& board, const RawEffect& effect) noexcept
         break;
     case TagKind::kSlow:
         board.maxSlowPct = std::max(board.maxSlowPct, effect.magnitude);
+        break;
+    case TagKind::kGuardPool:
+        Keep(board.guardPool, effect);
         break;
     case TagKind::kNone:
         break;
@@ -2072,10 +2651,37 @@ constexpr Lowered Lower(const StatusOp& op, float slowCapPct) noexcept
         out.dispelEffect = status::kBleedDotEffect;
         out.dispelEffect2 = status::kPoisonDotEffect;
         break;
+    case Op::kSpendMagicka:
+    case Op::kDrainStamina:
+        if (op.magnitude > 0.0f) {
+            out.spell = op.op == Op::kSpendMagicka ? spell::kSpendMagicka : spell::kDrainStamina;
+            out.magnitude = op.magnitude;
+        }
+        break;
+    case Op::kRiposte:
+        out.dispelSpell = spell::kRiposte;   // the record's 3 s, no override (a marker without magnitude)
+        out.spell = spell::kRiposte;
+        break;
+    case Op::kDispelMarkOn:
+        out.spell = spell::kDispelMark;      // 滅法印, the record's 8 s, no override (as the N2 dispel casts it)
+        break;
+    case Op::kBloodGuardPool:
+        out.dispelEffect = effect::kBloodGuard;   // Dispel(true) the old pool first (native-verification-3 s5)
+        if (op.magnitude > 0.0f) {
+            out.spell = spell::kBloodGuard;
+            out.magnitude = op.magnitude;
+        }
+        break;
     case Op::kPayHealth:
     case Op::kWash:
     case Op::kEvent:
-        break;   // not a cast (Plugin.cpp does these directly)
+    case Op::kPayStamina:
+    case Op::kHurtHealth:
+    case Op::kResonance:
+    case Op::kInterrupt:
+    case Op::kCrushArea:
+    case Op::kFreezeNearby:
+        break;   // not a cast (the engine adapter does these directly)
     }
     return out;
 }

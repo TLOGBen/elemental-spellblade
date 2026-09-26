@@ -75,9 +75,11 @@ struct FixedRng {
 std::string SuffixOf(int kind)
 {
     const std::string_view id = essb::kStatusRecords[kind].editorId;
-    constexpr std::string_view prefix = "ESSB_N3_";
-    Check(id.starts_with(prefix), "status record without the ESSB_N3_ prefix");
-    return std::string(id.substr(prefix.size()));
+    // Round 22's kinds are ESSB_N3_*, round 23's (build/fix23_records.py, appended) ESSB_N4_*.
+    constexpr std::string_view n3 = "ESSB_N3_";
+    constexpr std::string_view n4 = "ESSB_N4_";
+    Check(id.starts_with(n3) || id.starts_with(n4), "status record without the ESSB_N3_ / ESSB_N4_ prefix");
+    return std::string(id.substr(n3.size()));
 }
 
 StatusKind KindOf(const std::string& suffix)
@@ -90,8 +92,9 @@ StatusKind KindOf(const std::string& suffix)
     throw std::runtime_error("unknown status kind " + suffix);
 }
 
-const char* kEventNames[] = { "Open", "End", "Frozen", "Hallucinate", "Judgment", "Splash", "Shatter", "Landing", "Rise" };
-const int kEventArgs[] = { 4, 7, 1, 2, 1, 1, 1, 1, 0 };
+const char* kEventNames[] = { "Open", "End", "Frozen", "Hallucinate", "Judgment", "Splash", "Shatter", "Landing", "Rise",
+    "Discharge", "Blade", "Knock", "SyncUp", "Cleanse", "Lethal" };
+const int kEventArgs[] = { 4, 7, 1, 2, 1, 1, 1, 1, 0, 4, 2, 1, 1, 1, 0 };   // round 23 added the last six (N4)
 static_assert(std::size(kEventNames) == static_cast<int>(essb::Event::kCount));
 
 // ---------------------------------------------------------------- group S

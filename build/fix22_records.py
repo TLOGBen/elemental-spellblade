@@ -234,6 +234,10 @@ def add_records(b, add, fx, settings):
             if HOLY_ARMOR[tier] > 0:
                 efit += [('EFID', I(own(_ids['holyArmor.effect']))),
                          ('EFIT', struct.pack('<fII', HOLY_ARMOR[tier], 0, int(seconds)))]
+            # Round 23 (R7): 聖佑 magic resist +10／20／35 (native MagicResist, the engine's 85% cap), the same way.
+            import fix23_records as rec23
+            efit += [('EFID', I(own(rec23.holy_magic_effect_id()))),
+                     ('EFIT', struct.pack('<fII', rec23.HOLY_MR[tier], 0, int(seconds)))]
         add('SPEL', spell_id(kind), edid_spell(suffix), [
             ('OBND', bytes(12)), ('FULL', Z(label)), etyp, ('DESC', Z('')),
             ('SPIT', b.spit(0, 1, delivery)),

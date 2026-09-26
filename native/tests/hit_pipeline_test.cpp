@@ -514,7 +514,8 @@ int GroupB(const json& wiring)
             { "multDrain", t.multDrain }, { "multRecovery", t.multRecovery }, { "multDuration", t.multDuration },
             { "slowCapPct", t.slowCapPct }, { "wetSlowPct", t.wetSlowPct }, { "waterClearStamina", t.waterClearStamina },
             { "seizeMaxPct", t.seizeMaxPct }, { "syncStage", float(t.syncStage) }, { "prevElement", float(t.prevElement) },
-            { "twinElement", float(t.twinElement) } };
+            { "twinElement", float(t.twinElement) }, { "syncT1", float(t.syncT[0]) }, { "syncT2", float(t.syncT[1]) },
+            { "syncT3", float(t.syncT[2]) } };
         for (const auto& [field, value] : fields) {
             Check(value == at(field), std::string("B4: ") + field);
             ++cases;
@@ -835,11 +836,11 @@ int GroupD()
         }
         draws += trials;
     }
-    // D2: lightning with N = 1 (production until N4): each face 1..25 has 4%.
+    // D2: lightning with no charge (N = 1): each face 1..25 has 4%.
     {
         std::array<int, 26> face{};
         for (int i = 0; i < trials; ++i) {
-            ++face[essb::RollLightning(rng, 1, 25, essb::LightningRolls(essb::kChargesUntilN4))];
+            ++face[essb::RollLightning(rng, 1, 25, essb::LightningRolls(0))];
         }
         Check(face[0] == 0, "D2 face 0");
         for (int f = 1; f <= 25; ++f) {
@@ -873,9 +874,18 @@ int GroupD()
     {
         int hits = 0;
         for (int i = 0; i < trials; ++i) {
-            hits += rng.Chance(essb::LightningCritChance(essb::kChargesUntilN4));
+            hits += rng.Chance(essb::LightningCritChance(0));
         }
         CheckShare(hits, trials, 0.05, "D4 chance 5%");
+        draws += trials;
+    }
+    // D5 (round 23, N4): with six charges the crit chance is 5% + 6 × 2% = 17% (v0.4 2.1).
+    {
+        int hits = 0;
+        for (int i = 0; i < trials; ++i) {
+            hits += rng.Chance(essb::LightningCritChance(6));
+        }
+        CheckShare(hits, trials, 0.17, "D5 chance 17% at six charges");
         draws += trials;
     }
     // D5: 20 000 planned lightning hits, bare profile (magnitude = face x 1.05, x1.5 on a crit):

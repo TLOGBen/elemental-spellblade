@@ -101,9 +101,16 @@ def check_entries(records, p, branch_keys, main_keys, base_edid):
 
 def check_rock_armor(records, b):
     base = next(r for r in records if r.edid == 'ESSB_P_BaseRules')
-    values = []
+    # Round 23 (N4) added the pool, 聖佑 and 冰盾 entries to the same base perk (build/fix23_verify.py checks them); the
+    # rock armour entries are the ones conditioned on the ESSB_RockArmor mirror.
+    rock_mirror = b.own(b.mech2(0))
+    values, conds = [], []
     for sig, data in base.ss:
-        if sig == 'EPFD' and len(data) == 4:
+        if sig == 'PRKE':
+            conds = []
+        elif sig == 'CTDA':
+            conds.append(struct.unpack_from('<i', data, 12)[0])
+        elif sig == 'EPFD' and len(data) == 4 and rock_mirror in conds:
             values.append(round(struct.unpack('<f', data)[0], 6))
     rock = sorted(v for v in values if v < 1.0 and v != 0.0)
     want = sorted(round(1.0 - min(0.04 * n, 0.6), 6) for n in range(1, b.ROCK_ARMOR_MAX_LAYERS + 1))

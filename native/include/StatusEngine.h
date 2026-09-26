@@ -139,6 +139,25 @@ void RunOp(E& engine, const StatusOp& op, const Tuning& tuning)
     case Op::kEvent:
         engine.Send(op);
         break;
+    // Round 23 (N4): the engine-side ops (stamina, the resonance count, the interrupt task, 碎岩's ring, 冰心's scan).
+    case Op::kPayStamina:
+        engine.PayStamina(op.magnitude);
+        break;
+    case Op::kHurtHealth:
+        engine.HurtHealth(op.magnitude);   // real damage, no clamp (it can kill)
+        break;
+    case Op::kResonance:
+        engine.Resonance();
+        break;
+    case Op::kInterrupt:
+        engine.Interrupt(on);
+        break;
+    case Op::kCrushArea:
+        engine.CrushArea(op);
+        break;
+    case Op::kFreezeNearby:
+        engine.FreezeNearby();
+        break;
     default:
         break;
     }
@@ -275,7 +294,8 @@ inline std::vector<std::uint32_t> CastSpells()
         out.push_back(status::kBleedDot[i]);
         out.push_back(status::kPoisonDot[i]);
     }
-    for (const std::uint32_t id : { spell::kTrueDamage, spell::kHeal, spell::kRestoreMagicka, spell::kRestoreStamina, spell::kBleedTick }) {
+    for (const std::uint32_t id : { spell::kTrueDamage, spell::kHeal, spell::kRestoreMagicka, spell::kRestoreStamina, spell::kBleedTick,
+             spell::kSpendMagicka, spell::kDrainStamina, spell::kRiposte, spell::kDispelMark, spell::kBloodGuard }) {
         out.push_back(id);
     }
     for (const std::uint32_t id : spell::kSoak) {
@@ -295,7 +315,7 @@ inline std::vector<std::uint32_t> TaggedEffects()
         out.push_back(status::kMarkEffect[e]);
     }
     for (const std::uint32_t id : { status::kBleedDotEffect, status::kPoisonDotEffect, status::kFearEffect, status::kFrenzyEffect,
-             status::kSlowEffect }) {
+             status::kSlowEffect, effect::kBloodGuard }) {
         out.push_back(id);
     }
     return out;

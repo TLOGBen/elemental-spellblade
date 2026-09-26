@@ -1,6 +1,6 @@
 {
-  "state_schema_version": 11,
-  "signature_sha256": "a1860170931c1d5830430813bc986b3f2960d751d2459e44900663d1e42bb267",
+  "state_schema_version": 12,
+  "signature_sha256": "0cbde6b459539686b78b33b75b14f698492d847071789b0c90c2ad4f623db311",
   "signatures": {
     "ESSBStub": {
       "parent": "activemagiceffect",
@@ -253,21 +253,6 @@
           "controller",
           "quest",
           "auto"
-        ],
-        [
-          "ctl",
-          "essbcontroller",
-          "member"
-        ],
-        [
-          "holder",
-          "actor",
-          "member"
-        ],
-        [
-          "listening",
-          "bool",
-          "member"
         ]
       ]
     },
@@ -350,11 +335,6 @@
           "auto"
         ],
         [
-          "burstcharge",
-          "int",
-          "member"
-        ],
-        [
           "cacheddebuglevel",
           "int",
           "auto"
@@ -368,11 +348,6 @@
           "cachednodescale",
           "float",
           "auto"
-        ],
-        [
-          "cachedsync",
-          "int",
-          "member"
         ],
         [
           "cachedsyncstage",
@@ -410,19 +385,9 @@
           "member"
         ],
         [
-          "chargedecayat",
-          "float",
-          "member"
-        ],
-        [
           "cleansespell",
           "spell",
           "auto"
-        ],
-        [
-          "cleansetime",
-          "float",
-          "member"
         ],
         [
           "cloakguardleft",
@@ -628,11 +593,6 @@
           "envwet",
           "globalvariable",
           "auto"
-        ],
-        [
-          "extremecount",
-          "int",
-          "member"
         ],
         [
           "fearspell",
@@ -1050,16 +1010,6 @@
           "auto"
         ],
         [
-          "icehearttime",
-          "float",
-          "member"
-        ],
-        [
-          "iceshield",
-          "int",
-          "member"
-        ],
-        [
           "inductionability",
           "spell",
           "auto"
@@ -1077,11 +1027,6 @@
         [
           "inspread",
           "bool",
-          "member"
-        ],
-        [
-          "interrupttime",
-          "float",
           "member"
         ],
         [
@@ -1325,11 +1270,6 @@
           "auto"
         ],
         [
-          "pendingdischarge",
-          "int",
-          "member"
-        ],
-        [
           "pendingkillactor",
           "actor[]",
           "member"
@@ -1430,29 +1370,9 @@
           "auto"
         ],
         [
-          "resolve",
-          "int",
-          "member"
-        ],
-        [
-          "resolvetime",
-          "float",
-          "member"
-        ],
-        [
-          "retaliatetime",
-          "float",
-          "member"
-        ],
-        [
           "ripostewindowspell",
           "spell",
           "auto"
-        ],
-        [
-          "rockarmorshown",
-          "float",
-          "member"
         ],
         [
           "runtimecacheready",
@@ -1460,39 +1380,14 @@
           "auto"
         ],
         [
-          "sanctuarytime",
-          "float",
-          "member"
-        ],
-        [
           "schoolxpmult",
           "globalvariable",
           "auto"
         ],
         [
-          "selfcharge",
-          "int",
-          "member"
-        ],
-        [
           "selfcleansespells",
           "spell[]",
           "auto"
-        ],
-        [
-          "selflasthit",
-          "float",
-          "member"
-        ],
-        [
-          "selfrockarmor",
-          "int",
-          "member"
-        ],
-        [
-          "selfwind",
-          "int",
-          "member"
         ],
         [
           "settingspower",
@@ -1560,16 +1455,6 @@
           "member"
         ],
         [
-          "switchcharge",
-          "int",
-          "member"
-        ],
-        [
-          "switchendpending",
-          "bool",
-          "member"
-        ],
-        [
           "sync",
           "globalvariable",
           "auto"
@@ -1612,11 +1497,6 @@
         [
           "tablesinitialised",
           "bool",
-          "member"
-        ],
-        [
-          "thunderleft",
-          "float",
           "member"
         ],
         [
@@ -1725,11 +1605,6 @@
           "auto"
         ],
         [
-          "windfollowleft",
-          "float",
-          "member"
-        ],
-        [
           "windmuffleability",
           "spell",
           "auto"
@@ -1744,11 +1619,6 @@
     "ESSBGuard": {
       "parent": "referencealias",
       "members": [
-        [
-          "arraysinitialised",
-          "bool",
-          "member"
-        ],
         [
           "ctl",
           "essbcontroller",
@@ -1787,21 +1657,6 @@
         [
           "ready",
           "bool",
-          "member"
-        ],
-        [
-          "recentactor",
-          "actor[]",
-          "member"
-        ],
-        [
-          "recentnext",
-          "int",
-          "member"
-        ],
-        [
-          "recenttime",
-          "float[]",
           "member"
         ],
         [
@@ -2001,8 +1856,8 @@
     }
   },
   "quests": {
-    "ESSB_MainQuest": "006012",
-    "ESSB_MCMQuest": "006013"
+    "ESSB_MainQuest": "006014",
+    "ESSB_MCMQuest": "006015"
   },
   "history": [
     {
@@ -2084,6 +1939,14 @@
       "quests": {
         "ESSB_MainQuest": "006010",
         "ESSB_MCMQuest": "006011"
+      }
+    },
+    {
+      "state_schema_version": 11,
+      "signature_sha256": "a1860170931c1d5830430813bc986b3f2960d751d2459e44900663d1e42bb267",
+      "quests": {
+        "ESSB_MainQuest": "006012",
+        "ESSB_MCMQuest": "006013"
       }
     }
   ]

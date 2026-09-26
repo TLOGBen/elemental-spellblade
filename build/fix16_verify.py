@@ -231,7 +231,9 @@ def verify_records():
  assert meta['masters']==['Skyrim.esm'] and len(records)==len(manifest)
  # Round 21: the window owners are v0.4 nodes, looked up by name in the identity table (build/plan-tree-nodes.json);
  # the windows whose v0.3 owners v0.4 removed (冰晶, 影甲, 星體, 星光) keep their records but no PERK uses them.
- owners={0:('common','順轉'),1:('common','安全閥'),3:('wind','殘影'),4:('divine','神佑'),5:('noform','破護')}
+ # Round 23 (N4): 殘影 (3) and 破護 (5) read the DLL's own effects (ESSB_N4_AfterimageEffect / ESSB_N4_CloakGuardEffect,
+ # checked by build/fix23_verify.py); their Papyrus windows keep their records but no PERK uses them.
+ owners={0:('common','順轉'),1:('common','安全閥'),4:('divine','神佑')}
  plan=json.loads((ROOT/'build/plan-tree-nodes.json').read_text(encoding='utf8'))
  edid_of={(tr['id'],br['name']):f"ESSB_P_{tr['id']}_{ro['index']}_{ti['index']}_B{br['slot']+1}"
           for tr in plan['trees'] for ro in tr['routes'] for ti in ro['tiers'] for br in ti['branches']}

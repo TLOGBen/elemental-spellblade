@@ -34,10 +34,10 @@
 | frost | 關閉（碎冰） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 碎冰 +3%／點（乘在 20% 上） | 碎冰 +9%／點（乘在 20% 上） | src/ESSBElem.psc:SignatureMult；native/include/Status.h:kSignature |
 | lightning | 持續（充能） | 新手 | ×3：純百分比傷害主線（規劃 3） | 放電每格電荷傷害 +1%／點 | 放電每格電荷傷害 +3%／點 | src/ESSBElem.psc:Discharge |
 | lightning | 持續（充能） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 雷附傷 +1%／點 | 雷附傷 +3%／點 | native/include/HitMath.h:NodeSum[kProcAdept] |
-| lightning | 持續（充能） | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 電荷上限 +1／每 3 點 | 電荷上限 +1／每 3 點 | ESSBElem.ChargeCap → ESSBController.AddSelf |
+| lightning | 持續（充能） | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 電荷上限 +1／每 3 點 | 電荷上限 +1／每 3 點 | DLL native/include/Status.h res::ChargeCap（node::kLightningChargeCap） |
 | lightning | 持續（充能） | 大師 | ×3：純百分比傷害主線（規劃 3） | 同調每段雷附傷 +1%／點 | 同調每段雷附傷 +3%／點 | native/include/HitMath.h:NodeSum[kProcMaster] |
 | lightning | 持續（充能） | 傳奇 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 天雷，同調三段時放電改為對範圍內所有感電目標，範圍 2 公尺 +0.2 公尺／點 | 天雷，同調三段時放電改為對範圍內所有感電目標，範圍 2 公尺 +0.2 公尺／點 | ESSBElem.DischargeAll |
-| lightning | 開啟（雷臨） | 新手 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 開印電荷 +1／每 5 點 | 開印電荷 +1／每 5 點 | ESSBElem.OpenStacks |
+| lightning | 開啟（雷臨） | 新手 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 開印電荷 +1／每 5 點 | 開印電荷 +1／每 5 點 | DLL native/include/SelfLayer.h res::OpenGains（node::kLightningOpenCharge） |
 | lightning | 開啟（雷臨） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 開印後 5 秒內雷附傷 +1%／點 | 開印後 5 秒內雷附傷 +3%／點 | native/include/Status.h:kOpenProc |
 | lightning | 開啟（雷臨） | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 雷印記持續 +0.2 秒／點 | 雷印記持續 +0.2 秒／點 | DLL native/include/Status.h（node::kMarkDuration[element]） |
 | lightning | 開啟（雷臨） | 大師 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 雷臨，開雷形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點 | 雷臨，開雷形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點 | ESSBElem.OnFormOpened |
@@ -51,8 +51,8 @@
 | earth | 持續（裂甲） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 土附傷 +1%／點 | 土附傷 +3%／點 | native/include/HitMath.h:NodeSum[kProcAdept] |
 | earth | 持續（裂甲） | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 命中削減目標耐力 +0.5／點 | 命中削減目標耐力 +0.5／點 | DLL native/include/HitMath.h AddFlatHitNodes（node::kEarthStaminaCut） |
 | earth | 持續（裂甲） | 大師 | ×3：純百分比傷害主線（規劃 3） | 同調每段土附傷 +1%／點 | 同調每段土附傷 +3%／點 | native/include/HitMath.h:NodeSum[kProcMaster] |
-| earth | 持續（裂甲） | 傳奇 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 地動，同調三段時重擊對耐力低於 30% 的目標跌倒，機率 5%／點 | 地動，同調三段時重擊對耐力低於 30% 的目標跌倒，機率 5%／點 | ESSBElem2.OnEarthHit → ESSBController.Knockdown |
-| earth | 開啟（地臨） | 新手 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 開印岩甲 +1／每 5 點 | 開印岩甲 +1／每 5 點 | ESSBElem2.OpenStacks(4) |
+| earth | 持續（裂甲） | 傳奇 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 地動，同調三段時重擊對耐力低於 30% 的目標跌倒，機率 5%／點 | 地動，同調三段時重擊對耐力低於 30% 的目標跌倒，機率 5%／點 | DLL native/include/SelfLayer.h PlanSelfHit（node::kEarthQuakeKnock）＋ ESSBController.OnESSBKnock |
+| earth | 開啟（地臨） | 新手 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 開印岩甲 +1／每 5 點 | 開印岩甲 +1／每 5 點 | DLL native/include/SelfLayer.h res::OpenGains（node::kEarthOpenRock） |
 | earth | 開啟（地臨） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 開印後 5 秒內土附傷 +1%／點 | 開印後 5 秒內土附傷 +3%／點 | native/include/Status.h:kOpenProc |
 | earth | 開啟（地臨） | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 土印記持續 +0.2 秒／點 | 土印記持續 +0.2 秒／點 | DLL native/include/Status.h（node::kMarkDuration[element]） |
 | earth | 開啟（地臨） | 大師 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 地臨，開土形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點 | 地臨，開土形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點 | ESSBElem.OnFormOpened → ESSBController.ForceOpenOn |
@@ -66,15 +66,15 @@
 | wind | 持續（連斬） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 風附傷 +1%／點 | 風附傷 +3%／點 | native/include/HitMath.h:NodeSum[kProcAdept] |
 | wind | 持續（連斬） | 專精 | 不改：時間、機率、範圍、層數、回復、抗性、分擔或比例類（規劃 3 不吃節點倍率） | 風形態移速再 +0.5%／點（+10% → +17.5%） | 風形態移速再 +0.5%／點（+10% → +17.5%） | ESSBElem2.WindSpeedBonus → ESSBController.RefreshWindAbilities |
 | wind | 持續（連斬） | 大師 | ×3：純百分比傷害主線（規劃 3） | 同調每段風附傷 +1%／點 | 同調每段風附傷 +3%／點 | native/include/HitMath.h:NodeSum[kProcMaster] |
-| wind | 持續（連斬） | 傳奇 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 千刃，同調三段時每次命中附帶風刃，機率 5%／點 | 千刃，同調三段時每次命中附帶風刃，機率 5%／點 | ESSBElem2.OnWindHit |
-| wind | 開啟（風臨） | 新手 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 開印風勢 +1／每 5 點 | 開印風勢 +1／每 5 點 | ESSBElem2.OpenStacks(5) |
+| wind | 持續（連斬） | 傳奇 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 千刃，同調三段時每次命中附帶風刃，機率 5%／點 | 千刃，同調三段時每次命中附帶風刃，機率 5%／點 | DLL native/include/SelfLayer.h PlanSelfHit（node::kWindThousand） |
+| wind | 開啟（風臨） | 新手 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 開印風勢 +1／每 5 點 | 開印風勢 +1／每 5 點 | DLL native/include/SelfLayer.h res::OpenGains（node::kWindOpenGauge） |
 | wind | 開啟（風臨） | 熟練 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 開印拉近距離 +0.1 公尺／點（1.5 → 3 公尺） | 開印拉近距離 +0.1 公尺／點（1.5 → 3 公尺） | ESSBElem2.PullDistance → ESSBController.PullIn |
 | wind | 開啟（風臨） | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 風印記持續 +0.2 秒／點 | 風印記持續 +0.2 秒／點 | DLL native/include/Status.h（node::kMarkDuration[element]） |
 | wind | 開啟（風臨） | 大師 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 風臨，開風形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點 | 風臨，開風形態時對範圍內敵人各開印一次，範圍 2 公尺 +0.2 公尺／點 | ESSBElem.OnFormOpened |
 | wind | 開啟（風臨） | 傳奇 | ×3：fix8 使用者核准：開印效果整體套用 ESSB_NodeScale | 開印效果 +3%／點 | 開印效果 +9%／點 | native/include/Status.h:kOpenEffect |
 | wind | 關閉（吹飛） | 新手 | ×3：純百分比傷害主線（規劃 3） | 終焉 +2%／點 | 終焉 +6%／點 | src/ESSBElem.psc:EndMult；native/include/Status.h:kEndMain |
 | wind | 關閉（吹飛） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 風印記的融斷 +2%／點 | 風印記的融斷 +6%／點 | src/ESSBElem.psc:BurstMult |
-| wind | 關閉（吹飛） | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 多段觸發，風印記被切掉時接管元素的命中觸發次數 +1／每 5 點（2 → 最多 5） | 多段觸發，風印記被切掉時接管元素的命中觸發次數 +1／每 5 點（2 → 最多 5） | —（只有 perk 記錄；本輪不讀） |
+| wind | 關閉（吹飛） | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 多段觸發，風印記被切掉時接管元素的命中觸發次數 +1／每 5 點（2 → 最多 5） | 多段觸發，風印記被切掉時接管元素的命中觸發次數 +1／每 5 點（2 → 最多 5） | DLL native/include/SelfLayer.h MultiTriggerRepeats ＋ Plugin.cpp Handle（node::kWindMulti） |
 | wind | 關閉（吹飛） | 大師 | ×3：純百分比傷害主線（規劃 3） | 風印記的融斷再 +2%／點 | 風印記的融斷再 +6%／點 | src/ESSBElem.psc:BurstMult |
 | wind | 關閉（吹飛） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 落地傷害 +5%／點（×0.5 → ×1.25） | 落地傷害 +15%／點（×0.5 → ×2.75） | src/ESSBElem2.psc:LandingDamage |
 | blood | 持續（血位） | 新手 | ×3：fix8 使用者核准：只縮放流血每層傷害，放血係數保持原值（v0.4 明寫） | 流血每層傷害 +2%／點，放血係數 +0.01%／點（0.3% → 0.45%，不吃節點倍率） | 流血每層傷害 +6%／點，放血係數 +0.01%／點（0.3% → 0.45%，不吃節點倍率） | native/include/Status.h:kBloodLayerDamage |
@@ -156,7 +156,7 @@
 | astral | 持續（共鳴） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 星附傷 +1%／點 | 星附傷 +3%／點 | native/include/HitMath.h:NodeSum[kProcAdept] |
 | astral | 持續（共鳴） | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 星痕層數上限 +1／每 5 點（也提高闇星每一擊） | 星痕層數上限 +1／每 5 點（也提高闇星每一擊） | DLL native/include/Status.h StarCap（node::kAstralCap） |
 | astral | 持續（共鳴） | 大師 | ×3：純百分比傷害主線（規劃 3） | 同調每段星附傷 +1%／點 | 同調每段星附傷 +3%／點 | native/include/HitMath.h:NodeSum[kProcMaster] |
-| astral | 持續（共鳴） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 永夜，闇星每一擊 +3%／點 | 永夜，闇星每一擊 +9%／點 | —（只有 perk 記錄；本輪不讀） |
+| astral | 持續（共鳴） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 永夜，闇星每一擊 +3%／點 | 永夜，闇星每一擊 +9%／點 | native/include/Status.h:kAstralEternal |
 | astral | 開啟（星臨） | 新手 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 星痕延遲 -0.1 秒／點（2 → 0.5 秒） | 星痕延遲 -0.1 秒／點（2 → 0.5 秒） | DLL native/include/Status.h rule::StarDelay（node::kAstralDelay） |
 | astral | 開啟（星臨） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 開印後 5 秒內星附傷 +1%／點 | 開印後 5 秒內星附傷 +3%／點 | native/include/Status.h:kOpenProc |
 | astral | 開啟（星臨） | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 星印記持續 +0.2 秒／點 | 星印記持續 +0.2 秒／點 | DLL native/include/Status.h（node::kMarkDuration[element]） |
@@ -168,10 +168,10 @@
 | astral | 關閉（星落） | 大師 | ×3：純百分比傷害主線（規劃 3） | 星印記的融斷再 +2%／點 | 星印記的融斷再 +6%／點 | src/ESSBElem.psc:BurstMult |
 | astral | 關閉（星落） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 星落 +3%／點 | 星落 +9%／點 | src/ESSBElem.psc:SignatureMult |
 | noform | 大師 | 新手 | 不改：v0.4 明寫「不吃節點倍率」 | 吸魔量 +5%／點（不吃節點倍率；×1.0 → ×1.75） | 吸魔量 +5%／點（不吃節點倍率；×1.0 → ×1.75） | DLL native/include/HitMath.h PlanNoFormHit（node::kNoFormSiphonAmount） |
-| noform | 大師 | 熟練 | 不改：時間、機率、範圍、層數、回復、抗性、分擔或比例類（規劃 3 不吃節點倍率） | 超載上限 +2%／點（+50% → +80%） | 超載上限 +2%／點（+50% → +80%） | —（只有 perk 記錄；本輪不讀） |
-| noform | 大師 | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 法盾效率，每擋 1 點花的魔力 -2%／點（最多 -30%：1.0 → 0.7，超載 0.75 → 0.53） | 法盾效率，每擋 1 點花的魔力 -2%／點（最多 -30%：1.0 → 0.7，超載 0.75 → 0.53） | —（只有 perk 記錄；本輪不讀） |
-| noform | 大師 | 大師 | 不改：時間、機率、範圍、層數、回復、抗性、分擔或比例類（規劃 3 不吃節點倍率） | 法盾分擔 +1%／點（30% → 45%；超載 45% → 60%） | 法盾分擔 +1%／點（30% → 45%；超載 45% → 60%） | —（只有 perk 記錄；本輪不讀） |
-| noform | 大師 | 傳奇 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 不竭，超載衰減每秒 -0.2%／點（5% → 2%） | 不竭，超載衰減每秒 -0.2%／點（5% → 2%） | —（只有 perk 記錄；本輪不讀） |
+| noform | 大師 | 熟練 | 不改：時間、機率、範圍、層數、回復、抗性、分擔或比例類（規劃 3 不吃節點倍率） | 超載上限 +2%／點（+50% → +80%） | 超載上限 +2%／點（+50% → +80%） | DLL native/include/Status.h res::OverloadCap（node::kNoFormOverloadCap） |
+| noform | 大師 | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 法盾效率，每擋 1 點花的魔力 -2%／點（最多 -30%：1.0 → 0.7，超載 0.75 → 0.53） | 法盾效率，每擋 1 點花的魔力 -2%／點（最多 -30%：1.0 → 0.7，超載 0.75 → 0.53） | DLL native/include/Hurt.h hurt::ShareOf（node::kNoFormShieldCost） |
+| noform | 大師 | 大師 | 不改：時間、機率、範圍、層數、回復、抗性、分擔或比例類（規劃 3 不吃節點倍率） | 法盾分擔 +1%／點（30% → 45%；超載 45% → 60%） | 法盾分擔 +1%／點（30% → 45%；超載 45% → 60%） | PERK 主線進入點 0x24／0x29 ＋ DLL native/include/Hurt.h hurt::ShareOf（node::kNoFormShieldShare） |
+| noform | 大師 | 傳奇 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 不竭，超載衰減每秒 -0.2%／點（5% → 2%） | 不竭，超載衰減每秒 -0.2%／點（5% → 2%） | DLL native/include/SelfLayer.h PlanSelfSecond（node::kNoFormEndless） |
 | noform | 滅法 | 新手 | 不改：v0.4 明寫「不吃節點倍率」 | 滅法倍率 +2%／點（不吃節點倍率；×1.0 → ×1.3，超載 ×1.5 → ×1.8） | 滅法倍率 +2%／點（不吃節點倍率；×1.0 → ×1.3，超載 ×1.5 → ×1.8） | DLL native/include/HitMath.h DispelMultiplier（node::kNoFormDispelRate） |
 | noform | 滅法 | 熟練 | 不改：時間、機率、範圍、層數、回復、抗性、分擔或比例類（規劃 3 不吃節點倍率） | 燒魔倍數 +7%／點（Y 最多是 X 的 1.0 → 2.05 倍） | 燒魔倍數 +7%／點（Y 最多是 X 的 1.0 → 2.05 倍） | DLL native/include/HitMath.h PlanNoFormHit（node::kNoFormBurnMultiple） |
 | noform | 滅法 | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 沉默 +0.2 秒／點（1 → 4 秒） | 沉默 +0.2 秒／點（1 → 4 秒） | DLL native/include/HitMath.h SilenceSeconds（node::kNoFormSilence） |
@@ -182,14 +182,14 @@
 | noform | 冷寂 | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 融斷範圍 +0.3 公尺／點 | 融斷範圍 +0.3 公尺／點 | ESSBNoForm.BurstRadius |
 | noform | 冷寂 | 大師 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 寂上限 +1／每 5 點（5 → 8） | 寂上限 +1／每 5 點（5 → 8） | —（只有 perk 記錄；本輪不讀） |
 | noform | 冷寂 | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 融斷再 +3%／點 | 融斷再 +9%／點 | src/ESSBNoForm.psc:BurstMult |
-| common | 持續 | 新手 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 同調門檻 -2%／點 | 同調門檻 -2%／點 | ESSBNodes.SyncThresholdScale → ESSBController.SyncStage |
+| common | 持續 | 新手 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 同調門檻 -2%／點 | 同調門檻 -2%／點 | DLL native/include/Status.h res::Thresholds（node::kCommonSyncThreshold） |
 | common | 持續 | 熟練 | ×3：純百分比傷害主線（規劃 3） | 同調二段時附傷 +1%／點 | 同調二段時附傷 +3%／點 | src/ESSBNodes.psc:CommonHitMult |
 | common | 持續 | 專精 | ×3：純百分比傷害主線（規劃 3） | 同調三段時終焉 +1%／點 | 同調三段時終焉 +3%／點 | src/ESSBNodes.psc:CommonEndMult；native/include/Status.h:kCommonSyncEnd |
 | common | 持續 | 大師 | ×3：純百分比傷害主線（規劃 3） | 同調三段時重擊附傷 +2%／點 | 同調三段時重擊附傷 +6%／點 | src/ESSBNodes.psc:CommonHitMult |
-| common | 持續 | 傳奇 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 化身，同調三段時 30 秒冷卻（-1 秒／點）完成後的下一次命中，自動觸發當前元素的持續傳奇效果；若該效果屬於被動數值（如絕對零度、深淵），化身改為讓你在接下來 10 秒內視同已取得該效果 | 化身，同調三段時 30 秒冷卻（-1 秒／點）完成後的下一次命中，自動觸發當前元素的持續傳奇效果；若該效果屬於被動數值（如絕對零度、深淵），化身改為讓你在接下來 10 秒內視同已取得該效果 | —（只有 perk 記錄；本輪不讀） |
+| common | 持續 | 傳奇 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 化身，同調三段時 30 秒冷卻（-1 秒／點）完成後的下一次命中，自動觸發當前元素的持續傳奇效果；若該效果屬於被動數值（如絕對零度、深淵），化身改為讓你在接下來 10 秒內視同已取得該效果 | 化身，同調三段時 30 秒冷卻（-1 秒／點）完成後的下一次命中，自動觸發當前元素的持續傳奇效果；若該效果屬於被動數值（如絕對零度、深淵），化身改為讓你在接下來 10 秒內視同已取得該效果 | DLL native/include/SelfLayer.h PlanSelfHit ＋ AvatarNodes（node::kCommonAvatar） |
 | common | 開啟 | 新手 | ×3：純百分比傷害主線（規劃 3） | 所有元素附傷 +1%／點 | 所有元素附傷 +3%／點 | src/ESSBNodes.psc:CommonHitMult |
 | common | 開啟 | 熟練 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 印記持續 +0.2 秒／點 | 印記持續 +0.2 秒／點 | DLL native/include/Status.h（node::kCommonMarkDuration） |
-| common | 開啟 | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 開印時 +1 同調／每 5 點 | 開印時 +1 同調／每 5 點 | ESSBNodes.OpenSyncBonus |
+| common | 開啟 | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 開印時 +1 同調／每 5 點 | 開印時 +1 同調／每 5 點 | DLL native/include/SelfLayer.h res::OpenGains（node::kCommonOpenSync） |
 | common | 開啟 | 大師 | ×3：純百分比傷害主線（規劃 3） | 所有元素附傷再 +1%／點 | 所有元素附傷再 +3%／點 | src/ESSBNodes.psc:CommonHitMult |
 | common | 開啟 | 傳奇 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 每種元素狀態上限 +1 層／每 5 點（最多 +3） | 每種元素狀態上限 +1 層／每 5 點（最多 +3） | DLL native/include/Status.h（node::kCommonCapBonus） ＋ ESSBNodes.StatusCapBonus |
 | common | 關閉 | 新手 | ×3：純百分比傷害主線（規劃 3） | 終焉 +1%／點 | 終焉 +3%／點 | src/ESSBNodes.psc:CommonEndMult；native/include/Status.h:kCommonEnd |

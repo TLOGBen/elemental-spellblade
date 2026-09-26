@@ -599,9 +599,6 @@ Function RefreshTree(Int aiTree)
 	Controller.LevelMirror = LevelCache
 	Controller.NodeMirrorReady = True
 	Controller.RefreshSyncStage()
-	If Controller.GuardLayer
-		Controller.GuardLayer.RefreshNodeBits()
-	EndIf
 	If Controller.InputLayer
 		Controller.InputLayer.RefreshPermission()
 	EndIf
@@ -640,9 +637,6 @@ Function RefreshActive(Int aiTree)
 		i += 1
 	EndWhile
 	Controller.RefreshSyncStage()
-	If Controller.GuardLayer
-		Controller.GuardLayer.RefreshNodeBits()
-	EndIf
 	If Controller.InputLayer
 		Controller.InputLayer.RefreshPermission()
 	EndIf

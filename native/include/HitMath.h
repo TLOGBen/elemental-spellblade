@@ -88,15 +88,23 @@ struct Tuning {
     float multDot = 1.0f;            // ESSB_MultDot (round 22: the DoTs are the DLL's now)
     float poisonDotK = 0.2116f;      // ESSB_PoisonDotK (2.7 k_dot, MCM)
     float bleedDotK = 0.1143f;       // ESSB_BleedDotK
+    std::array<int, 3> syncT{ 5, 15, 30 };  // ESSB_SyncT1..3 (round 23 review: the DLL's sync thresholds read them)
 };
 
 // Round 22 (N3): what the statuses on the target and the player do to each element's proc this hit (Status.h
 // ProcTerms). `add` joins the node sum of M_mod, `mult` is v0.4 2.7's T; `windSneak` is 暗風 / 連殺 on top of the ×3.
 // All neutral by default, so the N2 formula is unchanged when no status applies.
+// Round 23 (N4): `charges` is your lightning charge (v0.4 2.1: N = 1 + charges, crit 5% + 2% per charge; 疾電 adds
+// `critBonus`), `flat` is added to an element's proc after every multiplier (血刃: half the health a blood power hit
+// paid), `breakForm` is 破式 (5.1: a full-resolve dispel spends none of your magicka, multiplier +1.0, silence 2 s).
 struct StatusTerms {
     std::array<float, kElementCount + 1> add{};
     std::array<float, kElementCount + 1> mult{ 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
     float windSneak = 1.0f;
+    int charges = 0;
+    float critBonus = 0.0f;
+    std::array<float, kElementCount + 1> flat{};
+    bool breakForm = false;
 };
 
 struct Attack {
@@ -117,6 +125,8 @@ struct PlayerFacts {
     bool twinWindow = false;   // ESSB_TwinWindow effect on the player (30 s after a switch, 雙生 owned)
     bool riposteWindow = false;  // ESSB_RiposteWindow effect on the player (3 s after a block, 反擊 owned)
     float bloodGuard = 0.0f;   // magnitude of the ESSB_BloodGuard effect on the player (0 = none)
+    float overload = 0.0f;     // round 23: your 超載 pool (magnitude of ESSB_N4_OverloadEffect)
+    float overloadCap = 0.0f;  // 50% of max magicka, +2% per point of 超載上限 (v0.4 5.1)
 };
 
 struct TargetFacts {
@@ -195,6 +205,12 @@ struct Plan {
     float siphon = 0.0f;
     float burned = 0.0f;
     bool dispel = false;       // heavy no-form hit that spent magicka
+    // Round 23 (N4) outputs of a no-form hit for the self layer (SelfLayer.h): the 超載 pool after this hit (< 0 =
+    // unchanged), whether the dispel spent overload (×1.5), whether it silenced the target (戰意 +1), 破式 used.
+    float overloadAfter = -1.0f;
+    bool overloaded = false;
+    bool silenced = false;
+    bool breakUsed = false;
 
     constexpr void Add(const CastStep& step) noexcept
     {
@@ -331,9 +347,7 @@ constexpr int RollLightning(Rng& rng, int lowest, int highest, int rolls)
     return best;
 }
 
-// Charges live in Papyrus until N4 (ESSB_Charge is a v0.3 mirror, not an engine effect): read as 0.
-inline constexpr int kChargesUntilN4 = 0;
-
+// Round 23 (N4): the charges are your ESSB_N4_Charge effect, read at hit time into StatusTerms::charges.
 constexpr int LightningRolls(int charges) noexcept
 {
     return 1 + charges;
@@ -363,7 +377,7 @@ constexpr Proc RollProc(int element, const Attack& a, const Config& c, const Tun
     float b = 0.0f;
     if (element == kLightning) {
         const auto& faces = c.damage[kLightning];
-        b = static_cast<float>(RollLightning(rng, static_cast<int>(faces[0]), static_cast<int>(faces[1]), LightningRolls(kChargesUntilN4)));
+        b = static_cast<float>(RollLightning(rng, static_cast<int>(faces[0]), static_cast<int>(faces[1]), LightningRolls(terms.charges)));
     } else {
         b = rng.Real(c.damage[element][0], c.damage[element][1]);
     }
@@ -371,10 +385,11 @@ constexpr Proc RollProc(int element, const Attack& a, const Config& c, const Tun
     Proc proc;
     proc.magnitude = b * r * TreeG(t, TreeOf(element)) * t.baseDamageMult * (NodeSum(element, a.power, t, nodes) + terms.add[element]) *
                      ElementMultiplier(element, a, t, p, target, nodes, terms);
-    if (element == kLightning && rng.Chance(LightningCritChance(kChargesUntilN4))) {
+    if (element == kLightning && rng.Chance(LightningCritChance(terms.charges) + terms.critBonus)) {
         proc.crit = true;
         proc.magnitude *= CritMultiplier(a.power);
     }
+    proc.magnitude += terms.flat[element];
     return proc;
 }
 
@@ -516,7 +531,10 @@ constexpr void PlanElementHit(Plan& plan, const Attack& a, const Config& c, cons
 inline constexpr float kSiphonBase = 10.0f;        // 吸魔 10 x G
 inline constexpr float kSmallBurnBase = 5.0f;      // 小滅法 5 x G
 inline constexpr float kDispelSpendOfMax = 0.15f;  // 滅法 X = 15% of your max magicka
-inline constexpr float kDispelMultiplier = 1.0f;   // base; x1.5 while overloaded: overload is N4
+inline constexpr float kDispelMultiplier = 1.0f;   // base; +0.5 while overloaded (v0.4 5.1: ×1.0 → ×1.3, 超載 ×1.5 → ×1.8)
+inline constexpr float kOverloadDispel = 0.5f;
+inline constexpr float kBreakFormBonus = 1.0f;     // 破式：倍率 +1.0
+inline constexpr int kBreakFormSilence = 2;        // 破式：沉默目標 2 秒
 inline constexpr float kBurnMultiple = 1.0f;       // base: Y <= X x 1.0
 inline constexpr int kMaxSilenceSeconds = 4;
 inline constexpr int kHushBreakLayers = 3;         // 寂滅: the target carries at least 3 layers of 寂
@@ -580,7 +598,7 @@ constexpr int SilenceSeconds(const TargetFacts& target, const Tuning& t, const N
 
 template <NodeReader Nodes>
 constexpr void PlanNoFormHit(Plan& plan, const Attack& a, const Config& c, const Tuning& t, const PlayerFacts& p,
-    const TargetFacts& target, const Nodes& nodes)
+    const TargetFacts& target, const Nodes& nodes, const StatusTerms& terms = StatusTerms{})
 {
     const float g = TreeG(t, kNoFormTree);
     const float r = a.power ? 1.5f : 1.0f;
@@ -607,40 +625,74 @@ constexpr void PlanNoFormHit(Plan& plan, const Attack& a, const Config& c, const
     siphon = std::min(siphon * t.multDrain, std::max(0.0f, target.magicka));
     float targetMagicka = std::max(0.0f, target.magicka);
     float playerMagicka = std::max(0.0f, p.magicka);
+    // Round 23 (N4) 超載 (5.1): what the siphon would push past your max magicka goes into your own pool (an effect
+    // magnitude, never the engine's magicka), up to overloadCap; the dispels spend the pool first.
+    float pool = std::max(0.0f, p.overload);
+    bool poolChanged = false;
     if (siphon > 0.0f) {
         const float gained = siphon * t.multRecovery;
         plan.Add({ Cast::kDrainMagicka, siphon });
         plan.Add({ Cast::kRestoreMagicka, gained });
         targetMagicka -= siphon;
+        const float room = std::max(0.0f, p.magickaMax - playerMagicka);
+        const float overflow = gained - std::min(gained, room);
+        if (overflow > 0.0f && p.overloadCap > 0.0f) {
+            const float filled = std::min(pool + overflow, p.overloadCap);
+            poolChanged = filled != pool;
+            pool = std::max(pool, filled);
+        }
         playerMagicka = std::min(p.magickaMax, playerMagicka + gained);
     }
     plan.siphon = siphon;
 
-    // No magicka, no dispel of either size (v0.4 5.1: the limit is deliberate).
+    // No magicka, no dispel of either size (v0.4 5.1: the limit is deliberate). The pool counts as magicka.
+    const bool haveMagicka = playerMagicka > 0.0f || pool > 0.0f;
     const float rate = DispelRate(nodes);
-    if (playerMagicka > 0.0f && !a.power) {
-        // 小滅法: burn 5 x G more of the target's magicka; true damage = burned x dispel multiplier.
+    if (haveMagicka && !a.power) {
+        // 小滅法: burn 5 x G more of the target's magicka; true damage = burned x dispel multiplier (超載中照樣 ×1.5).
         const float burn = std::min(kSmallBurnBase * g * BurnBonus(target, nodes) * t.multDrain, targetMagicka);
         if (burn > 0.0f) {
-            const float damage = burn * rate * trueMult;
+            plan.overloaded = pool > 0.0f;
+            const float damage = burn * (rate + (plan.overloaded ? kOverloadDispel : 0.0f)) * trueMult;
             plan.Add({ Cast::kDrainMagicka, burn });
             plan.Add({ Cast::kTrueDamage, damage });
             trueTotal += damage;
             plan.burned = burn;
         }
-    } else if (playerMagicka > 0.0f && a.power) {
-        // 滅法: spend X of your magicka, burn Y of theirs, true damage (X + Y) x multiplier; no G(L).
-        const float x = std::min(kDispelSpendOfMax * p.magickaMax, playerMagicka);
-        float spend = x;
+    } else if (haveMagicka && a.power) {
+        // 滅法: spend X of your magicka (the pool first), burn Y of theirs, true damage (X + Y) x multiplier; no G(L).
+        // 破式 (terms.breakForm): X counts but nothing is spent, multiplier +1.0, the target is silenced 2 s.
+        const float want = kDispelSpendOfMax * p.magickaMax;
+        const bool breakForm = terms.breakForm;
+        float fromPool = 0.0f;
+        float fromMagicka = 0.0f;
+        float spend = 0.0f;
         float y = 0.0f;
-        if (targetMagicka <= 0.0f && nodes.Has(node::kNoFormDepletion)) {
-            spend = std::min(2.0f * x, playerMagicka);  // 枯竭: burn twice X of your own instead
+        const bool dry = targetMagicka <= 0.0f && nodes.Has(node::kNoFormDepletion);   // 枯竭: twice X of your own
+        const float wanted = dry ? 2.0f * want : want;
+        if (breakForm) {
+            spend = dry ? 2.0f * want : want;
         } else {
+            fromPool = std::min(pool, wanted);
+            fromMagicka = std::min(wanted - fromPool, playerMagicka);
+            spend = fromPool + fromMagicka;
+        }
+        if (!dry) {
+            const float x = breakForm ? want : spend;
             y = std::min(targetMagicka, x * BurnMultiple(nodes) * BurnBonus(target, nodes) * t.multDrain);
         }
+        plan.overloaded = breakForm ? pool > 0.0f : fromPool > 0.0f;
         const bool hushBreak = HushBreak(target, nodes);
-        const float damage = (spend + y) * (rate + (hushBreak ? kHushBreakBonus : 0.0f)) * trueMult;
-        plan.Add({ Cast::kSpendMagicka, spend });
+        const float multiplier = rate + (hushBreak ? kHushBreakBonus : 0.0f) + (plan.overloaded ? kOverloadDispel : 0.0f) +
+                                 (breakForm ? kBreakFormBonus : 0.0f);
+        const float damage = (spend + y) * multiplier * trueMult;
+        if (!breakForm) {
+            plan.Add({ Cast::kSpendMagicka, fromMagicka });
+        }
+        if (fromPool > 0.0f) {
+            pool -= fromPool;
+            poolChanged = true;
+        }
         if (y > 0.0f) {
             plan.Add({ Cast::kDrainMagicka, y });
         }
@@ -649,14 +701,24 @@ constexpr void PlanNoFormHit(Plan& plan, const Attack& a, const Config& c, const
         if (hushBreak) {
             plan.Add({ Cast::kHushSpent, 0.0f });  // only the next dispel: the target is marked for 10 s
         }
-        if (targetMagicka - y <= 0.0f) {
+        int silenceSeconds = targetMagicka - y <= 0.0f ? SilenceSeconds(target, t, nodes) : 0;
+        if (breakForm) {
+            const int broken = std::clamp(static_cast<int>(static_cast<float>(kBreakFormSilence) * t.multDuration + 0.5f), 1, kSilenceSpellCount);
+            silenceSeconds = std::max(silenceSeconds, broken);
+        }
+        if (silenceSeconds > 0) {
             CastStep silence{ Cast::kSilence, 0.0f };
-            silence.seconds = SilenceSeconds(target, t, nodes);
+            silence.seconds = silenceSeconds;
             plan.Add(silence);
+            plan.silenced = true;
         }
         trueTotal += damage;
         plan.burned = y;
         plan.dispel = true;
+        plan.breakUsed = breakForm;
+    }
+    if (poolChanged) {
+        plan.overloadAfter = std::max(0.0f, pool);
     }
 
     // 噬命: half of every true damage of this hit heals you.
@@ -676,7 +738,7 @@ constexpr Plan PlanHit(const Attack& a, const Config& c, const Tuning& t, const 
     if (IsElement(a.element)) {
         PlanElementHit(plan, a, c, t, p, target, nodes, rng, terms);
     } else if (a.element == kNoElement) {
-        PlanNoFormHit(plan, a, c, t, p, target, nodes);
+        PlanNoFormHit(plan, a, c, t, p, target, nodes, terms);
     }
     return plan;
 }

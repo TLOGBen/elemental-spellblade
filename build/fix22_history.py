@@ -382,8 +382,15 @@ def snapshot_text(script: str) -> str:
     return (SNAPSHOT / 'src' / script).read_text(encoding='utf-8-sig')
 
 
+def current_dir() -> Path:
+    """Round 23 moved "now" for this seal to the pre-fix23 snapshot (round 22 as shipped): build/fix23_history.py first
+    proves today's scripts differ from it only by round 23's declared changes, so this seal still binds 21 -> 22."""
+    import fix23_history
+    return fix23_history.legacy_source()
+
+
 def current_text(script: str) -> str:
-    return (ROOT / 'src' / script).read_text(encoding='utf-8-sig')
+    return (current_dir() / script).read_text(encoding='utf-8-sig')
 
 
 def round22_diff(script: str, text: str | None = None) -> dict:
@@ -436,13 +443,13 @@ def verify() -> dict:
     if _VERIFIED is not None:
         return _VERIFIED
     old = {p.name for p in (SNAPSHOT / 'src').glob('*.psc')}
-    new = {p.name for p in (ROOT / 'src').glob('*.psc')}
+    new = {p.name for p in current_dir().glob('*.psc')}
     report = {}
     for name in sorted(old | new):
         if name not in old or name not in new:
             decl = FILES.get(name)
             assert decl is not None, (name, 'script added or removed in round 22 but not declared in FILES')
-            path = SNAPSHOT / 'src' / name if name in old else ROOT / 'src' / name
+            path = SNAPSHOT / 'src' / name if name in old else current_dir() / name
             assert decl[2] == ('removed' if name in old else 'added'), (name, 'declared the other way round')
             assert hashlib.sha256(path.read_bytes()).hexdigest() == decl[1], (name, 'file differs from the declared one')
             report[name] = decl[2]

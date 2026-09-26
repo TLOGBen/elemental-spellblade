@@ -36,12 +36,12 @@ REASONS = {
 def covered():
     files = []
     for part in ('include', 'src', 'tests'):
-        files += sorted((ROOT / 'native' / part).glob('*.*'))
-    files += [ROOT / 'native/CMakeLists.txt', ROOT / 'native/build.py']
-    files += sorted(p for p in ROOT.glob('*.py'))
-    files += [ROOT / f'build/{n}' for n in ('fix19_native.py', 'fix21_records.py', 'fix22_records.py', 'fix22_reference.py',
+        files += sorted((NOW / 'native' / part).glob('*.*'))
+    files += [NOW / 'native/CMakeLists.txt', NOW / 'native/build.py']
+    files += sorted(p for p in NOW.glob('*.py'))
+    files += [NOW / f'build/{n}' for n in ('fix19_native.py', 'fix21_records.py', 'fix22_records.py', 'fix22_reference.py',
                                              'fix22_fixture.py')]
-    return [p.relative_to(ROOT).as_posix() for p in files]
+    return [p.relative_to(NOW).as_posix() for p in files]
 
 
 def before_sha(rel):
@@ -52,10 +52,14 @@ def before_sha(rel):
     return hashlib.sha256(r.stdout).hexdigest() if r.returncode == 0 else None
 
 
+# Round 23: round 22's bytes as shipped are the pre-fix23 snapshot (build/fix23_native_history.py seals round 23).
+NOW = ROOT / '.codex/pre-fix23-snapshot'
+
+
 def main():
     rows = []
     for rel in covered():
-        now = hashlib.sha256((ROOT / rel).read_bytes()).hexdigest()
+        now = hashlib.sha256((NOW / rel).read_bytes()).hexdigest()
         before = before_sha(rel)
         if before == now:
             rows.append((rel, 'unchanged', now, ''))

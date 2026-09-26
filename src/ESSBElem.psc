@@ -11,11 +11,16 @@ Round 22（N3）起，熱度（你身上的階）、凍結量表、冰晶、碎�
 所有傷害都走 ESSBController.ApplyDamage（自有 ESSB_React_<元素> 法術，執行期設 magnitude 後
 DoCombatSpellApply），G(L) 由 ApplyDamage 統一乘上。}
 
-; ================================================================== 自身資源上限（N4 前在 Papyrus）
+; ================================================================== 自身資源上限
 
-; 雷 電荷（你）：基礎 6；持續專精主線 +1／每 3 點（蓄電）；萬象再 +1／每 5 點。
+; 雷 電荷（你）：基礎 6；持續專精主線 +1／每 3 點；萬象再 +1／每 5 點。round 23 起電荷是 DLL 的效果，上限也由 DLL 算
+;（Status.h res::ChargeCap），這裡經玩家碼 55 讀回（放電的滿格判定用）。
 Int Function ChargeCap(ESSBController akCtl) Global
-	Return 6 + ESSBNodes.Rank(akCtl, 2, 0, 2) / 3 + ESSBNodes.StatusCapBonus(akCtl) ; @node 電荷上限
+	Actor player = akCtl.ThePlayer()
+	If !player
+		Return 6
+	EndIf
+	Return ESSBNative.GetStatus(player, 55)
 EndFunction
 
 ; 冰 凍結量表固定 5（量表不吃萬象，規劃 2.3）。
@@ -48,18 +53,7 @@ Float Function SignatureMult(ESSBController akCtl, Int aiElement) Global
 	Return 1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, tree, 2, 4), 0.03) ; @node 爆燃{fire} / 碎冰{frost} / 放電{lightning} / 地震{earth} / 血潮{blood} / 裁決{divine} / 導引{water} / 死咒{darkness} / 星落{astral}
 EndFunction
 
-; ================================================================== 開印時的自身資源（N4 前在 Papyrus）
-
-; 雷 開印電荷 +2，開啟新手主線 +1／每 5 點；土、風的岩甲與風勢在 ESSBElem2。
-; 目標身上的層數（凍結、血痕、中毒、詛咒、星痕…）與你的熱度、聖佑由 DLL 在開印當下加。
-Int Function OpenStacks(ESSBController akCtl, Int aiElement) Global
-	If aiElement == 3
-		Return 2 + ESSBNodes.Rank(akCtl, 2, 1, 0) / 5 ; @node 開印電荷
-	ElseIf aiElement == 4 || aiElement == 5
-		Return ESSBElem2.OpenStacks(akCtl, aiElement)
-	EndIf
-	Return 0
-EndFunction
+; 開印時你的資源（電荷、岩甲、風勢、同調、共鳴層）round 23 起由 DLL 在開印那一擊加（SelfLayer.h OpenGains）。
 
 ; 把小數層數變成整數：整數部分保證給，小數部分以機率決定。
 Int Function RoundStochastic(Float afValue) Global
@@ -73,8 +67,7 @@ EndFunction
 
 ; ================================================================== 開印（分支）
 
-; aiCutFrom：這一擊切掉的元素（0 = 沒有切）；接管類效果（餘燼、血引、聖引）的狀態部分在 DLL，
-; 這裡只剩要 Papyrus 做的（餘電的放電：電荷 N4 前在 Papyrus）。
+; aiCutFrom：這一擊切掉的元素（0 = 沒有切）；接管類效果（餘燼、血引、聖引）的狀態部分與餘電的放電在 DLL。
 Function OnOpen(ESSBController akCtl, Int aiElement, Actor akTarget, Float afMult, Int aiCutFrom) Global
 	If aiElement == 1
 		OpenFire(akCtl, akTarget)
@@ -87,7 +80,6 @@ Function OnOpen(ESSBController akCtl, Int aiElement, Actor akTarget, Float afMul
 	ElseIf aiElement >= 8 && aiElement <= 11
 		ESSBElem3.OnOpen(akCtl, aiElement, akTarget, afMult)
 	EndIf
-	akCtl.AfterOpen(aiElement, akTarget)
 EndFunction
 
 Function OpenFire(ESSBController akCtl, Actor akTarget) Global
@@ -179,10 +171,7 @@ Function OnFormOpened(ESSBController akCtl, Int aiElement) Global
 		EndIf
 		index += 1
 	EndWhile
-	; 5.5 開啟專精分支「雷臨強化」：雷臨時立即獲得 5 電荷。
-	If aiElement == 3 && ESSBNodes.Br(akCtl, 2, 1, 2, 0) ; @node 雷臨強化
-		akCtl.AddSelf(1, 5)
-	EndIf
+	; 5.5 開啟專精分支「雷臨強化」（雷臨時 +5 電荷）round 23 起由 DLL 在開形態時加（ESSBNative.FormEnter）。
 	If akCtl.CachedDebugLevel >= 1
 		akCtl.LogThrottled(1, "node", "advent element=" + aiElement + " radius=" + radius)
 	EndIf
@@ -261,28 +250,34 @@ EndFunction
 ; ================================================================== 雷：放電
 
 ; 放電（v0.4 2.6、5.5）：電荷數 × 30% B_max（每格 +1%／點）× R，削減魔力＝傷害的 50%，並跳到附近 2 人各 40%
-;（電弧 3 人 55%、連鎖 5 人）。暴擊：與附傷同一個暴擊率（5% + 每格電荷 2%），一般 ×1.5，切換那一擊是重擊時 ×2.5；
-; 電荷滿格的重擊放電必定暴擊（×2.5）。afCritDraw 是 DLL 在終焉當下擲的 [0,1)；Papyrus 自己觸發的放電（先雷、餘電、
-; 雷殛、雷暴、雷霆、雷神）傳 -1，由這裡擲（電荷在 N4 前還在 Papyrus，所以暴擊率在這裡算）。
-Function Discharge(ESSBController akCtl, Actor akTarget, Int aiCharge, Bool abConsume, Float afMult, Float afPower, Float afCritDraw, Bool abCutPower) Global
+;（電弧 3 人 55%、連鎖 5 人）。暴擊：與附傷同一個暴擊率（5% + 每格電荷 2%），一般 ×1.5，切換那一擊是重擊時 ×2.5。
+; afCritMult > 0：DLL 已經決定的暴擊倍率（ESSB_Discharge：滿格重擊必暴 ×2.5、雷暴、雷神、雷霆、餘電，round 23）；
+; 否則 afCritDraw 是 DLL 在終焉當下擲的 [0,1)，Papyrus 自己觸發的放電（先雷、雷殛）傳 -1 由這裡擲。
+; 電荷的消耗 round 23 起在 DLL（abConsume 不再有作用，保留參數給呼叫端）。
+Function Discharge(ESSBController akCtl, Actor akTarget, Int aiCharge, Bool abConsume, Float afMult, Float afPower, Float afCritDraw, Bool abCutPower, Float afCritMult = 0.0) Global
 	If aiCharge <= 0 || !akTarget
 		Return
 	EndIf
 	Float perCharge = 0.3 * (1.0 + ESSBNodes.Pct(akCtl, ESSBNodes.Rank(akCtl, 2, 0, 0), 0.01)) ; @node 放電每格電荷傷害
 	Float amount = ESSBReactions.ReactDamage(akCtl, 3, perCharge * aiCharge) * afMult * SignatureMult(akCtl, 3) * afPower
-	Float draw = afCritDraw
-	If draw < 0.0
-		draw = Utility.RandomFloat(0.0, 1.0)
-	EndIf
-	Bool crit = draw < 0.05 + 0.02 * aiCharge
-	If abCutPower && aiCharge >= ChargeCap(akCtl)
-		crit = True
-	EndIf
-	If crit
-		If abCutPower
-			amount = amount * 2.5
-		Else
-			amount = amount * 1.5
+	Bool crit = afCritMult > 1.0
+	If afCritMult > 0.0
+		amount = amount * afCritMult
+	Else
+		Float draw = afCritDraw
+		If draw < 0.0
+			draw = Utility.RandomFloat(0.0, 1.0)
+		EndIf
+		crit = draw < 0.05 + 0.02 * aiCharge
+		If abCutPower && aiCharge >= ChargeCap(akCtl)
+			crit = True
+		EndIf
+		If crit
+			If abCutPower
+				amount = amount * 2.5
+			Else
+				amount = amount * 1.5
+			EndIf
 		EndIf
 	EndIf
 	Float drainRatio = 0.5
@@ -310,24 +305,21 @@ Function Discharge(ESSBController akCtl, Actor akTarget, Int aiCharge, Bool abCo
 		index += 1
 	EndWhile
 
-	If abConsume && !ESSBNodes.Br(akCtl, 2, 2, 1, 0) ; @node 蓄餘
-		akCtl.ClearSelf(1)
-	EndIf
 	If akCtl.CachedDebugLevel >= 2
 		akCtl.LogThrottled(2, "node", "discharge " + akTarget.GetFormID() + " charge=" + aiCharge + " crit=" + crit + " amount=" + amount)
 	EndIf
 EndFunction
 
 ; 5.5 持續傳奇主線「天雷」：同調三段時放電改為對範圍內所有感電目標（掃描 N5 前在這裡）。
-Function DischargeAll(ESSBController akCtl, Actor akTarget, Int aiCharge, Float afMult, Bool abConsume, Float afPower, Float afCritDraw, Bool abCutPower) Global
+Function DischargeAll(ESSBController akCtl, Actor akTarget, Int aiCharge, Float afMult, Bool abConsume, Float afPower, Float afCritDraw, Bool abCutPower, Float afCritMult = 0.0) Global
 	Int rank = ESSBNodes.Rank(akCtl, 2, 0, 4) ; @node 天雷
 	If rank <= 0 || akCtl.SyncStage() < 3
-		Discharge(akCtl, akTarget, aiCharge, abConsume, afMult, afPower, afCritDraw, abCutPower)
+		Discharge(akCtl, akTarget, aiCharge, abConsume, afMult, afPower, afCritDraw, abCutPower, afCritMult)
 		Return
 	EndIf
 	Float radius = (2.0 + 0.2 * rank) * 70.0
 	Actor player = akCtl.ThePlayer()
-	Discharge(akCtl, akTarget, aiCharge, False, afMult, afPower, afCritDraw, abCutPower)
+	Discharge(akCtl, akTarget, aiCharge, False, afMult, afPower, afCritDraw, abCutPower, afCritMult)
 	If player
 		Actor[] nearby = akCtl.ScanTargets(player, radius, 5, akTarget)
 		Int index = 0
@@ -337,9 +329,6 @@ Function DischargeAll(ESSBController akCtl, Actor akTarget, Int aiCharge, Float 
 			EndIf
 			index += 1
 		EndWhile
-	EndIf
-	If abConsume && !ESSBNodes.Br(akCtl, 2, 2, 1, 0) ; @node 蓄餘
-		akCtl.ClearSelf(1)
 	EndIf
 EndFunction
 
@@ -404,10 +393,8 @@ Function ShatterArea(ESSBController akCtl, Actor akTarget, Float afMult) Global
 EndFunction
 
 Function EndShockNodes(ESSBController akCtl, Actor akTarget, Int aiReason, Float afMult, Int aiCharge = -1) Global
-	; 5.5 關閉專精分支「餘電」：雷終焉後接管元素的開印附帶一次 ×0.5 放電。
-	If aiReason == 0 && ESSBNodes.Br(akCtl, 2, 2, 2, 0) ; @node 餘電
-		akCtl.SetPendingDischarge(aiCharge)
-	EndIf
+	; 5.5 關閉專精分支「餘電」與關閉傳奇分支「雷霆」round 23 起由 DLL 在雷終焉時記在你身上（ESSB_N4_PendingDischarge、
+	; ESSB_N4_Thunder），放電本體經 ESSB_Discharge 回來。
 	; 5.5 關閉大師分支「雷殛」：雷終焉對範圍內所有感電目標各一次全額放電（掃描 N5 前在這裡）。
 	If ESSBNodes.Br(akCtl, 2, 2, 3, 0) ; @node 雷殛
 		Int charge = aiCharge
@@ -425,27 +412,15 @@ Function EndShockNodes(ESSBController akCtl, Actor akTarget, Int aiReason, Float
 			EndWhile
 		EndIf
 	EndIf
-	; 5.5 關閉傳奇分支「雷霆」：雷印記融斷後 5 秒內你每次命中都放電 ×0.3。
-	If aiReason == 1 && ESSBNodes.Br(akCtl, 2, 2, 4, 0) ; @node 雷霆
-		akCtl.SetThunder(5)
-	EndIf
 EndFunction
 
-; 5.5 關閉大師分支「過載終焉」：任一元素終焉時，若你電荷 ≥8，該次終焉傷害 ×2（v0.4；電荷跨形態攜帶是 N4）。
-Float Function OverloadMult(ESSBController akCtl, Int aiElement, Int aiCharge = -1) Global
-	If aiCharge < 0
-		aiCharge = akCtl.GetSelf(1)
-	EndIf
-	If aiCharge >= 8 && ESSBNodes.Br(akCtl, 2, 2, 3, 1) ; @node 過載終焉
-		Return 2.0
-	EndIf
-	Return 1.0
-EndFunction
+; 5.5 關閉大師分支「過載終焉」（電荷 ≥8 時終焉 ×2、電荷跨形態攜帶）round 23 起在 DLL（終焉倍率已乘）。
 
-; 5.5 關閉熟練分支「雷斷」：雷印記融斷時附加你全部電荷的放電加成。
-Float Function ShockBurstBonus(ESSBController akCtl, Int aiElement, Int aiReason) Global
+; 5.5 關閉熟練分支「雷斷」：雷印記融斷時附加你全部電荷的放電加成。aiCharge 是 DLL 隨 ESSB_End 帶來的融斷當下電荷
+;（事件到的時候 DLL 已經因離開形態清掉電荷，round 23）。
+Float Function ShockBurstBonus(ESSBController akCtl, Int aiElement, Int aiReason, Int aiCharge) Global
 	If aiElement == 3 && aiReason == 1 && ESSBNodes.Br(akCtl, 2, 2, 1, 1) ; @node 雷斷
-		Return 1.0 + 0.3 * akCtl.GetSelf(1)
+		Return 1.0 + 0.3 * aiCharge
 	EndIf
 	Return 1.0
 EndFunction
@@ -457,41 +432,8 @@ EndFunction
 
 ; ================================================================== 每秒與擊殺掛勾
 
+; 冰（冰心：受擊後生命低於 30%）與雷（雷神：電荷滿層的那一擊）的每秒掛勾 round 23 起在 DLL（Hurt.h、SelfLayer.h）。
 Function OnTick(ESSBController akCtl, Int aiElement) Global
-	If aiElement == 2
-		; 5.4 持續傳奇分支「冰心」：生命低於 30% 時自動冰封附近所有凍結量表 ≥1 的敵人，每 30 秒一次。
-		If ESSBNodes.Br(akCtl, 1, 0, 4, 0) ; @node 冰心
-			Actor player = akCtl.ThePlayer()
-			If player && player.GetActorValuePercentage("Health") < 0.3 && akCtl.TakeIceHeart()
-				Actor[] nearby = akCtl.ScanTargets(player, 1050.0, 5, player)
-				Int index = 0
-				While index < nearby.Length
-					If nearby[index] && ESSBNative.GetStatus(nearby[index], 2) > 0
-						ESSBNative.SetStatus(nearby[index], 2, FreezeCap())
-					EndIf
-					index += 1
-				EndWhile
-				If akCtl.CachedDebugLevel >= 1
-					akCtl.LogThrottled(1, "node", "frost iceheart")
-				EndIf
-			EndIf
-		EndIf
-	ElseIf aiElement == 3
-		; 5.5 持續傳奇分支「雷神」：同調三段時電荷滿層自動放電並回復魔力。
-		If ESSBNodes.Br(akCtl, 2, 0, 4, 0) && akCtl.SyncStage() >= 3 ; @node 雷神
-			Int charge = akCtl.GetSelf(1)
-			If charge >= ChargeCap(akCtl)
-				Actor victim = akCtl.NearestMarked(3)
-				If victim
-					DischargeAll(akCtl, victim, charge, 1.0, True, 1.0, -1.0, False)
-					Actor player = akCtl.ThePlayer()
-					If player
-						akCtl.ApplyUtil(5, ESSBReactions.BaseMax(akCtl, 3) * charge, 0, player)
-					EndIf
-				EndIf
-			EndIf
-		EndIf
-	EndIf
 EndFunction
 
 Function OnKill(ESSBController akCtl, Int aiElement, Actor akTarget, Int aiFreeze) Global
@@ -511,17 +453,6 @@ Function OnKill(ESSBController akCtl, Int aiElement, Actor akTarget, Int aiFreez
 			akCtl.LogThrottled(1, "node", "frost chainfreeze " + akTarget.GetFormID())
 		EndIf
 	EndIf
-EndFunction
-
-; 5.5 持續專精分支「雷暴」：電荷滿時普攻也有 30% 機率放電（N4 前在 Papyrus）。
-Bool Function StormChance(ESSBController akCtl) Global
-	If !ESSBNodes.Br(akCtl, 2, 0, 2, 0) ; @node 雷暴
-		Return False
-	EndIf
-	If akCtl.GetSelf(1) < ChargeCap(akCtl)
-		Return False
-	EndIf
-	Return Utility.RandomFloat(0.0, 1.0) < 0.3
 EndFunction
 
 ; 5.3 持續專精主線：帶火印記目標火抗 -1%／點（命中火印記目標時）。
