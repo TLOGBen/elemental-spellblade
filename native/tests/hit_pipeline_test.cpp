@@ -123,7 +123,19 @@ const std::map<std::string, essb::Cast> kCastNames = {
     { "kRestoreStamina", essb::Cast::kRestoreStamina },
     { "kSpendMagicka", essb::Cast::kSpendMagicka },
     { "kBloodGuard", essb::Cast::kBloodGuard },
+    { "kHushSpent", essb::Cast::kHushSpent },
 };
+
+// Map key of a node as the generated constants name it (tests never spell a slot themselves).
+std::tuple<int, int, int> Key(const essb::NodeId& id)
+{
+    return { id.tree, id.route, id.tier };
+}
+
+std::tuple<int, int, int, int> Key(const essb::BranchId& id)
+{
+    return { id.tree, id.route, id.tier, id.index };
+}
 
 struct Inputs {
     essb::Attack attack;
@@ -187,7 +199,7 @@ int GroupA0()
     // Fire, adept main 5 points, node scale 3: 1 + 5 x 1% x 3 = 1.15 -> B 10 x 1.05 x 1.15 = 12.075.
     {
         Inputs in = Bare(essb::kFire);
-        in.nodes.ranks[{ 0, 0, 1 }] = 5;
+        in.nodes.ranks[Key(essb::node::kProcAdept[essb::kFire])] = 5;
         const essb::Plan p = run(in, { { "real", 10, 12, 0.0 } });
         Check(Near(p.steps[0].magnitude, 12.075), "A0 fire adept");
     }
@@ -207,6 +219,55 @@ int GroupA0()
         for (std::size_t i = 0; i < expected.size(); ++i) {
             Check(p.steps[i].cast == expected[i].first && Near(p.steps[i].magnitude, expected[i].second), "A0 dispel step " + std::to_string(i));
         }
+    }
+    // Round 21. No form, normal hit, level 1, 吸魔量 10 points and 滅法倍率 5 points, target 100/100, you 100/100:
+    //   baseline 5 x 1.05 = 5.25; siphon 10 x 1.05 x (1 + 10 x 5%) = 15.75; small dispel burns 5 x 1.05 = 5.25,
+    //   true damage 5.25 x (1 + 5 x 2%) = 5.775 (neither line takes the node scale).
+    {
+        Inputs in = Bare(essb::kNoElement);
+        in.target.magicka = 100.0f;
+        in.target.magickaMax = 100.0f;
+        in.nodes.ranks[Key(essb::node::kNoFormSiphonAmount)] = 10;
+        in.nodes.ranks[Key(essb::node::kNoFormDispelRate)] = 5;
+        const essb::Plan p = run(in, {});
+        const std::vector<std::pair<essb::Cast, double>> expected = { { essb::Cast::kTrueDamage, 5.25 },
+            { essb::Cast::kDrainMagicka, 15.75 }, { essb::Cast::kRestoreMagicka, 15.75 }, { essb::Cast::kDrainMagicka, 5.25 },
+            { essb::Cast::kTrueDamage, 5.775 } };
+        Check(p.count == static_cast<int>(expected.size()), "A0 siphon amount / dispel rate cast count");
+        for (std::size_t i = 0; i < expected.size(); ++i) {
+            Check(p.steps[i].cast == expected[i].first && Near(p.steps[i].magnitude, expected[i].second), "A0 R5 step " + std::to_string(i));
+        }
+    }
+    // Round 21. 反擊 window + 反擊 owned, same bare hit: siphon 10 x 1.05 x 2 = 21, and the window is used up.
+    {
+        Inputs in = Bare(essb::kNoElement);
+        in.target.magicka = 100.0f;
+        in.target.magickaMax = 100.0f;
+        in.player.riposteWindow = true;
+        in.nodes.branches.insert(Key(essb::node::kNoFormRiposte));
+        const essb::Plan p = run(in, {});
+        Check(p.consumeRiposte && p.steps[1].cast == essb::Cast::kDrainMagicka && Near(p.steps[1].magnitude, 21.0), "A0 riposte");
+    }
+    // Round 21. 寂滅: power hit, target 50/50 with 3 layers of 寂: X = 15, Y = 15, true damage (15 + 15) x (1.0 + 0.5) = 45,
+    //   then the 10-second "spent" marker.
+    {
+        Inputs in = Bare(essb::kNoElement);
+        in.attack.power = true;
+        in.target.magicka = 50.0f;
+        in.target.magickaMax = 50.0f;
+        in.target.hushLayers = 3;
+        in.nodes.branches.insert(Key(essb::node::kNoFormHushBreak));
+        const essb::Plan p = run(in, {});
+        Check(p.count == 8 && p.steps[5].cast == essb::Cast::kTrueDamage && Near(p.steps[5].magnitude, 45.0), "A0 hush break damage");
+        Check(p.steps[6].cast == essb::Cast::kDispelMark && p.steps[7].cast == essb::Cast::kHushSpent, "A0 hush spent marker");
+    }
+    // Round 21. Fire in the rain, water sustain novice line 15 points: 10 + 15 x 0.3 = 14.5 -> 15 s soaked, slow 15%.
+    {
+        Inputs in = Bare(essb::kFire);
+        in.tuning.envWet = true;
+        in.nodes.ranks[Key(essb::node::kWaterSoakDuration)] = 15;
+        const essb::Plan p = run(in, { { "real", 10, 12, 0.5 } });
+        Check(p.count == 2 && p.steps[1].cast == essb::Cast::kSoakSlow && Near(p.steps[1].magnitude, 15.0) && p.steps[1].seconds == 15, "A0 soak duration");
     }
     return cases;
 }
@@ -250,6 +311,7 @@ Inputs FromScenario(const json& row)
     p.echoPending = s.at("echo_pending");
     p.twinWindow = s.at("twin_window");
     p.bloodGuard = s.at("guard");
+    p.riposteWindow = s.at("riposte");
     essb::TargetFacts& g = in.target;
     g.undeadOrDaedra = s.at("undead");
     g.necromancer = s.at("necro");
@@ -259,6 +321,8 @@ Inputs FromScenario(const json& row)
     g.vip = s.at("vip");
     g.magicka = s.at("t_mp");
     g.magickaMax = s.at("t_mp_max");
+    g.hushLayers = s.at("hush");
+    g.hushSpent = s.at("hush_spent");
     for (const auto& r : row.at("ranks")) {
         in.nodes.ranks[{ r.at(0).get<int>(), r.at(1).get<int>(), r.at(2).get<int>() }] = r.at(3).get<int>();
     }
@@ -316,12 +380,13 @@ int GroupA(const json& table)
             if (step.cast == essb::Cast::kProc) {
                 Check(step.element == c.at(2).get<int>() && step.power == c.at(3).get<bool>(), label + ": proc spell");
             }
-            if (step.cast == essb::Cast::kSilence) {
-                Check(step.seconds == c.at(4).get<int>(), label + ": silence seconds");
+            if (step.cast == essb::Cast::kSilence || step.cast == essb::Cast::kSoakSlow) {
+                Check(step.seconds == c.at(4).get<int>(), label + ": seconds");
             }
             seen.insert(step.cast);
         }
         Check(plan.consumeEcho == expect.at("consume_echo").get<bool>(), name + ": echo consumption");
+        Check(plan.consumeRiposte == expect.at("consume_riposte").get<bool>(), name + ": riposte consumption");
         Check(plan.crit == expect.at("crit").get<bool>(), name + ": crit");
         Check(Near(plan.magnitude, expect.at("magnitude").get<double>()), name + ": reported magnitude");
         ++cases;
@@ -520,6 +585,16 @@ int GroupB(const json& wiring)
         const essb::TargetFacts t = essb::MakeTarget(thralls);
         Check(t.necromancer && t.magicka == 12.0f && t.magickaMax == 40.0f, "B6 thralls and magicka");
         ++cases;
+        // 寂 layers ride on the effect's magnitude (whole numbers); the spent marker is a flag.
+        for (const float magnitude : { 0.0f, 1.0f, 2.9999f, 3.0f, 5.0f }) {
+            essb::RawTarget hush;
+            hush.hushMagnitude = magnitude;
+            hush.hushSpent = magnitude >= 3.0f;
+            const essb::TargetFacts h = essb::MakeTarget(hush);
+            Check(h.hushLayers == static_cast<int>(magnitude + 0.5f) && h.hushSpent == (magnitude >= 3.0f) && none.hushLayers == 0 && !none.hushSpent,
+                "B6 hush layers");
+            ++cases;
+        }
     }
     // B7: each planned cast uses the spell record the generator assigned to it.
     {
@@ -529,14 +604,17 @@ int GroupB(const json& wiring)
                 continue;
             }
             essb::CastStep step{ cast };
-            if (cast == essb::Cast::kSilence) {
-                for (int s = 1; s <= essb::kSilenceSpellCount; ++s) {
+            if (cast == essb::Cast::kSilence || cast == essb::Cast::kSoakSlow) {
+                const std::string prefix = cast == essb::Cast::kSilence ? "kSilence" : "kSoak";
+                for (int s = 1; s <= essb::DurationVariants(cast); ++s) {
                     step.seconds = s;
-                    Check(essb::SpellFor(step) == spells.at("kSilence" + std::to_string(s)).get<std::uint32_t>(), "B7 silence " + std::to_string(s));
+                    Check(essb::SpellFor(step) == spells.at(prefix + std::to_string(s)).get<std::uint32_t>(), "B7 " + prefix + " " + std::to_string(s));
                     ++cases;
                 }
                 step.seconds = 0;
-                Check(essb::SpellFor(step) == 0, "B7 silence 0 must not resolve");
+                Check(essb::SpellFor(step) == 0, "B7 " + prefix + " 0 must not resolve");
+                step.seconds = essb::DurationVariants(cast) + 1;
+                Check(essb::SpellFor(step) == 0, "B7 " + prefix + " past the last spell must not resolve");
                 continue;
             }
             Check(essb::SpellFor(step) == spells.at(name).get<std::uint32_t>(), "B7 " + name);
@@ -872,8 +950,8 @@ int main(int argc, char** argv)
         const int b = GroupB(wiring);
         const int c = GroupC();
         const int d = GroupD();
-        std::printf("NATIVE ANCHORS ok: A0 %d hand-computed hits (fire, lightning power crit + drain, blood curve + leech, divine undead, adept node, no-form dispel)\n", a0);
-        std::printf("NATIVE MAGNITUDE ok: A %d scenarios == build/fix20_reference.py (casts, order, magnitudes, draws, echo, crit)\n", a);
+        std::printf("NATIVE ANCHORS ok: A0 %d hand-computed hits (fire, lightning power crit + drain, blood curve + leech, divine undead, adept node, no-form dispel; round 21: siphon amount + dispel rate, riposte, hush break, soak duration)\n", a0);
+        std::printf("NATIVE MAGNITUDE ok: A %d scenarios == build/fix20_reference.py (casts, order, magnitudes, seconds, draws, echo, riposte, crit)\n", a);
         std::printf("NATIVE WIRING ok: B %d mocked engine reads -> inputs (perk FormIDs + 4-probe ranks, no-form suppression, GLOB fields, attack, target, spells)\n", b);
         std::printf("NATIVE FILTER ok: C %d hit-fact combinations == Papyrus OnWeaponHit gates (element and no-form)\n", c);
         std::printf("NATIVE RANDOM ok: D %d production draws (uniform B, 1..25 faces, best-of-7, 5%% crit, planned lightning faces and crits) within 5 sigma\n", d);

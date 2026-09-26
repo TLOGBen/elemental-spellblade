@@ -7,6 +7,8 @@
 //     applied by the engine to every effect of a spell (native-verification-2 section 10: NO), so a
 //     spell that needs two different magnitudes is split into two single-effect spells.
 //
+// Round 21 (v0.4 trees): the no-form 吸魔量 / 滅法倍率 / 燒魔倍數 lines, 寂滅 and 反擊 (their N2 halves, ruling R5)
+// and the soaked slow's duration node (fixed-duration spells, ruling R6); every node is looked up by v0.4 name.
 // Formula (v0.4 2.7):  D_hit = B x R x G(L) x BaseDamageMult x M_mod x T x C   (M_ext and Res: engine)
 //   M_mod = (1 + sum of node percentages) x blood curve x blood rage x environment x undead x exorcism x wind sneak
 // Target-side and script-state terms (heat, open boost, frozen, holy vulnerability, ...) are still added by
@@ -99,6 +101,7 @@ struct PlayerFacts {
     bool interior = false;
     bool echoPending = false;  // ESSB_EchoPending effect on the player (applied by Papyrus on a switch)
     bool twinWindow = false;   // ESSB_TwinWindow effect on the player (30 s after a switch, 雙生 owned)
+    bool riposteWindow = false;  // ESSB_RiposteWindow effect on the player (3 s after a block, 反擊 owned)
     float bloodGuard = 0.0f;   // magnitude of the ESSB_BloodGuard effect on the player (0 = none)
 };
 
@@ -111,6 +114,8 @@ struct TargetFacts {
     bool vip = false;             // essential, protected or unique: silence is halved
     float magicka = 0.0f;
     float magickaMax = 0.0f;
+    int hushLayers = 0;           // magnitude of our 寂 effect (ESSB_HushEffect; given by 冷寂 at 融斷, N5)
+    bool hushSpent = false;       // our 寂滅 "used" marker (ESSB_HushSpent)
 };
 
 // Everything the planner reads about the player's nodes; EngineFacts.h answers it from HasPerk.
@@ -136,9 +141,10 @@ enum class Cast : std::uint8_t
     kDrainMagicka,    // target magicka - magnitude
     kDrainStamina,    // target stamina - magnitude
     kTrueDamage,      // target health - magnitude, no resistances
-    kSoakSlow,        // target slowed by magnitude percent (10 s)
+    kSoakSlow,        // target slowed by magnitude percent for `seconds` (fixed-duration spells, ruling R6)
     kDispelMark,      // 滅法印 on the target (8 s), no override
     kSilence,         // silence on the target for `seconds`, no override
+    kHushSpent,       // 寂滅 paid out on this target (10 s marker), no override
     kHeal,            // player health + magnitude
     kRestoreMagicka,  // player magicka + magnitude
     kRestoreStamina,  // player stamina + magnitude
@@ -156,16 +162,18 @@ struct CastStep {
     float magnitude = 0.0f;  // the override; 0 for kDispelMark / kSilence (the record's own magnitudes)
     int element = 0;         // kProc only
     bool power = false;      // kProc only
-    int seconds = 0;         // kSilence only
+    int seconds = 0;         // kSilence and kSoakSlow
 };
 
 inline constexpr int kMaxCasts = 16;
 inline constexpr int kSilenceSpellCount = 8;  // ESSB_Native_Silence_1 .. _8 (fixed durations)
+inline constexpr int kSoakSpellCount = 30;    // soaked slow of 1..30 s (fixed durations; 10 s is ESSB_Native_SoakSlow)
 
 struct Plan {
     std::array<CastStep, kMaxCasts> steps{};
     int count = 0;
     bool consumeEcho = false;  // dispel the player's ESSB_EchoPending effect
+    bool consumeRiposte = false;  // dispel the player's ESSB_RiposteWindow effect (反擊 used on this hit)
     // For the log and the debug notice.
     int element = 0;
     float magnitude = 0.0f;    // main proc (element hits) or total true damage (no form)
@@ -420,11 +428,21 @@ constexpr void AddFlatHitNodes(Plan& plan, int element, const Tuning& t, const N
     }
 }
 
-template <NodeReader Nodes>
-constexpr float SoakSlowPct(const Tuning& t, const Nodes& nodes)
+// v0.4 2.6: 浸濕 slows 15% (ESSB_WaterWetSlowPct), under the mod's shared cap (never above 70%).
+constexpr float SoakSlowPct(const Tuning& t) noexcept
 {
     const float cap = std::clamp(t.slowCapPct, 0.0f, 70.0f);
-    return std::min(t.wetSlowPct + static_cast<float>(nodes.Rank(node::kWaterSoakSlow)), cap);
+    return std::min(t.wetSlowPct, cap);
+}
+
+// 5.11 water sustain novice line: 浸濕 lasts 10 s +0.3 s per point (rounded to whole seconds like
+// ESSBElem3.WetSeconds), then x the MCM duration multiplier; the spell of that many seconds is cast (1..30).
+template <NodeReader Nodes>
+constexpr int SoakSeconds(const Tuning& t, const Nodes& nodes)
+{
+    const int base = static_cast<int>(10.0f + 0.3f * static_cast<float>(nodes.Rank(node::kWaterSoakDuration)) + 0.5f);
+    const int scaled = static_cast<int>(static_cast<float>(base) * t.multDuration + 0.5f);
+    return std::clamp(scaled, 1, kSoakSpellCount);
 }
 
 // 餘響 + closing expert main line: share of the previous element's proc on the first hit after a switch.
@@ -454,7 +472,9 @@ constexpr void PlanElementHit(Plan& plan, const Attack& a, const Config& c, cons
     }
     if (t.envWet) {
         // v0.4 2.10: rain, snow or standing in water: every enemy counts as soaked (slow only here).
-        plan.Add({ Cast::kSoakSlow, SoakSlowPct(t, nodes) });
+        CastStep soak{ Cast::kSoakSlow, SoakSlowPct(t) };
+        soak.seconds = SoakSeconds(t, nodes);
+        plan.Add(soak);
     }
     AddFlatHitNodes(plan, element, t, nodes);
 
@@ -482,9 +502,33 @@ constexpr void PlanElementHit(Plan& plan, const Attack& a, const Config& c, cons
 inline constexpr float kSiphonBase = 10.0f;        // 吸魔 10 x G
 inline constexpr float kSmallBurnBase = 5.0f;      // 小滅法 5 x G
 inline constexpr float kDispelSpendOfMax = 0.15f;  // 滅法 X = 15% of your max magicka
-inline constexpr float kDispelMultiplier = 1.0f;   // x1.5 while overloaded: overload is N4
-inline constexpr float kBurnMultiple = 1.0f;       // Y <= X x 1.0 (the +7%/point line does not exist yet)
+inline constexpr float kDispelMultiplier = 1.0f;   // base; x1.5 while overloaded: overload is N4
+inline constexpr float kBurnMultiple = 1.0f;       // base: Y <= X x 1.0
 inline constexpr int kMaxSilenceSeconds = 4;
+inline constexpr int kHushBreakLayers = 3;         // 寂滅: the target carries at least 3 layers of 寂
+inline constexpr float kHushBreakBonus = 0.5f;     // 寂滅: +0.5 to the next dispel's multiplier
+
+// 5.1 滅法 novice line: the dispel multiplier +2% per point (not node-scaled: x1.0 -> x1.3); the small dispel
+// uses the same multiplier (v0.4 5.1: its true damage is "燒掉的量 x 滅法倍率").
+template <NodeReader Nodes>
+constexpr float DispelRate(const Nodes& nodes)
+{
+    return kDispelMultiplier + 0.02f * static_cast<float>(nodes.Rank(node::kNoFormDispelRate));
+}
+
+// 5.1 滅法 adept line: Y may reach X x (1.0 + 7% per point) (x2.05 at 15).
+template <NodeReader Nodes>
+constexpr float BurnMultiple(const Nodes& nodes)
+{
+    return kBurnMultiple + 0.07f * static_cast<float>(nodes.Rank(node::kNoFormBurnMultiple));
+}
+
+// 5.1 冷寂 adept branch 寂滅 (the N2 half): a target with >= 3 layers of 寂 takes +0.5 on your next dispel.
+template <NodeReader Nodes>
+constexpr bool HushBreak(const TargetFacts& target, const Nodes& nodes)
+{
+    return nodes.Has(node::kNoFormHushBreak) && target.hushLayers >= kHushBreakLayers && !target.hushSpent;
+}
 
 template <NodeReader Nodes>
 constexpr float TrueDamageMultiplier(const TargetFacts& target, const Tuning& t, const Nodes& nodes)
@@ -539,6 +583,13 @@ constexpr void PlanNoFormHit(Plan& plan, const Attack& a, const Config& c, const
     if (nodes.Has(node::kNoFormSeize)) {
         siphon = std::max(siphon, target.magickaMax * t.seizeMaxPct * 0.01f);
     }
+    // 大師 novice line: siphon amount +5% per point (not node-scaled: x1.0 -> x1.75).
+    siphon *= 1.0f + 0.05f * static_cast<float>(nodes.Rank(node::kNoFormSiphonAmount));
+    // 反擊: within 3 s of a successful block (the window effect Papyrus opens) this hit siphons x2 and uses it up.
+    if (p.riposteWindow && nodes.Has(node::kNoFormRiposte)) {
+        siphon *= 2.0f;
+        plan.consumeRiposte = true;
+    }
     siphon = std::min(siphon * t.multDrain, std::max(0.0f, target.magicka));
     float targetMagicka = std::max(0.0f, target.magicka);
     float playerMagicka = std::max(0.0f, p.magicka);
@@ -552,11 +603,12 @@ constexpr void PlanNoFormHit(Plan& plan, const Attack& a, const Config& c, const
     plan.siphon = siphon;
 
     // No magicka, no dispel of either size (v0.4 5.1: the limit is deliberate).
+    const float rate = DispelRate(nodes);
     if (playerMagicka > 0.0f && !a.power) {
         // 小滅法: burn 5 x G more of the target's magicka; true damage = burned x dispel multiplier.
         const float burn = std::min(kSmallBurnBase * g * BurnBonus(target, nodes) * t.multDrain, targetMagicka);
         if (burn > 0.0f) {
-            const float damage = burn * kDispelMultiplier * trueMult;
+            const float damage = burn * rate * trueMult;
             plan.Add({ Cast::kDrainMagicka, burn });
             plan.Add({ Cast::kTrueDamage, damage });
             trueTotal += damage;
@@ -570,15 +622,19 @@ constexpr void PlanNoFormHit(Plan& plan, const Attack& a, const Config& c, const
         if (targetMagicka <= 0.0f && nodes.Has(node::kNoFormDepletion)) {
             spend = std::min(2.0f * x, playerMagicka);  // 枯竭: burn twice X of your own instead
         } else {
-            y = std::min(targetMagicka, x * kBurnMultiple * BurnBonus(target, nodes) * t.multDrain);
+            y = std::min(targetMagicka, x * BurnMultiple(nodes) * BurnBonus(target, nodes) * t.multDrain);
         }
-        const float damage = (spend + y) * kDispelMultiplier * trueMult;
+        const bool hushBreak = HushBreak(target, nodes);
+        const float damage = (spend + y) * (rate + (hushBreak ? kHushBreakBonus : 0.0f)) * trueMult;
         plan.Add({ Cast::kSpendMagicka, spend });
         if (y > 0.0f) {
             plan.Add({ Cast::kDrainMagicka, y });
         }
         plan.Add({ Cast::kTrueDamage, damage });
         plan.Add({ Cast::kDispelMark, 0.0f });
+        if (hushBreak) {
+            plan.Add({ Cast::kHushSpent, 0.0f });  // only the next dispel: the target is marked for 10 s
+        }
         if (targetMagicka - y <= 0.0f) {
             CastStep silence{ Cast::kSilence, 0.0f };
             silence.seconds = SilenceSeconds(target, t, nodes);

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(ElementsSpellblade VERSION 0.20.0 LANGUAGES CXX)
+project(ElementsSpellblade VERSION 0.21.0 LANGUAGES CXX)
 if(NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   message(FATAL_ERROR "MSVC x64 is required")
 endif()

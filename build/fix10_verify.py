@@ -109,7 +109,8 @@ def regression_a(folder):
                  ESSBElem3=NS(OnKill=lambda *a:received.append(a[4])),
                  ESSBNoForm=NS(OnKill=lambda *a:None,IsSpellUser=lambda *a:False))
     c.OnKillEvent(dark,p)
-    assert received==[10,10], 'on-kill AoE changed frozen victim attribution'
+    # Round 21: ESSBElem3.OnKill (v0.3 astral / dark on-kill nodes) is gone; ESSBElem2.OnKill is the only on-kill hook.
+    assert received==[10], 'on-kill AoE changed frozen victim attribution'
     # Pure Land is the sole explicit exception; ownership + actual active divine form + stage 3.
     e=Script(folder/'ESSBElem2.psc',dict(ESSBNodes=NS(Br=lambda *a:True)))
     c.overrides['SyncStage']=lambda:3
@@ -139,7 +140,8 @@ def regression_b(folder):
     wire(current);wire(old)
     victim=Actor(0)
     for c in (old,current,old,current):c.OnKillEvent(victim,p)
-    assert effects==dict(elem=1,elem2=1,elem3=1,noform=1),dict(effects)
+    # Round 21: the v0.3 astral / 無魔 on-kill hooks (ESSBElem3.OnKill, ESSBNoForm.OnKill) are gone.
+    assert effects==dict(elem=1,elem2=1),dict(effects)
     # A nested duplicate arriving during on-kill AoE must see the pre-dispatch claim.
     current.env['ESSBElem'].OnKill=lambda *a:(effects.update(['elem']),current.OnKillEvent(a[2],p))
     for _ in range(12):
@@ -210,10 +212,19 @@ def regression_d(folder):
         guard.overrides['GetActorReference']=lambda:p
         ctl.overrides['Br']=lambda *a:owned and not (a[0]==11 and a[1]<2 and ctl.FormActive.v==1)
 
-    for active,have,expected in [(1,True,0),(0,False,0),(0,True,1)]:
-        ctl.FormActive.v=active;owned=have;effects.clear()
-        guard.OnHitEx(Actor(),Spell(),None,False,False,False,False)
-        assert len(effects)==expected,(active,have,effects)
+    # Round 21: v0.4 removed 反噬, so no incoming spell hit applies a utility any more. The positive spell-hit path
+    # is now 破護 (滅法 route, no-form only): a spell hit with no projectile from an attacker carrying a vanilla
+    # cloak effect opens the cloak guard window; not owned, form on, or no cloak -> nothing.
+    guards=[]
+    ctl.overrides['SetCloakGuard']=lambda seconds:guards.append(seconds)
+    ctl.fields['CloakKeyword']='cloak'
+    class Cloaked(Actor):
+        def __init__(self,cloak):super().__init__();self.cloak=cloak
+        def HasMagicEffectWithKeyword(self,kw):return self.cloak and kw=='cloak'
+    for active,have,cloak,expected in [(1,True,True,[]),(0,False,True,[]),(0,True,False,[]),(0,True,True,[2])]:
+        ctl.FormActive.v=active;owned=have;effects.clear();guards.clear()
+        guard.OnHitEx(Cloaked(cloak),Spell(),None,False,False,False,False)
+        assert not effects and guards==expected,(active,have,cloak,effects,guards)
     return 'active/off + owned/unowned; martial/anti-magic gated; burst transition route preserved'
 
 def evidence():
@@ -248,7 +259,7 @@ def run():
     assert all(after[k]['id']==f'{v:06X}' for k,v in state_schema.quest_ids(version).items())
     assert after['ESSB_DebugLevel']['id']=='000811'
     added={k:v for k,v in after.items() if k not in before}
-    assert set(added)==(set(state_schema.stub_ids(version))-set(state_schema.stub_ids(2))) | __import__('build_v03').GUARD_WINDOW_EDIDS | (__import__('build_v03').hit18.new_edids(__import__('build_v03')) | __import__('build_v03').hit19.NEW_EDIDS)
+    assert set(added)==(set(state_schema.stub_ids(version))-set(state_schema.stub_ids(2))) | __import__('build_v03').GUARD_WINDOW_EDIDS | (__import__('build_v03').hit18.new_edids(__import__('build_v03')) | __import__('build_v03').hit19.NEW_EDIDS | set(__import__('build_v03').tree_v04.NEW_PERK_EDIDS))
     from tes import read_plugin
     oldrecords,_=read_plugin(oldesp)
     newrecords,_=read_plugin(ROOT/'package/Elements Spellblade/Elements Spellblade.esp')
@@ -256,7 +267,7 @@ def run():
     import build_v03 as b
     # A pre-switch cloak-guard window must also be disabled by the engine perk gate.
     off=b.gv_eq(b.ID_GLOB['ESSB_FormActive'],0)
-    assert off in [data for tag,data in b.branch_entries('noform',1,3,0) if tag=='CTDA']
+    assert off in [data for tag,data in b.branch_entries('noform','破護') if tag=='CTDA']
     assert off in [data for tag,data in newby['ESSB_P_noform_1_3_B1'].ss if tag=='CTDA']
     sound_changes=[]
     for old in oldrecords:

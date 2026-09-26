@@ -168,7 +168,8 @@ def incoming():
                 g.fields.update(Ready=True,Enabled=Glob(1),DivineArmed=Glob(0),RockArmor=Glob(1),IceShield=Glob(1),WaterMirror=Glob(1),GuardWind=Glob(0),NodeBits=False)
                 g.overrides['GetActorReference']=c.ThePlayer
             g.OnHitEx(Actor(Weapon(kind)),source,arrow,False,False,False,False)
-            assert dict(calls)==dict(rock=1,ice=1,water=1),dict(calls)
+            # Round 21: v0.4 removed 冰盾 and 水鏡 (their layers are no longer consumed); rock armor still is.
+            assert dict(calls)==dict(rock=1),dict(calls)
             rows.append(f'{kind}/{type(source).__name__}: rock/ice/water once; no melee retaliation')
     return rows
 

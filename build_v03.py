@@ -819,36 +819,77 @@ def entry(entry_point, value, conditions, tabs=3, function=EPF_MULT, epft=1):
     return ss
 
 
-def main_entries(tree_id, route, tier, rank, base):
-    """主線第 rank 階（1 起算）要加的進入點；rank 15 沒有下一階。"""
+# ---------------------------------------------------------------- v0.4 節點的 PERK 進入點（以 v0.4 名稱為鍵）
+# round 21：鍵是 (樹, v0.4 節點名稱)，由身分表（build/plan-tree-nodes.json）解析成格位，所以「格位換了意思」
+# 不可能讓進入點悄悄留在別的節點上；build/fix21_identity.py 另外核對每個鍵的節點狀態（後續切片的節點不准有），
+# 讀回檢查（fix19_native／本檔 main）則核對 ESP 裡帶進入點的 perk 剛好就是這些鍵解析出來的格。
+# v0.3 的進入點（純武藝武器傷害、戰意、淬火、同調三段受傷、疾攻、不屈、熔身、浴火、霜膚、冰盾、冰晶、電盾、疾電、
+# 飲血武器傷害、聖盾、水膜、水鏡、水體、影甲、影身、預知、星體、星光）在 v0.4 都退役或改版，一律不再產生。
+ROCK_ARMOR_MAX_LAYERS = 13     # 岩甲上限：基礎 5、厚土 10，通用樹「每種元素狀態上限」最多再 +3
+ROCK_ARMOR_DR_CAP = 0.6        # v0.4 5.6：岩甲的物理減傷合計上限 60%
+ROCK_ARMOR_DR_PER_LAYER = 0.04  # v0.4 5.6：每層物理減傷 +4%（ESSB_P_BaseRules）
+MOUNTAIN_DR_PER_LAYER = 0.05    # v0.4 5.6 山岳：同調三段時每層 +4% → +5%
+
+
+def rock_armor_reduction(layers, per_layer):
+    return min(per_layer * layers, ROCK_ARMOR_DR_CAP)
+
+
+def mountain_entries():
+    """山岳：同調三段時岩甲每層物理減傷 4% → 5%（合計上限 60%）。基礎 4%／層在 ESSB_P_BaseRules 上，
+    這裡對每一個層數補上兩者的比值（進入點乘法疊加）；層數鏡射在 ESSB_RockArmor。"""
     out = []
-    gate = []
-    if rank < plan_trees.MAIN_MAX_RANK:
-        gate = [(0, no_next_rank(base + rank))]
-    form_off = (0, gv_eq(ID_GLOB['ESSB_FormActive'], 0))
-    key = (tree_id, route, tier)
-    node_scale = json.loads((WORK / 'settings.json').read_text(encoding='utf-8'))['node_percent_scale']
-    if key == ('noform', 0, 0):
-        # 5.1 純武藝新手：無形態時武器傷害 +1%／點。
-        out += entry(EP_ATTACK_DAMAGE, 1.0 + 0.01 * rank * node_scale, gate + [form_off])
-    elif key == ('noform', 0, 3):
-        # 5.1 純武藝大師「戰意」：每層武器傷害 +0.5%／點。
-        # 進入點的值是固定的，所以每一層各一段條件（戰意 ≥ j），實際是乘法疊加。
-        for level in range(1, 6):
-            out += entry(EP_ATTACK_DAMAGE, 1.0 + 0.005 * rank * node_scale,
-                         gate + [form_off, (0, gv_ge(ID_MECH_GLOB + 1, level))])
-    elif key == ('noform', 2, 3):
-        # 5.1 融斷大師「淬火」：融斷後 10 秒內武器傷害 +1%／點。
-        out += entry(EP_ATTACK_DAMAGE, 1.0 + 0.01 * rank * node_scale,
-                     gate + [(0, gv_ge(ID_MECH_GLOB + 7, 1))])
-    elif key == ('common', 0, 2):
-        # 5.2 持續專精：同調三段時受傷 -0.5%／點。
-        out += entry(EP_INCOMING_DAMAGE, 1.0 - 0.005 * rank,
-                     gate + [(0, gv_ge(ID_MECH_GLOB + 0, 3))])
+    for layers in range(1, ROCK_ARMOR_MAX_LAYERS + 1):
+        value = (1.0 - rock_armor_reduction(layers, MOUNTAIN_DR_PER_LAYER)) \
+            / (1.0 - rock_armor_reduction(layers, ROCK_ARMOR_DR_PER_LAYER))
+        out += entry(EP_INCOMING_DAMAGE, value, [(0, gv_eq(mech2(0), layers)), (0, gv_ge(mech(0), 3))])
     return out
 
 
-def branch_entries(tree_id, route, tier, index):
+MAIN_ENTRY_NODES = {
+    # v0.4 沒有需要 PERK 進入點、且負責不在後續切片的主線（聖佑各階的武器傷害等在 N3、法盾分擔在 N4）。
+}
+
+BRANCH_ENTRY_NODES = {
+    # 5.2 順轉：切換後 1 秒受傷 -50%（ESSB_GuardSwitch 視窗）。
+    ('common', '順轉'): lambda: entry(EP_INCOMING_DAMAGE, 0.5, [(0, guard_window(0))]),
+    # 5.2 安全閥：融斷時你受傷 -50% 持續 2 秒（ESSB_GuardBurst 視窗）。
+    ('common', '安全閥'): lambda: entry(EP_INCOMING_DAMAGE, 0.5, [(0, guard_window(1))]),
+    # 5.2 不移：同調二段以上時免疫硬直（0x21 受到的擊退幅度 ×0，條件 ESSB_SyncStage ≥2）。
+    ('common', '不移'): lambda: entry(EP_INCOMING_STAGGER, 0.0, [(0, gv_ge(mech(0), 2))], tabs=2),
+    # 5.6 不動：岩甲 ≥5 時免疫擊退（0x21 ×0）。
+    ('earth', '不動'): lambda: entry(EP_INCOMING_STAGGER, 0.0, [(0, gv_ge(mech2(0), 5))], tabs=2),
+    # 5.6 山岳：同調三段時岩甲每層物理減傷 +5%。
+    ('earth', '山岳'): mountain_entries,
+    # 5.7 殘影：風勢滿時被近戰命中 30% 機率讓那一擊無效。擲骰在 ESSBGuard，命中就開一個受傷 ×0 的短視窗。
+    ('wind', '殘影'): lambda: entry(EP_INCOMING_DAMAGE, 0.0, [(0, guard_window(3))]),
+    # 5.1 破護：不受元素披風反傷（ESSBGuard 認出披風那一跳，開 2 秒「受到的法術強度 ×0」視窗）。
+    ('noform', '破護'): lambda: entry(EP_INCOMING_SPELL, 0.0, [(0, gv_eq(ID_GLOB['ESSB_FormActive'], 0)),
+                                                               (0, guard_window(5))], tabs=2),
+    # 5.9 神佑：留 1 血之後 2 秒受傷 ×0。
+    ('divine', '神佑'): lambda: entry(EP_INCOMING_DAMAGE, 0.0, [(0, guard_window(4))]),
+    # 5.9 聖域／神聖領域：其中敵人傷害 -20%（＝你在聖域內受傷 -20%），共用 ESSB_DomainDivine。
+    ('divine', '聖域'): lambda: entry(EP_INCOMING_DAMAGE, 0.8, [(0, gv_ge(mech2(8), 1))]),
+    ('divine', '神聖領域'): lambda: entry(EP_INCOMING_DAMAGE, 0.8, [(0, gv_ge(mech2(8), 1))]),
+}
+
+
+def main_entries(tree_id, label, rank, base):
+    """v0.4 主線第 rank 階（1 起算）要加的進入點；目前沒有（見 MAIN_ENTRY_NODES）。"""
+    build = MAIN_ENTRY_NODES.get((tree_id, label))
+    if build is None:
+        return []
+    gate = [(0, no_next_rank(base + rank))] if rank < plan_trees.MAIN_MAX_RANK else []
+    return build(rank, gate)
+
+
+def branch_entries(tree_id, name):
+    build = BRANCH_ENTRY_NODES.get((tree_id, name))
+    return build() if build else []
+
+
+def v03_branch_entries_retired(tree_id, route, tier, index):
+    """v0.3 的分支進入點（只留作歷史：round 21 起不再產生；build/fix21_verify.py 用它證明它們都不見了）。"""
     key = (tree_id, route, tier, index)
     if key == ('noform', 0, 1, 1):
         # 疾攻：連續命中每次重擊耐力消耗 -10%，最多 -50%。
@@ -991,9 +1032,11 @@ def base_rule_entries():
     out += entry(EP_POWER_ATTACK_STAMINA, 0.0,
                  [(0, gv_eq(ID_GLOB['ESSB_FormActive'], 1)),
                   (0, gv_eq(ID_GLOB['ESSB_CurrentElement'], 6))], tabs=2)
-    # 規劃 2.3 岩甲：物理減傷每層 +1%（山岳分支再 +2%／層）。
-    for level in range(1, 6):
-        out += entry(EP_INCOMING_DAMAGE, 0.99, [(0, gv_ge(mech2(0), level))])
+    # v0.4 5.6 岩甲：每層物理減傷 +4%，合計上限 60%（v0.3 是每層 +1%）。每一個層數一段條件（== 層數），
+    # 值直接是 1 − 4% × 層數，不再是每層乘一次。
+    for layers in range(1, ROCK_ARMOR_MAX_LAYERS + 1):
+        out += entry(EP_INCOMING_DAMAGE, 1.0 - rock_armor_reduction(layers, ROCK_ARMOR_DR_PER_LAYER),
+                     [(0, gv_eq(mech2(0), layers))])
     return out
 
 
@@ -1227,6 +1270,9 @@ def check_node_calls(plan):
 import fix18_records as hit18
 import fix19_native as hit19
 import fix20_records as hit20
+import fix21_records as hit21
+import fix21_identity
+import tree_v04
 
 
 def build_esp(plan):
@@ -1328,6 +1374,7 @@ def build_esp(plan):
 
     hit18.add_records(sys.modules[__name__], add, settings, casting_perks)
     hit20.add_records(sys.modules[__name__], add)
+    hit21.add_records(sys.modules[__name__], add)
 
     # -------------------------------------------------------------- KYWD
     add('KYWD', ID_KW_PROC, 'ESSB_Proc', [])
@@ -1920,7 +1967,7 @@ def build_esp(plan):
     entry_count += sum(1 for sig, _ in base_entries if sig == 'PRKE')
     add('PERK', ID_BASE_PERK, 'ESSB_P_BaseRules', [
         ('FULL', Z('元素魔戰士：基礎規則')),
-        ('DESC', Z('血形態的重擊改扣生命；岩甲每層物理減傷 +1%。')),
+        ('DESC', Z('血形態的重擊改扣生命；岩甲每層物理減傷 +4%（合計上限 60%）。')),
         ('DATA', perk_data(playable=0, hidden=1)),
     ] + base_entries)
 
@@ -1943,8 +1990,10 @@ def build_esp(plan):
     add('GLOB', ID_SHOW_MENU, 'ESSB_ShowMenu', [('FNAM', b's'), ('FLTV', F(0))])  # 0: CSF sees non-zero as an open request; we open via the API
     add('GLOB', ID_XP_PER_HIT, 'ESSB_XPPerHit', [('FNAM', b'f'), ('FLTV', F(xp_per_hit))])
 
-    # PERK：主線 15 階鏈（NNAM 串接）＋ 分支單一 perk。沒有任何進入點與效果，
-    # 節點的實際機制由機制前線接手；本前線只建節點、條件與 CSF 版面。
+    # PERK：主線 15 階鏈（NNAM 串接）＋ 分支單一 perk（v0.4，round 21）。分支的格位（FormID、EditorID 尾碼）是
+    # branch['slot']，跟 v0.4 表格的顯示順序 branch['order'] 分開（沿用 v0.3 的格、新節點放沒用過的格）；
+    # v0.3 有、v0.4 移除的分支照樣產生記錄（同 EditorID／FormID）當退役 perk：不可購買、不進 CSF、沒有進入點。
+    # 節點機制在 Papyrus／DLL，引擎側效果（樣式 C）以 v0.4 名稱查 MAIN_ENTRY_NODES／BRANCH_ENTRY_NODES。
     for tree in plan['trees']:
         t = tree['index']
         for route in tree['routes']:
@@ -1965,22 +2014,32 @@ def build_esp(plan):
                     if rank + 1 < plan_trees.MAIN_MAX_RANK:
                         ss.append(('NNAM', I(own(base + rank + 1))))
                     # 樣式 C：引擎側效果掛在同一筆 PERK 上（PRKE/DATA/EPFT/EPFD/PRKC/CTDA）。
-                    entries = main_entries(tree['id'], r, k, rank + 1, base)
+                    entries = main_entries(tree['id'], tier['main_label'], rank + 1, base)
                     entry_count += sum(1 for sig, _ in entries if sig == 'PRKE')
                     ss.extend(entries)
                     add('PERK', base + rank, f"ESSB_P_{tree['id']}_{r}_{k}_M{rank + 1}", ss)
+                has_main = ('CTDA', ctda(CTDA_EQ, 1.0, FUNC_HAS_PERK, param1=own(base)))
                 for branch in tier['branches']:
                     ss = [('FULL', Z(branch['name'])),
                           ('DESC', Z(branch['description'])),
                           ('CTDA', gate),
                           # 規劃 3：階內主線至少投 1 點，才能點該階分支。
-                          ('CTDA', ctda(CTDA_EQ, 1.0, FUNC_HAS_PERK, param1=own(base))),
+                          has_main,
                           ('DATA', perk_data())]
-                    entries = branch_entries(tree['id'], r, k, branch['index'])
+                    entries = branch_entries(tree['id'], branch['name'])
                     entry_count += sum(1 for sig, _ in entries if sig == 'PRKE')
                     ss.extend(entries)
-                    add('PERK', ID_BRANCH_PERK + node * plan_trees.MAX_BRANCH + branch['index'],
-                        f"ESSB_P_{tree['id']}_{r}_{k}_B{branch['index'] + 1}", ss)
+                    add('PERK', ID_BRANCH_PERK + node * plan_trees.MAX_BRANCH + branch['slot'],
+                        f"ESSB_P_{tree['id']}_{r}_{k}_B{branch['slot'] + 1}", ss)
+                for old in tier['retired']:
+                    add('PERK', ID_BRANCH_PERK + node * plan_trees.MAX_BRANCH + old['slot'],
+                        f"ESSB_P_{tree['id']}_{r}_{k}_B{old['slot'] + 1}", [
+                            ('FULL', Z(f"{old['name']}（已退役）")),
+                            ('DESC', Z(f"v0.3 的節點，v0.4 已移除：不在技能樹上、不能購買、沒有效果。"
+                                       f"（v0.3：{old['description']}）")),
+                            ('CTDA', gate), has_main,
+                            ('DATA', perk_data(playable=0, hidden=1)),
+                        ])
 
     # -------------------------------------------------------------- QUST
     props = {
@@ -2071,6 +2130,9 @@ def build_esp(plan):
         'BloodGuardSpell': (1, own(hit20.GUARD)),
         'EchoPendingSpell': (1, own(hit20.ECHO)),
         'TwinWindowSpell': (1, own(hit20.TWIN)),
+        'RiposteWindowSpell': (1, own(hit21.RIPOSTE)),
+        'IceArmorAbility': (1, own(hit21.ICE_ARMOR)),
+        'IceArmorWideAbility': (1, own(hit21.ICE_ARMOR_WIDE)),
         'HitBonusSpells': (11, [own(hit18.BONUS_SPELL+i) for i in range(11)]),
         'NativeHit': (1, own(hit19.NATIVE_HIT)), 'NativeWanted': (1, own(hit19.NATIVE_WANTED)),
     })
@@ -2534,16 +2596,23 @@ def write_coverage():
     return len(rows), len(deferred)
 
 
-# ------------------------------------------------------------------ 規劃覆蓋表（495 個節點 + 共通機制）
-ALLOWED_STATUS = ['IMPLEMENTED', 'PENDING-round2', 'PENDING-round3', 'DEFERRED']
+# ------------------------------------------------------------------ 規劃覆蓋表（v0.4 的 493 個節點 + 共通機制）
+# round 21：節點狀態改成 v0.4 的 DONE／KEPT-Nx／PARTIAL-Nx／LATER-Nx（見 plan_coverage.STATUS_LEGEND）；
+# 共通機制列沿用 IMPLEMENTED／DEFERRED。
+NODE_STATUS = re.compile(r'(DONE|KEPT-(N[3-6]|待決)|PARTIAL-(N[3-6]|基礎)|LATER-(N[3-6]|待決))')
+MECHANISM_STATUS = ['IMPLEMENTED', 'DEFERRED', 'REMOVED', 'LATER-N5']
 
 
 def write_plan_coverage(plan, manifest):
     rows, missing = plan_coverage.rows(plan)
     if missing:
         raise SystemExit(f'plan coverage has unmapped nodes: {missing[:10]} (total {len(missing)})')
+    extra = sorted(set(plan_coverage.NODES) - {(r['tree'], r['name']) for r in rows if r['kind'] == 'node'})
+    if extra:
+        raise SystemExit(f'plan coverage names nodes v0.4 does not have: {extra[:10]}')
     bad = [r for r in rows
-           if r['status'] not in ALLOWED_STATUS or not r['where'] or not r['note'] or not r['text']]
+           if not (NODE_STATUS.fullmatch(r['status']) if r['kind'] == 'node' else r['status'] in MECHANISM_STATUS)
+           or not r['where'] or not r['note'] or not r['text']]
     if bad:
         raise SystemExit(f'plan coverage rows missing status/where/note: {bad[:5]}')
     nodes = [r for r in rows if r['kind'] == 'node']
@@ -2559,28 +2628,15 @@ def write_plan_coverage(plan, manifest):
     by_tree = {}
     for row in nodes:
         by_tree.setdefault(row['tree'], collections.Counter())[row['status']] += 1
-    # round 3 收尾：13 棵樹一律不可以有 PENDING，只能 IMPLEMENTED 或 DEFERRED。
-    done = plan_coverage.ROUND1_TREES + plan_coverage.ROUND2_TREES + plan_coverage.ROUND3_TREES
-    unfinished = {t: dict(by_tree[t]) for t in done
-                  if set(by_tree[t]) - {'IMPLEMENTED', 'DEFERRED'}}
-    if unfinished:
-        raise SystemExit(f'trees still have PENDING nodes: {unfinished}')
-    pending = {s: n for s, n in counts.items() if s.startswith('PENDING')}
-    if pending:
-        raise SystemExit(f'plan coverage still has PENDING rows: {pending}')
+    if set(by_tree) != set(TREES):
+        raise SystemExit(f'plan coverage trees {sorted(by_tree)} != {TREES}')
     dump(WORK / 'build/plan-coverage.json', {
-        'front': 'element-mechanics round 3',
-        'plan': '元素魔戰士規劃-v0.3.md 1.1／2.x／5.1–5.13',
+        'front': 'round 21 (v0.4 trees)',
+        'plan': '元素魔戰士規劃-v0.4.md 1.1／2.x／5.1–5.13',
         'source': 'build/plan-tree-nodes.json',
-        'round1_trees': plan_coverage.ROUND1_TREES,
-        'round2_trees': plan_coverage.ROUND2_TREES,
-        'round3_trees': plan_coverage.ROUND3_TREES,
-        'legend': {
-            'IMPLEMENTED': '本輪已落地，where 是腳本:函式或 PERK EDID + 進入點',
-            'PENDING-round2': '機制前線第二輪（大地、風、鮮血、神聖）',
-            'PENDING-round3': '機制前線第三輪（毒素、水、黑暗、星界）',
-            'DEFERRED': '有具體技術理由不能在本輪完成，note 寫明理由',
-        },
+        'legend': dict(plan_coverage.STATUS_LEGEND,
+                       IMPLEMENTED='共通機制：已落地', DEFERRED='共通機制：有技術理由延後，note 寫明',
+                       REMOVED='共通機制：v0.4 已拿掉的 v0.3 規則', **{'LATER-N5': '共通機制：提前移除，N5 以 v0.4 版本重做（裁定 C3）'}),
         'totals': {
             'rows': len(rows),
             'nodes': len(nodes),
@@ -2594,6 +2650,22 @@ def write_plan_coverage(plan, manifest):
         'rows': rows,
     })
     return len(rows), dict(counts), [r for r in rows if r['status'] == 'DEFERRED']
+
+
+# v0.4 的新分支（round 21 新增的 perk EditorID），明列在這裡審過；建置時跟身分表推出來的集合比對，
+# 兩邊不一樣就失敗（驗證器的「新記錄白名單」只收這一份，不收推導結果）。
+def new_perk_edids(plan):
+    derived = {f"ESSB_P_{t['id']}_{r['index']}_{k['index']}_B{b['slot'] + 1}"
+               for t in plan['trees'] for r in t['routes'] for k in r['tiers'] for b in k['branches']
+               if b['v03'] is None}
+    listed = set(tree_v04.NEW_PERK_EDIDS)
+    assert derived == listed, (sorted(derived - listed), sorted(listed - derived))
+    return listed
+
+
+def round21_new_edids():
+    """round 21 新增的每一筆記錄：47 個新分支 perk + fix21_records（浸濕 1–30 秒、寂、寂滅標記、反擊視窗、冰甲）。"""
+    return set(tree_v04.NEW_PERK_EDIDS) | hit21.new_edids()
 
 
 # ------------------------------------------------------------------ CSF 設定檔（13 個）
@@ -2648,7 +2720,7 @@ def validate_csf_layout(tree, nodes):
             previous = main
             links = [f'm{r}{k + 1}'] if k + 1 < len(route['tiers']) else []
             for branch in tier['branches']:
-                branch_id = f'b{r}{k}{branch["index"]}'
+                branch_id = f'b{r}{k}{branch["slot"]}'
                 expected_ids.add(branch_id)
                 links.append(branch_id)
                 node = by_id[branch_id]
@@ -2687,7 +2759,7 @@ def csf_config(tree, settings):
             links = []
             if k + 1 < len(route['tiers']):
                 links.append(f'm{r}{k + 1}')
-            links.extend(f'b{r}{k}{b["index"]}' for b in tier['branches'])
+            links.extend(f'b{r}{k}{b["slot"]}' for b in tier['branches'])
             nodes.append({
                 'id': f'm{r}{k}',
                 'perk': csf_form(ID_MAIN_PERK + node_ix * plan_trees.MAIN_MAX_RANK),
@@ -2695,12 +2767,14 @@ def csf_config(tree, settings):
                 'x': x, 'y': y, 'links': links,
             })
             for branch in tier['branches']:
-                n = branch['index']
+                # 格位 slot 決定 perk（FormID）與節點 id；x 由 v0.4 表格的顯示順序 order 決定（round 21）。
+                n = branch['slot']
+                order = branch['order']
                 nodes.append({
                     'id': f'b{r}{k}{n}',
                     'perk': csf_form(ID_BRANCH_PERK + node_ix * plan_trees.MAX_BRANCH + n),
                     'edid': f"ESSB_P_{tree['id']}_{r}_{k}_B{n + 1}",
-                    'x': round(x + (1 if n == 0 else -n) * LAYOUT_LANE_STEP, 6),
+                    'x': round(x + (1 if order == 0 else -order) * LAYOUT_LANE_STEP, 6),
                     'y': y,
                     'links': [],
                 })
@@ -3018,6 +3092,9 @@ def validate_dot_state():
           f'roundtrip + 8 slots + legacy + {cases} expiry cases; all arrays <=128; round4 DPS unchanged')
 
 
+NODE_SCALE_RANGE = (1.0, 5.0)   # 裁決 R3：MCM 節點倍率 1–5，預設 3（settings.json node_percent_scale）
+
+
 def write_mcm(manifest):
     settings = json.loads((WORK / 'settings.json').read_text(encoding='utf-8'))
     def ref(edid):
@@ -3039,15 +3116,16 @@ def write_mcm(manifest):
     balance = []
     for edid, label, help_text in [
         ('ESSB_BaseDamageMult', '傷害倍率', '所有傷害；持續傷害另乘持續傷害倍率。'),
-        ('ESSB_NodeScale', '節點倍率', '調整核准的百分比增傷主線；節點文字顯示建置預設倍率。'),
+        ('ESSB_NodeScale', '節點倍率', '調整吃節點倍率的百分比主線（1–5，預設 3）；節點文字顯示建置預設倍率。'),
         ('ESSB_MultDot', '持續傷害', '毒、血、催毒、死域與血潮剩餘流血傷害。'),
         ('ESSB_MultCooldown', '冷卻', '乘上冷卻秒數；0.5 為一半冷卻。每秒輪詢的效果仍受 tick 精度限制。'),
         ('ESSB_MultRecovery', '回復', '生命、魔力、耐力與護盾；神佑固定 1 HP。'),
         ('ESSB_MultDrain', '削減', '敵方魔力、耐力、護甲削減；不改抗性削減與沉默鎖零。'),
         ('ESSB_MultDuration', '持續時間', '印記、狀態與領域，最短 1 秒；毒血桶壽命與星痕引爆延遲固定。'),
     ]:
-        knob = control(edid, label, 'slider', min=0.25,
-                       max=2.0 if edid == 'ESSB_MultCooldown' else 3.0, step=0.05,
+        low, high = NODE_SCALE_RANGE if edid == 'ESSB_NodeScale' else \
+            (0.25, 2.0 if edid == 'ESSB_MultCooldown' else 3.0)
+        knob = control(edid, label, 'slider', min=low, max=high, step=0.05,
                        formatString='{2} 倍', defaultValue=settings[ID_BALANCE_GLOB[edid][1]])
         knob['help'] = help_text
         balance.append(knob)
@@ -3123,8 +3201,15 @@ def validate_mcm(records, written):
     baseline = json.loads((WORK / '.codex/pre-fix5-snapshot/v03-formids.json').read_text(encoding='utf-8'))['records']
     assert all(state_schema.stable_identity(e, manifest.get(e), old) for e, old in baseline.items()), 'fix5 existing identities changed'
     added = {e: v for e, v in manifest.items() if e not in baseline and e not in SCHEMA_STUBS}
-    assert set(added) == (hit18.new_edids(sys.modules[__name__]) | hit19.NEW_EDIDS) | FIX5_NEW_EDIDS | GUARD_WINDOW_EDIDS | {e for e, (fid, _) in ID_BALANCE_GLOB.items() if fid >= 0x00515C}
-    assert all(int(v['id'], 16) > max(int(old['id'], 16) for old in baseline.values()) for v in added.values())
+    assert set(added) == (hit18.new_edids(sys.modules[__name__]) | hit19.NEW_EDIDS | set(tree_v04.NEW_PERK_EDIDS)) | FIX5_NEW_EDIDS | GUARD_WINDOW_EDIDS | {e for e, (fid, _) in ID_BALANCE_GLOB.items() if fid >= 0x00515C}
+    # round 21：47 個 v0.4 新分支 perk 放進分支區塊裡沒用過的格（裁決 R7：格位只增不回收）；其他新記錄一律往後加。
+    new_perks = set(tree_v04.NEW_PERK_EDIDS)
+    assert all(int(v['id'], 16) > max(int(old['id'], 16) for old in baseline.values())
+               for e, v in added.items() if e not in new_perks)
+    ever_used = {v['id'] for v in baseline.values()} | {v['id'] for v in json.loads(
+        (WORK / '.codex/pre-fix21-snapshot/build/v03-formids.json').read_text(encoding='utf-8'))['records'].values()}
+    assert all(ID_BRANCH_PERK <= int(manifest[e]['id'], 16) < ID_MAIN_PERK and manifest[e]['id'] not in ever_used
+               for e in new_perks), 'a round-21 perk reuses a FormID or leaves the branch block'
     assert manifest['ESSB_DebugLevel']['id'] == '000811'
     path = OUT / 'MCM/Config/Elements Spellblade/config.json'
     raw = path.read_bytes()
@@ -3179,12 +3264,14 @@ def validate_mcm(records, written):
         if row.get('type') != 'slider':
             continue
         v = row['valueOptions']
-        bounds = (0.0, 3.0, 0.1) if row['id'] == 'ESSB_MultUpkeep' else (0.25, 2.0 if row['id'] == 'ESSB_MultCooldown' else 3.0, 0.05)
+        bounds = (0.0, 3.0, 0.1) if row['id'] == 'ESSB_MultUpkeep' else \
+            (*NODE_SCALE_RANGE, 0.05) if row['id'] == 'ESSB_NodeScale' else \
+            (0.25, 2.0 if row['id'] == 'ESSB_MultCooldown' else 3.0, 0.05)
         assert (v['min'], v['max'], v['step']) == bounds
         assert v['min'] <= v['defaultValue'] <= v['max']
     node = general['ESSB_NodeScale']['valueOptions']
-    assert (node['min'], node['max'], node['step']) == (0.25, 3.0, 0.05)
-    assert node['defaultValue'] == json.loads((WORK / 'settings.json').read_text(encoding='utf-8'))['node_percent_scale']
+    assert (node['min'], node['max'], node['step']) == (1.0, 5.0, 0.05)   # 裁決 R3
+    assert node['defaultValue'] == json.loads((WORK / 'settings.json').read_text(encoding='utf-8'))['node_percent_scale'] == 3.0
     base = general['ESSB_BaseDamageMult']['valueOptions']
     assert (base['min'], base['max'], base['step']) == (0.25, 3.0, 0.05)
     for name in ('ESSB_BaseDamageMult', 'ESSB_PoisonDotK', 'ESSB_BleedDotK'):
@@ -3237,7 +3324,9 @@ def validate_mcm(records, written):
 
 
 def apply_fix8_decisions(plan):
-    """User-approved deviations; leave the design document and parser immutable."""
+    """fix8 的使用者核准決定，在 v0.4 由 plan_trees.classify_main 直接套用（v0.4 表格自己寫了「不吃節點倍率」）；
+    這裡只確認 13 個決定都還在：11 個元素的開印效果吃節點倍率、血的新手主線只縮放流血每層傷害、
+    地震耐力削減不吃節點倍率。v0.3 的第 14 個（無形態終結真傷係數）v0.4 已沒有這個節點（無形態大師是「不竭」）。"""
     settings = json.loads((WORK / 'settings.json').read_text(encoding='utf-8'))
     scale = settings['node_percent_scale']
     resolved = 0
@@ -3247,25 +3336,19 @@ def apply_fix8_decisions(plan):
                 key = (tree['id'], route['index'], tier['index'])
                 old = tier['main_original']
                 if tree['id'] in TREES[:11] and key[1:] == (1, 4):
-                    reason = 'fix8 使用者核准：開印效果整體套用 ESSB_NodeScale'
-                elif key == ('noform', 0, 4):
-                    reason = 'fix8 使用者核准：終結真傷係數套用 ESSB_NodeScale'
+                    assert tier['main_label'] == '開印效果' and tier['balance_class'] == 'SCALED', key
                 elif key == ('blood', 0, 0):
-                    reason = 'fix8 使用者核准：只縮放流血每層傷害，放血係數保持原值'
+                    assert tier['balance_class'] == 'SCALED' and '放血係數 +0.01%／點' in tier['main'], key
                 elif key == ('earth', 2, 2):
-                    tier['balance_class'] = 'UNCHANGED'
-                    tier['balance_reason'] = 'fix8 使用者核准：削耐保持 +3%／點；交由 ESSB_MultDrain'
+                    assert tier['balance_class'] == 'UNCHANGED' and tier['main'] == old, key
                     resolved += 1
                     continue
                 else:
                     continue
-                # Only the first per-point percentage: never scale the blood drain span.
-                tier['main'] = re.sub(r'\+([\d.]+)%／點',
-                                      lambda m: f'+{float(m[1]) * scale:g}%／點', old, count=1)
-                tier['balance_class'] = 'SCALED'
-                tier['balance_reason'] = reason
+                assert tier['main'] == re.sub(r'\+([\d.]+)%／點',
+                                              lambda m: f'+{float(m[1]) * scale:g}%／點', old, count=1), key
                 resolved += 1
-    assert resolved == 14
+    assert resolved == 13
     return plan
 
 
@@ -3278,7 +3361,8 @@ def main():
     dump(WORK / 'build/plan-tree-nodes.json', plan)
     plan_totals = plan['totals']
     assert plan_totals['trees'] == 13 and plan_totals['routes'] == 39 and plan_totals['tiers'] == 195, plan_totals
-    node_calls, node_by_file = check_node_calls(plan)
+    new_perk_edids(plan)
+    identity = fix21_identity.run(sys.modules[__name__])   # 名稱 ↔ 格位：Papyrus、DLL、ESP 進入點（裁決 R7、成果 2）
     count, size, groups, manifest, entry_count, fx_bundle = build_esp(plan)
     fx_records, fx_closure, fx_report, fx_index, fx_bindings = fx_bundle
     fx_count, fx_counts = write_fx_bindings(fx_records, fx_closure, fx_report, fx_index, fx_bindings)
@@ -3333,6 +3417,7 @@ def main():
     runpy.run_path(str(WORK / 'build/fix18_verify.py'))['run']()
     hit19.verify(sys.modules[__name__])
     runpy.run_path(str(WORK / 'build/fix20_verify.py'))['run']()
+    runpy.run_path(str(WORK / 'build/fix21_verify.py'))['run'](sys.modules[__name__])   # round 21: R2, entries, retired, R3
     runpy.run_path(str(WORK / 'build/fix18_probes.py'))['run'](sys.modules[__name__])
     perks = sum(1 for r in check if r.sig == 'PERK')
     print(f'READBACK ok: masters={meta["masters"]} records={len(check)} manifest={written["record_count"]} '
@@ -3348,9 +3433,8 @@ def main():
     print(f'PLAN COVERAGE deferred: {len(plan_deferred)}')
     for row in plan_deferred:
         print(f'  DEFERRED {row["edid"]} {row["text"]} :: {row["note"]}')
-    print(f'NODE INDEX ok: {node_calls} ESSBNodes.Rank/Br calls cross-checked against '
-          f'build/plan-tree-nodes.json, 0 out of range '
-          f'({len(node_by_file)} scripts, max {max(node_by_file.values())} in one file)')
+    print(f'NODE INDEX ok: {identity["papyrus_reads"]} ESSBNodes.Rank/Br reads resolved by v0.4 name against '
+          f'build/plan-tree-nodes.json (build/fix21_identity.py; {len(identity["self_test"])} injected faults caught)')
     print(f'FX ok: copied={fx_count} records into 0x{ID_FX_BASE:06X}+ by_type={fx_counts} '
           f'selectors={fx_closure["selectors"]} '
           f'nulled={sum(1 for r in fx_report if r.get("action") == "null")} '
@@ -3366,7 +3450,7 @@ def validate_fix4(records, written):
     current = written['records']
     assert all(state_schema.stable_identity(e, current.get(e), v) for e, v in baseline.items()), 'fix4 existing identities changed'
     added = {e: v for e, v in current.items() if e not in baseline and e not in SCHEMA_STUBS}
-    assert set(added) == set(ID_BALANCE_GLOB) | FIX5_NEW_EDIDS | GUARD_WINDOW_EDIDS | (hit18.new_edids(sys.modules[__name__]) | hit19.NEW_EDIDS), added
+    assert set(added) == set(ID_BALANCE_GLOB) | FIX5_NEW_EDIDS | GUARD_WINDOW_EDIDS | (hit18.new_edids(sys.modules[__name__]) | hit19.NEW_EDIDS | set(tree_v04.NEW_PERK_EDIDS)), added
     highest = max(int(v['id'], 16) for v in baseline.values())
     by_edid = {r.edid: r for r in records}
     quest = by_edid['ESSB_MainQuest'].d['VMAD']
@@ -3400,7 +3484,7 @@ def validate_fix3(records, written, bindings):
     baseline = json.loads(snapshot.read_text(encoding='utf-8'))['records']
     current = written['records']
     assert all(state_schema.stable_identity(e, current.get(e), v) for e, v in baseline.items()), 'fix3 existing FormIDs changed'
-    new = {e: v for e, v in current.items() if e not in baseline and e not in SCHEMA_STUBS and e not in ID_BALANCE_GLOB and e not in FIX5_NEW_EDIDS and e not in GUARD_WINDOW_EDIDS and e not in (hit18.new_edids(sys.modules[__name__]) | hit19.NEW_EDIDS)}
+    new = {e: v for e, v in current.items() if e not in baseline and e not in SCHEMA_STUBS and e not in ID_BALANCE_GLOB and e not in FIX5_NEW_EDIDS and e not in GUARD_WINDOW_EDIDS and e not in (hit18.new_edids(sys.modules[__name__]) | hit19.NEW_EDIDS | set(tree_v04.NEW_PERK_EDIDS))}
     highest = max(int(v['id'], 16) for v in baseline.values()
                   if ID_FX_BASE <= int(v['id'], 16) < ID_FX_LIMIT)
     assert all(highest < int(v['id'], 16) < ID_FX_LIMIT for v in new.values()), 'FX not appended'
@@ -3464,12 +3548,16 @@ def validate_delivery(records):
     contact_names.update(f'ESSB_Util_{u[0]}' for u in UTILS if u[4])
     # Round 20: the DLL's own contact casts (soaked slow, fixed-duration silences); its self casts stay 0.
     contact_names.update({'ESSB_Native_SoakSlow'} | {hit20.silence_edid(s) for s in range(1, hit20.SILENCE_COUNT + 1)})
+    # Round 21: the soaked slow of 1..30 s, 寂 and the 寂滅 marker are contact casts too.
+    contact_names.update({hit21.soak_edid(s) for s in range(1, hit21.SOAK_MAX_SECONDS + 1)} | {'ESSB_Hush', 'ESSB_HushSpent'})
+    # 冰甲's cloak payload is aimed (2), as every vanilla cloak payload; the cloak ability itself is self (0).
+    aimed_names = {'ESSB_IceArmorChill', 'ESSB_IceArmorChillWide'}
     groups = {0: [], 1: []}
     rows = []
     for record in records:
         if record.sig != 'SPEL':
             continue
-        expected = int(record.edid in contact_names or record.edid.startswith(
+        expected = 2 if record.edid in aimed_names else int(record.edid in contact_names or record.edid.startswith(
             ('ESSB_Hit_', 'ESSB_React_', 'ESSB_MarkSpell_', 'ESSB_UtilTarget_')))
         actual = struct.unpack_from('<I', record.d['SPIT'], 20)[0]
         assert actual == expected, (record.edid, 'SPEL delivery', actual, expected)
@@ -3479,7 +3567,7 @@ def validate_delivery(records):
             value = struct.unpack_from('<I', effect.d['DATA'], 84)[0]
             assert value == expected, (record.edid, effect.edid, 'MGEF delivery', value, expected)
             effects.append(effect.edid)
-        groups[expected].append(record.edid)
+        groups.setdefault(expected, []).append(record.edid)
         rows.append({'spell': record.edid, 'delivery': actual, 'effects': effects})
     dump(WORK / 'build/fix-round-delivery.json', {'valid': True, 'spells': rows,
          'contact': sorted(groups[1]), 'self': sorted(groups[0])})

@@ -284,13 +284,11 @@ Function AddStack(Int aiKind, Int aiAmount)
 			heatCap = Ctl.StackCap(1)
 		EndIf
 		If Heat >= heatCap
-			; 規劃 2.3：熱度滿即自燃。倍率、火浴與熔心殘留在 ESSBElem（5.3）。
+			; 規劃 2.3（v0.3 熱度在目標身上，N3 前）：熱度滿即自燃，自燃後熱度歸零。倍率在 ESSBElem。
 			If Ctl && Holder
 				ESSBElem.OnIgnite(Ctl, Holder, Heat)
-				Heat = ESSBElem.IgniteResidual(Ctl, Heat)
-			Else
-				Heat = 0
 			EndIf
+			Heat = 0
 		EndIf
 	ElseIf aiKind == 2
 		Freeze += aiAmount
@@ -484,7 +482,6 @@ Function AddAstral(Int aiLayers, Float afMult)
 		RingClock = Utility.GetCurrentRealTime()
 	EndIf
 	Int capValue = Cap(11, 3)
-	Int delay = ESSBElem3.AstralDelay(Ctl)
 	Int room = capValue - RingSum(AstralRing)
 	If aiLayers < room
 		room = aiLayers
@@ -494,10 +491,6 @@ Function AddAstral(Int aiLayers, Float afMult)
 	EndIf
 	AstralRing[0] = AstralRing[0] + room
 	AstralWeight[0] = AstralWeight[0] + room * afMult
-	; With a one-second delay the warning must begin at insertion, not after detonation.
-	If delay <= 1
-		ESSBElem3.AstralForesee(Ctl)
-	EndIf
 EndFunction
 
 Function DetonateAstralNow(Float afMult)
@@ -881,8 +874,6 @@ Function Tick()
 		CatalyzeLeft = 0.0
 		CatalyzeMult = 1.0
 	EndIf
-	Bool foresee = RingSum(AstralRing) > 0
-
 
 	; ---- 單層狀態與量表的過期（規劃 2.3）
 	; 5.3 開啟大師分支「火種」：熱度不因未命中歸零，直到被切掉或自燃。
@@ -983,9 +974,6 @@ Function Tick()
 		If Ctl.CachedDebugLevel >= 1
 			Ctl.LogThrottled(1, "astral", Holder.GetFormID() + " detonate layers=" + astral)
 		EndIf
-	EndIf
-	If foresee
-		ESSBElem3.AstralForesee(Ctl)
 	EndIf
 
 	If DeathCurseLeft > 0 && now >= DeathCurseLeft

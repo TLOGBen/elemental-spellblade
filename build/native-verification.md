@@ -117,3 +117,23 @@ snapshot 的 74 段中，R5→R1 priority 遞減；按 smoke 證實的最低 pri
 - `kSneakAttack` 旗標的實際語意、自身耗魔法術是否安靜、`AddTask` 驅散餘響的時序、天氣分類在雨天回 2。
 - 覆寫後外部天賦（0x1D、Ordinator）仍在 `AdjustForPerks` 放大（`native-verification-2.md` 16），通知上的數字是放大前的值。
 - 命中 sink 在哪個執行緒（沿用 19b 的未知，P1）。
+
+## Round 21（技能樹照 v0.4 重建）：DLL 的改動（0.21.0）
+
+本輪 DLL 沒有新增任何 hook、trampoline、vtable patch 或記憶體寫入，也沒有新的引擎 API；只多讀三個自有效果、多施放兩類自有法術，全部沿用上面已查證的呼叫。
+
+| 項目 | 用到的 API（已在上方查證） | 本輪做法 |
+|---|---|---|
+| 讀「反擊」視窗、「寂」層數、「寂滅已用」標記 | `ForEachRunningEffect` 走 `ActiveEffect` 清單；`ActiveEffect::magnitude`（`include/RE/A/ActiveEffect.h:110`） | 玩家身上的 `ESSB_RiposteWindowEffect` 有就算反擊視窗；目標身上的 `ESSB_HushEffect` 取最大 magnitude 當寂的層數；`ESSB_HushSpentEffect` 有就算已用。三個 FormID 由 `ManifestData.h`（產生器）給，載入時解析，缺任何一個就判 DLL 故障、不命中（跟既有效果一樣）。 |
+| 用掉反擊視窗 | `ActiveEffect::Dispel(bool)`（`include/RE/A/ActiveEffect.h:90`）；`SKSE::GetTaskInterface()->AddTask` | 跟餘響標記同一條路：命中當下只排一個主執行緒 task，task 先收集再驅散，外包 C++ 與 SEH 兩層防護；排隊期間 `ReadPlayer` 把視窗當成不存在，所以同一個視窗不會用兩次。兩種標記共用 `QueueMarkerDispel(Marker)`。 |
+| 寂滅標記、浸濕時長 | `MagicCaster::CastSpellImmediate`（`include/RE/M/MagicCaster.h:46`） | 覆寫值只能改強度、不能改時長（上方已查證），所以：寂滅打完施放固定 10 秒的 `ESSB_HushSpent`（不覆寫）；浸濕減速依「10 + 0.3 × 浸濕持續點數」四捨五入成整秒、再乘持續時間倍率，夾在 1～30，挑 `ESSB_Native_Soak_<秒>`（10 秒沿用 round 20 的 `ESSB_Native_SoakSlow`），強度覆寫＝減速百分比（裁決 R6）。 |
+| 吸魔量、滅法倍率、燒魔倍數、寂滅 | 無新 API（`HitMath.h` 純計算） | 吸魔 ×(1 + 0.05 × 點)、反擊視窗內再 ×2；滅法倍率 1 + 0.02 × 點（小滅法同倍率）；燒魔倍數 1 + 0.07 × 點；寂滅：寂 ≥3 層且沒有已用標記，這一發滅法倍率 +0.5（裁決 R5）。都不吃節點倍率（v0.4 表格明寫）。 |
+| 節點位置 | 無 | `node::` 常數改由 `build/fix19_native.NODE_IDENTITY`（v0.4 名稱）經身分表查格位產生；`build/fix21_identity.py` 禁止 C++ 自己寫 `NodeId`／`BranchId` 字面值。 |
+
+測試：原生 A0 錨點 6 → 10（新增吸魔量＋滅法倍率、反擊、寂滅、浸濕時長四個手算值），A 組情境 694 → 814（新增 A7：吸魔量×反擊視窗×擁有與否×重擊、滅法倍率×燒魔倍數、寂的層數×已用×擁有、浸濕點數×持續時間倍率），跟 `build/fix20_reference.py` 逐一相同。
+
+### 仍未實測（探針卡 `build/fix21-probes.md`）
+
+- 反擊視窗的驅散時序（同一幀兩刀時，第二刀是否還看得到視窗；設計上 `riposteDispelQueued` 讓它看不到）。
+- 冰甲斗篷（原型 35，magnitude＝半徑呎）在 1.5.97 的實際半徑與只對敵對者生效（沿用原版斗篷的 hostile 條件）。
+- 寂在 N5 之前遊戲內不會出現，寂滅的遊戲內效果要等 N5；本輪只有離線測試。

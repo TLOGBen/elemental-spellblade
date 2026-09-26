@@ -29,7 +29,7 @@ def fixture(folder=NEW):
     class Spell:
         def __init__(self,e,p=0):self.e=e;self.power=p;self.values={}
         def SetNthEffectMagnitude(self,i,x):self.values[i]=x;writes.append((self.e,self.power,i,x))
-    if folder==NEW:
+    if 'HitBonusSpells' in (folder/'ESSBController.psc').read_text(encoding='utf8'):   # round 20+ (incl. the pre-fix21 snapshot)
         c.fields['HitBonusSpells']=Array([Spell(e) for e in range(1,12)])
     c.fields['HitNormalSpells']=Array([Spell(e) for e in range(1,12)])
     c.fields['HitPowerSpells']=Array([Spell(e,1) for e in range(1,12)])
@@ -152,13 +152,16 @@ def run():
     report.update(before=before,after=after,runtime_tested=False)
     # The status layer proper stays byte-identical to pre-round-18; ESSBElem/2/3 changed in round 20 only in the
     # proc-multiplier and per-hit functions, which build/fix20_verify.py checks function by function.
+    # Round 21 (v0.4 trees) may change them only in declared functions (build/fix21_history.py).
+    import fix21_history
+    report['round21_status_layer']={}
     for name in ['ESSBStatus.psc','ESSBMark.psc','ESSBReactions.psc']:
-        assert (OLD/name).read_bytes()==(NEW/name).read_bytes(),('status layer changed',name)
+        report['round21_status_layer'][name]=fix21_history.accept_file(name,(OLD/name).read_bytes())
     (ROOT/'build/fix18-check.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf8')
     # Label says only what this function checks; the DLL <-> manifest <-> ESP mapping is checked by NATIVE (fix19_native.verify).
     print('HITPROC ok: release hit perk has 0 entries; round-18 snapshot still 74 entries; no-possible-difference fast path: zero cross-script reads, no spell; 22 proc spells contact + engaged')
     print(f'FIX17 ok: Guard no-work zero Controller calls; mirror Rank/Br; SyncStage 200 samples; hit calls {before["total"]} -> {after["total"]}')
-    print('FIX18 ok: 15 input gates; status sources (Status/Mark/Reactions) byte-identical; bake comparisons retired in round 20 (fix20_verify)')
+    print('FIX18 ok: 15 input gates; status sources (Status/Mark/Reactions) byte-identical apart from declared round-21 changes; bake comparisons retired in round 20 (fix20_verify)')
     return report
 
 if __name__=='__main__':run()

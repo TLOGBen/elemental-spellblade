@@ -4,10 +4,10 @@ Scriptname ESSBGuard extends ReferenceAlias
 同一個 Player 別名上的第三個腳本（ESSBController 是第一個、ESSBTrees 是第二個）。
 只做兩件事，兩件都是 PO3 的事件，不開任何每幀或每秒迴圈：
 
-  1. RegisterForHitEventEx／OnHitEx：玩家是受害者。round 1 列為 DEFERRED 的六個節點
-     （反擊、反噬、破護、灼身、寒反、靜電）、土的岩甲「被打 -1」、冰盾的逐層消耗、
-     風的殘影、土的反震、聖的神佑全部掛在這裡；round 3 再加水的水鏡、暗的影身、毒的毒皮。
-  2. RegisterForActorKilled／OnActorKilled：擊殺掛勾（飲血、血承、不死、化灰、連殺）。
+  1. RegisterForHitEventEx／OnHitEx：玩家是受害者。反擊（格擋偵測）、破護、灼身、寒反、靜電、
+     土的岩甲「被打 -1」與山岳、風的殘影、土的反震、聖的神佑、毒的毒皮掛在這裡（v0.4 列為 DLL 受擊 N4，
+     N4 前留在 Papyrus）。round 21：v0.3 的反噬、冰盾、水鏡、影身隨節點退役拿掉。
+  2. RegisterForActorKilled／OnActorKilled：擊殺掛勾（飲血、血承、化灰、連殺；v0.3 的不死已退役）。
      只接受玩家為 akKiller；控制器以最近八名死者去重。
      Tick 只保留狀態快照，不從 IsDead() 推定擊殺歸屬。
 
@@ -107,23 +107,15 @@ Event OnHitEx(ObjectReference akAggressor, Form akSource, Projectile akProjectil
 		Ctl.OnLethalHitWhileArmed()
 	EndIf
 
-	; 5.1 純武藝熟練分支「反擊」：格擋成功後 3 秒內下一次命中傷害 +30%。
-	If abHitBlocked && ESSBNodes.Br(Ctl, 11, 0, 1, 0)
+	; 5.1 大師熟練分支「反擊」：格擋成功後 3 秒內下一次命中吸魔 ×2（格擋偵測 N4 前在這裡；吸魔 ×2 由 DLL 讀視窗）。
+	If abHitBlocked && ESSBNodes.Br(Ctl, 11, 0, 1, 0) ; @node 反擊
 		Ctl.SetRiposte(3)
 	EndIf
 
-	; 5.1 破魔熟練分支「反噬」：受到法術傷害時回復魔力。
-	If sourceSpell && ESSBNodes.Br(Ctl, 11, 1, 1, 1) && TakeAttacker(attacker)
-		Ctl.ApplyUtil(5, ESSBReactions.BaseMax(Ctl, 11) * Ctl.GLevel(11), 0, player)
-		If Ctl.CachedDebugLevel >= 2
-			Ctl.LogThrottled(2, "node", "noform backlash magicka")
-		EndIf
-	EndIf
-
-	; 5.1 破魔大師分支「破護」：不受元素披風反傷。
-	; 判定＝來源是法術、沒有投射物、攻擊者身上帶原版 MagicCloak 效果。
+	; 5.1 滅法大師分支「破護」：不受元素披風反傷（第一跳仍會吃到）。
+	; 判定＝來源是法術、沒有投射物、攻擊者身上帶原版 MagicCloak 效果。v0.3 的「反噬」分支已退役。
 	If sourceSpell && akProjectile == None && ESSBNodes.Br(Ctl, 11, 1, 3, 0) && attacker \
-		&& Ctl.CloakKeyword && attacker.HasMagicEffectWithKeyword(Ctl.CloakKeyword)
+		&& Ctl.CloakKeyword && attacker.HasMagicEffectWithKeyword(Ctl.CloakKeyword) ; @node 破護
 		Ctl.SetCloakGuard(2)
 	EndIf
 
@@ -138,17 +130,14 @@ Event OnHitEx(ObjectReference akAggressor, Form akSource, Projectile akProjectil
 	If melee && attacker
 		retaliated = ESSBElem2.OnEarthRetaliate(Ctl, attacker, rockBefore)
 	EndIf
-	If !retaliated && rockBefore > 0 && !(ESSBNodes.Br(Ctl, 3, 0, 4, 0) && Ctl.SyncStage() >= 3)
+	; 5.6 持續傳奇分支「山岳」：同調三段時岩甲不因被打減少。
+	If !retaliated && rockBefore > 0 && !(ESSBNodes.Br(Ctl, 3, 0, 4, 0) && Ctl.SyncStage() >= 3) ; @node 山岳
 		Ctl.ConsumeRockArmor()
 	EndIf
 
-	; 5.4 持續大師分支「冰盾」：被打消耗一層抵消該次 30% 傷害（減傷由 PERK 進入點做）。
-	If Ctl.GetIceShield() > 0
-		Ctl.ConsumeIceShield()
-	EndIf
-
-	; 5.7 持續大師分支「殘影」：風勢滿時被近戰命中 30% 機率無效化，消耗風勢。
-	If melee && ESSBNodes.Br(Ctl, 4, 0, 3, 0) && Ctl.GetSelf(3) >= ESSBElem2.WindThreshold(Ctl)
+	; 5.7 持續大師分支「殘影」：風勢滿時被近戰命中 30% 機率讓下一次攻擊無效（消耗風勢）。
+	; v0.3 的「冰盾」「水鏡」（被打消耗一層）與「影身」v0.4 已退役（冰盾改成冰的基礎機制，N4）。
+	If melee && ESSBNodes.Br(Ctl, 4, 0, 3, 0) && Ctl.GetSelf(3) >= ESSBElem2.WindThreshold(Ctl) ; @node 殘影
 		If Utility.RandomFloat(0.0, 1.0) < 0.3
 			Ctl.ClearSelf(3)
 			Ctl.SetGuardWind(2)
@@ -161,39 +150,29 @@ Event OnHitEx(ObjectReference akAggressor, Form akSource, Projectile akProjectil
 		Ctl.SetGuardWind(0)
 	EndIf
 
-	; 5.11 持續大師分支「水鏡」：被打消耗一層抵消該次 30% 傷害（減傷由 PERK 進入點做）。
-	If Ctl.GetWaterMirror() > 0
-		Ctl.ConsumeWaterMirror()
-	EndIf
-	; 5.12 持續傳奇分支「影身」：同調三段時被近戰命中 30% 機率無效並回魔。
-	If melee && element == 10
-		ESSBElem3.OnShadowBody(Ctl)
-
-	EndIf
-
 	If !attacker || !melee || !TakeAttacker(attacker)
 		Return
 	EndIf
-	; 5.10 持續熟練分支「毒皮」：被近戰命中時攻擊者 +2 毒層。
+	; 5.10 持續熟練分支「毒皮」：被近戰命中時攻擊者中毒 +2 劑。
 	If element == 8
 		ESSBElem3.OnPoisonSkin(Ctl, attacker)
 	EndIf
-	; 5.3 持續大師分支「灼身」：被近戰命中時攻擊者熱度 +1 並受一次火傷，每 3 秒一次。
-	If element == 1 && ESSBNodes.Br(Ctl, 0, 0, 3, 0)
-		Ctl.AddStackTo(attacker, 1, 1)
+	; 5.3 持續大師分支「灼身」：被近戰命中時攻擊者掛你的火印記並受一次火傷，每個攻擊者 3 秒一次（TakeAttacker）。
+	If element == 1 && ESSBNodes.Br(Ctl, 0, 0, 3, 0) ; @node 灼身
+		Ctl.ApplyMark(attacker, 1)
 		Ctl.ApplyDamage(1, ESSBReactions.ReactDamage(Ctl, 1, 1.0), attacker)
 		If Ctl.CachedDebugLevel >= 2
 			Ctl.LogThrottled(2, "node", "fire scorch " + attacker.GetFormID())
 		EndIf
 	EndIf
-	; 5.4 持續大師分支「寒反」：攻擊你的敵人被減速。
-	If element == 2 && ESSBNodes.Br(Ctl, 1, 0, 3, 1)
+	; 5.4 持續大師分支「寒反」：攻擊你的敵人被減速，且凍結 +1（每個攻擊者 3 秒一次，TakeAttacker）。
+	If element == 2 && ESSBNodes.Br(Ctl, 1, 0, 3, 1) ; @node 寒反
 		Ctl.ApplyUtil(0, 30.0, 3, attacker)
+		Ctl.AddStackTo(attacker, 2, 1)
 	EndIf
-	; 5.5 持續熟練分支「靜電」：被近戰命中時攻擊者感電（＝本模組的感電開印效果）。
-	If element == 3 && ESSBNodes.Br(Ctl, 2, 0, 1, 1)
-		Ctl.AddSelf(1, 1)
-		Ctl.ApplyUtil(2, 50.0 * Ctl.GetDamageMult(3) * Ctl.GLevel(2), 0, attacker)
+	; 5.5 持續熟練分支「靜電」：被近戰命中時攻擊者感電＝掛上你的雷印記（每個攻擊者 3 秒一次，TakeAttacker）。
+	If element == 3 && ESSBNodes.Br(Ctl, 2, 0, 1, 1) ; @node 靜電
+		Ctl.ApplyMark(attacker, 3)
 	EndIf
 EndEvent
 
@@ -246,8 +225,8 @@ Function RefreshNodeBits()
 	If !Ctl || !Ctl.IsCurrentController() || Ctl.StateBroken
 		Return
 	EndIf
-	NodeBits = ESSBNodes.Br(Ctl, 7, 0, 1, 1) || ESSBNodes.Br(Ctl, 9, 0, 4, 0) || ESSBNodes.Br(Ctl, 3, 0, 3, 1) || ESSBNodes.Br(Ctl, 11, 0, 1, 0) || ESSBNodes.Br(Ctl, 11, 1, 1, 1) || ESSBNodes.Br(Ctl, 11, 1, 3, 0) \
+	; 受擊時要做事的節點（毒皮、反震、反擊、破護、灼身、寒反、靜電、山岳、殘影）；都沒投就走快速路徑。
+	NodeBits = ESSBNodes.Br(Ctl, 7, 0, 1, 1) || ESSBNodes.Br(Ctl, 3, 0, 3, 1) || ESSBNodes.Br(Ctl, 11, 0, 1, 0) || ESSBNodes.Br(Ctl, 11, 1, 3, 0) \
 		|| ESSBNodes.Br(Ctl, 0, 0, 3, 0) || ESSBNodes.Br(Ctl, 1, 0, 3, 1) || ESSBNodes.Br(Ctl, 2, 0, 1, 1) \
-		|| ESSBNodes.Br(Ctl, 3, 0, 4, 0) || ESSBNodes.Br(Ctl, 4, 0, 3, 0) \
-		|| ESSBNodes.Br(Ctl, 9, 0, 4, 0) || ESSBNodes.Br(Ctl, 7, 0, 1, 0)
+		|| ESSBNodes.Br(Ctl, 3, 0, 4, 0) || ESSBNodes.Br(Ctl, 4, 0, 3, 0) ; @node 毒皮, 反震, 反擊, 破護, 灼身, 寒反, 靜電, 山岳, 殘影
 EndFunction

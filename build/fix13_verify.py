@@ -211,7 +211,8 @@ def opens(folder):
     ctl=NS(ThePlayer=lambda:object(),TakeNextOpenMultOn=lambda t:1,AddStack=lambda t,k,n:stacks.append((k,n)),
         AddSelf=lambda k,n:selfs.append((k,n)),ApplyDamage=lambda *a:None,ApplyUtil=lambda *a:utils.append(a),
         GetDamageMult=lambda e:1,GLevel=lambda e:1,GetBloodLeechRatio=lambda:1,Leech=lambda *a:None,
-        CachedDebugLevel=0,IsEnvStormy=lambda:False,FrostOpenSlowPct=Glob(25),SpreadPoison=lambda *a:None)
+        CachedDebugLevel=0,IsEnvStormy=lambda:False,FrostOpenSlowPct=Glob(25),SpreadPoison=lambda *a:None,
+        ElementDamageMax=[10]*11)   # round 21 (C1): open effects use v0.4 B_max values
     cases=[]
     for e,kind,selftarget,base in [(1,1,False,2),(3,1,True,2),(4,2,True,2),
                                  (6,5,False,2),(7,6,False,1),(10,10,False,2),
@@ -224,7 +225,8 @@ def opens(folder):
             assert values[kind]==expect,f'element {e} open stack {values[kind]} != scaled {expect}'
             if e==4:
                 stamina=[a[1] for a in utils if a[0]==6]
-                assert stamina==[76.0],'earth open player stamina misses overall multiplier'
+                # v0.4 2.x 裂痕開印：你回復 10 耐力（round 21 C1：不乘 G），× 開印倍率 1.9
+                assert stamina==[19.0],'earth open player stamina misses overall multiplier'
             cases.append((e,random,values[kind]))
     # Cap enforcement was not bypassed or altered (actual functions byte-for-byte).
     for name,funcs in [('ESSBController',['AddStack','AddSelf']),('ESSBStatus',['AddStack'])]:
@@ -258,6 +260,11 @@ def cooldown(folder, which):
         c.fields.update(ManabreakBase=Glob(20),ManabreakPerRank=Glob(4),SilenceKeyword=None)
         c.overrides.update(DrainAmount=lambda x:x,ApplyUtil=lambda *a:None,ApplyTrueDamage=lambda *a:None,
             ApplyManaBreakMark=lambda *a:None,ApplySilenceSpell=lambda *a:triggered.append(clock[0]))
+        # Round 21 review: v0.4 斷咒 interrupts the cast (InterruptCast) and gives 戰意 +1 instead of the invented
+        # mana wipe + silence; the 5 s cooldown under test is the same TakeInterrupt.
+        resolve=[]
+        v.InterruptCast=lambda:triggered.append(clock[0])
+        c.overrides['AddResolve']=lambda n:resolve.append(n)
         # Round 20: 斷咒 lives in OnInterruptCast (破魔's drain moved to the DLL); older sources keep OnManaBreak.
         if 'OnInterruptCast' in vm.functions:
             hit=lambda:vm.OnInterruptCast(c,v,casting[0])
@@ -269,6 +276,8 @@ def cooldown(folder, which):
         assert triggered==[101]
         clock[0]+=1;hit();assert triggered==[101]
         clock[0]=106;hit();assert triggered==[101,106]
+        if 'InterruptCast()' in (folder/'ESSBNoForm.psc').read_text(encoding='utf8'):
+            assert resolve==[1,1],('斷咒 must give 戰意 +1 per interrupt',resolve)
     else:
         hp=[1.0];p.GetActorValuePercentage=lambda av:hp[0]
         env=dict(ESSBNodes=NS(Br=lambda *a:True))
@@ -331,9 +340,11 @@ def counter_lifetime(folder):
     def level(tree):active[0]=False;return 30
     dispatch=NS(Trees=NS(TreeLevel=level),CachedDebugLevel=0,IsOperational=lambda:True,
                 CounterEligible=lambda target:active[0],ApplyTrueDamage=lambda *a:damage.append(a))
-    vm.OnCounterSpell(dispatch,v,17);assert not damage
+    resolve=[];dispatch.AddResolve=lambda n:resolve.append(n)   # round 21 review: v0.4 反咒 gives 戰意 +1
+    vm.OnCounterSpell(dispatch,v,17);assert not damage and not resolve
     dispatch.Trees.TreeLevel=lambda tree:30;active[0]=True
     vm.OnCounterSpell(dispatch,v,17);assert damage==[(17*1.6,v)]
+    assert resolve==([1] if 'AddResolve' in (folder/'ESSBNoForm.psc').read_text(encoding='utf8') else [])
     # Retired alias identity must still reject all late events.
     c.env['ESSBState'].overrides['ControllerQuest']=lambda:NS(GetAlias=lambda i:object())
     active[0]=True;c.OnAnimationEvent(v,'MRh_SpellFire_Event');assert hits==[18,17]

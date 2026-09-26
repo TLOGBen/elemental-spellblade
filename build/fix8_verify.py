@@ -45,7 +45,7 @@ def run():
     manifest = json.loads(text('build/v03-formids.json'))['records']
     before = json.loads(text('.codex/pre-fix8-snapshot/v03-formids.json'))['records']
     assert all(b.state_schema.stable_identity(k,manifest.get(k),v) for k, v in before.items())
-    added = {k: v for k, v in manifest.items() if k not in before and k not in b.SCHEMA_STUBS and k not in b.GUARD_WINDOW_EDIDS and k not in (b.hit18.new_edids(b) | b.hit19.NEW_EDIDS)}
+    added = {k: v for k, v in manifest.items() if k not in before and k not in b.SCHEMA_STUBS and k not in b.GUARD_WINDOW_EDIDS and k not in (b.hit18.new_edids(b) | b.hit19.NEW_EDIDS | set(b.tree_v04.NEW_PERK_EDIDS))}
     assert set(added) == {'ESSB_MultUpkeep'}
     assert added['ESSB_MultUpkeep']['id'] == '00516D'
     assert int(added['ESSB_MultUpkeep']['id'], 16) > max(int(v['id'], 16) for v in before.values())
@@ -67,8 +67,13 @@ def run():
 
     # Exact inherited eligibility and opening/closing mechanics remain byte-for-byte unchanged.
     ctlfile = 'src/ESSBController.psc'
+    # Round 21: a body round 21 changed is accepted only as a declared v0.4 change (build/fix21_history.py).
+    import fix21_history
+    def norm(source):
+        return strip_fix12_logging(source.replace('If !IsCurrentController() || StateBroken', 'If StateBroken').replace('\n\tIf !IsOperational()\n\t\tReturn\n\tEndIf', '', 1).replace('\n\tIf StateBroken\n\t\tReturn\n\tEndIf', '', 1))
     for fn in ('OnFormClosed', 'BloodDrainPerSecond', 'BloodCostScale', 'PayBloodCost', 'BloodPowerCost'):
-        assert strip_fix12_logging(body(ctlfile, fn).replace('If !IsCurrentController() || StateBroken', 'If StateBroken').replace('\n\tIf !IsOperational()\n\t\tReturn\n\tEndIf', '', 1).replace('\n\tIf StateBroken\n\t\tReturn\n\tEndIf', '', 1)) == strip_fix12_logging(body('build/fix8-before/' + ctlfile, fn)), fn
+        fix21_history.accept('ESSBController.psc', fn, fix21_history.body_of(text(ctlfile), fn),
+                             strip_fix12_logging(body('build/fix8-before/' + ctlfile, fn)), norm)
     # Round 18 relocates ToggleForm/CloseForm input publication; behavioral gates in fix18_verify.input_cases.
     assert 'InputLayer.RequestSwitch(aiIndex)' in body(ctlfile, 'ToggleForm')
     assert 'OnFormClosed(previous)' in body(ctlfile, 'CloseForm')
@@ -84,9 +89,9 @@ def run():
     # Round 20 (N2): baseline true damage, siphon and dispel moved to the DLL (tested natively: A0 and the A6
     # scenarios, including level x damage multiplier x power like the round-8 cases below used to).
     assert 'ApplyNoFormBaseline(' not in noform and 'OnManaBreak(' not in noform
-    assert 'ComboHits += 1' in noform and 'ESSBNoForm.EmberRatio(Self)' in noform
-    for name in ('ESSBNoForm.OnMartialHit', 'ESSBNoForm.OnInterruptCast'):
-        assert noform.count(name + '(') == 1
+    # Round 21 (v0.4 5.1): the 純武藝 line, 連擊 and 餘燼 are gone; the Papyrus no-form hit is only 斷咒.
+    assert 'ComboHits += 1' not in noform and 'EmberRatio' not in noform and 'OnMartialHit' not in noform
+    assert noform.count('ESSBNoForm.OnInterruptCast(') == 1
     truebody = body(ctlfile, 'ApplyTrueDamage')
     assert truebody.count('GLevel(') == 1 and truebody.count('BaseDamageMult.GetValue()') == 1
     assert 'If aiTree == 11 && !abBaseline' in truebody
@@ -112,11 +117,9 @@ def run():
             assert math.isclose(reg['ESSBElem2'].BleedTickMult(ctl), 1 + .02 * rank * scale)
             for vip in (False, True):
                 assert math.isclose(reg['ESSBElem2'].BleedDrainPercent(ctl, vip), (.003 + .0001 * rank) / (3 if vip else 1))
-            assert math.isclose(reg['ESSBElem2'].QuakeStamina(ctl), 4 * (1 + .03 * rank) * 6)
-            ctl.ranks = {(11, 0, 1): 0, (11, 0, 2): 0}; ctl.GetResolve = lambda: 5
-            captured = []; ctl.ApplyTrueDamage = lambda amount, *args: captured.append(amount)
-            reg['ESSBNoForm'].OnMartialHit(ctl, Actor(), NS(GetBaseDamage=lambda: 20), True)
-            assert captured == ([] if rank == 0 else [20 * .03 * rank * scale]) or (rank > 0 and math.isclose(captured[0], 20 * .03 * rank * scale))
+            assert math.isclose(reg['ESSBElem2'].QuakeStamina(ctl), 2 * (1 + .03 * rank) * 6)   # round 21 review: v0.4 B_max x2
+            # Round 21: the v0.3 無形態終結 true damage (ESSBNoForm.OnMartialHit) is gone with the 純武藝 line (v0.4 5.1).
+            assert 'Function OnMartialHit(' not in text('src/ESSBNoForm.psc')
 
     # Real FormRules body; adapt syntax only, route its persistent variable to State.
     class Holder(Actor):
@@ -185,7 +188,11 @@ def run():
     rows = json.loads(text('build/fix6-classification.json'))
     assert len(rows) == 195 and not any(r['status']=='DECISION' for r in rows)
     approved = [r for r in rows if r['reason'].startswith('fix8')]
-    assert len(approved) == 14 and sum(r['status']=='SCALED' for r in approved)==13
+    # Round 21 (v0.4): 12 fix8 decisions remain as decisions (11 open effects + the blood novice line); v0.4 writes
+    # the earth 削耐 exception into its own table (「不吃節點倍率」), and the v0.3 無形態終結 node is gone.
+    assert len(approved) == 12 and sum(r['status']=='SCALED' for r in approved)==12
+    quake = next(r for r in rows if r['tree']=='earth' and r['route']==2 and r['tier']==2)
+    assert quake['status']=='UNCHANGED' and '不吃節點倍率' in quake['old']
     bloodrow = next(r for r in approved if r['tree']=='blood' and r['route']==0)
     assert bloodrow['old'].split('，',1)[1] == bloodrow['new'].split('，',1)[1]
     labels={'SCALED':f'×{cfg["node_percent_scale"]:g}','UNCHANGED':'不改','SPECIFIC':'第2／2b項指定'}
@@ -199,7 +206,7 @@ def run():
     coverage=json.loads(text('build/plan-coverage.json'))
     addition=[r for r in coverage['rows'] if r['section']=='fix8 addition']
     assert len(addition)==1 and addition[0]['kind']=='mechanism' and addition[0]['edid']=='-'
-    assert coverage['totals']['unmapped']==0 and coverage['totals']['nodes']==495
+    assert coverage['totals']['unmapped']==0 and coverage['totals']['nodes']==493   # v0.4: 195 main lines + 298 branches (round 21)
 
     # Immutable files and original encodings; only exact authorized source paths may differ.
     hashes=json.loads(text('build/fix8-scope-before.json')); changed=[]
@@ -211,7 +218,8 @@ def run():
         if '__pycache__/' in name: continue  # git-ignored bytecode caches are not sources; any python run may rewrite them
         data=(ROOT/name).read_bytes()
         if hashlib.sha256(data).hexdigest()!=digest:
-            assert name in ('build_v03.py','settings.json','plan_coverage.py','實作紀錄.md') or (name.startswith('src/') and name.endswith('.psc')),name
+            # Round 21 rebuilt the parser for v0.4 (plan_trees.py is in its write set).
+            assert name in ('build_v03.py','settings.json','plan_coverage.py','plan_trees.py','實作紀錄.md') or (name.startswith('src/') and name.endswith('.psc')),name
             changed.append(name)
     for p in (ROOT/'build/fix8-before').rglob('*'):
         if not p.is_file(): continue
@@ -242,14 +250,14 @@ def run():
     # implementation output: allow what HEAD tracks, so only untracked stray files still fail (round 20).
     tracked = set(subprocess.run(['git', '-C', str(ROOT), '-c', 'core.quotepath=off', 'ls-files'], capture_output=True, text=True, encoding='utf-8', check=True).stdout.splitlines())
     new_paths -= tracked
-    assert new_paths <= set(protected) | set(round18_specs) | {'README.md', '.gitignore', '.gitattributes', 'src/ESSBNative.psc', 'design-compromises-2026-09-22.md', 'src/ESSBInput.psc', 'src/ESSBProbeMeter.psc', 'src/ESSBProbeSegment.psc', 'src/ESSBProbeSetup.psc', 'src/ESSBProbePower.psc'} | {'.codex/impl-fix-round8.html', '.codex/impl-fix-round9.html', 'state-schema.lock.json', 'review-2026-09-18.md', 'review-fable-2026-09-19.md', 'review-fable-2026-09-19-r15.md'} | {p.relative_to(ROOT).as_posix() for p in (ROOT/'.codex/pre-fix9-snapshot').rglob('*') if p.is_file()} | {'.codex/fix-round9-briefing.md', '.codex/smoke2-essb-excerpt.log'}, new_paths
+    assert new_paths <= set(protected) | set(round18_specs) | {'README.md', '.gitignore', '.gitattributes', 'src/ESSBNative.psc', 'design-compromises-2026-09-22.md', 'src/ESSBInput.psc', 'src/ESSBProbeMeter.psc', 'src/ESSBProbeSegment.psc', 'src/ESSBProbeSetup.psc', 'src/ESSBProbePower.psc'} | {'.codex/impl-fix-round8.html', '.codex/impl-fix-round9.html', 'state-schema.lock.json', 'review-2026-09-18.md', 'review-fable-2026-09-19.md', 'review-fable-2026-09-19-r15.md'} | {p.relative_to(ROOT).as_posix() for p in (ROOT/'.codex/pre-fix9-snapshot').rglob('*') if p.is_file()} | {'.codex/fix-round9-briefing.md', '.codex/smoke2-essb-excerpt.log'} | {'tree_v04.py'}, new_paths   # round 21: v0.4 slot data module
     report=dict(existing_unchanged=len(before),appended=added,masters=meta['masters'],upkeep_300=upkeep,
                 damage_cases=damage_cases,node_cases=node_cases,decisions_resolved=14,
                 grace_scenarios=['depletion at t10 -> close at t12 once','recovery cancels; new depletion t22 -> close t24','empty switch retains grace','manual close clears grace','blood/free upkeep'],
                 G_once=True,base_mult_once=True,upkeep_mult_once=True,node_scale_once=True,extra_xp=0,
                 changed_source_files=changed,runtime_tested=False)
     (ROOT/'build/fix8-check.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
-    print(f'FIX8 ok: existing non-quest IDs unchanged; baseline={len(before)}; appended GLOB=0x00516D; 11 upkeep forms; 2s grace; baseline in the DLL, {len(damage_cases)} Papyrus node true-damage cases; 14 decisions; G/sliders once; encodings/scope checked')
+    print(f'FIX8 ok: existing non-quest IDs unchanged; baseline={len(before)}; appended GLOB=0x00516D; 11 upkeep forms; 2s grace; baseline in the DLL, {len(damage_cases)} Papyrus node true-damage cases; 12 fix8 decisions + the v0.4 earth exception; G/sliders once; encodings/scope checked')
     return report
 
 if __name__=='__main__':run()

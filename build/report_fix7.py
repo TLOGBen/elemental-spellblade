@@ -71,7 +71,7 @@ spec=[
 ('60.0 * akCtl.GetDamageMult(3)',2,'ApplyUtil(2)'),
 ('50.0 * Ctl.GetDamageMult(3)',2,'ApplyUtil(2)'),
 ('60.0 * akCtl.GLevel(2)',2,'ApplyUtil(5)'),
-('Return 4.0 *',3,'QuakeStamina → Quake.stamina → QuakeOne → ApplyUtil(3)；傷害 amount 另一支才進 ApplyDamage'),
+('Return 2.0 *',3,'QuakeStamina → Quake.stamina → QuakeOne → ApplyUtil(3)；傷害 amount 另一支才進 ApplyDamage'),
 ('Return (60.0 + 4.0',3,'FissureArmor → Open/OpenEarth → ApplyUtil(1)；擴散不乘開印 M'),
 ('Return 20.0 * akCtl.GLevel(3)',3,'RockArmorPerLayer → SyncRockArmor → ApplyUtil(18)'),
 ('amount * drainRatio * akCtl.GLevel(2)',2,'直擊／跳躍 ApplyUtil(2) 各乘一次；amount 本身未乘 G，生命傷害另走 ApplyDamage'),
@@ -93,6 +93,67 @@ MOVED={
  20:('native/include/HitMath.h','AddFlatHitNodes','const float cut = 3.0f',3,'Cast::kDrainStamina；Cast::kRestoreStamina 取同一 cut ×0.5'),
 }
 DLL_TREE={3:'kEarth',4:'kWind',5:'kBlood'}
+# Round 21 (v0.4 trees): these producers belonged to v0.3 nodes that v0.4 removed or changed into a later slice's
+# node (N3-N6, record only, ruling R4), so their code is gone; each row stays in the proof marked retired.
+RETIRED21={
+ 6:'聖 命中回血主線：v0.4 主線換成別的效果（ESSBElem2.OnDivineHit 只留護持）',
+ 21:'星 引爆（OnAstralDetonate）：v0.4 星樹改版，星爆連鎖屬 N5',
+ 22:'星 引爆（OnAstralDetonate）：同 21',
+ 26:'聖 祝福（HealAllies）：v0.4 移除',
+ 32:'純武藝 連擊（OnCombo）：v0.4 無形態樹改成吸魔／滅法，武藝線移除',
+ 33:'星 命中（OnAstralHit）星軌：v0.4 移除',
+ 34:'星 開印 星光：v0.4 移除',
+ 36:'暗 蝕魔（OnDarkHit）：v0.4 改名為奪魔並移到無形態樹（DLL）',
+ 37:'星 擊殺（OnKill）：v0.4 移除',
+ 38:'星 任何終焉（OnAnyEnd）星界之門：v0.4 移除',
+ 46:'火 火浴（OnIgnite）：v0.4 改成 N3 的節點（只有 perk 記錄）',
+ 47:'暗 影身（OnShadowBody）：v0.4 移除',
+ 50:'雷 靜電的削魔 50×G：v0.4 靜電只是「攻擊者感電」（掛雷印記），發明的削魔拿掉（審查修正）',
+}
+# Round 21 review (commander ruling C1): v0.4 text is the truth for numbers; G(L) only where v0.4's formula says so
+# (damage, siphon, burn). These round-7 producers now carry the v0.4 value and no G. Row: (needle in the current
+# function, v0.4 source). The line must contain the needle and no GLevel(.
+C1_21={
+ 1:('akCtl.Leech(50.0 * akCtl.GetBloodLeechRatio() * mult)','2.x 血痕開印：依血位吸血，v0.4 沒寫量也沒寫 G（審查修正）'),
+ 3:('SetGuardSwitch(1)','5.2 順轉：切換後 1 秒'),
+ 4:('akTarget.InterruptCast()','5.1 斷咒：打斷施法（不是沉默）'),
+ 7:('akCtl.ApplyUtil(6, 3.0, 0, player)','5.7 追風：回耐力 3'),
+ 8:('BaseMax(akCtl, aiElement) * 0.5 * aiMarks','5.1 回流：每個印記 B_max ×0.5'),
+ 9:('heal = heal + 6.0','5.10 百毒不侵：v0.4 沒寫量，沿用 6、不乘 G'),
+ 10:('BaseMax(akCtl, 8) * 0.5','5.10 毒血：B_max ×0.5'),
+ 12:('Float heal = ESSBReactions.BaseMax(akCtl, 6) * 0.5','5.8 開印回血：B_max ×0.5'),
+ 13:('BaseMax(akCtl, 7) * 0.5 * mult','2.x 聖印開印：回血 B_max ×0.5'),
+ 14:('ApplyUtil(6, 5.0 * ticks, 0, player)','5.3 熔身：每秒回耐力 5'),
+ 15:('akCtl.ApplyUtil(21, 100.0, 2, akTarget)','5.4 深寒：耐力不回復（不是主動削耐）'),
+ 17:('ApplyUtil(4, 15.0 * ticks, 0, player)','5.11 潮池：v0.4 沒寫量，不乘 G'),
+ 18:('BaseMax(akCtl, 7) * 0.05 * rank','5.9 開印回血 +5%／點（B_max 為基準）'),
+ 19:('ApplyUtil(5, ESSBReactions.BaseMax(akCtl, aiElement), 0, player)','5.2 反哺：B_max 魔力'),
+ 23:('ApplyUtil(4, 20.0 * ticks, 0, player)','5.8 血池：v0.4 沒寫量，不乘 G'),
+ 24:('Float gain = ESSBReactions.BaseMax(akCtl, 10)','5.12 饕餮：各 B_max ×1.0'),
+ 25:('akCtl.ApplyUtil(4, ESSBReactions.BaseMax(akCtl, 7), 0, player)','2.x 裁決：治療你 B_max ×1.0（round 7 的累計預算不在 v0.4）'),
+ 27:('HealAllies(akCtl, ESSBReactions.BaseMax(akCtl, 7))','5.9 聖光：同伴回血 B_max'),
+ 28:('akCtl.ApplyUtil(4, ESSBReactions.BaseMax(akCtl, 7), 0, player)','5.9 聖引：治療你 B_max'),
+ 29:('ApplyUtil(4, 25.0 * ticks, 0, player)','5.9 聖域：v0.4 沒寫量，不乘 G'),
+ 30:('ApplyUtil(5, 20.0 * ticks, 0, player)','5.9 聖域：同上'),
+ 31:('akCtl.ApplyUtil(4, ESSBReactions.BaseMax(akCtl, 7), 0, player)','5.9 聖斷：每個目標治療你 B_max ×1.0'),
+ 35:('Float drain = BaseMax(akCtl, 10) * mult','2.x 詛咒開印：吸魔 B_max ×1.0'),
+ 39:('akCtl.ApplyUtil(3, 10.0 * mult, 0, akTarget)','2.x 裂痕開印：目標耐力 -10'),
+ 40:('akCtl.ApplyUtil(6, 10.0 * mult, 0, player)','2.x 裂痕開印：你回復 10 耐力'),
+ 41:('akCtl.ApplyUtil(6, 10.0, 0, player)','5.7 氣流：開印回 10 耐力'),
+ 42:('CurrentElement.GetValueInt()) * 2.0','5.2 回饋：各 B_max ×2'),
+ 44:('akCtl.ApplyUtil(6, 15.0, 0, player)','5.3 餘熱：開印回 15 耐力'),
+ 45:('Float heal = ESSBReactions.BaseMax(akCtl, 7) * 2.0','5.9 聖臨強化：B_max ×2'),
+ 48:('BaseMax(akCtl, 7) * 2.0, 0, player)','5.9 聖灰：回魔 B_max ×2'),
+ 49:('akCtl.ApplyUtil(2, BaseMax(akCtl, 3) * mult, 0, akTarget)','2.x 感電開印：目標魔力 -B_max ×1.0'),
+ 51:('akCtl.ApplyUtil(5, ESSBReactions.BaseMax(akCtl, 3), 0, player)','5.5 充能開印：B_max 魔力'),
+ 53:('Return 30.0 + 2.0 * ESSBNodes.Rank(akCtl, 3, 0, 0)','5.6 裂痕護甲削減 -30 → -60（+2／點）'),
+ 54:('Return 40.0','5.6 磐石：每層護甲 +40'),
+ 56:('akCtl.ApplyUtil(3, 50.0, 0, akTarget)','5.6 震擊：削減 50 耐力'),
+ 57:('Return 25.0','5.6 岩甲：每層護甲 +25'),
+ 58:('BaseMax(akCtl, 3) * charge, 0, player)','5.5 雷神：v0.4 沒寫回魔量，不乘 G'),
+}
+# 水斷 keeps G: it heals the water mark's own burst, v0.4 2.7 D_burst = B_max x K_sync x G(L) x M_mod (v0.3's extra x2.0 is gone).
+NEEDLE21={43:'ReactDamage(akCtl, 9, 1.0) * afMult * akCtl.GLevel(8)'}
 def cpp_body(path,fn):
     s=(ROOT/path).read_text(encoding='utf-8')
     m=re.search(r'^constexpr [^\n(]*\b'+fn+r'\([^\n]*\n.*?^\}',s,re.M|re.S)
@@ -101,6 +162,25 @@ def cpp_body(path,fn):
 proof=[]
 for i,(row,sp) in enumerate(zip(rows,spec),1):
     file,fn=row[7].split(':');file=file.removeprefix('src/')
+    if i in RETIRED21:
+        proof.append(dict(id=f'{i:02}',tree=sp[1],site=f'src/{file}:{fn}（round 21 已移除）',line=0,expression='—',sink=RETIRED21[i],G=0,retired=True))
+        continue
+    if i in NEEDLE21:
+        spec[i-1]=(NEEDLE21[i],)+tuple(spec[i-1][1:])
+    if i in C1_21:
+        if i in MOVED and not MOVED[i][0].startswith('native/'):
+            file,fn=MOVED[i][0].removeprefix('src/'),MOVED[i][1]
+        s=(ROOT/'src'/file).read_text(encoding='utf-8')
+        m=re.search(r'^[^\n]*\b(?:Function|Event) '+fn+r'\([^\n]*\n.*?^End(?:Function|Event)',s,re.M|re.S)
+        assert m,(i,file,fn)
+        needle,why=C1_21[i]
+        hits=[(j,l.strip()) for j,l in enumerate(m[0].splitlines()) if needle in l and not l.strip().startswith(';')]
+        assert hits,(i,file,fn,needle)
+        j,line=hits[0]
+        assert 'GLevel(' not in line,(i,line,'C1: v0.4 gives this value without G(L)')
+        proof.append(dict(id=f'{i:02}',tree=None,site=f'src/{file}:{fn}',line=s[:m.start()].count('\n')+j+1,expression=line,
+                          sink='round 21 審查修正（裁定 C1）：'+why+'；不乘 G(L)',G=0,v04=True))
+        continue
     if i==60:file,fn='ESSBController.psc','RefreshDivineProtection'
     if i in MOVED and MOVED[i][0].startswith('native/'):
         path,fn,needle,tree,sink=MOVED[i]
@@ -131,7 +211,9 @@ for i,(row,sp) in enumerate(zip(rows,spec),1):
         expected='GLevel(TreeOf(akCtl.CurrentElement.GetValueInt()))' if tree=='current' else f'GLevel({tree})'
         assert expected in line and line.count('GLevel(')==1,(i,line,expected)
     proof.append(dict(id=f'{i:02}',tree=tree,site=f'src/{file}:{fn}',line=ln,expression=line,sink=sink,G=0 if tree is None else 1))
-assert sum(p['G'] for p in proof)==55
+# 55 G-scaled producers in fix round 7; round 21 retired 12 (v0.4 removed them) and ruling C1 took G(L) off the
+# ones v0.4 gives as plain numbers; every other producer still carries its tree's G exactly once.
+assert sum(p['G'] for p in proof)==55-sum(1 for i in set(RETIRED21)|set(C1_21) if spec[i-1][1] is not None)
 (ROOT/'build/fix7-g-proof.json').write_text(json.dumps(proof,ensure_ascii=False,indent=2),encoding='utf-8')
 
 def loc(p):return f"`{p['site']}`（行 {p['line']}）"
@@ -168,4 +250,4 @@ out+=['\n既有已乘 G 的破魔、反噬及生命傷害不再加第二次；�
 '\n驗證證據：`build/fix7-build.log`、`build/fix7-check.json`、`build/fix7-g-proof.json`、`build/fix5-mcm-check.json`、`build/v03-compile-results.json`。建置內繼續執行原 DOT、LAYOUT、FIX3、FIX4、MCM、FIX6、READBACK、PLAN、CSF、DELIVERY、PLAN COVERAGE、NODE INDEX、FX 與 ENGINE COVERAGE 檢查；新增 FIX7 檢查 5 GLOB 的型別／預設／VMAD、3907 舊 FormID、不同倍率的實際 utility 公式、裁決 1–6 目標上限、G 來源、固定匯出和編碼。',
 '\n檔案編碼／換行：修改的來源沿用 UTF-8（無 BOM）及各檔原 LF／CRLF；`實作紀錄.md` 只在原始位元組尾部追加，原文未重寫。產物位於 `package/Elements Spellblade`，沒有安裝到 MO2 或遊戲。\n']
 (ROOT/'build/fix7-report.md').write_text('\n'.join(out),encoding='utf-8')
-print('report generated: 60 rows, 55 G paths + 5 exemptions')
+print(f'report generated: 60 rows, {sum(p["G"] for p in proof)} G paths + {sum(1 for p in proof if not p["G"] and not p.get("retired") and not p.get("v04"))} exemptions + {len(RETIRED21)} retired + {len(C1_21)} v0.4 values without G in round 21')

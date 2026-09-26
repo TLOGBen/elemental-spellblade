@@ -13,6 +13,13 @@ Executes the actual Papyrus sources with the source-level harness (natives mocke
              every function outside the declared N2 set is unchanged (the status layer is not touched);
   NO-WRITE   nothing pre-writes a proc spell magnitude any more;
   MARKERS    a switch applies the echo / twin markers the DLL reads; leaving a form clears the 護血 pool.
+
+Round 21 (v0.4 trees) deliberately changed node effects in these scripts (v0.3 effects v0.4 removed or gave to N3-N6).
+CARRIED / PATCH / gates compare against the pre-round-20 v0.3 formulas, so they now run on round 20 as shipped (the
+pre-fix21 snapshot) - the proof of round 20 itself - and PATCH21 checks the current scripts: ApplyProc composes
+unit x ((S + X) x M - S) from the current terms, and DifferencePossible opens whenever that is positive.
+UNTOUCHED is pre-round-20 -> pre-fix21 as before, then pre-fix21 -> now through build/fix21_history.py (every
+function the same, comments only, or declared with its v0.4 reason).
 """
 from pathlib import Path
 from types import SimpleNamespace as NS
@@ -25,6 +32,7 @@ from papyrus_harness import Script
 
 NEW = ROOT / 'src'
 BEFORE = ROOT / '.codex/pre-fix20-snapshot/src'
+R20 = ROOT / '.codex/pre-fix21-snapshot/src'   # round 20 as shipped (round 21 snapshot, taken before any edit)
 F18 = runpy.run_path(str(ROOT / 'build/fix18_verify.py'))
 fixture, ranks = F18['fixture'], F18['ranks']
 SETTINGS = json.loads((ROOT / 'settings.json').read_text(encoding='utf8'))
@@ -187,7 +195,7 @@ def old_node_part(f, element):
 def carried():
     cases = 0
     for element, (name, state), power in itertools.product(range(1, 12), STATES.items(), (False, True)):
-        old, new = fixture(BEFORE), fixture()
+        old, new = fixture(BEFORE), fixture(R20)
         targets = [dress(g, state, element) for g in (old, new)]
         for g in (old, new):
             g.c.overrides['IsNecromancer'] = lambda target: True
@@ -201,9 +209,11 @@ def carried():
     return cases
 
 
-def patch_case(element, state, power, sneak, opening, thirst, endboost, only=None, streak=False):
-    """One ApplyProc call against its expected value. `only` = (tree, route, tier, rank, bits) bought on top of `state`."""
-    old, new = fixture(BEFORE), fixture()
+def patch_case(element, state, power, sneak, opening, thirst, endboost, only=None, streak=False, current=False):
+    """One ApplyProc call against its expected value. `only` = (tree, route, tier, rank, bits) bought on top of `state`.
+    current=False: round 20 as shipped against the pre-round-20 terms; current=True: the scripts now, X / M taken
+    from their own HitExtra / DifferenceMult (round 21 changed the v0.3 node terms on purpose)."""
+    old, new = fixture(BEFORE), fixture(NEW if current else R20)
     targets = [dress(g, state, element) for g in (old, new)]
     for g in (old, new):
         g.c.overrides.update(IsNecromancer=lambda target: False, IsUndeadOrDaedra=lambda target: False, TakeKillStreak=lambda: streak)
@@ -222,20 +232,26 @@ def patch_case(element, state, power, sneak, opening, thirst, endboost, only=Non
     st = ref.State(element=element, power=power, sneak=sneak, stage=2, interior=True, ranks=rank_map, branches=branch_set)
     st.hp = st.hp_perm * 1.0
     unit, s = ref.mean_unit(st, element), ref.node_sum(st, element)
-    before = old.env['ESSBElem'].HitMult(old.c, element, targets[0], power)
-    void = new.env['ESSBElem'].HitExtraMult(new.c, element, targets[1])
-    x = before / void - 1 - old_node_part(old, element)
-    m = void * old.env['ESSBElem2'].TargetDamageMult(old.c, targets[0]) * old.env['ESSBElem3'].TargetDamageMult(old.c, targets[0])
-    m *= (1.2 if thirst else 1.0) * (1.3 if endboost else 1.0)
-    if element == 5 and sneak:
-        m *= old.env['ESSBElem2'].SneakMult(old.c) / 3.0 * old.env['ESSBElem2'].KillStreakMult(old.c)   # 連殺 x2 (pre-20: full *= sneak x streak)
-    if opening:
-        m *= old.env['ESSBNodes'].OpenStrikeMult(old.c) * old.env['ESSBElem'].OpenStrikeMult(old.c, element)
+    if current:
+        # Round 21 (review fix): X and M are computed here from the v0.4 text, independently of the code under test.
+        x, m = v04_terms(element, state, power, sneak, thirst, endboost, streak, only, new_scale(new))
+    else:
+        before = old.env['ESSBElem'].HitMult(old.c, element, targets[0], power)
+        void = new.env['ESSBElem'].HitExtraMult(new.c, element, targets[1])
+        x = before / void - 1 - old_node_part(old, element)
+        m = void * old.env['ESSBElem2'].TargetDamageMult(old.c, targets[0]) * old.env['ESSBElem3'].TargetDamageMult(old.c, targets[0])
+        m *= (1.2 if thirst else 1.0) * (1.3 if endboost else 1.0)
+        if element == 5 and sneak:
+            m *= old.env['ESSBElem2'].SneakMult(old.c) / 3.0 * old.env['ESSBElem2'].KillStreakMult(old.c)   # 連殺 x2 (pre-20: full *= sneak x streak)
+        if opening:
+            m *= old.env['ESSBNodes'].OpenStrikeMult(old.c) * old.env['ESSBElem'].OpenStrikeMult(old.c, element)
     expected = unit * ((s + x) * m - s)
     possible = new.c.DifferencePossible(element, power, sneak, opening)
     new.apps.clear()
     new.c.ApplyProc(targets[1], element, power, sneak, opening)
     got = new.apps[-1]['values'][0] if new.apps else 0.0
+    if current and expected > 1e-6:
+        assert possible, ('DifferencePossible closed although the patch is positive', element, state, power, sneak, opening, only, expected)
     if expected > 1e-6:
         assert len(new.apps) == 1 and close(got, expected), (element, state, power, sneak, opening, thirst, endboost, only, got, expected)
         if element == 3:
@@ -255,6 +271,66 @@ def patch():
         if name in ('mixed', 'overheat') and (thirst or endboost):
             continue
         patch_case(element, state, power, sneak, opening, thirst, endboost)
+        cases += 1
+    return cases
+
+
+def new_scale(f):
+    c = f.c
+    return c.CachedNodeScale if c.fields.get('RuntimeCacheReady') else c.NodeScale.GetValue()
+
+
+def v04_terms(element, state, power, sneak, thirst, endboost, streak, only, scale):
+    """The difference patch's target-side / script-state terms from v0.4 (section 5, per element), not from the
+    scripts: X = additive extra on the element proc, M = multiplier. Mirrors the harness state dress() sets up."""
+    stacks, boost, overheat, molten, domain, magicka, branches, ranked = state
+    def rank(t, r, k):
+        if only and only[:3] == (t, r, k):
+            return only[3]
+        return rank_of(state, t, r, k)
+    def owned(t, r, k, n):
+        return branches or bool(only and only[:3] == (t, r, k) and only[4] >> n & 1)
+    omni = 1.25 if owned(12, 1, 4, 0) else 1.0               # 5.2 萬象：層數效果 +25%
+    pct = lambda points, base: points * base * scale          # 規劃 3：百分比主線 × 節點倍率
+    tree = element - 1
+    x = 0.0
+    if boost and element != 5:                                 # 各元素開啟熟練主線：開印後 5 秒內 X 附傷 +1%／點
+        x += pct(rank(tree, 1, 1), 0.01)
+    if element == 1:
+        x += stacks.get(1, 0) * 0.08 * omni                    # 熱度每層 +8%（PARTIAL-N3 的目標層數近似）
+        x += 0.5 if overheat else 0.0                          # 1.1 過熱中火附傷 +50%
+        x += 1.0 if molten else 0.0                            # 5.3 熔身：火附傷 +100%
+        x += 0.2 if domain else 0.0                            # 5.3 火域：內部敵人受火傷 +20%
+    elif element == 2 and stacks.get(2, 0) >= 5:
+        x += pct(rank(1, 0, 2), 0.02)                          # 5.4 冰封目標受冰附傷 +2%／點
+    elif element == 7:
+        x += 0.2 if stacks.get(6, 0) > 0 else 0.0              # 聖印：目標受聖傷 +20%
+        x += 0.1 if owned(6, 1, 3, 0) else 0.0                 # 5.9 聖痕：+10% 聖傷（目標帶聖印記）
+    elif element == 9 and owned(8, 0, 1, 0):
+        x += stacks.get(9, 0) * (0.1 + pct(rank(8, 0, 2), 0.01)) * omni   # 5.11 水壓每層 +10%，主線 +1%／點
+    elif element == 11 and power and owned(10, 0, 2, 0):
+        x += 0.08 * stacks.get(11, 0) * omni                   # 5.13 星痕弱點：重擊每層星痕 +8%
+    m = 1.0
+    m *= 1.2 if domain and owned(10, 2, 4, 0) else 1.0         # 5.13 星域：內部敵人受所有元素傷 +20%
+    m *= 1.2 if thirst else 1.0                                # 5.8 飲血的嗜血：命中效果 +20%
+    m *= 1.3 if endboost else 1.0                              # 接管附傷（EndBoostAmount 0.3）
+    if element == 5 and sneak:
+        m *= (5.0 if owned(4, 0, 3, 2) else 3.0) / 3.0         # 5.7 暗風：潛行 ×3 → ×5（DLL 已乘 ×3）
+        m *= 2.0 if streak and owned(4, 2, 4, 1) else 1.0      # 5.7 連殺：下一次潛行攻擊附傷 ×2
+    # 御風（同調三段）、空中追擊（浮空）、星鎖（開印 3 秒）在這個夾具裡條件不成立（同調 2、未浮空、無星鎖）。
+    return x, m
+
+
+def patch21():
+    """The current scripts: ApplyProc == unit x ((S + X) x M - S) from the current terms; the gate never hides it."""
+    cases = 0
+    for element, (name, state), power, sneak, opening, thirst, endboost in itertools.product(
+            range(1, 12), STATES.items(), (False, True), (False, True), (False, True), (False, True), (False, True)):
+        if sneak and element != 5:
+            continue
+        if name in ('mixed', 'overheat') and (thirst or endboost):
+            continue
+        patch_case(element, state, power, sneak, opening, thirst, endboost, current=True)
         cases += 1
     return cases
 
@@ -298,17 +374,34 @@ def functions(path):
 
 
 def untouched():
+    """pre-round-20 -> round 20 as shipped (the round-20 rule), then round 20 -> now (declared round-21 changes)."""
+    import fix21_history
+    identical = untouched_r20()
+    changes = {}
+    for old in sorted(R20.glob('*.psc')):
+        new = NEW / old.name
+        if old.name == 'ESSBState.psc':
+            continue   # generated from state_schema_version (checked in untouched_r20 and by state_schema)
+        if old.read_bytes() == new.read_bytes():
+            continue
+        changes[old.name] = fix21_history.round21_diff(old.name)
+    return identical, changes
+
+
+def untouched_r20():
     changed_files = set(CHANGED)
     identical = 0
     for old in sorted(BEFORE.glob('*.psc')):
-        new = NEW / old.name
+        new = R20 / old.name
         assert new.exists(), old.name
         if old.name == 'ESSBState.psc':
             # Generated by build_v03.write_state_helpers from state_schema_version: only the main quest ID moves.
             import state_schema
-            versions = [json.loads(p.read_text(encoding='utf8'))['state_schema_version'] for p in (BEFORE.parent / 'settings.json', ROOT / 'settings.json')]
+            versions = [json.loads(p.read_text(encoding='utf8'))['state_schema_version'] for p in (BEFORE.parent / 'settings.json', R20.parent / 'settings.json')]
             ids = [f"0x{state_schema.quest_ids(v)['ESSB_MainQuest']:06X}" for v in versions]
             assert old.read_bytes().replace(ids[0].encode(), ids[1].encode()) == new.read_bytes(), ('ESSBState.psc', ids)
+            now = [f"0x{state_schema.quest_ids(v)['ESSB_MainQuest']:06X}" for v in (versions[1], json.loads((ROOT / 'settings.json').read_text(encoding='utf8'))['state_schema_version'])]
+            assert new.read_bytes().replace(now[0].encode(), now[1].encode()) == (NEW / old.name).read_bytes(), ('ESSBState.psc now', now)
             identical += 1
             continue
         if old.name not in changed_files:
@@ -323,7 +416,8 @@ def untouched():
             assert before.get(name) == text, (old.name, name, 'changed outside the declared N2 set')
         for name in CHANGED[old.name]:  # the declared set is exact: each one really is new or different
             assert name in after and before.get(name) != after[name], (old.name, name, 'declared changed but unchanged')
-    assert sorted(p.name for p in NEW.glob('*.psc')) == sorted(p.name for p in BEFORE.glob('*.psc'))
+    assert sorted(p.name for p in R20.glob('*.psc')) == sorted(p.name for p in BEFORE.glob('*.psc'))
+    assert sorted(p.name for p in NEW.glob('*.psc')) == sorted(p.name for p in R20.glob('*.psc'))
     return identical
 
 
@@ -370,13 +464,16 @@ def markers():
 
 
 def run():
-    report = dict(mirror=mirror(), carried=carried(), patch=patch(), gates=gates(), untouched_scripts=untouched(),
-                  magnitude_writes=no_prewrite(), marker_cases=markers(), runtime_tested=False)
+    identical, round21 = untouched()
+    report = dict(mirror=mirror(), carried=carried(), patch=patch(), patch21=patch21(), gates=gates(), untouched_scripts=identical,
+                  round21_changes=round21, magnitude_writes=no_prewrite(), marker_cases=markers(), runtime_tested=False)
     (ROOT / 'build/fix20-check.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf8')
     print(f"FIX20 PAPYRUS ok: mirror {report['mirror']} cases == reference DLL mean; carried target-side terms {report['carried']} "
-          f"== pre-20 HitMult minus DLL nodes; ApplyProc {report['patch']} cases == unit x ((S+X) x M - S); "
+          f"== pre-20 HitMult minus DLL nodes; ApplyProc {report['patch']} cases (round 20 as shipped) + {report['patch21']} "
+          f"(current; the gate never hides a positive patch) == unit x ((S+X) x M - S); "
           f"DifferencePossible {report['gates']} element-gate cases; "
-          f"{report['untouched_scripts']} scripts byte-identical + declared N2 functions only; no proc magnitude pre-write; "
+          f"{report['untouched_scripts']} scripts byte-identical + declared N2 functions only; round 21: "
+          f"{len(report['round21_changes'])} scripts with declared v0.4 changes only; no proc magnitude pre-write; "
           f"{report['marker_cases']} switch-marker cases")
     return report
 

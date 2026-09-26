@@ -182,6 +182,10 @@ def run():
     protected=json.loads((ROOT/'build/fix9-protected-hashes.json').read_text(encoding='utf8'))
     for n,h in protected.items():
         if n.startswith('.strategic-advance/'): continue  # commander's campaign ledger is append-only by design
+        if n in ('plan_coverage.py','plan_trees.py'):
+            # Round 21 rebuilt both for v0.4 (its write set): the pre-fix21 snapshot must still carry the protected bytes.
+            assert hashlib.sha256((ROOT/'.codex/pre-fix21-snapshot'/n).read_bytes()).hexdigest()==h,n
+            continue
         assert hashlib.sha256((ROOT/n).read_bytes()).hexdigest()==h,n
     report=dict(array_failure_cases=tested,remaining_none_comparisons=comparisons,first_setup=True,repeated_setup=True,progress_preserved=True,old_effects_quarantined=True,signature_negative_cases=6,runtime_tested=False)
     (ROOT/'build/fix9-runtime-check.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf8')

@@ -1,9 +1,10 @@
 """Native (DLL) build contract: generated header, node-table identity, test fixtures, freshness receipt,
 packaging, verification.
 
-Round 20 (slice N2) layout:
-  node_table(b)       the skill-tree slots the DLL reads, each checked against the ESP's node table
-                      (branch name or main-line text) so a slot holding a different node fails the build
+Round 20 (slice N2) layout, round 21 (v0.4 trees) naming:
+  node_table(b)       the skill-tree nodes the DLL reads, by v0.4 name (NODE_IDENTITY); each slot is looked up in
+                      the identity table (build/plan-tree-nodes.json), never written here, and build/fix21_identity.py
+                      checks every name against the node status table
   generate_header(b)  -> native/include/ManifestData.h (record FormIDs, node slots, settings, version)
   fixture(b)          -> build/fix20-magnitude-table.json (group A, from build/fix20_reference.py) and
                          build/fix20-wiring.json (group B, from the generator's record identities)
@@ -17,13 +18,15 @@ import hashlib, json, struct, subprocess, shutil, sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'build'))
 import fix20_records as hit20
+import fix21_records as hit21
 import fix20_fixture
+import fix20_reference as _ref
 NATIVE = ROOT / 'native'
-NATIVE_VERSION = '0.20.0'
+NATIVE_VERSION = '0.21.0'
 NATIVE_HIT = 0x52d1
 NATIVE_WANTED = 0x52d2
 NATIVE_GLOBALS = {'ESSB_NativeHit', 'ESSB_NativeWanted'}      # round 19: the MCM shows both
-NEW_EDIDS = NATIVE_GLOBALS | hit20.new_edids()                # every record the native slices added
+NEW_EDIDS = NATIVE_GLOBALS | hit20.new_edids() | hit21.new_edids()   # every record the native slices added
 DEPS = {
     'CommonLibSSE-NG': ('https://github.com/CharmedBaryon/CommonLibSSE-NG', 'b93280e832f263dbef44e44cbe2936622a02f91a'),
     'spdlog': ('https://github.com/gabime/spdlog', '27cb4c76708608465c413f6d0e6b8d99a4d84302'),
@@ -36,33 +39,9 @@ WIRING = ROOT / fix20_fixture.WIRING
 ENTRY_POINT = 2  # PRKE effect type: 0 quest stage, 1 ability, 2 entry point
 ENTRY_51 = 51    # Apply Combat Hit Spell
 
-# What each node slot must be in the ESP (plan-tree-nodes: branch name, or a fragment of the main-line text).
-# v0.4 renamed a few v0.3 nodes that kept their slot and effect; the ESP still carries the v0.3 name.
-NODE_IDENTITY = {
-    'kEarthStaminaCut': '命中削減目標耐力',
-    'kEarthDrainStrength': '汲力',
-    'kWindTailwind': '順風',
-    'kBloodOverflow': '血盾',          # v0.4 血溢: lifesteal overflow into a pool (was a temporary shield)
-    'kBloodLeechRatio': '吸血比例各血位',
-    'kBloodReverse': '逆流',
-    'kBloodRage': '血怒',
-    'kDivineExorcism': '驅魔',
-    'kWaterClearStream': '清流',
-    'kWaterSoakSlow': '浸濕減速',
-    'kCommonStage2': '同調二段時附傷',
-    'kCommonStage3Power': '同調三段時重擊附傷',
-    'kCommonAll1': '所有元素附傷 +',
-    'kCommonAll2': '所有元素附傷再',
-    'kCommonEcho': '餘響',
-    'kCommonEchoRatio': '切換後首次命中附帶前一元素附傷',
-    'kNoFormSeize': '蝕魔',             # v0.4 奪魔
-    'kNoFormSilence': '沉默',
-    'kNoFormDepletion': '枯竭',
-    'kNoFormStillness': '靜寂',
-    'kNoFormBurnCasters': '對施法者與帶魔法護盾、元素披風的敵人',
-    'kNoFormLowMagicka': '目標魔力低於 25% 時命中傷害',
-    'kNoFormDevour': '逆流',            # v0.4 噬命 (true damage heals you)
-}
+# Every node:: constant the DLL reads -> (tree id, v0.4 node name). The same mapping the reference model resolves
+# (build/fix20_reference.NODE_NAMES); the slot of each is looked up by name in the identity table.
+NODE_IDENTITY = dict(_ref.NODE_NAMES)
 ELEMENT_SHORT = ['火', '冰', '雷', '土', '風', '血', '聖', '毒', '水', '暗', '星']
 
 
@@ -93,7 +72,8 @@ def address_library():
 
 
 def node_table(b):
-    """{name: slot} for every node the DLL reads, after checking each slot's identity in the ESP's node table."""
+    """{constant: slot} for every node the DLL reads, looked up by v0.4 name in the identity table; the element
+    skeleton tables (kProcAdept / kProcMaster) are checked by name too."""
     import fix20_reference as ref
     # parse + balance text without plan_trees.build(): build() rewrites build/plan-tree-nodes.json, and this runs
     # after main() has written the decided plan there.
@@ -104,20 +84,23 @@ def node_table(b):
         return trees[tree]['routes'][route]['tiers'][level]
 
     for name, slot in ref.NODES.items():
+        tree_id, label = NODE_IDENTITY[name]
         cell = tier(*slot[:3])
+        assert trees[slot[0]]['id'] == tree_id, (name, slot, tree_id)
         if len(slot) == 3:
-            assert NODE_IDENTITY[name] in cell['main'], (name, slot, cell['main'])
+            assert cell['main_label'] == label, (name, slot, cell['main_label'], label)
         else:
-            branch = next((x for x in cell['branches'] if x['index'] == slot[3]), None)
-            assert branch and branch['name'] == NODE_IDENTITY[name], (name, slot, branch)
+            branch = next((x for x in cell['branches'] if x['slot'] == slot[3]), None)
+            assert branch and branch['name'] == label, (name, slot, branch, label)
     for element in range(1, 12):
         short = ELEMENT_SHORT[element - 1]
         adept, master = ref.adept(element), ref.master(element)
         if adept is None:
-            assert element == ref.WATER and '附傷' not in tier(element - 1, 0, 1)['main'] and '附傷' not in tier(element - 1, 0, 3)['main']
+            assert element == ref.WATER and tier(element - 1, 0, 1)['main_label'] != f'{short}附傷' \
+                and tier(element - 1, 0, 3)['main_label'] != f'同調每段{short}附傷'
             continue
-        assert tier(*adept)['main'].startswith(f'{short}附傷 +'), (element, tier(*adept)['main'])
-        assert tier(*master)['main'].startswith(f'同調每段{short}附傷 +'), (element, tier(*master)['main'])
+        assert tier(*adept)['main_label'] == f'{short}附傷', (element, tier(*adept)['main_label'])
+        assert tier(*master)['main_label'] == f'同調每段{short}附傷', (element, tier(*master)['main_label'])
     return dict(ref.NODES)
 
 
@@ -163,11 +146,13 @@ def spells(b):
         'kTrueDamage': (b.ID_TRUE_SPELL, 'ESSB_TrueDamageSpell'),
         'kDispelMark': (b.ID_MANABREAK_SPELL, 'ESSB_ManaBreakSpell'),
         'kSpendMagicka': (hit20.SPEND, 'ESSB_Native_SpendMagicka'),
-        'kSoakSlow': (hit20.SOAK_SLOW, 'ESSB_Native_SoakSlow'),
         'kBloodGuard': (hit20.GUARD, 'ESSB_BloodGuard'),
+        'kHushSpent': (hit21.HUSH_SPENT, 'ESSB_HushSpent'),
     }
     for seconds in range(1, hit20.SILENCE_COUNT + 1):
         rows[f'kSilence{seconds}'] = (hit20.SILENCE + seconds - 1, hit20.silence_edid(seconds))
+    for seconds in range(1, hit21.SOAK_MAX_SECONDS + 1):
+        rows[f'kSoak{seconds}'] = (hit21.soak_id(seconds), hit21.soak_edid(seconds))
     return {k: dict(local_id=v[0], editor_id=v[1]) for k, v in rows.items()}
 
 
@@ -178,6 +163,9 @@ def effects(b):
         'kBloodGuard': (hit20.GUARD_EFFECT, 'ESSB_BloodGuardEffect'),
         'kEchoPending': (hit20.ECHO_EFFECT, 'ESSB_EchoPendingEffect'),
         'kTwinWindow': (hit20.TWIN_EFFECT, 'ESSB_TwinWindowEffect'),
+        'kRiposteWindow': (hit21.RIPOSTE_EFFECT, 'ESSB_RiposteWindowEffect'),
+        'kHush': (hit21.HUSH_EFFECT, 'ESSB_HushEffect'),
+        'kHushSpent': (hit21.HUSH_SPENT_EFFECT, 'ESSB_HushSpentEffect'),
     }
     return {k: dict(local_id=v[0], editor_id=v[1]) for k, v in rows.items()}
 
@@ -217,10 +205,13 @@ def header_text(b):
     L += ['};', '', '// Spell per planned cast (HitMath.h Cast). Local FormIDs in Elements Spellblade.esp.', 'namespace spell {']
     sp = spells(b)
     for name, row in sp.items():
-        if not name.startswith('kSilence'):
+        if not name.startswith(('kSilence', 'kSoak')):
             L.append(f'inline constexpr std::uint32_t {name} = {hex(row["local_id"])};  // {row["editor_id"]}')
     L.append('inline constexpr std::uint32_t kSilence[' + str(hit20.SILENCE_COUNT) + '] = {'
              + ', '.join(hex(sp[f'kSilence{i}']['local_id']) for i in range(1, hit20.SILENCE_COUNT + 1)) + '};  // ESSB_Native_Silence_1..8')
+    L.append('inline constexpr std::uint32_t kSoak[' + str(hit21.SOAK_MAX_SECONDS) + '] = {'
+             + ', '.join(hex(sp[f'kSoak{i}']['local_id']) for i in range(1, hit21.SOAK_MAX_SECONDS + 1))
+             + '};  // soaked slow of 1..30 s: ESSB_Native_Soak_<s>, 10 s = ESSB_Native_SoakSlow')
     L += ['}  // namespace spell', '', '// Effects the DLL looks for on the target or the player.', 'namespace effect {']
     for name, row in effects(b).items():
         L.append(f'inline constexpr std::uint32_t {name} = {hex(row["local_id"])};  // {row["editor_id"]}')
@@ -242,11 +233,12 @@ def header_text(b):
           f'inline constexpr std::uint32_t kBranchPerkBase = {hex(b.ID_BRANCH_PERK)};',
           f'inline constexpr int kMainMaxRank = {b.plan_trees.MAIN_MAX_RANK};',
           f'inline constexpr int kBranchSlots = {b.plan_trees.MAX_BRANCH};', '',
-          '// Node slots N2 reads; each checked against the ESP node table (NODE_IDENTITY in fix19_native.py).',
+          '// Node slots the DLL reads, looked up by v0.4 name (NODE_IDENTITY in fix19_native.py, build/fix21_identity.py).',
           'namespace node {']
     for name, slot in nodes.items():
         kind = 'NodeId' if len(slot) == 3 else 'BranchId'
-        L.append(f'inline constexpr {kind} {name}{_slot(slot)};  // ESP: {NODE_IDENTITY[name]}')
+        tree_id, label = NODE_IDENTITY[name]
+        L.append(f'inline constexpr {kind} {name}{_slot(slot)};  // v0.4 {tree_id} {label}')
     for label, fn in (('kProcAdept', ref.adept), ('kProcMaster', ref.master)):
         cells = ['kNoNode'] + [_slot(fn(e)) if fn(e) else 'kNoNode' for e in range(1, 12)]
         L.append(f'inline constexpr NodeId {label}[12] = {{{", ".join(cells)}}};  // [element]; water has none')
@@ -308,7 +300,8 @@ def entry51_count(record):
 
 def input_paths():
     """Exactly what the DLL and its tests are generated from; nothing else forces a rebuild."""
-    paths = [ROOT / 'build/fix19_native.py', ROOT / 'build/fix20_records.py', ROOT / 'build/fix20_reference.py',
+    paths = [ROOT / 'build/fix19_native.py', ROOT / 'build/fix20_records.py', ROOT / 'build/fix21_records.py',
+             ROOT / 'build/fix20_reference.py',
              ROOT / 'build/fix20_fixture.py', TABLE, WIRING, NATIVE / 'build.py', NATIVE / 'CMakeLists.txt',
              NATIVE / 'dependencies.lock.json', NATIVE / 'toolchain.lock.json']
     for part in ['src', 'include', 'tests', 'cmake']:
@@ -386,7 +379,7 @@ def verify(b):
             assert key_id[row['editor_id']] == row['local_id'], (group, name, row)
     for name, row in m['spells'].items():
         fx = effect_ids(by[row['editor_id']])
-        single = not name.startswith('kSilence')
+        single = not name.startswith('kSilence')   # the soaked slows and the 寂滅 marker are single-effect
         assert (len(fx) == 1) if single else fx == [b.ID_SILENCE_EFFECT, b.util_effect_id(12)], (name, fx)
     for name, fid in m['globals'].items():
         assert key_id[name] == fid, name

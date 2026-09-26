@@ -217,18 +217,23 @@ def verify_records():
  assert all(state_schema.stable_identity(k,manifest.get(k),v) for k,v in old.items())
  changed={k:[v['id'],manifest[k]['id']] for k,v in old.items() if v!=manifest[k]}
  assert set(changed)==set(state_schema.QUESTS) and manifest['ESSB_DebugLevel']['id']=='000811'
- assert set(manifest)-set(old)==b.GUARD_WINDOW_EDIDS | (b.hit18.new_edids(b) | b.hit19.NEW_EDIDS) | {k for k in state_schema.stub_ids(b.STATE_SCHEMA_VERSION) if k not in state_schema.stub_ids(5)}
+ assert set(manifest)-set(old)==b.GUARD_WINDOW_EDIDS | (b.hit18.new_edids(b) | b.hit19.NEW_EDIDS | set(b.tree_v04.NEW_PERK_EDIDS)) | {k for k in state_schema.stub_ids(b.STATE_SCHEMA_VERSION) if k not in state_schema.stub_ids(5)}
  records,meta=b.read_plugin(b.OUT/b.PLUGIN);by={r.edid:r for r in records}
  assert meta['masters']==['Skyrim.esm'] and len(records)==len(manifest)
- keys=[('common',1,1,0),('common',2,3,1),('frost',1,3,1),('wind',0,3,0),('divine',0,4,0),('noform',1,3,0),('darkness',0,4,0),('astral',0,3,0),('astral',1,3,1)]
- for i,(name,key) in enumerate(zip(b.GUARD_WINDOWS,keys)):
+ # Round 21: the window owners are v0.4 nodes, looked up by name in the identity table (build/plan-tree-nodes.json);
+ # the windows whose v0.3 owners v0.4 removed (冰晶, 影甲, 星體, 星光) keep their records but no PERK uses them.
+ owners={0:('common','順轉'),1:('common','安全閥'),3:('wind','殘影'),4:('divine','神佑'),5:('noform','破護')}
+ plan=json.loads((ROOT/'build/plan-tree-nodes.json').read_text(encoding='utf8'))
+ edid_of={(tr['id'],br['name']):f"ESSB_P_{tr['id']}_{ro['index']}_{ti['index']}_B{br['slot']+1}"
+          for tr in plan['trees'] for ro in tr['routes'] for ti in ro['tiers'] for br in ti['branches']}
+ perk_ctdas={r.edid:[v for t,v in r.ss if t=='CTDA'] for r in records if r.sig=='PERK'}
+ for i,name in enumerate(b.GUARD_WINDOWS):
   eff=by['ESSB_WindowEffect_'+name];spell=by['ESSB_WindowSpell_'+name]
   assert 'VMAD' not in eff.d and not int.from_bytes(eff.d['DATA'][:4],'little')&0x200
   assert struct.unpack_from('<II',spell.d['SPIT'],16)==(1,0)
   assert spell.refs('EFID')==[eff.key]
-  edid=f'ESSB_P_{key[0]}_{key[1]}_{key[2]}_B{key[3]+1}'
-  ctdas=[v for t,v in by[edid].ss if t=='CTDA']
-  assert b.guard_window(i) in ctdas
+  users=sorted(e for e,c in perk_ctdas.items() if b.guard_window(i) in c)
+  assert users==([edid_of[owners[i]]] if i in owners else []),(name,users)
   # Exactly this effect, with comparison == true, on the PERK owner.
   assert struct.unpack_from('<H',b.guard_window(i),8)[0]==214
  return {'changed_existing':changed,'added':sorted(set(manifest)-set(old)),'records':len(records),'schema':state_schema.preflight()['state_schema_version']}

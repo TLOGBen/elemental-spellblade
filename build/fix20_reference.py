@@ -8,7 +8,8 @@ the decisions recorded in .codex/impl-fix-round20.html (D1-D21).
 Sources in v0.4: 1.1 (blood curves), 2.1 (B ranges, lightning best-of-N, crit, drain 50%), 2.7 (D_hit),
 2.8 (no-form baseline true damage), 2.10 (environment), 3 (percentage main lines x NodeScale), 5.1 (siphon,
 small dispel, dispel, silence, nodes), 5.2 (common tree), 5.3-5.13 (element skeleton, blood, divine, earth,
-wind, water nodes).
+wind, water nodes). Round 21 (v0.4 trees): 吸魔量, 滅法倍率, 燒魔倍數, 寂滅 and 反擊 (N2 halves, rulings R5), the
+soaked slow's duration node (R6), and the nodes looked up by v0.4 name instead of by slot.
 """
 from dataclasses import dataclass, field
 
@@ -16,33 +17,65 @@ ELEMENTS = ['Fire', 'Frost', 'Lightning', 'Earth', 'Wind', 'Blood', 'Divine', 'P
 FIRE, FROST, LIGHTNING, EARTH, WIND, BLOOD, DIVINE, POISON, WATER, DARKNESS, ASTRAL = range(1, 12)
 NOFORM_TREE, COMMON_TREE = 11, 12
 
-# Node slots the N2 formulas read: (tree, route, tier) for main lines, (tree, route, tier, index) for branches.
-# fix19_native.NODE_TABLE checks each slot against the ESP's node table (name / main-line text).
-NODES = {
-    'kEarthStaminaCut': (3, 0, 2),
-    'kEarthDrainStrength': (3, 0, 2, 0),
-    'kWindTailwind': (4, 0, 1, 1),
-    'kBloodOverflow': (5, 0, 1, 1),
-    'kBloodLeechRatio': (5, 0, 2),
-    'kBloodReverse': (5, 0, 2, 0),
-    'kBloodRage': (5, 0, 3, 1),
-    'kDivineExorcism': (6, 0, 0, 1),
-    'kWaterClearStream': (8, 0, 0, 0),
-    'kWaterSoakSlow': (8, 1, 0),
-    'kCommonStage2': (12, 0, 1),
-    'kCommonStage3Power': (12, 0, 3),
-    'kCommonAll1': (12, 1, 0),
-    'kCommonAll2': (12, 1, 3),
-    'kCommonEcho': (12, 2, 0, 0),
-    'kCommonEchoRatio': (12, 2, 2),
-    'kNoFormSeize': (11, 1, 0, 0),
-    'kNoFormSilence': (11, 1, 2),
-    'kNoFormDepletion': (11, 1, 2, 0),
-    'kNoFormStillness': (11, 1, 2, 1),
-    'kNoFormBurnCasters': (11, 1, 3),
-    'kNoFormLowMagicka': (11, 1, 4),
-    'kNoFormDevour': (11, 1, 4, 1),
+# The nodes the hit formulas read, by v0.4 name (round 21): the slot of each comes from the identity table
+# (build/plan-tree-nodes.json via plan_trees), never from a position written here. fix19_native.NODE_IDENTITY is
+# this same mapping; the generated ManifestData.h gets the slots from it.
+NODE_NAMES = {
+    'kEarthStaminaCut': ('earth', '命中削減目標耐力'),
+    'kEarthDrainStrength': ('earth', '汲力'),
+    'kWindTailwind': ('wind', '順風'),
+    'kBloodOverflow': ('blood', '血溢'),
+    'kBloodLeechRatio': ('blood', '吸血比例各血位'),
+    'kBloodReverse': ('blood', '逆流'),
+    'kBloodRage': ('blood', '血怒'),
+    'kDivineExorcism': ('divine', '驅魔'),
+    'kWaterClearStream': ('water', '清流'),
+    'kWaterSoakDuration': ('water', '浸濕持續'),
+    'kCommonStage2': ('common', '同調二段時附傷'),
+    'kCommonStage3Power': ('common', '同調三段時重擊附傷'),
+    'kCommonAll1': ('common', '所有元素附傷'),
+    'kCommonAll2': ('common', '所有元素附傷再'),
+    'kCommonEcho': ('common', '餘響'),
+    'kCommonEchoRatio': ('common', '切換後首次命中附帶前一元素附傷'),
+    'kNoFormSiphonAmount': ('noform', '吸魔量'),
+    'kNoFormRiposte': ('noform', '反擊'),
+    'kNoFormDispelRate': ('noform', '滅法倍率'),
+    'kNoFormSeize': ('noform', '奪魔'),
+    'kNoFormBurnMultiple': ('noform', '燒魔倍數'),
+    'kNoFormSilence': ('noform', '沉默'),
+    'kNoFormDepletion': ('noform', '枯竭'),
+    'kNoFormStillness': ('noform', '靜寂'),
+    'kNoFormBurnCasters': ('noform', '對施法者與帶魔法護盾、元素披風的敵人燒魔'),
+    'kNoFormLowMagicka': ('noform', '目標魔力低於 25% 時命中傷害'),
+    'kNoFormDevour': ('noform', '噬命'),
+    'kNoFormHushBreak': ('noform', '寂滅'),
 }
+
+
+def _resolve_nodes():
+    """{constant: (tree, route, tier) | (tree, route, tier, slot)} looked up by name in the v0.4 identity table."""
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    import plan_trees
+    plan = plan_trees.parse()
+    found = {}
+    for tree in plan['trees']:
+        for route in tree['routes']:
+            for tier in route['tiers']:
+                found[(tree['id'], tier['main_label'])] = (tree['index'], route['index'], tier['index'])
+                for b in tier['branches']:
+                    found[(tree['id'], b['name'])] = (tree['index'], route['index'], tier['index'], b['slot'])
+    missing = {k: v for k, v in NODE_NAMES.items() if v not in found}
+    if missing:
+        raise SystemExit(f'reference model: nodes not in the v0.4 identity table: {missing}')
+    return {k: found[v] for k, v in NODE_NAMES.items()}
+
+
+NODES = _resolve_nodes()
+SHORT = ['火', '冰', '雷', '土', '風', '血', '聖', '毒', '水', '暗', '星']
 
 
 def adept(element):
@@ -96,6 +129,9 @@ class State:
     vip: bool = False
     t_mp: float = 0.0
     t_mp_max: float = 0.0
+    riposte: bool = False          # round 21: the 反擊 window effect on the player
+    hush: int = 0                  # round 21: layers of 寂 on the target (magnitude of ESSB_HushEffect)
+    hush_spent: bool = False       # round 21: the target already paid out 寂滅 (ESSB_HushSpent marker)
 
 
 DAMAGE = None  # filled by load(settings)
@@ -250,8 +286,8 @@ def plan_element(s, draws):
         if pool > 0 and pool != s.guard:       # a full pool is not recast
             casts.append(('kBloodGuard', pool, 0, False, 0))
     if s.wet:                                 # 2.10: soaked slow for everyone in rain / snow / water
-        slow = min(s.wet_slow + rank(s, NODES['kWaterSoakSlow']), max(0.0, min(s.slow_cap, 70.0)))
-        casts.append(('kSoakSlow', slow, 0, False, 0))
+        slow = min(s.wet_slow, max(0.0, min(s.slow_cap, 70.0)))    # 2.6: 浸濕 slows 15% (no node since v0.4)
+        casts.append(('kSoakSlow', slow, 0, False, soak_seconds(s)))
     if e == EARTH:                            # D6: 3.0 x points x G(earth), half back with 汲力
         cut = 3.0 * rank(s, NODES['kEarthStaminaCut']) * g_of(s, EARTH - 1)
         if cut > 0:
@@ -274,7 +310,17 @@ def plan_element(s, draws):
         if ratio > 0:
             dp, _ = proc(s, s.prev, draws)
             casts.append(('kProc', dp * ratio, s.prev, s.power, 0))
-    return dict(casts=casts, consume_echo=consume, crit=crit, magnitude=d)
+    return dict(casts=casts, consume_echo=consume, consume_riposte=False, crit=crit, magnitude=d)
+
+
+SOAK_SPELLS = 30   # ESSB_Native_Soak_1..30 (fixed durations; the override cannot set a duration, ruling R6)
+
+
+def soak_seconds(s):
+    """5.11: 浸濕 10 s +0.3 s per point of the water sustain novice line (rounded like ESSBElem3.WetSeconds),
+    then the MCM duration multiplier; the DLL picks the spell of that many whole seconds (1..30)."""
+    base = int(10.0 + 0.3 * rank(s, NODES['kWaterSoakDuration']) + 0.5)
+    return min(SOAK_SPELLS, max(1, int(base * s.mult_duration + 0.5)))
 
 
 def plan_noform(s):
@@ -294,6 +340,10 @@ def plan_noform(s):
     siphon = 10 * g * r                                                  # 吸魔 10 x G (power x1.5)
     if has(s, NODES['kNoFormSeize']):
         siphon = max(siphon, s.t_mp_max * s.seize_pct / 100)            # 奪魔
+    siphon *= 1 + 0.05 * rank(s, NODES['kNoFormSiphonAmount'])           # 吸魔量 +5%/point, not node-scaled (R5)
+    consume_riposte = s.riposte and has(s, NODES['kNoFormRiposte'])
+    if consume_riposte:                                                  # 反擊: the next hit after a block siphons x2
+        siphon *= 2
     siphon = min(siphon * s.mult_drain, max(0.0, s.t_mp))
     t_mp = max(0.0, s.t_mp)
     mp = max(0.0, s.mp)
@@ -304,12 +354,14 @@ def plan_noform(s):
         t_mp -= siphon
         mp = min(s.mp_max, mp + gain)
     bonus = 1 + 0.05 * rank(s, NODES['kNoFormBurnCasters']) if s.spell_user else 1.0
+    rate = 1.0 + 0.02 * rank(s, NODES['kNoFormDispelRate'])              # 滅法倍率 +2%/point, not node-scaled (R5)
+    multiple = 1.0 + 0.07 * rank(s, NODES['kNoFormBurnMultiple'])        # 燒魔倍數 +7%/point (R5)
     burned = 0.0
     dispel = False
     if mp > 0 and not s.power:                                           # 小滅法 (D12: your magicka after the siphon)
         burn = min(5 * g * bonus * s.mult_drain, t_mp)
         if burn > 0:
-            dmg = burn * 1.0 * true_mult
+            dmg = burn * rate * true_mult
             casts.append(('kDrainMagicka', burn, 0, False, 0))
             casts.append(('kTrueDamage', dmg, 0, False, 0))
             total += dmg
@@ -321,13 +373,16 @@ def plan_noform(s):
             spend = min(2 * x, mp)
         else:
             spend = x
-            y = min(t_mp, x * 1.0 * bonus * s.mult_drain)
-        dmg = (spend + y) * 1.0 * true_mult
+            y = min(t_mp, x * multiple * bonus * s.mult_drain)
+        hush_break = has(s, NODES['kNoFormHushBreak']) and s.hush >= 3 and not s.hush_spent   # 寂滅 (N2 half)
+        dmg = (spend + y) * (rate + (0.5 if hush_break else 0.0)) * true_mult
         casts.append(('kSpendMagicka', spend, 0, False, 0))
         if y > 0:
             casts.append(('kDrainMagicka', y, 0, False, 0))
         casts.append(('kTrueDamage', dmg, 0, False, 0))
         casts.append(('kDispelMark', 0.0, 0, False, 0))
+        if hush_break:
+            casts.append(('kHushSpent', 0.0, 0, False, 0))               # the next dispel only: mark it spent
         if t_mp - y <= 0:                                                # burned to 0: silence
             wanted = min(1 + 0.2 * rank(s, NODES['kNoFormSilence']), 4)
             sec = int(wanted + 0.5)
@@ -340,7 +395,8 @@ def plan_noform(s):
         dispel = True
     if has(s, NODES['kNoFormDevour']):                                   # 噬命: half the true damage heals you
         casts.append(('kHeal', total * 0.5 * s.mult_recovery, 0, False, 0))
-    return dict(casts=casts, consume_echo=False, crit=False, magnitude=total, siphon=siphon, burned=burned, dispel=dispel)
+    return dict(casts=casts, consume_echo=False, consume_riposte=consume_riposte, crit=False, magnitude=total,
+                siphon=siphon, burned=burned, dispel=dispel)
 
 
 def plan(s, draws):

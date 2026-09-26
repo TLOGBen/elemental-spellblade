@@ -172,6 +172,8 @@ struct RawTarget {
     bool baseUnique = false;
     float magicka = 0.0f;
     float magickaMax = 0.0f;
+    float hushMagnitude = 0.0f;       // magnitude of our 寂 effect (layers), 0 when absent
+    bool hushSpent = false;           // has our 寂滅 "used" marker
 };
 
 constexpr TargetFacts MakeTarget(const RawTarget& raw) noexcept
@@ -188,6 +190,9 @@ constexpr TargetFacts MakeTarget(const RawTarget& raw) noexcept
     t.vip = raw.essential || raw.baseEssential || raw.baseProtected || raw.baseUnique;
     t.magicka = raw.magicka;
     t.magickaMax = raw.magickaMax;
+    // Layers are whole numbers carried as the effect's magnitude (v0.4: counts live in effect magnitudes).
+    t.hushLayers = static_cast<int>(raw.hushMagnitude + 0.5f);
+    t.hushSpent = raw.hushSpent;
     return t;
 }
 

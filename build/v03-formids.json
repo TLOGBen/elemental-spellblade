@@ -4,8 +4,8 @@
     "Skyrim.esm"
   ],
   "esl_flagged": false,
-  "record_count": 4070,
-  "next_object_id": "006010",
+  "record_count": 4161,
+  "next_object_id": "006012",
   "allocation": [
     {
       "range": "0x000800-0x00080F",
@@ -2223,6 +2223,216 @@
     "ESSB_Native_Silence_8": {
       "id": "005317",
       "formid": "01005317",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_1": {
+      "id": "005320",
+      "formid": "01005320",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_2": {
+      "id": "005321",
+      "formid": "01005321",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_3": {
+      "id": "005322",
+      "formid": "01005322",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_4": {
+      "id": "005323",
+      "formid": "01005323",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_5": {
+      "id": "005324",
+      "formid": "01005324",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_6": {
+      "id": "005325",
+      "formid": "01005325",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_7": {
+      "id": "005326",
+      "formid": "01005326",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_8": {
+      "id": "005327",
+      "formid": "01005327",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_9": {
+      "id": "005328",
+      "formid": "01005328",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_11": {
+      "id": "005329",
+      "formid": "01005329",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_12": {
+      "id": "00532A",
+      "formid": "0100532A",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_13": {
+      "id": "00532B",
+      "formid": "0100532B",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_14": {
+      "id": "00532C",
+      "formid": "0100532C",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_15": {
+      "id": "00532D",
+      "formid": "0100532D",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_16": {
+      "id": "00532E",
+      "formid": "0100532E",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_17": {
+      "id": "00532F",
+      "formid": "0100532F",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_18": {
+      "id": "005330",
+      "formid": "01005330",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_19": {
+      "id": "005331",
+      "formid": "01005331",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_20": {
+      "id": "005332",
+      "formid": "01005332",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_21": {
+      "id": "005333",
+      "formid": "01005333",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_22": {
+      "id": "005334",
+      "formid": "01005334",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_23": {
+      "id": "005335",
+      "formid": "01005335",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_24": {
+      "id": "005336",
+      "formid": "01005336",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_25": {
+      "id": "005337",
+      "formid": "01005337",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_26": {
+      "id": "005338",
+      "formid": "01005338",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_27": {
+      "id": "005339",
+      "formid": "01005339",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_28": {
+      "id": "00533A",
+      "formid": "0100533A",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_29": {
+      "id": "00533B",
+      "formid": "0100533B",
+      "type": "SPEL"
+    },
+    "ESSB_Native_Soak_30": {
+      "id": "00533C",
+      "formid": "0100533C",
+      "type": "SPEL"
+    },
+    "ESSB_HushEffect": {
+      "id": "005340",
+      "formid": "01005340",
+      "type": "MGEF"
+    },
+    "ESSB_Hush": {
+      "id": "005341",
+      "formid": "01005341",
+      "type": "SPEL"
+    },
+    "ESSB_HushSpentEffect": {
+      "id": "005342",
+      "formid": "01005342",
+      "type": "MGEF"
+    },
+    "ESSB_HushSpent": {
+      "id": "005343",
+      "formid": "01005343",
+      "type": "SPEL"
+    },
+    "ESSB_RiposteWindowEffect": {
+      "id": "005344",
+      "formid": "01005344",
+      "type": "MGEF"
+    },
+    "ESSB_RiposteWindow": {
+      "id": "005345",
+      "formid": "01005345",
+      "type": "SPEL"
+    },
+    "ESSB_IceArmorChillEffect": {
+      "id": "005346",
+      "formid": "01005346",
+      "type": "MGEF"
+    },
+    "ESSB_IceArmorChill": {
+      "id": "005347",
+      "formid": "01005347",
+      "type": "SPEL"
+    },
+    "ESSB_IceArmorChillWide": {
+      "id": "005348",
+      "formid": "01005348",
+      "type": "SPEL"
+    },
+    "ESSB_IceArmorCloakEffect": {
+      "id": "005349",
+      "formid": "01005349",
+      "type": "MGEF"
+    },
+    "ESSB_IceArmor": {
+      "id": "00534B",
+      "formid": "0100534B",
+      "type": "SPEL"
+    },
+    "ESSB_IceArmorWideCloakEffect": {
+      "id": "00534A",
+      "formid": "0100534A",
+      "type": "MGEF"
+    },
+    "ESSB_IceArmorWide": {
+      "id": "00534C",
+      "formid": "0100534C",
       "type": "SPEL"
     },
     "ESSB_Proc": {
@@ -5565,6 +5775,11 @@
       "formid": "01002028",
       "type": "PERK"
     },
+    "ESSB_P_fire_2_0_B3": {
+      "id": "00202A",
+      "formid": "0100202A",
+      "type": "PERK"
+    },
     "ESSB_P_fire_2_0_B2": {
       "id": "002029",
       "formid": "01002029",
@@ -6225,14 +6440,24 @@
       "formid": "0100411C",
       "type": "PERK"
     },
-    "ESSB_P_frost_0_3_B1": {
-      "id": "002048",
-      "formid": "01002048",
+    "ESSB_P_frost_0_3_B3": {
+      "id": "00204A",
+      "formid": "0100204A",
+      "type": "PERK"
+    },
+    "ESSB_P_frost_0_3_B4": {
+      "id": "00204B",
+      "formid": "0100204B",
       "type": "PERK"
     },
     "ESSB_P_frost_0_3_B2": {
       "id": "002049",
       "formid": "01002049",
+      "type": "PERK"
+    },
+    "ESSB_P_frost_0_3_B1": {
+      "id": "002048",
+      "formid": "01002048",
       "type": "PERK"
     },
     "ESSB_P_frost_0_4_M1": {
@@ -6638,6 +6863,11 @@
     "ESSB_P_frost_1_3_B1": {
       "id": "00205C",
       "formid": "0100205C",
+      "type": "PERK"
+    },
+    "ESSB_P_frost_1_3_B3": {
+      "id": "00205E",
+      "formid": "0100205E",
       "type": "PERK"
     },
     "ESSB_P_frost_1_3_B2": {
@@ -7460,14 +7690,19 @@
       "formid": "010041FD",
       "type": "PERK"
     },
-    "ESSB_P_lightning_0_3_B1": {
-      "id": "002084",
-      "formid": "01002084",
+    "ESSB_P_lightning_0_3_B3": {
+      "id": "002086",
+      "formid": "01002086",
       "type": "PERK"
     },
     "ESSB_P_lightning_0_3_B2": {
       "id": "002085",
       "formid": "01002085",
+      "type": "PERK"
+    },
+    "ESSB_P_lightning_0_3_B1": {
+      "id": "002084",
+      "formid": "01002084",
       "type": "PERK"
     },
     "ESSB_P_lightning_0_4_M1": {
@@ -7878,6 +8113,11 @@
     "ESSB_P_lightning_1_3_B2": {
       "id": "002099",
       "formid": "01002099",
+      "type": "PERK"
+    },
+    "ESSB_P_lightning_1_3_B4": {
+      "id": "00209B",
+      "formid": "0100209B",
       "type": "PERK"
     },
     "ESSB_P_lightning_1_3_B3": {
@@ -9440,6 +9680,11 @@
       "formid": "010020E4",
       "type": "PERK"
     },
+    "ESSB_P_earth_2_2_B2": {
+      "id": "0020E5",
+      "formid": "010020E5",
+      "type": "PERK"
+    },
     "ESSB_P_earth_2_3_M1": {
       "id": "004366",
       "formid": "01004366",
@@ -10930,14 +11175,19 @@
       "formid": "01004473",
       "type": "PERK"
     },
-    "ESSB_P_blood_0_0_B1": {
-      "id": "00212C",
-      "formid": "0100212C",
+    "ESSB_P_blood_0_0_B3": {
+      "id": "00212E",
+      "formid": "0100212E",
       "type": "PERK"
     },
     "ESSB_P_blood_0_0_B2": {
       "id": "00212D",
       "formid": "0100212D",
+      "type": "PERK"
+    },
+    "ESSB_P_blood_0_0_B1": {
+      "id": "00212C",
+      "formid": "0100212C",
       "type": "PERK"
     },
     "ESSB_P_blood_0_1_M1": {
@@ -12430,14 +12680,19 @@
       "formid": "01004581",
       "type": "PERK"
     },
-    "ESSB_P_divine_0_3_B1": {
-      "id": "002174",
-      "formid": "01002174",
+    "ESSB_P_divine_0_3_B3": {
+      "id": "002176",
+      "formid": "01002176",
       "type": "PERK"
     },
     "ESSB_P_divine_0_3_B2": {
       "id": "002175",
       "formid": "01002175",
+      "type": "PERK"
+    },
+    "ESSB_P_divine_0_3_B1": {
+      "id": "002174",
+      "formid": "01002174",
       "type": "PERK"
     },
     "ESSB_P_divine_0_4_M1": {
@@ -12683,6 +12938,11 @@
     "ESSB_P_divine_1_1_B1": {
       "id": "002180",
       "formid": "01002180",
+      "type": "PERK"
+    },
+    "ESSB_P_divine_1_1_B3": {
+      "id": "002182",
+      "formid": "01002182",
       "type": "PERK"
     },
     "ESSB_P_divine_1_1_B2": {
@@ -13260,14 +13520,19 @@
       "formid": "01004617",
       "type": "PERK"
     },
-    "ESSB_P_divine_2_3_B1": {
-      "id": "00219C",
-      "formid": "0100219C",
+    "ESSB_P_divine_2_3_B3": {
+      "id": "00219E",
+      "formid": "0100219E",
       "type": "PERK"
     },
     "ESSB_P_divine_2_3_B2": {
       "id": "00219D",
       "formid": "0100219D",
+      "type": "PERK"
+    },
+    "ESSB_P_divine_2_3_B1": {
+      "id": "00219C",
+      "formid": "0100219C",
       "type": "PERK"
     },
     "ESSB_P_divine_2_4_M1": {
@@ -14745,6 +15010,11 @@
       "formid": "010021E4",
       "type": "PERK"
     },
+    "ESSB_P_water_0_1_B3": {
+      "id": "0021E6",
+      "formid": "010021E6",
+      "type": "PERK"
+    },
     "ESSB_P_water_0_1_B2": {
       "id": "0021E5",
       "formid": "010021E5",
@@ -14905,14 +15175,19 @@
       "formid": "01004743",
       "type": "PERK"
     },
-    "ESSB_P_water_0_3_B1": {
-      "id": "0021EC",
-      "formid": "010021EC",
+    "ESSB_P_water_0_3_B3": {
+      "id": "0021EE",
+      "formid": "010021EE",
       "type": "PERK"
     },
     "ESSB_P_water_0_3_B2": {
       "id": "0021ED",
       "formid": "010021ED",
+      "type": "PERK"
+    },
+    "ESSB_P_water_0_3_B1": {
+      "id": "0021EC",
+      "formid": "010021EC",
       "type": "PERK"
     },
     "ESSB_P_water_0_4_M1": {
@@ -14988,6 +15263,11 @@
     "ESSB_P_water_0_4_M15": {
       "id": "004752",
       "formid": "01004752",
+      "type": "PERK"
+    },
+    "ESSB_P_water_0_4_B2": {
+      "id": "0021F1",
+      "formid": "010021F1",
       "type": "PERK"
     },
     "ESSB_P_water_0_4_B1": {
@@ -15320,6 +15600,11 @@
       "formid": "01002200",
       "type": "PERK"
     },
+    "ESSB_P_water_1_3_B3": {
+      "id": "002202",
+      "formid": "01002202",
+      "type": "PERK"
+    },
     "ESSB_P_water_1_3_B2": {
       "id": "002201",
       "formid": "01002201",
@@ -15560,14 +15845,19 @@
       "formid": "010047BB",
       "type": "PERK"
     },
-    "ESSB_P_water_2_1_B1": {
-      "id": "00220C",
-      "formid": "0100220C",
+    "ESSB_P_water_2_1_B3": {
+      "id": "00220E",
+      "formid": "0100220E",
       "type": "PERK"
     },
     "ESSB_P_water_2_1_B2": {
       "id": "00220D",
       "formid": "0100220D",
+      "type": "PERK"
+    },
+    "ESSB_P_water_2_1_B1": {
+      "id": "00220C",
+      "formid": "0100220C",
       "type": "PERK"
     },
     "ESSB_P_water_2_2_M1": {
@@ -15890,6 +16180,11 @@
       "formid": "010047F7",
       "type": "PERK"
     },
+    "ESSB_P_darkness_0_0_B2": {
+      "id": "00221D",
+      "formid": "0100221D",
+      "type": "PERK"
+    },
     "ESSB_P_darkness_0_0_B1": {
       "id": "00221C",
       "formid": "0100221C",
@@ -15968,6 +16263,16 @@
     "ESSB_P_darkness_0_1_M15": {
       "id": "004806",
       "formid": "01004806",
+      "type": "PERK"
+    },
+    "ESSB_P_darkness_0_1_B3": {
+      "id": "002222",
+      "formid": "01002222",
+      "type": "PERK"
+    },
+    "ESSB_P_darkness_0_1_B4": {
+      "id": "002223",
+      "formid": "01002223",
       "type": "PERK"
     },
     "ESSB_P_darkness_0_1_B1": {
@@ -16055,6 +16360,11 @@
       "formid": "01004815",
       "type": "PERK"
     },
+    "ESSB_P_darkness_0_2_B2": {
+      "id": "002225",
+      "formid": "01002225",
+      "type": "PERK"
+    },
     "ESSB_P_darkness_0_2_B1": {
       "id": "002224",
       "formid": "01002224",
@@ -16133,6 +16443,16 @@
     "ESSB_P_darkness_0_3_M15": {
       "id": "004824",
       "formid": "01004824",
+      "type": "PERK"
+    },
+    "ESSB_P_darkness_0_3_B3": {
+      "id": "00222A",
+      "formid": "0100222A",
+      "type": "PERK"
+    },
+    "ESSB_P_darkness_0_3_B4": {
+      "id": "00222B",
+      "formid": "0100222B",
       "type": "PERK"
     },
     "ESSB_P_darkness_0_3_B1": {
@@ -16218,6 +16538,11 @@
     "ESSB_P_darkness_0_4_M15": {
       "id": "004833",
       "formid": "01004833",
+      "type": "PERK"
+    },
+    "ESSB_P_darkness_0_4_B2": {
+      "id": "00222D",
+      "formid": "0100222D",
       "type": "PERK"
     },
     "ESSB_P_darkness_0_4_B1": {
@@ -16380,14 +16705,19 @@
       "formid": "01004851",
       "type": "PERK"
     },
-    "ESSB_P_darkness_1_1_B1": {
-      "id": "002234",
-      "formid": "01002234",
+    "ESSB_P_darkness_1_1_B3": {
+      "id": "002236",
+      "formid": "01002236",
       "type": "PERK"
     },
     "ESSB_P_darkness_1_1_B2": {
       "id": "002235",
       "formid": "01002235",
+      "type": "PERK"
+    },
+    "ESSB_P_darkness_1_1_B1": {
+      "id": "002234",
+      "formid": "01002234",
       "type": "PERK"
     },
     "ESSB_P_darkness_1_2_M1": {
@@ -16715,6 +17045,11 @@
       "formid": "01002244",
       "type": "PERK"
     },
+    "ESSB_P_darkness_2_0_B3": {
+      "id": "002246",
+      "formid": "01002246",
+      "type": "PERK"
+    },
     "ESSB_P_darkness_2_0_B2": {
       "id": "002245",
       "formid": "01002245",
@@ -16798,6 +17133,11 @@
     "ESSB_P_darkness_2_1_B1": {
       "id": "002248",
       "formid": "01002248",
+      "type": "PERK"
+    },
+    "ESSB_P_darkness_2_1_B3": {
+      "id": "00224A",
+      "formid": "0100224A",
       "type": "PERK"
     },
     "ESSB_P_darkness_2_1_B2": {
@@ -16885,6 +17225,11 @@
       "formid": "0100224C",
       "type": "PERK"
     },
+    "ESSB_P_darkness_2_2_B3": {
+      "id": "00224E",
+      "formid": "0100224E",
+      "type": "PERK"
+    },
     "ESSB_P_darkness_2_2_B2": {
       "id": "00224D",
       "formid": "0100224D",
@@ -16965,14 +17310,19 @@
       "formid": "010048BA",
       "type": "PERK"
     },
-    "ESSB_P_darkness_2_3_B1": {
-      "id": "002250",
-      "formid": "01002250",
+    "ESSB_P_darkness_2_3_B3": {
+      "id": "002252",
+      "formid": "01002252",
       "type": "PERK"
     },
     "ESSB_P_darkness_2_3_B2": {
       "id": "002251",
       "formid": "01002251",
+      "type": "PERK"
+    },
+    "ESSB_P_darkness_2_3_B1": {
+      "id": "002250",
+      "formid": "01002250",
       "type": "PERK"
     },
     "ESSB_P_darkness_2_4_M1": {
@@ -17135,6 +17485,11 @@
       "formid": "010048D8",
       "type": "PERK"
     },
+    "ESSB_P_astral_0_0_B2": {
+      "id": "002259",
+      "formid": "01002259",
+      "type": "PERK"
+    },
     "ESSB_P_astral_0_0_B1": {
       "id": "002258",
       "formid": "01002258",
@@ -17213,6 +17568,11 @@
     "ESSB_P_astral_0_1_M15": {
       "id": "0048E7",
       "formid": "010048E7",
+      "type": "PERK"
+    },
+    "ESSB_P_astral_0_1_B3": {
+      "id": "00225E",
+      "formid": "0100225E",
       "type": "PERK"
     },
     "ESSB_P_astral_0_1_B1": {
@@ -17380,6 +17740,11 @@
       "formid": "01004905",
       "type": "PERK"
     },
+    "ESSB_P_astral_0_3_B3": {
+      "id": "002266",
+      "formid": "01002266",
+      "type": "PERK"
+    },
     "ESSB_P_astral_0_3_B1": {
       "id": "002264",
       "formid": "01002264",
@@ -17463,6 +17828,16 @@
     "ESSB_P_astral_0_4_M15": {
       "id": "004914",
       "formid": "01004914",
+      "type": "PERK"
+    },
+    "ESSB_P_astral_0_4_B2": {
+      "id": "002269",
+      "formid": "01002269",
+      "type": "PERK"
+    },
+    "ESSB_P_astral_0_4_B3": {
+      "id": "00226A",
+      "formid": "0100226A",
       "type": "PERK"
     },
     "ESSB_P_astral_0_4_B1": {
@@ -17795,6 +18170,11 @@
       "formid": "01002278",
       "type": "PERK"
     },
+    "ESSB_P_astral_1_3_B3": {
+      "id": "00227A",
+      "formid": "0100227A",
+      "type": "PERK"
+    },
     "ESSB_P_astral_1_3_B2": {
       "id": "002279",
       "formid": "01002279",
@@ -18035,14 +18415,14 @@
       "formid": "0100497D",
       "type": "PERK"
     },
-    "ESSB_P_astral_2_1_B1": {
-      "id": "002284",
-      "formid": "01002284",
-      "type": "PERK"
-    },
     "ESSB_P_astral_2_1_B2": {
       "id": "002285",
       "formid": "01002285",
+      "type": "PERK"
+    },
+    "ESSB_P_astral_2_1_B1": {
+      "id": "002284",
+      "formid": "01002284",
       "type": "PERK"
     },
     "ESSB_P_astral_2_2_M1": {
@@ -18118,6 +18498,11 @@
     "ESSB_P_astral_2_2_M15": {
       "id": "00498C",
       "formid": "0100498C",
+      "type": "PERK"
+    },
+    "ESSB_P_astral_2_2_B2": {
+      "id": "002289",
+      "formid": "01002289",
       "type": "PERK"
     },
     "ESSB_P_astral_2_2_B1": {
@@ -18198,6 +18583,11 @@
     "ESSB_P_astral_2_3_M15": {
       "id": "00499B",
       "formid": "0100499B",
+      "type": "PERK"
+    },
+    "ESSB_P_astral_2_3_B3": {
+      "id": "00228E",
+      "formid": "0100228E",
       "type": "PERK"
     },
     "ESSB_P_astral_2_3_B1": {
@@ -18365,6 +18755,11 @@
       "formid": "010049B9",
       "type": "PERK"
     },
+    "ESSB_P_noform_0_0_B2": {
+      "id": "002295",
+      "formid": "01002295",
+      "type": "PERK"
+    },
     "ESSB_P_noform_0_0_B1": {
       "id": "002294",
       "formid": "01002294",
@@ -18443,6 +18838,11 @@
     "ESSB_P_noform_0_1_M15": {
       "id": "0049C8",
       "formid": "010049C8",
+      "type": "PERK"
+    },
+    "ESSB_P_noform_0_1_B3": {
+      "id": "00229A",
+      "formid": "0100229A",
       "type": "PERK"
     },
     "ESSB_P_noform_0_1_B1": {
@@ -18530,6 +18930,11 @@
       "formid": "010049D7",
       "type": "PERK"
     },
+    "ESSB_P_noform_0_2_B2": {
+      "id": "00229D",
+      "formid": "0100229D",
+      "type": "PERK"
+    },
     "ESSB_P_noform_0_2_B1": {
       "id": "00229C",
       "formid": "0100229C",
@@ -18610,14 +19015,19 @@
       "formid": "010049E6",
       "type": "PERK"
     },
-    "ESSB_P_noform_0_3_B1": {
-      "id": "0022A0",
-      "formid": "010022A0",
-      "type": "PERK"
-    },
     "ESSB_P_noform_0_3_B2": {
       "id": "0022A1",
       "formid": "010022A1",
+      "type": "PERK"
+    },
+    "ESSB_P_noform_0_3_B3": {
+      "id": "0022A2",
+      "formid": "010022A2",
+      "type": "PERK"
+    },
+    "ESSB_P_noform_0_3_B1": {
+      "id": "0022A0",
+      "formid": "010022A0",
       "type": "PERK"
     },
     "ESSB_P_noform_0_4_M1": {
@@ -18693,6 +19103,16 @@
     "ESSB_P_noform_0_4_M15": {
       "id": "0049F5",
       "formid": "010049F5",
+      "type": "PERK"
+    },
+    "ESSB_P_noform_0_4_B2": {
+      "id": "0022A5",
+      "formid": "010022A5",
+      "type": "PERK"
+    },
+    "ESSB_P_noform_0_4_B3": {
+      "id": "0022A6",
+      "formid": "010022A6",
       "type": "PERK"
     },
     "ESSB_P_noform_0_4_B1": {
@@ -18860,14 +19280,14 @@
       "formid": "010022AC",
       "type": "PERK"
     },
-    "ESSB_P_noform_1_1_B2": {
-      "id": "0022AD",
-      "formid": "010022AD",
-      "type": "PERK"
-    },
     "ESSB_P_noform_1_1_B3": {
       "id": "0022AE",
       "formid": "010022AE",
+      "type": "PERK"
+    },
+    "ESSB_P_noform_1_1_B2": {
+      "id": "0022AD",
+      "formid": "010022AD",
       "type": "PERK"
     },
     "ESSB_P_noform_1_2_M1": {
@@ -19035,6 +19455,11 @@
       "formid": "010022B4",
       "type": "PERK"
     },
+    "ESSB_P_noform_1_3_B3": {
+      "id": "0022B6",
+      "formid": "010022B6",
+      "type": "PERK"
+    },
     "ESSB_P_noform_1_3_B2": {
       "id": "0022B5",
       "formid": "010022B5",
@@ -19115,11 +19540,6 @@
       "formid": "01004A40",
       "type": "PERK"
     },
-    "ESSB_P_noform_1_4_B1": {
-      "id": "0022B8",
-      "formid": "010022B8",
-      "type": "PERK"
-    },
     "ESSB_P_noform_1_4_B2": {
       "id": "0022B9",
       "formid": "010022B9",
@@ -19128,6 +19548,11 @@
     "ESSB_P_noform_1_4_B3": {
       "id": "0022BA",
       "formid": "010022BA",
+      "type": "PERK"
+    },
+    "ESSB_P_noform_1_4_B1": {
+      "id": "0022B8",
+      "formid": "010022B8",
       "type": "PERK"
     },
     "ESSB_P_noform_2_0_M1": {
@@ -19288,6 +19713,11 @@
     "ESSB_P_noform_2_1_B1": {
       "id": "0022C0",
       "formid": "010022C0",
+      "type": "PERK"
+    },
+    "ESSB_P_noform_2_1_B3": {
+      "id": "0022C2",
+      "formid": "010022C2",
       "type": "PERK"
     },
     "ESSB_P_noform_2_1_B2": {
@@ -19538,6 +19968,11 @@
     "ESSB_P_noform_2_4_B1": {
       "id": "0022CC",
       "formid": "010022CC",
+      "type": "PERK"
+    },
+    "ESSB_P_noform_2_4_B2": {
+      "id": "0022CD",
+      "formid": "010022CD",
       "type": "PERK"
     },
     "ESSB_P_common_0_0_M1": {
@@ -20025,6 +20460,11 @@
       "formid": "01004AE5",
       "type": "PERK"
     },
+    "ESSB_P_common_1_0_B2": {
+      "id": "0022E5",
+      "formid": "010022E5",
+      "type": "PERK"
+    },
     "ESSB_P_common_1_0_B1": {
       "id": "0022E4",
       "formid": "010022E4",
@@ -20270,14 +20710,19 @@
       "formid": "01004B12",
       "type": "PERK"
     },
-    "ESSB_P_common_1_3_B1": {
-      "id": "0022F0",
-      "formid": "010022F0",
+    "ESSB_P_common_1_3_B3": {
+      "id": "0022F2",
+      "formid": "010022F2",
       "type": "PERK"
     },
     "ESSB_P_common_1_3_B2": {
       "id": "0022F1",
       "formid": "010022F1",
+      "type": "PERK"
+    },
+    "ESSB_P_common_1_3_B1": {
+      "id": "0022F0",
+      "formid": "010022F0",
       "type": "PERK"
     },
     "ESSB_P_common_1_4_M1": {
@@ -20781,8 +21226,8 @@
       "type": "PERK"
     },
     "ESSB_MainQuest": {
-      "id": "00600E",
-      "formid": "0100600E",
+      "id": "006010",
+      "formid": "01006010",
       "type": "QUST"
     },
     "ESSB_MainQuest_Schema1_Stub": {
@@ -20865,9 +21310,19 @@
       "formid": "0100600D",
       "type": "QUST"
     },
-    "ESSB_MCMQuest": {
+    "ESSB_MainQuest_Schema9_Stub": {
+      "id": "00600E",
+      "formid": "0100600E",
+      "type": "QUST"
+    },
+    "ESSB_MCMQuest_Schema9_Stub": {
       "id": "00600F",
       "formid": "0100600F",
+      "type": "QUST"
+    },
+    "ESSB_MCMQuest": {
+      "id": "006011",
+      "formid": "01006011",
       "type": "QUST"
     }
   }

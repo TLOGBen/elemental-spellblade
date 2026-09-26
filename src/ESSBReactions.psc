@@ -84,13 +84,13 @@ Function Open(ESSBController akCtl, Int aiElement, Actor akTarget) Global
 	ElseIf aiElement == 3
 		; 感電：你 +2 電荷（節點可加），目標魔力 -B_max ×1.0
 		akCtl.AddSelf(1, ESSBElem.RoundStochastic(ESSBElem.OpenStacks(akCtl, 3) * mult))
-		akCtl.ApplyUtil(2, 60.0 * akCtl.GetDamageMult(3) * akCtl.GLevel(2) * mult, 0, akTarget)
+		akCtl.ApplyUtil(2, BaseMax(akCtl, 3) * mult, 0, akTarget)
 	ElseIf aiElement == 4
 		; 裂痕：目標護甲 -30（持續新手主線 +2／點）、耐力 -10，你回復 10 耐力並 +2 岩甲
 		akCtl.AddStack(akTarget, 3, 1)
 		akCtl.ApplyUtil(1, ESSBElem2.FissureArmor(akCtl) * mult, 8, akTarget)
-		akCtl.ApplyUtil(3, 40.0 * akCtl.GLevel(3) * mult, 0, akTarget)
-		akCtl.ApplyUtil(6, 40.0 * akCtl.GLevel(3) * mult, 0, player)
+		akCtl.ApplyUtil(3, 10.0 * mult, 0, akTarget)
+		akCtl.ApplyUtil(6, 10.0 * mult, 0, player)
 		akCtl.AddSelf(2, ESSBElem.RoundStochastic(ESSBElem.OpenStacks(akCtl, 4) * mult))
 	ElseIf aiElement == 5
 		; 風痕：你風勢 +2、施加失衡，並把目標拉近（拉近在 ESSBElem2.OpenWind，
@@ -100,25 +100,25 @@ Function Open(ESSBController akCtl, Int aiElement, Actor akTarget) Global
 	ElseIf aiElement == 6
 		; 血痕：流血 2 層，並依血位吸血（溢出由「血盾」轉臨時護盾）
 		akCtl.AddStack(akTarget, 5, ESSBElem.RoundStochastic(ESSBElem.OpenStacks(akCtl, 6) * mult))
-		akCtl.Leech(50.0 * akCtl.GLevel(5) * akCtl.GetBloodLeechRatio() * mult)
+		akCtl.Leech(50.0 * akCtl.GetBloodLeechRatio() * mult)   ; v0.4 沒寫量也沒寫 G(L)：沿用 50、拿掉 G
 	ElseIf aiElement == 7
 		; 聖印：聖印 1 層（目標受聖傷 +20%，見 ESSBElem2.HolyVulnerability），
 		; 你回血 B_max ×0.5
 		akCtl.AddStack(akTarget, 6, ESSBElem.RoundStochastic(ESSBElem.OpenStacks(akCtl, 7) * mult))
-		akCtl.ApplyUtil(4, 25.0 * akCtl.GetDamageMult(7) * akCtl.GLevel(6) * mult, 0, player)
+		akCtl.ApplyUtil(4, BaseMax(akCtl, 7) * 0.5 * mult, 0, player)
 	ElseIf aiElement == 8
 		; 淬毒：+3 毒層（開啟新手主線 +1／每 3 點），並立即向 3 公尺內一名敵人傳 1 層
 		akCtl.AddStack(akTarget, 7, ESSBElem.RoundStochastic(ESSBElem.OpenStacks(akCtl, 8) * mult))
 		akCtl.SpreadPoison(akTarget, ESSBElem.RoundStochastic(mult))
 	ElseIf aiElement == 9
-		; 浸濕：減速 15%（開啟新手主線 +1%／點），印記持續 10 秒
+		; 浸濕：減速 15%，浸濕 10 秒（持續新手主線 +0.3 秒／點），水印記 10 秒
 		;（印記時長由控制器在套用前設定）
 		akCtl.AddStack(akTarget, 8, 1)
 		akCtl.ApplyUtil(0, ESSBElem3.WetSlow(akCtl) * mult, ESSBElem3.WetSeconds(akCtl), akTarget)
 	ElseIf aiElement == 10
 		; 詛咒：施加 2 層詛咒（開啟新手主線 +1／每 5 點），吸魔 B_max ×1.0
 		akCtl.AddStack(akTarget, 10, ESSBElem.RoundStochastic(ESSBElem.OpenStacks(akCtl, 10) * mult))
-		Float drain = 40.0 * akCtl.GetDamageMult(10) * akCtl.GLevel(9) * mult
+		Float drain = BaseMax(akCtl, 10) * mult
 		akCtl.ApplyUtil(2, drain, 0, akTarget)
 		akCtl.ApplyUtil(5, drain, 0, player)
 	ElseIf aiElement == 11
@@ -157,21 +157,16 @@ Function End(ESSBController akCtl, Int aiElement, Actor akTarget, Int aiReason, 
 	EndIf
 	If !abChain
 		; 規劃 2.6：關閉路線放大終焉與融斷。通用樹關閉路線 × 該元素關閉新手主線；
-		; 融斷時再乘該元素「印記的融斷」兩階與雷斷／洩壓。
+		; 融斷時再乘該元素「印記的融斷」兩階與雷斷。（round 21：v0.3 的「洩壓」分支已退役。）
 		mult = mult * ESSBNodes.CommonEndMult(akCtl) * ESSBElem.EndMult(akCtl, aiElement)
 		mult = mult * ESSBElem.OverloadMult(akCtl, aiElement, snapshot)
 		If aiReason == 1
 			mult = mult * ESSBElem.BurstMult(akCtl, aiElement) \
-				* ESSBElem.ShockBurstBonus(akCtl, aiElement, aiReason) \
-				* ESSBElem.VentMult(akCtl, aiElement, aiReason)
+				* ESSBElem.ShockBurstBonus(akCtl, aiElement, aiReason)
 		EndIf
 		mult = mult * ESSBNodes.TrioMult(akCtl, aiElement) * ESSBNodes.ConcertMult(akCtl)
 	EndIf
-
-	; Consume only pending work that existed before this end's element hook.
-	If !abChain
-		ESSBElem3.OnAnyEnd(akCtl, aiElement, akTarget)
-	EndIf
+	; （round 21：v0.3 暗的「蝕魔終焉」在這裡兌現的吸魔已隨分支退役拿掉。）
 
 	If aiElement == 1
 		EndFire(akCtl, akTarget, st, mult, aiReason)
@@ -271,7 +266,7 @@ EndFunction
 Function EndWind(ESSBController akCtl, Actor akTarget, ESSBStatus akStatus, Float afMult) Global
 	Int count = 2
 	; 5.7 關閉新手分支「亂流」：風刃附近目標 2 → 5 人。
-	If ESSBNodes.Br(akCtl, 4, 2, 0, 0)
+	If ESSBNodes.Br(akCtl, 4, 2, 0, 0) ; @node 亂流
 		count = 5
 	EndIf
 	ESSBElem2.WindBlade(akCtl, akTarget, afMult)
@@ -298,12 +293,12 @@ Function EndBlood(ESSBController akCtl, Actor akTarget, ESSBStatus akStatus, Flo
 		remaining = akStatus.BleedRemaining(ESSBElem2.BleedPerLayer(akCtl))
 	EndIf
 	; 5.8 關閉新手分支「飽飲」：血潮結算的流血傷害 ×1.5。
-	If ESSBNodes.Br(akCtl, 5, 2, 0, 0)
+	If ESSBNodes.Br(akCtl, 5, 2, 0, 0) ; @node 飽飲
 		remaining = remaining * 1.5
 	EndIf
 	Float surge = afMult
 	; 5.8 關閉大師分支「血契」：高血位（70% 以上）時損失 10% 生命，血潮 ×2。
-	If ESSBNodes.Br(akCtl, 5, 2, 3, 0) && akPlayer.GetActorValuePercentage("Health") >= 0.7
+	If ESSBNodes.Br(akCtl, 5, 2, 3, 0) && akPlayer.GetActorValuePercentage("Health") >= 0.7 ; @node 血契
 		akCtl.PayBloodCost(0.10)
 		surge = surge * 2.0
 	EndIf
@@ -313,7 +308,7 @@ Function EndBlood(ESSBController akCtl, Actor akTarget, ESSBStatus akStatus, Flo
 	akCtl.ApplyDamage(6, amount, akTarget)
 	akCtl.Leech(amount * akCtl.GetBloodLeechRatio() * ESSBElem2.SurgeHealMult(akCtl))
 	; 5.8 關閉熟練分支「血斷」：血印記融斷治療你該傷害的 50%。
-	If aiReason == 1 && ESSBNodes.Br(akCtl, 5, 2, 1, 1)
+	If aiReason == 1 && ESSBNodes.Br(akCtl, 5, 2, 1, 1) ; @node 血斷
 		akCtl.Leech(amount * 0.5)
 	EndIf
 	If akStatus
@@ -349,7 +344,7 @@ Function EndPoison(ESSBController akCtl, Actor akTarget, ESSBStatus akStatus, Fl
 EndFunction
 
 ; 導引：接管元素的下一次終焉 ×1.5（強引 ×2.0，傳奇主線再 +3%／點），
-; 並讓你立刻 +5 同調（潮引 +10）。只在被切掉時有接管元素。
+; 並讓你立刻 +5 同調。只在被切掉時有接管元素。
 Function EndWater(ESSBController akCtl, Actor akTarget, ESSBStatus akStatus, Float afMult, Int aiReason) Global
 	If aiReason == 0
 		akCtl.SetNextEndMultOn(akTarget, ESSBElem3.GuideMult(akCtl) * afMult)
@@ -371,8 +366,8 @@ Function EndDark(ESSBController akCtl, Actor akTarget, ESSBStatus akStatus, Floa
 	EndIf
 EndFunction
 
-; 星落：B_max ×2.0 星傷（隕星 ×3.0、星斷改真傷 ×0.6、流星雨改範圍、群星再連鎖），
-; 且接管元素的這次開印 ×1.5（星軌終焉 ×2.0）。只在被切掉時有接管元素。
+; 星落：B_max ×2.0 星傷（隕星 ×3.0、星斷改真傷 ×0.6），且接管元素的這次開印 ×1.5。
+; 只在被切掉時有接管元素。
 Function EndAstral(ESSBController akCtl, Actor akTarget, ESSBStatus akStatus, Float afMult, Int aiReason) Global
 	ESSBElem3.Fall(akCtl, akTarget, afMult, aiReason)
 	If akStatus

@@ -41,8 +41,10 @@
 - 舊狀態層（毒／星痕幽靈 bug）仍在，N3 才根除；N2 不碰狀態層。
 
 ## 完整版路線（2026-09-25 使用者定：等完整版才開新檔，N6、技能樹、HUD 都做）
-1. N2（round 20，進行中）
-2. T：技能樹照 v0.4 重建（ESP perk、Papyrus 樹／MCM、DLL 節點讀取對照）；補上 N2 因節點不存在沒做的無元素四列
+1. N2（round 20）✅ 2026-09-25 f5edfc4 提交、已部署 MO2（備份 `.codex/mo2-installed-backup-20260925-204250`）；探針卡 `build/fix20-probes.md` 待使用者實測；吸血量約剩舊版 1/6，實測後可能要調倍率
+1b. 準備報告：`build/native-verification-3.md`（N3～N6 介面，全部可行）、`build/tree-v04-inventory.md`（樹差異）
+1c. 已定（2026-09-25 使用者 OK）：N6 領域＝對敵效果走 Spawn Hazard 原型 MGEF 經 CastSpellImmediate（放在目標腳下、只打敵對、引擎管壽命與上限，不再限 3 個）；對玩家自己的效果（火域熱度、冰原免減速、血池／聖域／潮池回復）由 DLL 每秒計時檢查玩家是否在領域範圍內補上。寫 N6 合約時納入，並同步改 v0.4 §10.3 領域列
+2. T＝round 21（進行中；2026-09-25 21:40 額度 99%，可能中斷。恢復：讀 `.codex/impl-fix-round21.html` 最後完成的里程碑，重派 Opus 照合約「If resumed」續做；快照 `.codex/pre-fix21-snapshot/` 不可覆寫；工作樹未提交的改動都是 round 21 的，勿 reset。合約 `.codex/fix-round21-briefing.md`、紀錄 `.codex/impl-fix-round21.html`）：技能樹照 v0.4 重建（ESP perk、Papyrus 樹／MCM、DLL 節點讀取對照）；補上 N2 因節點不存在沒做的無元素四列
 3. N3：目標狀態層（根除舊狀態層幽靈 bug）
 4. N4：受擊與自身資源（超載、蓄勁、護血扣減、電荷→雷 N）
 5. N5 與 H 並行：N5 融斷與死亡；H＝TrueHUD 資源條（git worktree 隔離，新檔為主，指揮官合併）

@@ -8,6 +8,8 @@
 //   5. report       Report                             log line and, at debug level >= 2, an on-screen notice
 // Round 20 (slice N2): the magnitude is computed here at hit time (it used to be pre-written into the spell
 // records by Papyrus); no-form hits (baseline true damage, siphon, dispel) are handled here too.
+// Round 21 (v0.4 trees): 反擊 (a window effect on the player, used up by the next no-form hit), 寂滅 (reads 寂
+// on the target, marks it spent) and the soaked slow's duration (one spell per whole second).
 // All mutable state lives in `state`. Faults latch the handler OFF until the game restarts.
 #include "EngineFacts.h"
 #include "HitPipeline.h"
@@ -65,6 +67,9 @@ struct Forms {
     RE::EffectSetting* bloodGuard{};
     RE::EffectSetting* echoPending{};
     RE::EffectSetting* twinWindow{};
+    RE::EffectSetting* riposteWindow{};
+    RE::EffectSetting* hush{};
+    RE::EffectSetting* hushSpent{};
     RE::BGSKeyword* undead{};
     RE::BGSKeyword* daedra{};
     RE::BGSKeyword* armorSpell{};
@@ -80,7 +85,8 @@ struct State {
     std::atomic_bool faulted{};   // latched until the game restarts
     std::atomic_bool inGame{};    // from PostLoadGame/NewGame until the next PreLoadGame
     std::atomic_bool handling{};  // re-entrancy guard of the hit sink (also guards `rng`)
-    std::atomic_bool echoDispelQueued{};  // a consumed echo marker waits for its main-thread dispel
+    std::atomic_bool echoDispelQueued{};     // a consumed echo marker waits for its main-thread dispel
+    std::atomic_bool riposteDispelQueued{};  // a used 反擊 window waits for its main-thread dispel
     std::atomic<std::uint64_t> lastProcNotice{};
     HANDLE log{ INVALID_HANDLE_VALUE };
     Forms forms{};
@@ -371,6 +377,8 @@ essb::PlayerFacts ReadPlayer(RE::PlayerCharacter& player)
             p.echoPending = !state.echoDispelQueued;
         } else if (&base == f.twinWindow) {
             p.twinWindow = true;
+        } else if (&base == f.riposteWindow) {
+            p.riposteWindow = !state.riposteDispelQueued;
         }
     });
     return p;
@@ -389,9 +397,13 @@ essb::RawTarget ReadTarget(RE::Actor& target)
     if (process && process->middleHigh) {
         raw.commandedActors = static_cast<int>(process->middleHigh->commandedActors.size());
     }
-    ForEachRunningEffect(target, [&](RE::ActiveEffect&, RE::EffectSetting& effect) {
+    ForEachRunningEffect(target, [&](RE::ActiveEffect& active, RE::EffectSetting& effect) {
         raw.bloodMark = raw.bloodMark || &effect == f.bloodMark;
         raw.silenced = raw.silenced || &effect == f.silence;
+        if (&effect == f.hush) {
+            raw.hushMagnitude = (std::max)(raw.hushMagnitude, active.magnitude);
+        }
+        raw.hushSpent = raw.hushSpent || &effect == f.hushSpent;
         raw.armorSpellEffect = raw.armorSpellEffect || (f.armorSpell && effect.HasKeyword(f.armorSpell));
         raw.cloakEffect = raw.cloakEffect || (f.cloak && effect.HasKeyword(f.cloak));
     });
@@ -443,18 +455,36 @@ void Apply(RE::PlayerCharacter& player, RE::Actor& target, const essb::Plan& pla
     }
 }
 
-// Main-thread body of the echo dispel. The effects are collected first and dispelled after the walk, so the
+// The two single-use markers the DLL consumes on the player: 餘響待發 (echo) and the 反擊 window.
+enum class Marker
+{
+    kEcho,
+    kRiposte,
+};
+
+RE::EffectSetting* MarkerEffect(Marker marker) noexcept
+{
+    return marker == Marker::kEcho ? state.forms.echoPending : state.forms.riposteWindow;
+}
+
+std::atomic_bool& MarkerQueued(Marker marker) noexcept
+{
+    return marker == Marker::kEcho ? state.echoDispelQueued : state.riposteDispelQueued;
+}
+
+// Main-thread body of a marker dispel. The effects are collected first and dispelled after the walk, so the
 // active-effect list is never changed while it is being iterated.
-void DispelEchoCpp() noexcept
+void DispelMarkerCpp(Marker marker) noexcept
 {
     try {
         auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!player || !state.forms.echoPending) {
+        RE::EffectSetting* wanted = MarkerEffect(marker);
+        if (!player || !wanted) {
             return;
         }
         std::vector<RE::ActiveEffect*> found;
         ForEachRunningEffect(*player, [&](RE::ActiveEffect& effect, RE::EffectSetting& base) {
-            if (&base == state.forms.echoPending) {
+            if (&base == wanted) {
                 found.push_back(&effect);
             }
         });
@@ -464,29 +494,29 @@ void DispelEchoCpp() noexcept
     } catch (const std::exception& e) {
         Fault(e.what());
     } catch (...) {
-        Fault("unknown C++ exception in echo dispel task");
+        Fault("unknown C++ exception in marker dispel task");
     }
 }
 
 // SEH-only wrapper (no C++ objects here), the same two layers as the hit sink.
-void DispelEchoGuarded() noexcept
+void DispelMarkerGuarded(Marker marker) noexcept
 {
     __try {
-        DispelEchoCpp();
+        DispelMarkerCpp(marker);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
-        Fault("access violation in echo dispel task");
+        Fault("access violation in marker dispel task");
     }
-    state.echoDispelQueued = false;
+    MarkerQueued(marker) = false;
 }
 
-// The echo marker is removed on the main thread; until then ReadPlayer ignores it (no double echo).
-void QueueEchoDispel()
+// A used marker is removed on the main thread; until then ReadPlayer ignores it (it is never used twice).
+void QueueMarkerDispel(Marker marker)
 {
     const auto* tasks = SKSE::GetTaskInterface();
-    if (!tasks || state.echoDispelQueued.exchange(true)) {
+    if (!tasks || MarkerQueued(marker).exchange(true)) {
         return;
     }
-    tasks->AddTask([]() { DispelEchoGuarded(); });
+    tasks->AddTask([marker]() { DispelMarkerGuarded(marker); });
 }
 
 std::string_view ProcName(int element, bool power)
@@ -569,7 +599,10 @@ void Handle(const RE::TESHitEvent& ev)
     const essb::Plan plan = essb::PlanHit(attack, kConfig, tuning, playerFacts, targetFacts, nodes, *state.rng);
     Apply(*player, *target, plan);
     if (plan.consumeEcho) {
-        QueueEchoDispel();
+        QueueMarkerDispel(Marker::kEcho);
+    }
+    if (plan.consumeRiposte) {
+        QueueMarkerDispel(Marker::kRiposte);
     }
     Report(plan, attack, verdict.weaponType, *target);
 }
@@ -680,10 +713,10 @@ void ResolveSpells(RE::TESDataHandler& data, const nlohmann::json& manifest)
     for (const auto& [name, row] : manifest.at("spells").items()) {
         f.spells.emplace_back(LocalId(row), Resolve<RE::SpellItem>(data, LocalId(row), kPlugin, "cast spell"));
     }
-    // Every spell a plan can ask for must be resolved.
+    // Every spell a plan can ask for must be resolved (one per whole second for silence and the soaked slow).
     for (int cast = 0; cast <= static_cast<int>(essb::Cast::kBloodGuard); ++cast) {
         essb::CastStep step{ static_cast<essb::Cast>(cast) };
-        const int variants = step.cast == essb::Cast::kSilence ? essb::kSilenceSpellCount : 1;
+        const int variants = essb::DurationVariants(step.cast);
         for (int v = 1; v <= variants; ++v) {
             step.seconds = v;
             step.element = essb::kFire;
@@ -705,6 +738,9 @@ void ResolveEffects(RE::TESDataHandler& data, const nlohmann::json& manifest)
     f.bloodGuard = one("kBloodGuard", essb::effect::kBloodGuard);
     f.echoPending = one("kEchoPending", essb::effect::kEchoPending);
     f.twinWindow = one("kTwinWindow", essb::effect::kTwinWindow);
+    f.riposteWindow = one("kRiposteWindow", essb::effect::kRiposteWindow);
+    f.hush = one("kHush", essb::effect::kHush);
+    f.hushSpent = one("kHushSpent", essb::effect::kHushSpent);
 
     const auto& vanilla = manifest.at("vanilla");
     auto id = [&](const char* name, std::uint32_t compiled) {
@@ -797,6 +833,7 @@ void OnGameReady()
 {
     state.inGame = true;
     state.echoDispelQueued = false;
+    state.riposteDispelQueued = false;
     PublishStatus();
     for (auto& text : state.deferredNotices) {
         Show(text);
@@ -1016,7 +1053,7 @@ extern "C" __declspec(dllexport) bool SKSEPlugin_Query(const SKSE::QueryInterfac
         }
         info->infoVersion = SKSE::PluginInfo::kVersion;
         info->name = "ElementsSpellblade";
-        info->version = 20;
+        info->version = 21;
         return CheckRuntime(skse);
     } catch (...) {
         Log("[ESSB][refuse] Query failed; native hit OFF");

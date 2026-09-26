@@ -59,7 +59,7 @@ EndFunction
 
 Function RefreshPermission()
 	If Ctl && Ctl.IsCurrentController() && !Ctl.StateBroken
-		FreePass = Ctl.Br(12, 1, 1, 0)
+		FreePass = Ctl.Br(12, 1, 1, 0) ; @node 順轉
 	EndIf
 EndFunction
 

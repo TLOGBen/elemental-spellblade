@@ -116,6 +116,12 @@ Spell Property EchoPendingSpell Auto
 {餘響待發：切換時套上，DLL 在切換後第一擊結算前一元素附傷並移除它。}
 Spell Property TwinWindowSpell Auto
 {雙生視窗：切換時套上 30 秒，DLL 讀它決定左手命中是否另帶前一元素。}
+Spell Property RiposteWindowSpell Auto
+{反擊視窗（round 21）：格擋成功後套上 3 秒，DLL 讀它讓下一次無形態命中的吸魔 ×2 並移除它。}
+Spell Property IceArmorAbility Auto
+{冰甲（round 21）：冰形態的 3 公尺寒氣披風，只對敵對者減速 20%。}
+Spell Property IceArmorWideAbility Auto
+{冰甲＋霜膚（round 21）：寒氣半徑 5 公尺、減速 30%。}
 GlobalVariable Property GDivineArmed Auto
 GlobalVariable Property FormNotify Auto
 GlobalVariable Property FormSound Auto
@@ -401,7 +407,6 @@ Int NextMarkBonus
 Int PrevElement
 Int TwinElement
 Float TwinTime
-Float AvatarLeft
 Float IceHeartTime
 
 ; ---- 機制前線 round 2 的狀態
@@ -412,7 +417,6 @@ Float GuardDivineLeft
 Float CloakGuardLeft
 Float NoBloodCostLeft
 Float WindFollowLeft
-Float RiposteLeft
 Float KeepSneakLeft
 Int PendingBleed
 Bool PendingHeal
@@ -1343,7 +1347,6 @@ Function SwitchForm(Int aiIndex)
 	If !player || aiIndex < 1 || aiIndex > 11
 		Return
 	EndIf
-	RiposteLeft = 0
 	Int previous = AppliedElement
 	If previous == aiIndex
 		Return
@@ -1377,8 +1380,8 @@ Function SwitchForm(Int aiIndex)
 	PushSyncStage()
 
 	; 5.2 開啟熟練分支「順轉」：切換後 1 秒受傷 -50%（PERK 進入點讀 ESSB_GuardSwitch）。
-	If ESSBNodes.Br(Self, 12, 1, 1, 0)
-		SetGuardSwitch(2)
+	If ESSBNodes.Br(Self, 12, 1, 1, 0) ; @node 順轉
+		SetGuardSwitch(1)
 	EndIf
 	SendModEvent("ESSB_FormChanged", "open", aiIndex as Float)
 	If CachedDebugLevel >= 1
@@ -1522,8 +1525,7 @@ Function OnFormClosed(Int aiIndex)
 				CaptureDeath(index)
 				ClearSlot(index)
 			ElseIf player && target.GetDistance(player) <= radius
-				; 5.1 融斷大師分支「斷界」：融斷後對範圍內敵人施加所有被結清元素的弱化 3 秒。
-				ESSBNoForm.OnBurstTarget(Self, target)
+				; 5.1 融斷大師分支「斷界」（所有被結清元素的弱化 3 秒）是 DLL N5；v0.3 的減速＋碎甲近似已拿掉。
 				EndBothMarks(index, k)
 				burst += 1
 			Else
@@ -1546,10 +1548,10 @@ Function OnFormClosed(Int aiIndex)
 		PerpetualKeep = t1
 	EndIf
 	; 5.2 關閉大師分支「安全閥」：融斷時你受傷 -50% 持續 2 秒。
-	If ESSBNodes.Br(Self, 12, 2, 3, 1)
+	If ESSBNodes.Br(Self, 12, 2, 3, 1) ; @node 安全閥
 		SetGuardBurst(2)
 	EndIf
-	; 5.1 融斷路線的收尾（免門檻、餘燼、連斷、淬火、回流、雙斷）。
+	; 5.1 冷寂路線的收尾（免門檻、連斷、回流、雙斷）。
 	ESSBNoForm.OnBurst(Self, aiIndex, burst, syncBefore)
 
 	CachedSync = 0
@@ -1818,8 +1820,9 @@ EndEvent
 ; 環境、亡靈魔族、驅魔、風潛行、雷暴擊），這裡只補 DLL 讀不到的：目標身上的狀態與腳本內的計時（到 N3 為止）。
 ;   bonus = unit × ((S + X) × M − S)
 ;   unit × S：DLL 那一份的期望值鏡像（平均 B、不含暴擊；NativeProcUnit × NativeNodeSum）
-;   X：加法項（熱度、開印後 5 秒、過熱、熔身、火域、冰封、電蝕、聖印易傷、水壓、星痕弱點；ESSBElem.HitExtra）
-;   M：乘法項（虛空、嗜血、御風／空中追擊、詛咒／星鎖／星域、終焉後、暗風多出的倍數、連殺、開印那一擊）
+;   X：加法項（熱度、開印後 5 秒、過熱、熔身、火域、冰封、聖印易傷、水壓、星痕弱點；ESSBElem.HitExtra）
+;   M：乘法項（嗜血、御風／空中追擊、星鎖／星域、終焉後、暗風多出的倍數、連殺）
+;   round 21：v0.3 的電蝕、虛空、詛咒滿層增傷、開印那一擊 ×1.5 隨技能樹改版拿掉。
 ; X = 0 且 M = 1 時補丁是 0，完全不施放。
 Function ApplyProc(Actor akTarget, Int aiElement, Bool abPower, Bool abSneak, Bool abOpening, Int aiSlot = -1, Int aiGeneration = -1)
 	If !DifferencePossible(aiElement, abPower, abSneak, abOpening)
@@ -1866,8 +1869,7 @@ EndFunction
 
 ; 差額補丁的乘法項 M（見 ApplyProc）。abConsumeStreak：連殺 ×2 會被消耗，只有真正的那一擊才問。
 Float Function DifferenceMult(Int aiElement, Actor akTarget, Bool abSneak, Bool abOpening, Bool abConsumeStreak)
-	Float mult = ESSBElem.HitExtraMult(Self, aiElement, akTarget) * ESSBElem2.TargetDamageMult(Self, akTarget) \
-		* ESSBElem3.TargetDamageMult(Self, akTarget)
+	Float mult = ESSBElem2.TargetDamageMult(Self, akTarget) * ESSBElem3.TargetDamageMult(Self, akTarget)
 	Float now = Utility.GetCurrentRealTime()
 	; 5.8 持續熟練分支「飲血」的 10 秒「嗜血」：命中效果 +20%。
 	If BloodthirstLeft > 0 && BloodthirstLeft > now
@@ -1884,9 +1886,7 @@ Float Function DifferenceMult(Int aiElement, Actor akTarget, Bool abSneak, Bool 
 			mult *= ESSBElem2.KillStreakMult(Self)
 		EndIf
 	EndIf
-	If abOpening
-		mult *= ESSBNodes.OpenStrikeMult(Self) * ESSBElem.OpenStrikeMult(Self, aiElement)
-	EndIf
+	; v0.4 把十份「開印那一擊附傷 ×1.5」全部換成各元素專屬的開場（abOpening 不再放大附傷）。
 	Return mult
 EndFunction
 
@@ -1915,7 +1915,7 @@ Float Function NativeProcUnit(Int aiElement, Bool abPower, Bool abSneak, Actor a
 			unit *= 1.5
 		EndIf
 		; 5.9 持續新手分支「驅魔」：對死靈施法者傷害 +50%。
-		If ESSBNodes.Br(Self, 6, 0, 0, 1) && IsNecromancer(akTarget)
+		If ESSBNodes.Br(Self, 6, 0, 0, 1) && IsNecromancer(akTarget) ; @node 驅魔
 			unit *= 1.5
 		EndIf
 	EndIf
@@ -1930,8 +1930,8 @@ Float Function NativeNodeSum(Int aiElement, Bool abPower)
 	Float sum = ESSBNodes.CommonHitMult(Self, aiElement, abPower)
 	If aiElement != 9
 		Int tree = aiElement - 1
-		sum += ESSBNodes.Pct(Self, Rank(tree, 0, 1), 0.01)
-		sum += ESSBNodes.Pct(Self, Rank(tree, 0, 3), 0.01) * SyncStage()
+		sum += ESSBNodes.Pct(Self, Rank(tree, 0, 1), 0.01) ; @node *附傷{fire frost lightning earth wind blood divine poison darkness astral}
+		sum += ESSBNodes.Pct(Self, Rank(tree, 0, 3), 0.01) * SyncStage() ; @node 同調每段*附傷{fire frost lightning earth wind blood divine poison darkness astral}
 	EndIf
 	Return sum
 EndFunction
@@ -1944,7 +1944,7 @@ Float Function NativeBloodCurve()
 	EndIf
 	Float mult = LinearBloodCurve(BloodPercent(), 1.3, 1.1, 0.8, 0.6)
 	Float raw = player.GetActorValuePercentage("Health")
-	If ESSBNodes.Br(Self, 5, 0, 3, 1) && raw >= 0.3 && raw <= 0.7
+	If ESSBNodes.Br(Self, 5, 0, 3, 1) && raw >= 0.3 && raw <= 0.7 ; @node 血怒
 		mult *= 1.15
 	EndIf
 	Return mult
@@ -1974,27 +1974,21 @@ Bool Function DifferencePossible(Int aiElement, Bool abPower, Bool abSneak, Bool
 	If (BloodthirstLeft > 0 && BloodthirstLeft > now) || (EndBoostLeft > 0 && EndBoostLeft > now)
 		Return True
 	EndIf
-	If GetOpenBoost(aiElement) > 0 && Rank(aiElement - 1, 1, 1) > 0
+	; 開啟熟練主線「開印後 5 秒內 X 附傷」（風的同一格是「開印拉近距離」，不算）。
+	If aiElement != 5 && GetOpenBoost(aiElement) > 0 && Rank(aiElement - 1, 1, 1) > 0 ; @node 開印後 5 秒內*附傷{fire frost lightning earth blood divine poison water darkness astral}
 		Return True
 	EndIf
-	If Br(4, 0, 4, 0) || Br(4, 2, 4, 0) || Rank(9, 0, 2) > 0 || Br(10, 1, 3, 0) || Br(10, 2, 4, 0)
-		Return True
-	EndIf
-	If abOpening && (Br(12, 1, 3, 0) || Br(aiElement - 1, 1, 1, 0))
+	If Br(4, 0, 4, 0) || Br(4, 2, 4, 0) || Br(10, 1, 3, 0) || Br(10, 2, 4, 0) ; @node 御風, 空中追擊, 星鎖, 星域
 		Return True
 	EndIf
 	If aiElement == 2
-		Return Rank(1, 0, 2) > 0
-	ElseIf aiElement == 3
-		Return Br(2, 1, 3, 2)
+		Return Rank(1, 0, 2) > 0 ; @node 冰封目標受冰附傷
 	ElseIf aiElement == 5
-		Return abSneak && (Br(4, 2, 4, 1) || Br(4, 0, 3, 2))
+		Return abSneak && (Br(4, 2, 4, 1) || Br(4, 0, 3, 2)) ; @node 連殺, 暗風
 	ElseIf aiElement == 9
-		Return Br(8, 0, 1, 0)
-	ElseIf aiElement == 10
-		Return Br(9, 0, 3, 0)
+		Return Br(8, 0, 1, 0) ; @node 水壓
 	ElseIf aiElement == 11
-		Return abPower && Br(10, 0, 2, 0)
+		Return abPower && Br(10, 0, 2, 0) ; @node 星痕弱點
 	EndIf
 	Return False
 EndFunction
@@ -2012,39 +2006,14 @@ Bool Function WillOpen(Actor akTarget, Int aiElement)
 	Return RegElem[slot] != aiElement && !(RegElem2[slot] == aiElement && RegSecondReal[slot])
 EndFunction
 
-; 關形態的有效命中（規劃 5.1）：純武藝、破魔、餘燼。
+; 關形態的有效命中（規劃 5.1）。基準真傷、吸魔、小滅法、滅法與它們的節點（含反擊的吸魔 ×2）由 DLL 在命中
+; 當下施放；這裡只剩斷咒（N4 前留在 Papyrus）。v0.3 純武藝路線（連段、節奏、疾攻、重擊碎甲、暴擊、終結、處決）
+; 與融斷路線的「餘燼」隨 v0.4 的法殺樹拿掉。
 Function OnNoFormHit(Actor akTarget, Weapon akWeapon, Bool abPower)
 	; Capture before any spell/native damage can end the casting animation.
-	Bool hitCasting = ESSBNodes.Br(Self, 11, 1, 1, 0) && (ESSBNoForm.IsCasting(akTarget) || RecentCast(akTarget))
-	Float riposte = 1.0
-	If (RiposteLeft > 0 && RiposteLeft > Utility.GetCurrentRealTime()) && Utility.GetCurrentRealTime() < RiposteLeft
-		riposte = 1.3
-	EndIf
-	RiposteLeft = 0
+	Bool hitCasting = ESSBNodes.Br(Self, 11, 1, 1, 0) && (ESSBNoForm.IsCasting(akTarget) || RecentCast(akTarget)) ; @node 斷咒
 	MarkEngaged(akTarget)
-	; Round 20 (N2): the baseline true damage, 吸魔, 小滅法 and 滅法 are cast by the DLL at hit time.
-	Float now = Utility.GetCurrentRealTime()
-	; 5.1 純武藝專精分支「節奏」：4 秒內連續命中 3 次。
-	If now - ComboTime > 4.0
-		ComboHits = 0
-	EndIf
-	ComboTime = now
-	ComboHits += 1
-	If ComboHits > 5
-		; 「疾攻」最多 -50%，所以連段只算到 5。
-		ComboHits = 5
-	EndIf
-	SetGlobal(GCombo, ComboHits)
-	If ComboHits == 3
-		ESSBNoForm.OnCombo(Self, ComboHits)
-	EndIf
-	ESSBNoForm.OnMartialHit(Self, akTarget, akWeapon, abPower, riposte)
 	ESSBNoForm.OnInterruptCast(Self, akTarget, hitCasting)
-	; 5.1 融斷熟練主線「餘燼」：關閉形態後 N 秒內無形態命中附帶前一元素附傷。
-	Float ember = ESSBNoForm.EmberRatio(Self)
-	If ember > 0.0 && EmberElem >= 1
-		ApplyDamage(EmberElem, ESSBReactions.BaseMax(Self, EmberElem) * ember * GetDamageMult(EmberElem), akTarget)
-	EndIf
 EndFunction
 
 Bool Function LastHitWasPower()
@@ -2433,16 +2402,7 @@ Function AfterOpen(Int aiElement, Actor akTarget)
 		PendingDischarge = 0
 		ESSBElem.Discharge(Self, akTarget, charge, False, 0.5)
 	EndIf
-	; 5.2 開啟新手分支「廣印」：開印時擴散到附近 1 人。
-	; InSpread 擋住「擴散出去的開印又再擴散」的連鎖，一次命中最多多一個目標。
-	If ESSBNodes.HasWideMark(Self) && !InSpread
-		InSpread = True
-		Actor[] nearby = ScanTargets(akTarget, 1050.0, 1, akTarget)
-		If nearby[0] && !HasElementMark(nearby[0], aiElement)
-			ForceOpenOn(nearby[0], aiElement)
-		EndIf
-		InSpread = False
-	EndIf
+	; v0.3 的通用樹「廣印」（開印擴散到附近 1 人）v0.4 已移除（同格改為「跳印」，DLL N3）。
 EndFunction
 
 ; 對一個還沒登記的目標直接開印（火臨／冰臨／雷臨、廣印、雙斷共用）。
@@ -2556,14 +2516,14 @@ Function FinishMark(Int aiSlot, Bool abSecond, Int aiReason, Float afMult, Bool 
 		Return
 	EndIf
 	If element == 9
-		Bool keepWet = aiReason == 0 && abAllowed && ESSBNodes.Br(Self, 8, 2, 2, 0)
-		If RegPendWetLock[aiSlot] && !keepWet
+		; v0.4 的「汪洋」是水終焉時浸濕延長到 30 秒（DLL N3），v0.3 的「保留浸濕為副印記」已拿掉：終焉一律解開汪洋之始的鎖。
+		If RegPendWetLock[aiSlot]
 			PendingStacks[aiSlot * 12 + 8] = 0
 		EndIf
 		RegPendWetLock[aiSlot] = False
 		ESSBStatus waterStatus = GetStatus(target)
 		If waterStatus
-			waterStatus.ReleaseWetLock(keepWet)
+			waterStatus.ReleaseWetLock(False)
 		EndIf
 	EndIf
 	If dead || target.IsDead() || !abAllowed
@@ -2912,8 +2872,8 @@ Function ApplyTrueDamage(Float afAmount, Actor akTarget, Int aiTree = 11, Bool a
 	If Trees && abGrantXP
 		Trees.OnValidHitXP(0)
 	EndIf
-	; 5.1 破魔傳奇分支「逆流」：真實傷害的 50% 轉為你的生命。
-	If ESSBNodes.Br(Self, 11, 1, 4, 1)
+	; 5.1 滅法傳奇分支「噬命」：真實傷害的 50% 轉為你的生命（命中的真傷由 DLL 算，這裡是反咒等 Papyrus 真傷）。
+	If ESSBNodes.Br(Self, 11, 1, 4, 1) ; @node 噬命
 		ApplyUtil(4, amount * 0.5, 0, player)
 	EndIf
 	If CachedDebugLevel >= 2
@@ -2936,7 +2896,7 @@ Bool Function CounterEligible(Actor akTarget)
 EndFunction
 
 Function StartCounter(Actor akTarget)
-	If !IsOperational() || !CounterEligible(akTarget) || !ESSBNodes.Br(Self, 11, 1, 1, 2)
+	If !IsOperational() || !CounterEligible(akTarget) || !ESSBNodes.Br(Self, 11, 1, 1, 2) ; @node 反咒
 		Return
 	EndIf
 	RegisterForAnimationEvent(akTarget, "MRh_SpellFire_Event")
@@ -3200,26 +3160,15 @@ Function RefreshTrees()
 	RefreshSyncStage()
 EndFunction
 
-; 自有常駐能力（抗咒、溫血、感應）：條件變動時加掛或移除，不用條件式常駐能力，
-; 避免規劃 1.1.1 說的「條件引擎每秒才重算一次」延遲。
+; 回復倍率（MCM）變動時：重設自有常駐能力的強度（溫血、感應）並重掛。
+; round 21：v0.3 在這裡改寫冰盾、電盾、水鏡、聖盾四個 PERK 進入點的數值；四個節點在 v0.4 都退役或改版，
+; ESP 的進入點與這裡的改寫同一輪拿掉（合約成果 3）。
 Function RefreshRecovery()
 	Actor player = ThePlayer()
 	If !player || !Trees
 		Return
 	EndIf
 	Float mult = MultRecovery.GetValue()
-	Perk ice = Trees.GetBranch(1, 0, 3, 0)
-	Perk shock = Trees.GetBranch(2, 0, 3, 0)
-	Perk water = Trees.GetBranch(8, 0, 3, 0)
-	Perk holy = Trees.GetBranch(6, 0, 1, 1)
-	ice.SetNthEntryValue(0, 0, 1.0 - 0.3 * mult)
-	shock.SetNthEntryValue(0, 0, 1.0 - 0.15 * mult)
-	water.SetNthEntryValue(0, 0, 1.0 - 0.3 * mult)
-	Int index = 0
-	While index < 5
-		holy.SetNthEntryValue(index, 0, 1.0 - 0.1 * mult)
-		index += 1
-	EndWhile
 	player.RemoveSpell(WarmBloodAbility)
 	player.RemoveSpell(InductionAbility)
 	WarmBloodAbility.SetNthEffectMagnitude(0, RecoveryAmount(20.0))
@@ -3242,16 +3191,20 @@ Function RefreshAbilities()
 	If FormActive.GetValueInt() == 1
 		element = CurrentElement.GetValueInt()
 	EndIf
-	; 5.1 破魔大師分支「抗咒」：無形態時魔抗 +15%。
-	SyncAbility(player, AntiMagicAbility, element == 0 && ESSBNodes.Br(Self, 11, 1, 3, 1))
 	; 5.3 持續熟練分支「溫血」：火形態耐力回復 +20%。
-	SyncAbility(player, WarmBloodAbility, element == 1 && ESSBNodes.Br(Self, 0, 0, 1, 1))
+	SyncAbility(player, WarmBloodAbility, element == 1 && ESSBNodes.Br(Self, 0, 0, 1, 1)) ; @node 溫血
 	; 5.5 持續新手分支「感應」：雷形態魔力回復 +20%。
-	; 5.13 持續新手分支「星輝」：星形態魔力回復 +20%，效果完全相同，沿用同一個能力記錄。
-	SyncAbility(player, InductionAbility, (element == 3 && ESSBNodes.Br(Self, 2, 0, 0, 0)) \
-		|| (element == 11 && ESSBElem3.HasStarlight(Self)))
+	SyncAbility(player, InductionAbility, element == 3 && ESSBNodes.Br(Self, 2, 0, 0, 0)) ; @node 感應
 	; 5.10 持續新手分支「免疫」：毒形態毒抗 +50%。
 	SyncAbility(player, PoisonResistAbility, element == 8 && ESSBElem3.HasPoisonImmunity(Self))
+	; 5.4 開啟熟練分支「冰甲」：冰形態下身上一圈 3 公尺寒氣（披風，只對敵對者），範圍內敵人減速 20%；
+	; 持續熟練分支「霜膚」：寒氣半徑 3 → 5 公尺，減速再 +10%。凍結量表 ≥1 的 35%（霜膚 45%）與
+	; 「命中寒氣內的敵人凍結再 +1」要等凍結量表改成目標身上的效果（DLL N3）。
+	; v0.3 的「抗咒」（無形態魔抗）與「星輝」（星形態魔力回復）分支已退役。
+	Bool iceArmor = element == 2 && ESSBNodes.Br(Self, 1, 1, 1, 1) ; @node 冰甲
+	Bool frostSkin = ESSBNodes.Br(Self, 1, 0, 1, 1) ; @node 霜膚
+	SyncAbility(player, IceArmorAbility, iceArmor && !frostSkin)
+	SyncAbility(player, IceArmorWideAbility, iceArmor && frostSkin)
 	; 規劃 1.1／5.7：風形態的移速與潛行能力。
 	RefreshWindAbilities()
 	RefreshDivineProtection()
@@ -3285,7 +3238,7 @@ Float Function BloodPercent()
 		Return 1.0
 	EndIf
 	Float percent = player.GetActorValuePercentage("Health")
-	If ESSBNodes.Br(Self, 5, 0, 2, 0)
+	If ESSBNodes.Br(Self, 5, 0, 2, 0) ; @node 逆流
 		percent = 1.0 - percent
 	EndIf
 	If percent > 1.0
@@ -3306,7 +3259,7 @@ Float Function GetBloodHitMult()
 	Float extra = 1.0
 	; 5.8 持續大師分支「血怒」：中血位（30～70%）時命中效果與吸血同時 +15%。
 	Float raw = player.GetActorValuePercentage("Health")
-	If ESSBNodes.Br(Self, 5, 0, 3, 1) && raw >= 0.3 && raw <= 0.7
+	If ESSBNodes.Br(Self, 5, 0, 3, 1) && raw >= 0.3 && raw <= 0.7 ; @node 血怒
 		extra = 1.15
 	EndIf
 	Return BloodBandMult(BloodBand(raw)) * extra
@@ -3331,9 +3284,9 @@ Float Function GetBloodLeechRatio()
 		Return 0.05
 	EndIf
 	Float ratio = BloodLeechCurve(BloodPercent())
-	ratio = ratio + 0.01 * ESSBNodes.Rank(Self, 5, 0, 2)
+	ratio = ratio + 0.01 * ESSBNodes.Rank(Self, 5, 0, 2) ; @node 吸血比例各血位
 	Float raw = player.GetActorValuePercentage("Health")
-	If ESSBNodes.Br(Self, 5, 0, 3, 1) && raw >= 0.3 && raw <= 0.7
+	If ESSBNodes.Br(Self, 5, 0, 3, 1) && raw >= 0.3 && raw <= 0.7 ; @node 血怒
 		ratio = ratio + 0.15
 	EndIf
 	If (BloodthirstLeft > 0 && BloodthirstLeft > Utility.GetCurrentRealTime())
@@ -3391,11 +3344,9 @@ Float Function BloodDrainCurve(Float percent, Bool abPower)
 EndFunction
 
 ; 維持每秒損血（給 ESSBFormRules 呼叫）。非血形態回 0。
+; v0.4「代價（扣血）不會被任何節點取消，只會被換成別的東西」：v0.3 的「血氣」減半、「血臨強化」「血約」
+; 「不死」的免扣血都已拿掉。
 Float Function BloodDrainPerSecond()
-	; 5.8 持續傳奇分支「不死」：同調三段時維持扣血歸零。
-	If ESSBNodes.Br(Self, 5, 0, 4, 0) && SyncStage() >= 3
-		Return 0.0
-	EndIf
 	If FormActive.GetValueInt() != 1 || CurrentElement.GetValueInt() != 6
 		Return 0.0
 	EndIf
@@ -3403,7 +3354,7 @@ Float Function BloodDrainPerSecond()
 	If !player
 		Return 0.0
 	EndIf
-	Return BloodDrainCurve(player.GetActorValuePercentage("Health"), False) * BloodCostScale()
+	Return BloodDrainCurve(player.GetActorValuePercentage("Health"), False)
 EndFunction
 
 ; 重擊一次的損血（占最大生命）。
@@ -3412,18 +3363,7 @@ Float Function BloodPowerCost()
 	If !player
 		Return 0.0
 	EndIf
-	Return BloodDrainCurve(player.GetActorValuePercentage("Health"), True) * BloodCostScale()
-EndFunction
-
-; 損血的折扣：血氣分支減半；血臨強化／血約／不死在視窗內歸零。
-Float Function BloodCostScale()
-	If (NoBloodCostLeft > 0 && NoBloodCostLeft > Utility.GetCurrentRealTime())
-		Return 0.0
-	EndIf
-	If ESSBNodes.Br(Self, 5, 0, 0, 0)
-		Return 0.5
-	EndIf
-	Return 1.0
+	Return BloodDrainCurve(player.GetActorValuePercentage("Health"), True)
 EndFunction
 
 ; 血形態的自身損血：這是規劃 1.1 明定的「維持費」，和真實傷害一樣是本模組少數
@@ -3952,10 +3892,6 @@ Function Tick()
 	If !IsCurrentController() || StateBroken
 		Return
 	EndIf
-	If NodeScale && Trees && LastNodeScale != NodeScale.GetValue()
-		ESSBNodes.RefreshWeaponPercent(Self)
-		LastNodeScale = NodeScale.GetValue()
-	EndIf
 	If MultRecovery && LastRecoveryScale != MultRecovery.GetValue()
 		RefreshRecovery()
 	EndIf
@@ -4029,25 +3965,13 @@ Function Tick()
 		index += 1
 	EndWhile
 
-	; 5.2 持續傳奇主線「化身」：同調三段時每 N 秒自動觸發當前元素的持續傳奇效果。
-	Int avatarCd = (CooldownSeconds(ESSBNodes.AvatarCooldown(Self)) + 0.5) as Int
-	If avatarCd > 0 && FormActive.GetValueInt() == 1 && SyncStage() >= 3
-		If now >= AvatarLeft
-			AvatarLeft = 0.0
-		EndIf
-		If AvatarLeft <= 0
-			AvatarLeft = Utility.GetCurrentRealTime() + avatarCd
-			ESSBElem.OnAvatar(Self, CurrentElement.GetValueInt())
-		EndIf
-	Else
-		AvatarLeft = Utility.GetCurrentRealTime() + avatarCd
-	EndIf
+	; 5.2 持續傳奇主線「化身」是 DLL N4（冷卻後的下一次命中觸發該元素的持續傳奇；被動數值改為 10 秒視同已取得）。
+	; v0.3「每 N 秒自動施放一次」的近似已拿掉。
 
-	; 各元素樹的每秒掛勾（冰心、雷神、庇護）。
+	; 各元素樹的每秒掛勾（冰心、雷神、毒形態、長流）。
 	If FormActive.GetValueInt() == 1
 		Int tickElement = CurrentElement.GetValueInt()
 		ESSBElem.OnTick(Self, tickElement)
-		ESSBElem2.OnTick(Self, tickElement)
 		ESSBElem3.OnTick(Self, tickElement)
 		; 風形態：每秒讀一次潛行狀態（不是每幀），變了才動能力。
 		If tickElement == 5
@@ -4104,7 +4028,7 @@ Function TickTimers()
 		Actor player = ThePlayer()
 		If player && ticks > 0
 			; 熔身：每秒回耐力 5（5.3 持續專精分支）。
-			ApplyUtil(6, 20.0 * GLevel(0) * ticks, 0, player)
+			ApplyUtil(6, 5.0 * ticks, 0, player)
 		EndIf
 		If MoltenLeft <= 0
 			; 結束後過熱歸零。
@@ -4191,11 +4115,6 @@ Function TickTimers()
 	If WindFollowLeft > 0
 		If now >= WindFollowLeft
 			WindFollowLeft = 0.0
-		EndIf
-	EndIf
-	If RiposteLeft > 0
-		If now >= RiposteLeft
-			RiposteLeft = 0.0
 		EndIf
 	EndIf
 	If EndBoostLeft > 0
@@ -4285,7 +4204,7 @@ Bool Function TimersActive()
 	If (BloodthirstLeft > 0 && BloodthirstLeft > Utility.GetCurrentRealTime()) || (GuardWindLeft > 0 && GuardWindLeft > Utility.GetCurrentRealTime()) || (GuardDivineLeft > 0 && GuardDivineLeft > Utility.GetCurrentRealTime()) || (CloakGuardLeft > 0 && CloakGuardLeft > Utility.GetCurrentRealTime())
 		Return True
 	EndIf
-	Return (NoBloodCostLeft > 0 && NoBloodCostLeft > Utility.GetCurrentRealTime()) || (WindFollowLeft > 0 && WindFollowLeft > Utility.GetCurrentRealTime()) || (RiposteLeft > 0 && RiposteLeft > Utility.GetCurrentRealTime()) || (KeepSneakLeft > 0 && KeepSneakLeft > Utility.GetCurrentRealTime()) 		|| (EndBoostLeft > 0 && EndBoostLeft > Utility.GetCurrentRealTime()) || DivineSaveUsed
+	Return (NoBloodCostLeft > 0 && NoBloodCostLeft > Utility.GetCurrentRealTime()) || (WindFollowLeft > 0 && WindFollowLeft > Utility.GetCurrentRealTime()) || (KeepSneakLeft > 0 && KeepSneakLeft > Utility.GetCurrentRealTime()) 		|| (EndBoostLeft > 0 && EndBoostLeft > Utility.GetCurrentRealTime()) || DivineSaveUsed
 EndFunction
 
 Function SetGlobal(GlobalVariable akGlobal, Int aiValue)
@@ -4845,13 +4764,15 @@ Function TickDomain()
 			Int element = DomainElem[slot]
 			If ticks > 0 && InsideDomainSlot(player, slot)
 				If element == 6
-					ApplyUtil(4, 20.0 * GLevel(5) * ticks, 0, player)
+					ApplyUtil(4, 20.0 * ticks, 0, player)
 				ElseIf element == 7
-					ApplyUtil(4, 25.0 * GLevel(6) * ticks, 0, player)
-					ApplyUtil(5, 20.0 * GLevel(6) * ticks, 0, player)
+					ApplyUtil(4, 25.0 * ticks, 0, player)
+					ApplyUtil(5, 20.0 * ticks, 0, player)
 				ElseIf element == 9
-					ApplyUtil(4, 15.0 * GLevel(8) * ticks, 0, player)
-					ApplyUtil(6, 15.0 * GLevel(8) * ticks, 0, player)
+					; 潮池：你在其中回血回耐力並每秒洗淨一次。
+					ApplyUtil(4, 15.0 * ticks, 0, player)
+					ApplyUtil(6, 15.0 * ticks, 0, player)
+					ApplyCleanse(False)
 				EndIf
 			EndIf
 			Int index = 0
@@ -4864,13 +4785,11 @@ Function TickDomain()
 						ApplyUtil(0, 50.0, 2, victim)
 					EndIf
 					If element == 4
-						; 5.6 傳奇分支「地裂」：減速 50%、耐力不回復；
-						; 專精分支「地斷」的泥沼只有減速 40%（沒點地裂時）。
-						If ESSBNodes.Br(Self, 3, 2, 4, 0)
-							ApplyUtil(0, 50.0, 2, victim)
-							ApplyUtil(21, 100.0, 2, victim)
-						Else
-							ApplyUtil(0, 40.0, 2, victim)
+						; 5.6 關閉傳奇分支「地裂」：內部敵人耐力不回復，耐力歸 0 的敵人在其中跌倒
+						; （Knockdown 本身是每目標 8 秒一次）。「掛倒地」要等倒地標記（DLL N3）。
+						ApplyUtil(21, 100.0, 2, victim)
+						If victim.GetActorValue("Stamina") <= 0.0
+							Knockdown(victim, 3.0)
 						EndIf
 					EndIf
 					If element == 8
@@ -4878,8 +4797,8 @@ Function TickDomain()
 						AddStackTo(victim, 7, ticks)
 					EndIf
 					If element == 9
-						; 5.11 關閉傳奇分支「潮池」：內部敵人減速 30%。
-						ApplyUtil(0, 30.0, 2, victim)
+						; 5.11 關閉傳奇分支「潮池」：內部敵人每秒被沖刷一個增益（沖刷法術；v0.4 寫的 DLL 原生沖刷函式尚未有）。
+						ApplyStrip(victim, True)
 					EndIf
 					If element == 10
 						; 5.12 關閉傳奇分支「死域」：內部敵人無法被治療、每秒受 B_max ×0.5 暗傷。
@@ -5103,10 +5022,7 @@ Bool Function PullTo(Actor akTarget, ObjectReference akCentre, Float afMetres)
 		Return False
 	EndIf
 	akCentre.PushActorAway(akTarget, -afMetres)
-	; 5.7 開啟大師分支「牽引」：拉近的目標 2 秒內無法後退（自有減速 80%）。
-	If ESSBNodes.Br(Self, 4, 1, 3, 0)
-		ApplyUtil(0, 80.0, 2, akTarget)
-	EndIf
+	; v0.4 的「牽引」是開印拉近時連身後 1.5 公尺內的敵人一起拉（掃描 N5），v0.3 的「拉近後減速 80%」已拿掉。
 	If CachedDebugLevel >= 2
 		LogThrottled(2, "push", akTarget.GetFormID() + " pull m=" + afMetres)
 	EndIf
@@ -5244,9 +5160,10 @@ Function SetWindFollow(Int aiSeconds)
 	WindFollowLeft = Utility.GetCurrentRealTime() + aiSeconds
 EndFunction
 
+; 5.1 大師熟練分支「反擊」：格擋成功後 3 秒內下一次命中吸魔 ×2。格擋偵測在 ESSBGuard（N4 前）；
+; 這裡在你身上掛 3 秒反擊視窗，DLL 在下一次無形態命中讀它、吸魔 ×2 後移除（N2 那一半）。
 Function SetRiposte(Int aiSeconds)
-	aiSeconds = DurationInt(aiSeconds)
-	RiposteLeft = Utility.GetCurrentRealTime() + aiSeconds
+	ApplySelfMarker(RiposteWindowSpell, DurationInt(aiSeconds))
 EndFunction
 
 Function SetPendingBleed(Int aiLayers)
@@ -5311,7 +5228,7 @@ EndFunction
 
 ; 神佑：每場戰鬥一次，脫戰時由每秒 tick 重置。
 Bool Function TakeDivineSave()
-	If DivineSaveUsed || !ESSBNodes.Br(Self, 6, 0, 4, 0) || SyncStage() < 3
+	If DivineSaveUsed || !ESSBNodes.Br(Self, 6, 0, 4, 0) || SyncStage() < 3 ; @node 神佑
 		Return False
 	EndIf
 	DivineSaveUsed = True
@@ -5494,7 +5411,8 @@ EndFunction
 ; ---- 沖刷／洗滌（5.11）：對目標的 Dispel 原型，只影響有時限的法術效果。
 ; 每目標 10 秒一次（沿用推力的環狀表，kind 2）。
 ; TARGET 路徑才留無限定的 Dispel 原型，所以這裡硬性擋掉「對玩家自己施放」。
-Function ApplyStrip(Actor akTarget)
+; 沖刷一個有時限的增益。每目標 10 秒一次（開印沖刷、洗滌）；潮池的「每秒沖刷一個」走 abEverySecond，不吃這個冷卻。
+Function ApplyStrip(Actor akTarget, Bool abEverySecond = False)
 	Actor player = ThePlayer()
 	If !player || !StripSpell || !akTarget
 		Return
@@ -5508,7 +5426,7 @@ Function ApplyStrip(Actor akTarget)
 	If !IsValidTarget(akTarget)
 		Return
 	EndIf
-	If !TakePush(akTarget, 2)
+	If !abEverySecond && !TakePush(akTarget, 2)
 		Return
 	EndIf
 	player.DoCombatSpellApply(StripSpell, akTarget)
@@ -6089,10 +6007,9 @@ Function OnKillEvent(Actor akVictim, Actor akKiller = None)
 	Bool ash = ESSBElem2.ShouldAsh(Self, killingElement)
 	ESSBElem.OnKill(Self, element, akVictim, freeze)
 	ESSBElem2.OnKill(Self, element, akVictim, bleed, killingElement, ash)
-	ESSBElem3.OnKill(Self, element, akVictim, poison, killingElement, ash, curse)
+	; v0.3 的毒「蔓延」、暗「收割」「亡者歸來」、無元素「無魔」擊殺掛勾在 v0.4 是死亡處理（DLL N5）或已移除。
 	SettleSneakKill(akVictim, killingElement)
 	SettleKillProc(akVictim)
-	ESSBNoForm.OnKill(Self, akVictim, ESSBNoForm.IsSpellUser(Self, akVictim))
 	If slot >= 0 && RegActor[slot] == akVictim
 		ClearSlot(slot)
 	EndIf
@@ -6303,7 +6220,7 @@ Function SetFrozen(Actor akTarget, Float afSeconds)
 EndFunction
 
 Function ConsumeEndCharge(Int aiCharge)
-	If aiCharge > 0 && !ESSBNodes.Br(Self, 2, 2, 1, 0)
+	If aiCharge > 0 && !ESSBNodes.Br(Self, 2, 2, 1, 0) ; @node 蓄餘
 		SelfCharge -= aiCharge
 		If SelfCharge < 0
 			SelfCharge = 0
@@ -7078,6 +6995,15 @@ Bool Function ValidateBindings()
 	If !HitBonusSpells || !BloodGuardSpell || !EchoPendingSpell || !TwinWindowSpell
 		Return False
 	EndIf
+	If !RiposteWindowSpell
+		Return False
+	EndIf
+	If !IceArmorAbility
+		Return False
+	EndIf
+	If !IceArmorWideAbility
+		Return False
+	EndIf
 	If !GDivineArmed
 		Return False
 	EndIf
@@ -7234,14 +7160,12 @@ Function ResetLoadClock()
 	ThunderLeft = 0.0
 	DoubleBurstLeft = 0.0
 	SyncKeepLeft = 0.0
-	AvatarLeft = 0.0
 	BloodthirstLeft = 0.0
 	GuardWindLeft = 0.0
 	GuardDivineLeft = 0.0
 	CloakGuardLeft = 0.0
 	NoBloodCostLeft = 0.0
 	WindFollowLeft = 0.0
-	RiposteLeft = 0.0
 	KeepSneakLeft = 0.0
 	EndBoostLeft = 0.0
 	GuardDarkLeft = 0.0
@@ -7608,7 +7532,7 @@ Function RefreshDivineProtection()
 		player.EndDeferredKill()
 		Return
 	EndIf
-	Bool eligible = Enabled.GetValueInt() == 1 && FormActive.GetValueInt() == 1 && !DivineSaveUsed && SyncStage() >= 3 && ESSBNodes.Br(Self, 6, 0, 4, 0)
+	Bool eligible = Enabled.GetValueInt() == 1 && FormActive.GetValueInt() == 1 && !DivineSaveUsed && SyncStage() >= 3 && ESSBNodes.Br(Self, 6, 0, 4, 0) ; @node 神佑
 	If eligible && !DivineArmed
 		player.StartDeferredKill()
 		DivineArmed = True
@@ -7777,7 +7701,7 @@ EndFunction
 
 Float Function BloodBandMult(Int aiBand)
 	Int band = aiBand
-	If Br(5, 0, 2, 0)
+	If Br(5, 0, 2, 0) ; @node 逆流
 		band = 3 - band
 	EndIf
 	If band == 0

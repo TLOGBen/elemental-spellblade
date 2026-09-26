@@ -139,48 +139,65 @@ def run():
     for t in plan['trees']:
         for r in t['routes']:
             for n in r['tiers']:
-                rows.append(dict(tree=t['id'],tree_index=t['index'],route=r['index'],route_name=r['name'],tier=n['index'],tier_name=n['name'],old=n['main_original'],new=n['main'],status=n['balance_class'],reason=n['balance_reason'],site=NODES[t['id'],r['index'],n['index'],'M'][1]))
+                rows.append(dict(tree=t['id'],tree_index=t['index'],route=r['index'],route_name=r['name'],tier=n['index'],tier_name=n['name'],old=n['main_original'],new=n['main'],status=n['balance_class'],reason=n['balance_reason'],status_v04=NODES[t['id'],n['main_label']][0],site=NODES[t['id'],n['main_label']][1]))
     assert len(rows)==195
-    # Map every approved mainline to its actual Pct callsite, expanding shared dispatch explicitly.
+    # Round 21 (v0.4): every ESSBNodes.Pct call is bound to the node it reads BY v0.4 NAME, through the identity
+    # table (build/fix21_identity.py resolves each `; @node` read, element-skeleton reads expanded per tree), not by
+    # a (tree, route, tier) literal: a Pct over a read of slot X counts for the node that sits at X in v0.4.
+    import fix21_identity as ident
+    idplan=ident.load_plan();by_pos,by_name=ident.index(idplan);table,_=ident.statuses(by_name)
+    reads,errs=ident.check_papyrus(ident.scripts(),by_pos,by_name,table,[x['id'] for x in idplan['trees']])
+    assert not errs,errs[:5]
+    per_line=collections.defaultdict(list)
+    for rd in reads:per_line[rd['file'],rd['line']].append(rd)
+    tree_of={x['id']:x['index'] for x in idplan['trees']}
+    def pos(node):
+        n=by_name[node];return (tree_of[n['tree']],n['route'],n['tier'])
     mapped=collections.defaultdict(list)
-    for p in (ROOT/'src').glob('*.psc'):
-        fn=''
-        for ln,line in enumerate(p.read_text(encoding='utf-8').splitlines(),1):
-            m=re.search(r'\bFunction (\w+)\(',line,re.I)
-            if m:fn=m[1]
-            if line.lstrip().startswith(';'):continue
-            for m in re.finditer(r'ESSBNodes.Pct\(akCtl, (?:ESSBNodes\.)?Rank\(akCtl, (\d+), (\d+), (\d+)\), ([\d.]+)\)',line):
-                mapped[tuple(map(int,m.group(1,2,3)))].append((str(p.relative_to(ROOT))+':'+fn,ln,float(m[4])))
-    def add(tree,route,tier,file,fn,base):
-        src=(ROOT/'src'/file).read_text(encoding='utf-8');b=re.search(r'\bFunction '+fn+r'\(.*?\n(.*?)EndFunction',src,re.S)[1]
-        assert 'Pct(' in b,(file,fn)
-        mapped[tree,route,tier].append(('src/'+file+':'+fn,src[:src.index(b)].count('\n')+1,base))
-    for t in range(11):
-        add(t,1,4,'ESSBElem.psc','OpenMult',.03)
-        for tier,fn,base in [(0,'EndMult',.02),(1,'BurstMult',.02),(3,'BurstMult',.02),(4,'SignatureMult',.03)]:
-            # Wind has a 5% landing coefficient; poison has its own catalyst Pct.
-            if tier==4 and t in (4,7):continue
-            add(t,2,tier,'ESSBElem.psc',fn,base)
-    for t in [1,2,6,7,8]:add(t,2,2,'ESSBElem.psc','OnEnd',.01)
-    add(9,0,2,'ESSBElem3.psc','TargetDamageMult',.01)
+    pct_sites=0
+    for name,text in sorted(ident.scripts().items()):
+        body=ident.strip_docs(text);fn='';assigned={}
+        for number,line in ident.logical_lines(body):
+            code,_=ident.split_comment(line)
+            m=ident.FUNC_RE.match(code)
+            if m:fn=m.group(1);assigned={}
+            here=per_line.get((name,number),[])
+            v=re.match(r'\s*(?:Int|Float)?\s*(\w+)\s*=.*\bRank\(',code)
+            if v and here:assigned[v[1]]=here
+            for pm in re.finditer(r'\bESSBNodes\.Pct\(',code):
+                if fn=='Pct':continue
+                args,_=ident.call_args(code,pm.end()-1)
+                base=float(args[2]);first=args[1]
+                if re.search(r'\bRank\(',first):
+                    k=len(list(ident.CALL_RE.finditer(ident.strip_strings(code[:pm.end()]))))   # reads before this Pct's own Rank
+                    src=[here[k]]
+                else:
+                    src=assigned.get(first.strip());assert src,(name,number,'Pct over an unknown rank',first)
+                for rd in src:
+                    for node in rd['nodes']:mapped[pos(node)].append((f'src/{name}:{fn}',number,base))
+                pct_sites+=1
+    assert pct_sites>=30,pct_sites
     # Round 20 (N2): the sustain adept / master element lines are applied by the DLL at hit time
-    # (native/include/HitMath.h NodeSum, slots from the generated node::kProcAdept / kProcMaster tables);
-    # the Papyrus difference patch only mirrors them (ESSBController.NativeNodeSum), so the site is the DLL.
+    # (native/include/HitMath.h NodeSum over the generated node::kProcAdept / kProcMaster tables); the Papyrus
+    # ESSBController.NativeNodeSum mirror (bound above) must cover exactly the same cells with the same 1%.
     hitmath=(ROOT/'native/include/HitMath.h').read_text(encoding='utf-8')
     nodesum=re.search(r'constexpr float NodeSum\(.*?\n\}',hitmath,re.S)[0]
     manifest=(ROOT/'native/include/ManifestData.h').read_text(encoding='utf-8')
-    for table,tier in (('kProcAdept',1),('kProcMaster',3)):
-        assert f'Pct(t, nodes.Rank(node::{table}[element]), 0.01f)' in nodesum,(table,'DLL site')
-        cells=re.search(r'NodeId '+table+r'\[12\] = \{(.*?)\};',manifest)[1]
-        for t in range(11):
-            if t==8:
+    for table_name,tier in (('kProcAdept',1),('kProcMaster',3)):
+        assert f'Pct(t, nodes.Rank(node::{table_name}[element]), 0.01f)' in nodesum,(table_name,'DLL site')
+        cells=re.search(r'NodeId '+table_name+r'\[12\] = \{(.*?)\};',manifest)[1]
+        for tr in range(11):
+            if tr==8:
                 continue  # water: its sustain adept / master lines are recovery, not proc damage
-            assert '{'+f'{t}, 0, {tier}'+'}' in cells,(table,t)
-            mapped[t,0,tier].append((f'native/include/HitMath.h:NodeSum[{table}]',hitmath[:hitmath.index(nodesum)].count('\n')+1,.01))
-    for route,tier,base in [(0,0,.01),(0,3,.005),(2,3,.01)]:add(11,route,tier,'ESSBNodes.psc','RefreshWeaponPercent',base)
+            assert '{'+f'{tr}, 0, {tier}'+'}' in cells,(table_name,tr)
+            assert any(s[0]=='src/ESSBController.psc:NativeNodeSum' and math.isclose(s[2],.01) for s in mapped[tr,0,tier]),(table_name,tr)
+            mapped[tr,0,tier].append((f'native/include/HitMath.h:NodeSum[{table_name}]',hitmath[:hitmath.index(nodesum)].count('\n')+1,.01))
     scaled={}
     for row in rows:
         k=row['tree_index'],row['route'],row['tier']
+        if row['status']=='SCALED' and row['status_v04'].startswith('LATER'):
+            # v0.4 node owned by a later slice: record only (ruling R4), so nothing may read it yet.
+            assert k not in mapped,('LATER node has a Pct site',row,mapped[k]);continue
         if row['status']=='SCALED':
             expected=float(re.search(r'\+([\d.]+)%／點',row['old'])[1])/100
             assert k in mapped,('unbound',row)
@@ -192,20 +209,9 @@ def run():
         ctl.NodeScale.x=scale
         for rank in [0,1,15]:
             for base in [.002,.005,.01,.02,.03,.05]:assert math.isclose(reg['ESSBNodes'].Pct(ctl,rank,base),scale*rank*base)
-    # Actual helper drives all seven engine entries at every rank and every slider value.
-    ctl=Ctl(settings);reg=make_scripts(ROOT/'src',ctl);perks={}
-    class Perk:
-        def __init__(self):self.entries={}
-        def SetNthEntryValue(self,n,i,value):self.entries[n]=value
-    def perk(tree,route,tier,rank):return perks.setdefault((route,tier,rank),Perk())
-    ctl.Trees.GetMainPerk=perk
-    for scale in [1,1.5,3,5]:
-        ctl.NodeScale.x=scale;reg['ESSBNodes'].RefreshWeaponPercent(ctl)
-        for rank in range(1,16):
-            assert math.isclose(perks[0,0,rank].entries[0],1+.01*rank*scale)
-            assert math.isclose(perks[2,3,rank].entries[0],1+.01*rank*scale)
-            assert len(perks[0,3,rank].entries)==5
-            assert all(math.isclose(v,1+.005*rank*scale) for v in perks[0,3,rank].entries.values())
+    # Round 21 (outcome 3): ESSBNodes.RefreshWeaponPercent is gone with the v0.3 weapon-damage entry points
+    # (純武藝新手／戰意／淬火); v0.4 has no main line that needs a script-scaled PERK entry point.
+    assert not re.search(r'RefreshWeaponPercent\s*\(',''.join(ident.split_comment(l)[0] for s in ident.scripts().values() for l in s.splitlines()))
     # Round 20 (N2): the v0.3 破魔 main line (ESSBNoForm.OnManaBreak) was replaced by the DLL's v0.4 siphon /
     # small dispel / dispel; their formulas are tested natively (hit_pipeline_test groups A0/A), not here.
     cases='retired in round 20: no-form siphon and dispel moved to the DLL (native groups A0/A)'
@@ -213,7 +219,7 @@ def run():
     water=[]
     for scale in [1,3,5]:
         ctl=Ctl(settings);ctl.NodeScale.x=scale;reg=make_scripts(ROOT/'src',ctl)
-        value=reg['ESSBElem3'].FlowPercent(ctl);assert math.isclose(value,.08);assert reg['ESSBElem3'].WetSlow(ctl)==30
+        value=reg['ESSBElem3'].FlowPercent(ctl);assert math.isclose(value,.08);assert reg['ESSBElem3'].WetSlow(ctl)==settings['water_wet_slow_pct']
         water.append(dict(node_scale=scale,regen_pct=value*100,health_300=value*300,health_500=value*500))
     # Round 20 (N2): GetHitMult no longer exists. The proc multiplier is the DLL's (native group A) plus the
     # Papyrus difference patch for target-side terms, checked against the same reference by build/fix20_verify.py.
@@ -224,7 +230,7 @@ def run():
     records,meta=build_v03.read_plugin(build_v03.OUT/build_v03.PLUGIN);rec={r.edid:r for r in records}
     written=json.loads((ROOT/'build/v03-formids.json').read_text(encoding='utf-8'));baseline=json.loads((ROOT/'.codex/pre-fix6-snapshot/v03-formids.json').read_text(encoding='utf-8'))['records']
     assert all(build_v03.state_schema.stable_identity(k,written['records'].get(k),v) for k,v in baseline.items())
-    added={k:v for k,v in written['records'].items() if k not in baseline and k not in build_v03.SCHEMA_STUBS and k not in build_v03.GUARD_WINDOW_EDIDS and k not in (build_v03.hit18.new_edids(build_v03) | build_v03.hit19.NEW_EDIDS) and not k.startswith('ESSB_Mult')}
+    added={k:v for k,v in written['records'].items() if k not in baseline and k not in build_v03.SCHEMA_STUBS and k not in build_v03.GUARD_WINDOW_EDIDS and k not in (build_v03.hit18.new_edids(build_v03) | build_v03.hit19.NEW_EDIDS | set(build_v03.tree_v04.NEW_PERK_EDIDS)) and not k.startswith('ESSB_Mult')}
     assert len(added)==12 and all(v['type']=='GLOB' if 'type' in v else v['sig']=='GLOB' for v in added.values())
     assert all(int(v['id'],16)>max(int(o['id'],16) for o in baseline.values()) for v in added.values())
     for (tree,r,t),n in by.items():
@@ -232,7 +238,7 @@ def run():
             desc=rec[f'ESSB_P_{tree}_{r}_{t}_M{rank}'].d['DESC'].rstrip(b'\0').decode('utf-8')
             assert desc==f'第 {rank}/15 點：'+n['main']
         for b in n['branches']:
-            desc=rec[f'ESSB_P_{tree}_{r}_{t}_B{b["index"]+1}'].d['DESC'].rstrip(b'\0').decode('utf-8')
+            desc=rec[f'ESSB_P_{tree}_{r}_{t}_B{b["slot"]+1}'].d['DESC'].rstrip(b'\0').decode('utf-8')
             assert b['description'] in desc
     # Peak Value Modifier on the only negative SpeedMult utility: non-stacking max with 70 clamp.
     import struct

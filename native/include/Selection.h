@@ -2,7 +2,8 @@
 // Stage 4a of the native hit handler: which spell record each planned cast uses (local FormIDs from
 // the generated manifest). Round 20 (N2): the proc spell is chosen by element and normal / power only;
 // the round-18 magnitude variants (lightning R1-R5, blood B1-B3, wind sneak) are gone - the magnitude
-// is the per-hit override now.
+// is the per-hit override now. Durations cannot be overridden: silence and (round 21) the soaked slow have one
+// spell per whole second.
 #include "HitMath.h"
 #include "ManifestData.h"
 
@@ -35,11 +36,13 @@ constexpr std::uint32_t SpellFor(const CastStep& step) noexcept
     case Cast::kTrueDamage:
         return spell::kTrueDamage;
     case Cast::kSoakSlow:
-        return spell::kSoakSlow;
+        return step.seconds >= 1 && step.seconds <= kSoakSpellCount ? spell::kSoak[step.seconds - 1] : 0;
     case Cast::kDispelMark:
         return spell::kDispelMark;
     case Cast::kSilence:
         return step.seconds >= 1 && step.seconds <= kSilenceSpellCount ? spell::kSilence[step.seconds - 1] : 0;
+    case Cast::kHushSpent:
+        return spell::kHushSpent;
     case Cast::kHeal:
         return spell::kHeal;
     case Cast::kRestoreMagicka:
@@ -57,7 +60,13 @@ constexpr std::uint32_t SpellFor(const CastStep& step) noexcept
 // Casts whose spell must keep its record magnitudes (script markers, silence with its -100 regen part).
 constexpr bool UsesOverride(Cast cast) noexcept
 {
-    return cast != Cast::kDispelMark && cast != Cast::kSilence;
+    return cast != Cast::kDispelMark && cast != Cast::kSilence && cast != Cast::kHushSpent;
+}
+
+// Casts with one spell per whole second (the override cannot set a duration).
+constexpr int DurationVariants(Cast cast) noexcept
+{
+    return cast == Cast::kSilence ? kSilenceSpellCount : cast == Cast::kSoakSlow ? kSoakSpellCount : 1;
 }
 
 }  // namespace essb

@@ -1,4 +1,4 @@
-"""Round 20 (N2) native test fixtures, generated from the reference model and the generator's record table.
+"""Round 20 (N2) / round 21 native test fixtures, generated from the reference model and the generator's record table.
 
 build/fix20-magnitude-table.json  group A: hit scenarios (inputs, scripted random draws, expected casts)
                                   computed by build/fix20_reference.py from the v0.4 formulas.
@@ -40,7 +40,7 @@ def _scenario(name, state, draws):
         fields.pop(key)
     return dict(name=name, state=fields, ranks=ranks, branches=branches, levels=levels, draws=draws,
                 expect=dict(casts=[list(c) for c in out['casts']], consume_echo=out['consume_echo'],
-                            crit=out['crit'], magnitude=out['magnitude']))
+                            consume_riposte=out['consume_riposte'], crit=out['crit'], magnitude=out['magnitude']))
 
 
 def _rich_nodes(element):
@@ -95,9 +95,9 @@ def scenarios():
     # A4: wind sneak attack (melee power, ranged sneak shot counted as power by MakeAttack), wet slow, flat nodes.
     for power, sneak in itertools.product((False, True), (False, True)):
         rows.append(_scenario(f'A4 wind p{int(power)} s{int(sneak)}', replace(base, element=ref.WIND, power=power, sneak=sneak), _draw_proc(ref.WIND, 0.8)))
-    for element, soak, cap in itertools.product((ref.FIRE, ref.WATER), (0, 10), (70.0, 20.0, 90.0)):
-        state = replace(base, element=element, wet=True, ranks={ref.NODES['kWaterSoakSlow']: soak} if soak else {}, slow_cap=cap)
-        rows.append(_scenario(f'A4 wet e{element} soak{soak} cap{cap}', state, _draw_proc(element, 0.1)))
+    for element, cap in itertools.product((ref.FIRE, ref.WATER), (70.0, 20.0, 90.0)):
+        state = replace(base, element=element, wet=True, slow_cap=cap)
+        rows.append(_scenario(f'A4 wet e{element} cap{cap}', state, _draw_proc(element, 0.1)))
     for points, drain_back, recov, drain in itertools.product((0, 1, 15), (False, True), (1.0, 1.5), (1.0, 0.5)):
         branches = {ref.NODES['kEarthDrainStrength']} if drain_back else set()
         state = replace(base, element=ref.EARTH, ranks={ref.NODES['kEarthStaminaCut']: points} if points else {},
@@ -163,6 +163,29 @@ def scenarios():
         state = replace(nf, power=True, ranks={ref.NODES['kNoFormSilence']: points} if points else {}, vip=vip,
                         mult_duration=duration, t_mp=10.0, t_mp_max=50.0, mp=100.0, mp_max=100.0)
         rows.append(_scenario(f'A6 silence pts{points} vip{int(vip)} dur{duration}', state, []))
+    # A7 (round 21): the v0.4 nodes the DLL now reads - 吸魔量, 反擊, 滅法倍率, 燒魔倍數, 寂滅 (R5) and the
+    # soaked slow's duration (R6).
+    for points, window, owned, power in itertools.product((0, 5, 15), (False, True), (False, True), (False, True)):
+        state = replace(nf, power=power, riposte=window, t_mp=400.0, t_mp_max=400.0, mp=150.0, mp_max=300.0,
+                        ranks={ref.NODES['kNoFormSiphonAmount']: points} if points else {},
+                        branches={ref.NODES['kNoFormRiposte']} if owned else set())
+        rows.append(_scenario(f'A7 siphon pts{points} win{int(window)} own{int(owned)} p{int(power)}', state, []))
+    for rate, multiple, power, t_mp in itertools.product((0, 7, 15), (0, 15), (False, True), (30.0, 900.0)):
+        ranks = {}
+        if rate:
+            ranks[ref.NODES['kNoFormDispelRate']] = rate
+        if multiple:
+            ranks[ref.NODES['kNoFormBurnMultiple']] = multiple
+        state = replace(nf, power=power, ranks=ranks, t_mp=t_mp, t_mp_max=900.0, mp=200.0, mp_max=400.0)
+        rows.append(_scenario(f'A7 dispel rate{rate} mult{multiple} p{int(power)} t{t_mp}', state, []))
+    for layers, spent, owned, power in itertools.product((0, 2, 3, 5), (False, True), (False, True), (False, True)):
+        state = replace(nf, power=power, hush=layers, hush_spent=spent, t_mp=300.0, t_mp_max=300.0, mp=200.0, mp_max=200.0,
+                        branches={ref.NODES['kNoFormHushBreak']} if owned else set())
+        rows.append(_scenario(f'A7 hush {layers} spent{int(spent)} own{int(owned)} p{int(power)}', state, []))
+    for points, duration in itertools.product((0, 1, 5, 14, 15), (0.25, 0.5, 1.0, 1.4, 2.0, 3.0)):
+        state = replace(base, element=ref.EARTH, wet=True, mult_duration=duration,
+                        ranks={ref.NODES['kWaterSoakDuration']: points} if points else {})
+        rows.append(_scenario(f'A7 soak pts{points} dur{duration}', state, _draw_proc(ref.EARTH, 0.4)))
     return rows
 
 

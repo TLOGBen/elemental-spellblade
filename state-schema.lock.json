@@ -1,6 +1,6 @@
 {
-  "state_schema_version": 9,
-  "signature_sha256": "791625a6540a7c7ec0d003ca8dd0b8a6a08e7c1a765a318a48bbb7e4b1bed05c",
+  "state_schema_version": 10,
+  "signature_sha256": "89235fde727b2ef1ae79b578533f8a31a14b6c4dbb833bc16225e3dc1bcb473c",
   "signatures": {
     "ESSBStatus": {
       "parent": "activemagiceffect",
@@ -558,11 +558,6 @@
         [
           "astralhits",
           "int",
-          "member"
-        ],
-        [
-          "avatarleft",
-          "float",
           "member"
         ],
         [
@@ -1346,6 +1341,16 @@
           "member"
         ],
         [
+          "icearmorability",
+          "spell",
+          "auto"
+        ],
+        [
+          "icearmorwideability",
+          "spell",
+          "auto"
+        ],
+        [
           "icehearttime",
           "float",
           "member"
@@ -1956,9 +1961,9 @@
           "member"
         ],
         [
-          "riposteleft",
-          "float",
-          "member"
+          "ripostewindowspell",
+          "spell",
+          "auto"
         ],
         [
           "rockarmorshown",
@@ -2552,8 +2557,8 @@
     }
   },
   "quests": {
-    "ESSB_MainQuest": "00600E",
-    "ESSB_MCMQuest": "00600F"
+    "ESSB_MainQuest": "006010",
+    "ESSB_MCMQuest": "006011"
   },
   "history": [
     {
@@ -2619,6 +2624,14 @@
       "quests": {
         "ESSB_MainQuest": "00600C",
         "ESSB_MCMQuest": "00600D"
+      }
+    },
+    {
+      "state_schema_version": 9,
+      "signature_sha256": "791625a6540a7c7ec0d003ca8dd0b8a6a08e7c1a765a318a48bbb7e4b1bed05c",
+      "quests": {
+        "ESSB_MainQuest": "00600E",
+        "ESSB_MCMQuest": "00600F"
       }
     }
   ]

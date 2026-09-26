@@ -42,9 +42,10 @@ inline constexpr std::uint32_t kRestoreStamina = 0x10a6;  // ESSB_Util_RestoreSt
 inline constexpr std::uint32_t kTrueDamage = 0x5021;  // ESSB_TrueDamageSpell
 inline constexpr std::uint32_t kDispelMark = 0x5023;  // ESSB_ManaBreakSpell
 inline constexpr std::uint32_t kSpendMagicka = 0x5301;  // ESSB_Native_SpendMagicka
-inline constexpr std::uint32_t kSoakSlow = 0x5302;  // ESSB_Native_SoakSlow
 inline constexpr std::uint32_t kBloodGuard = 0x5304;  // ESSB_BloodGuard
+inline constexpr std::uint32_t kHushSpent = 0x5343;  // ESSB_HushSpent
 inline constexpr std::uint32_t kSilence[8] = {0x5310, 0x5311, 0x5312, 0x5313, 0x5314, 0x5315, 0x5316, 0x5317};  // ESSB_Native_Silence_1..8
+inline constexpr std::uint32_t kSoak[30] = {0x5320, 0x5321, 0x5322, 0x5323, 0x5324, 0x5325, 0x5326, 0x5327, 0x5328, 0x5302, 0x5329, 0x532a, 0x532b, 0x532c, 0x532d, 0x532e, 0x532f, 0x5330, 0x5331, 0x5332, 0x5333, 0x5334, 0x5335, 0x5336, 0x5337, 0x5338, 0x5339, 0x533a, 0x533b, 0x533c};  // soaked slow of 1..30 s: ESSB_Native_Soak_<s>, 10 s = ESSB_Native_SoakSlow
 }  // namespace spell
 
 // Effects the DLL looks for on the target or the player.
@@ -54,6 +55,9 @@ inline constexpr std::uint32_t kSilence = 0x5024;  // ESSB_SilenceEffect
 inline constexpr std::uint32_t kBloodGuard = 0x5303;  // ESSB_BloodGuardEffect
 inline constexpr std::uint32_t kEchoPending = 0x5305;  // ESSB_EchoPendingEffect
 inline constexpr std::uint32_t kTwinWindow = 0x5307;  // ESSB_TwinWindowEffect
+inline constexpr std::uint32_t kRiposteWindow = 0x5344;  // ESSB_RiposteWindowEffect
+inline constexpr std::uint32_t kHush = 0x5340;  // ESSB_HushEffect
+inline constexpr std::uint32_t kHushSpent = 0x5342;  // ESSB_HushSpentEffect
 }  // namespace effect
 
 namespace glob {
@@ -96,31 +100,36 @@ inline constexpr std::uint32_t kBranchPerkBase = 0x2000;
 inline constexpr int kMainMaxRank = 15;
 inline constexpr int kBranchSlots = 4;
 
-// Node slots N2 reads; each checked against the ESP node table (NODE_IDENTITY in fix19_native.py).
+// Node slots the DLL reads, looked up by v0.4 name (NODE_IDENTITY in fix19_native.py, build/fix21_identity.py).
 namespace node {
-inline constexpr NodeId kEarthStaminaCut{3, 0, 2};  // ESP: 命中削減目標耐力
-inline constexpr BranchId kEarthDrainStrength{3, 0, 2, 0};  // ESP: 汲力
-inline constexpr BranchId kWindTailwind{4, 0, 1, 1};  // ESP: 順風
-inline constexpr BranchId kBloodOverflow{5, 0, 1, 1};  // ESP: 血盾
-inline constexpr NodeId kBloodLeechRatio{5, 0, 2};  // ESP: 吸血比例各血位
-inline constexpr BranchId kBloodReverse{5, 0, 2, 0};  // ESP: 逆流
-inline constexpr BranchId kBloodRage{5, 0, 3, 1};  // ESP: 血怒
-inline constexpr BranchId kDivineExorcism{6, 0, 0, 1};  // ESP: 驅魔
-inline constexpr BranchId kWaterClearStream{8, 0, 0, 0};  // ESP: 清流
-inline constexpr NodeId kWaterSoakSlow{8, 1, 0};  // ESP: 浸濕減速
-inline constexpr NodeId kCommonStage2{12, 0, 1};  // ESP: 同調二段時附傷
-inline constexpr NodeId kCommonStage3Power{12, 0, 3};  // ESP: 同調三段時重擊附傷
-inline constexpr NodeId kCommonAll1{12, 1, 0};  // ESP: 所有元素附傷 +
-inline constexpr NodeId kCommonAll2{12, 1, 3};  // ESP: 所有元素附傷再
-inline constexpr BranchId kCommonEcho{12, 2, 0, 0};  // ESP: 餘響
-inline constexpr NodeId kCommonEchoRatio{12, 2, 2};  // ESP: 切換後首次命中附帶前一元素附傷
-inline constexpr BranchId kNoFormSeize{11, 1, 0, 0};  // ESP: 蝕魔
-inline constexpr NodeId kNoFormSilence{11, 1, 2};  // ESP: 沉默
-inline constexpr BranchId kNoFormDepletion{11, 1, 2, 0};  // ESP: 枯竭
-inline constexpr BranchId kNoFormStillness{11, 1, 2, 1};  // ESP: 靜寂
-inline constexpr NodeId kNoFormBurnCasters{11, 1, 3};  // ESP: 對施法者與帶魔法護盾、元素披風的敵人
-inline constexpr NodeId kNoFormLowMagicka{11, 1, 4};  // ESP: 目標魔力低於 25% 時命中傷害
-inline constexpr BranchId kNoFormDevour{11, 1, 4, 1};  // ESP: 逆流
+inline constexpr NodeId kEarthStaminaCut{3, 0, 2};  // v0.4 earth 命中削減目標耐力
+inline constexpr BranchId kEarthDrainStrength{3, 0, 2, 0};  // v0.4 earth 汲力
+inline constexpr BranchId kWindTailwind{4, 0, 1, 1};  // v0.4 wind 順風
+inline constexpr BranchId kBloodOverflow{5, 0, 1, 1};  // v0.4 blood 血溢
+inline constexpr NodeId kBloodLeechRatio{5, 0, 2};  // v0.4 blood 吸血比例各血位
+inline constexpr BranchId kBloodReverse{5, 0, 2, 0};  // v0.4 blood 逆流
+inline constexpr BranchId kBloodRage{5, 0, 3, 1};  // v0.4 blood 血怒
+inline constexpr BranchId kDivineExorcism{6, 0, 0, 1};  // v0.4 divine 驅魔
+inline constexpr BranchId kWaterClearStream{8, 0, 0, 0};  // v0.4 water 清流
+inline constexpr NodeId kWaterSoakDuration{8, 0, 0};  // v0.4 water 浸濕持續
+inline constexpr NodeId kCommonStage2{12, 0, 1};  // v0.4 common 同調二段時附傷
+inline constexpr NodeId kCommonStage3Power{12, 0, 3};  // v0.4 common 同調三段時重擊附傷
+inline constexpr NodeId kCommonAll1{12, 1, 0};  // v0.4 common 所有元素附傷
+inline constexpr NodeId kCommonAll2{12, 1, 3};  // v0.4 common 所有元素附傷再
+inline constexpr BranchId kCommonEcho{12, 2, 0, 0};  // v0.4 common 餘響
+inline constexpr NodeId kCommonEchoRatio{12, 2, 2};  // v0.4 common 切換後首次命中附帶前一元素附傷
+inline constexpr NodeId kNoFormSiphonAmount{11, 0, 0};  // v0.4 noform 吸魔量
+inline constexpr BranchId kNoFormRiposte{11, 0, 1, 0};  // v0.4 noform 反擊
+inline constexpr NodeId kNoFormDispelRate{11, 1, 0};  // v0.4 noform 滅法倍率
+inline constexpr BranchId kNoFormSeize{11, 1, 0, 0};  // v0.4 noform 奪魔
+inline constexpr NodeId kNoFormBurnMultiple{11, 1, 1};  // v0.4 noform 燒魔倍數
+inline constexpr NodeId kNoFormSilence{11, 1, 2};  // v0.4 noform 沉默
+inline constexpr BranchId kNoFormDepletion{11, 1, 2, 0};  // v0.4 noform 枯竭
+inline constexpr BranchId kNoFormStillness{11, 1, 2, 1};  // v0.4 noform 靜寂
+inline constexpr NodeId kNoFormBurnCasters{11, 1, 3};  // v0.4 noform 對施法者與帶魔法護盾、元素披風的敵人燒魔
+inline constexpr NodeId kNoFormLowMagicka{11, 1, 4};  // v0.4 noform 目標魔力低於 25% 時命中傷害
+inline constexpr BranchId kNoFormDevour{11, 1, 4, 1};  // v0.4 noform 噬命
+inline constexpr BranchId kNoFormHushBreak{11, 2, 1, 2};  // v0.4 noform 寂滅
 inline constexpr NodeId kProcAdept[12] = {kNoNode, {0, 0, 1}, {1, 0, 1}, {2, 0, 1}, {3, 0, 1}, {4, 0, 1}, {5, 0, 1}, {6, 0, 1}, {7, 0, 1}, kNoNode, {9, 0, 1}, {10, 0, 1}};  // [element]; water has none
 inline constexpr NodeId kProcMaster[12] = {kNoNode, {0, 0, 3}, {1, 0, 3}, {2, 0, 3}, {3, 0, 3}, {4, 0, 3}, {5, 0, 3}, {6, 0, 3}, {7, 0, 3}, kNoNode, {9, 0, 3}, {10, 0, 3}};  // [element]; water has none
 }  // namespace node
@@ -129,6 +138,6 @@ inline constexpr NodeId kProcMaster[12] = {kNoNode, {0, 0, 3}, {1, 0, 3}, {2, 0,
 inline constexpr float kElementDamage[12][2] = {{0.0f, 0.0f}, {10.0f, 12.0f}, {8.0f, 10.0f}, {1.0f, 25.0f}, {8.0f, 10.0f}, {8.0f, 9.0f}, {8.0f, 10.0f}, {8.0f, 10.0f}, {8.0f, 9.0f}, {5.0f, 7.0f}, {8.0f, 10.0f}, {8.0f, 10.0f}};
 inline constexpr float kNoFormBaseTrue = 5.0f;
 inline constexpr std::string_view elementNames[12] = {"無元素", "火焰", "冰霜", "雷電", "大地", "風", "鮮血", "神聖", "毒素", "水", "黑暗", "星界"};
-inline constexpr char nativeVersion[] = "0.20.0";
+inline constexpr char nativeVersion[] = "0.21.0";
 inline constexpr char addressHash[] = "1d7530d001139ca58f462ea0210a8055868159057ba8b5ebc624fc5e9c4f5e9a";
 }  // namespace essb

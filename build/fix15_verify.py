@@ -52,6 +52,18 @@ def terminal_hit(folder):
 
 def riposte(folder):
  f=setup(folder);amounts=[];ripostes=[]
+ if 'RiposteWindowSpell' in (folder/'ESSBController.psc').read_text(encoding='utf-8'):
+  # Round 21 (v0.4 5.1 反擊, ruling R5): the window is an effect on the player (ESSB_RiposteWindow, 3 s x the
+  # duration slider) that the DLL reads on the next no-form hit (siphon x2) and dispels once used; the x2 and the
+  # single use are tested natively (A0 riposte anchor, A7 scenarios). Papyrus only opens the window.
+  applied=[];marker=NS(SetNthEffectDuration=lambda i,n:applied.append(('duration',i,n)))
+  f.c.fields['RiposteWindowSpell']=marker
+  f.p.DoCombatSpellApply=lambda spell,target:applied.append(('apply',spell is marker,target is f.p))
+  f.c.SetRiposte(3)
+  assert applied==[('duration',0,f.c.DurationInt(3)),('apply',True,True)],('riposte window not opened',applied)
+  f.c.fields['RiposteWindowSpell']=None;applied.clear();f.c.SetRiposte(3)
+  assert not applied,'missing window spell must be a no-op'
+  return 'round 21: 反擊 opens ESSB_RiposteWindow on the player for DurationInt(3) s; the DLL consumes it'
  f.c.fields.update(NoformBaseTrue=5.,GCombo=None)
  f.c.overrides.update(MarkEngaged=lambda *a:None,ApplyTrueDamage=lambda amount,*a:amounts.append(amount),RecentCast=lambda *a:False)
  f.env['ESSBNoForm']=NS(IsCasting=lambda *a:False,OnCombo=lambda *a:None,OnMartialHit=lambda *a:ripostes.append(a[4] if len(a)>4 else 1.),
@@ -105,7 +117,7 @@ def clocks(folder):
  f=setup(folder);f.c.overrides.update(TickDomain=lambda:None,SetGlobal=lambda *a:None)
  f.c.SetRiposte(3);f.c.SetOpenBoost(3,5);f.c.SetEndBoost(3,5)
  f.clock[0]+=34;f.c.TickTimers()
- assert f.c.RiposteLeft==0 and f.c.GetOpenBoost(3)==0 and f.c.GetEndBoost(3)==0,'34-second stall stretched windows'
+ assert f.c.fields.get('RiposteLeft',0)==0 and f.c.GetOpenBoost(3)==0 and f.c.GetEndBoost(3)==0,'34-second stall stretched windows'
  # Execute the actual status Tick, including integrated layer-seconds, expiry and delayed actions.
  s=Measured(folder/'ESSBStatus.psc',f.env);f.env['ESSBStatus']=s
  s.fields.update(Ctl=f.c,Holder=f.v,RingClock=100.,BleedRing=Array([1]+[0]*9),PoisonRing=Array([2]+[0]*11),
@@ -135,6 +147,13 @@ def stacks(folder):
  f=setup(folder);f.mark(10);f.v.hp=0
  vals={1:8,2:5,5:4,6:3,7:7,10:5};f.c.overrides['GetStack']=lambda a,k:vals.get(k,0)
  f.c.CaptureDeath(0);f.c.ClearSlot(0);f.c.overrides['GetStack']=lambda *a:0
+ if 'Function OnKill(' not in (folder/'ESSBElem3.psc').read_text(encoding='utf-8'):
+  # Round 21: the v0.3 darkness on-kill consumer (ESSBElem3.OnKill: 收割／亡者歸來) is gone (N5 owns death
+  # handling); the frozen snapshot it read is still taken, so check the snapshot itself.
+  assert f.c.DeadCurse[0]==5,('curse lost between capture and kill',f.c.DeadCurse[0])
+  f.c.OnKillEvent(f.v,f.p)
+  assert f.c.DeadHeat[0]==8 and f.c.DeadHoly[0]==3
+  return 'round 21: curse 5 / heat 8 / holy 3 frozen before clear (no darkness on-kill consumer until N5)'
  got=[];f.env['ESSBElem3'].overrides['OnKill']=lambda *a:got.append(a[6] if len(a)>6 else 0)
  f.c.OnKillEvent(f.v,f.p)
  assert got==[5],('curse lost between capture and kill',got)

@@ -12,7 +12,7 @@ OLD=ROOT/'.codex/pre-fix14-snapshot/src'
 
 def fixture(folder=NEW, debug=0):
     c,t,p,v,w,clock,m,env,G=scenario(folder,debug,True)
-    owned={(9,2,0,1)}; rolls=[0.0]; events=[]; snapshots=[]
+    owned={(9,2,0,1)}; rolls=[0.0]; events=[]; snapshots=[]; settled=[]
     c.fields.update(AshSpell=object(),ReanimateSpell=NS(SetNthEffectMagnitude=lambda *a:None,SetNthEffectDuration=lambda *a:None),
                     DragonKeyword='dragon',NoReanimateKeyword='no-reanimate',MultDuration=G(1))
     c.RegActor[0]=None;c.RegStatus[0]=None;c.DamageActor[0]=None
@@ -49,13 +49,26 @@ def fixture(folder=NEW, debug=0):
     def damage(e,amount=1):c.ApplyTrackedDamage(p,NS(mag=amount),victim,e)
     def kill():
         victim.hp=0
+        # Round 21: 亡者歸來 was removed early (ruling C3; N5 redoes it per v0.4), so a darkness kill has no Papyrus
+        # effect. The attribution under test is observed, not simulated: `settled` records the element the real
+        # OnKillEvent wrote into its settlement ring (SettledElement); no event is ever made up here.
+        slot=c.fields.get('SettledNext')
         c.OnKillEvent(victim,p)
-    return NS(c=c,p=p,v=victim,clock=clock,m=m,env=env,owned=owned,rolls=rolls,events=events,
+        if slot is not None and 'SettledElement' in c.fields and c.fields.get('SettledNext')!=slot:
+            settled.append(c.SettledElement[slot])
+    return NS(c=c,p=p,v=victim,clock=clock,m=m,env=env,owned=owned,rolls=rolls,events=events,settled=settled,
               mark=mark,damage=damage,kill=kill,actor=actor)
+
+def outcome(f,want):
+    """'ash': the real ApplyAsh ran. 'darkness': no Papyrus effect (亡者歸來 removed, C3) and the real settlement
+    recorded darkness as the killing element."""
+    if want=='ash':
+        return f.events==['ash']
+    return f.events==[] and f.settled[-1:]==[10]
 
 def attribution(folder=NEW):
     cases={}
-    for e,want in [(10,'reanimate'),(7,'ash')]:
+    for e,want in [(10,'darkness'),(7,'ash')]:
         for source in ('mark','recent','recent-over-other-mark','newest-damage','expired-damage-mark', 'secondary-real'):
             f=fixture(folder)
             other=7 if e==10 else 10
@@ -70,7 +83,7 @@ def attribution(folder=NEW):
             # Explicit form switch: current form must never override victim evidence.
             f.c.CurrentElement.v=other
             f.kill()
-            assert f.events==[want],(e,source,f.events)
+            assert outcome(f,want),(e,source,f.events,f.settled)
             cases[f'{e}:{source}']=f.events
     for source in ('no-evidence','expired-damage','clock-backwards','virtual-secondary','expired-mark','failed-damage'):
         f=fixture(folder);f.c.CurrentElement.v=10
@@ -87,21 +100,21 @@ def attribution(folder=NEW):
     f=fixture(folder);f.damage(10);f.clock[0]+=.1;f.damage(7,0)
     assert f.c.LastDamageFor(f.v)==10,'resisted application overwrote valid earlier damage'
     f=fixture(folder);f.mark(7);f.damage(7);f.clock[0]+=.1;f.damage(10)
-    f.c.CurrentElement.v=10;f.kill();assert f.events==['reanimate'],'divine -> darkness weapon kill ashed'
+    f.c.CurrentElement.v=10;f.kill();assert outcome(f,'darkness'),'divine -> darkness weapon kill ashed'
     # A form switch alone is not evidence: recent divine still wins, per the approved rule.
     f=fixture(folder);f.damage(7);f.c.CurrentElement.v=10;f.kill();assert f.events==['ash']
     f=fixture(folder);f.damage(7);f.clock[0]+=3.001;f.c.CurrentElement.v=10;f.kill();assert not f.events
     cases['switches']='new darkness beats old divine; form-only switch preserves recent divine; expired evidence -> 0'
-    for e,want in [(7,'ash'),(10,'reanimate')]:
+    for e,want in [(7,'ash'),(10,'darkness')]:
         f=fixture(folder);f.mark(e);f.c.RegMark[0]=None
         f.c.fields['MarkSpells']=Array([NS(GetNthEffectMagicEffect=lambda i:object()) for _ in range(11)])
         f.v.HasMagicEffect=lambda effect:False
         assert f.c.KillElementFor(f.v,0)==0,'queued but unapplied mark is not real evidence'
         f.v.HasMagicEffect=lambda effect:True
-        f.kill();assert f.events==[want]
+        f.kill();assert outcome(f,want)
         cases[f'{e}:native-mark-before-start-callback']='actual MGEF required when callback pending'
     f=fixture(folder);f.damage(10);f.v.hp=0;f.c.OccupySlot(0,f.v);f.c.CaptureDeath(0)
-    f.clock[0]+=20;f.c.ClearSlot(0);f.kill();assert f.events==['reanimate']
+    f.clock[0]+=20;f.c.ClearSlot(0);f.kill();assert outcome(f,'darkness')
     cases['recent-capture']='recent damage frozen before delayed kill dispatch'
     # Independent actors, eviction/promotion, rollback, and ring reuse.
     f=fixture(folder);f.mark(10);f.damage(10);f.c.ClearSlot(0)
@@ -112,7 +125,7 @@ def attribution(folder=NEW):
     assert f.c.LastDamageFor(f.v)==0
     cases['ring']='eviction/promotion/cross-target/129 replacements'
     # Freeze attribution before AME finish or Tick clear; delayed dispatch cannot erase it.
-    for e,want in [(10,'reanimate'),(7,'ash')]:
+    for e,want in [(10,'darkness'),(7,'ash')]:
         for cleanup in ('capture-clear','mark-finish'):
             f=fixture(folder);f.mark(e);f.v.hp=0
             if cleanup=='capture-clear':f.c.CaptureDeath(0);f.c.ClearSlot(0)
@@ -121,7 +134,7 @@ def attribution(folder=NEW):
                 f.c.OnMarkFinish(e,f.v,f.c.RegMark[0])
                 f.c.CaptureDeath(0) # second cleanup must not overwrite first evidence
             f.clock[0]+=20;f.kill();f.kill()
-            assert f.events==[want],(cleanup,e,f.events)
+            assert outcome(f,want),(cleanup,e,f.events,f.settled)
             cases[f'{e}:{cleanup}']=f.events
     # Pure Land is the explicit design exception and must win even over darkness evidence.
     f=fixture(folder);f.damage(10);f.owned.add((6,0,4,1));f.c.CurrentElement.v=7
@@ -157,22 +170,15 @@ def diagnostics():
         return f
     globals()['fixture']=traced
     try:
-        reanimate=lambda f:f.env['ESSBElem3'].Reanimate(f.c,f.v,0)
-        check('reanimate-unowned',lambda f:f.owned.clear(),reanimate,'branch-not-owned')
-        check('reanimate-roll',lambda f:f.rolls.__setitem__(0,.5),reanimate,'roll-failed roll=0.5 chance=0.25')
-        check('reanimate-tier',lambda f:setattr(f.v,'level',61),reanimate,'tier-refused')
-        check('reanimate-cap',lambda f:f.c.overrides.update(ServantCount=lambda:1),reanimate,'servant-cap-full')
+        # Round 21: ESSBElem3.Reanimate / ESSBElem3.OnKill (v0.3 亡者歸來, 收割) are gone (N5 owns reanimation);
+        # the controller's CanReanimate / ApplyReanimate helpers stay for N5 and keep their diagnostics.
+        can=lambda f:f.c.CanReanimate(f.v)
         for key,reason in [('vip','vip'),('dragon','dragon'),('no-reanimate','no-reanimate-keyword')]:
             setup=lambda f,k=key:setattr(f.v,'vip',True) if k=='vip' else f.v.keywords.add(k)
-            check('can-'+key,setup,reanimate,'can-reanimate-'+reason)
+            check('can-'+key,setup,can,'can-reanimate-'+reason)
         check('can-invalid',lambda f:None,lambda f:f.c.CanReanimate(None),'can-reanimate-invalid-target')
-        check('reanimate-invalid',lambda f:None,lambda f:f.env['ESSBElem3'].Reanimate(f.c,None,0),'invalid-target')
-        for module in ('ESSBElem2','ESSBElem3'):
-            check(module+'-invalid',lambda f:f.c.overrides.update(ThePlayer=lambda:None),
-                  lambda f,mod=module:f.env[mod].OnKill(f.c,10,f.v,0,10,False),'invalid-player-or-target')
-        for elem,reason in [(0,'no-element'),(7,'element-mismatch')]:
-            check('kill-'+reason,lambda f:None,lambda f,e=elem:f.env['ESSBElem3'].OnKill(f.c,e,f.v,0,e,False),reason)
-        check('ash-priority',lambda f:None,lambda f:f.env['ESSBElem3'].OnKill(f.c,10,f.v,0,10,True),'ash-priority')
+        check('ESSBElem2-invalid',lambda f:f.c.overrides.update(ThePlayer=lambda:None),
+              lambda f:f.env['ESSBElem2'].OnKill(f.c,10,f.v,0,10,False),'invalid-player-or-target')
         for elem,reason in [(0,'no-element'),(10,'element-mismatch')]:
             check('ash-'+reason,lambda f:None,lambda f,e=elem:f.env['ESSBElem2'].ShouldAsh(f.c,e),reason)
         for elem,reason in [(0,'no-element'),(7,'element-mismatch'),(5,'branch-not-owned')]:
@@ -198,7 +204,7 @@ def diagnostics():
         f.env['ESSBElem2'].overrides['OnAsh']=lambda *a:f.events.append('ash-reward')
         f.kill();assert not f.events
         # Real throttler suppresses a repeated identical refusal.
-        f=fixture(debug=2);f.owned.clear();reanimate(f);reanimate(f)
+        f=fixture(debug=2);f.c.CanReanimate(None);f.c.CanReanimate(None)
         assert len(f.messages)==1
         # Restart invalidates uptime evidence and does not change saved schema.
         f=fixture();f.damage(10);f.clock[0]=2;f.c.ResetLoadClock()
@@ -207,15 +213,11 @@ def diagnostics():
         for legacy in (None,Array([123.0]*17)):
             f=fixture();f.c.fields['SwapFloats']=legacy;f.c.ResetLoadClock()
             assert f.c.SwapFloats.Length==128 and f.c.LastDamageFor(f.v)==0
-        # Actual native apply wrapper succeeds and reserves one pending servant.
+        # Actual native apply wrapper succeeds and reserves one pending servant (kept for N5).
         f=fixture();f.c.overrides.pop('ApplyReanimate');f.v.hp=0
         f.p.DoCombatSpellApply=lambda spell,target:f.events.append(('apply',target))
-        assert f.env['ESSBElem3'].Reanimate(f.c,f.v,0)
+        assert f.c.ApplyReanimate(f.v,13,120)
         assert len(f.events)==1 and f.c.PendingServants[0] is f.v and not f.c.ReanimateBusy
-        # Legendary 100% forced success at the top of RandomFloat's range below 1.
-        f=fixture();f.owned.add((9,2,4,1));f.c.overrides['SyncStage']=lambda:3
-        f.rolls[0]=.999;f.v.level=100
-        assert f.env['ESSBElem3'].Reanimate(f.c,f.v,0) and f.events==['reanimate']
     finally:globals()['fixture']=original
     return cases
 

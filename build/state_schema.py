@@ -89,7 +89,7 @@ def verify(records, manifest, builder):
     assert set(changed)==set(QUESTS), changed
     assert all(stable_identity(k,manifest.get(k),v) for k,v in previous.items()), 'non-quest identity drift'
     added={k:v for k,v in manifest.items() if k not in previous}
-    assert set(added)==set(stub_ids(version)) | b.GUARD_WINDOW_EDIDS | b.hit18.new_edids(b) | b.hit19.NEW_EDIDS
+    assert set(added)==set(stub_ids(version)) | b.GUARD_WINDOW_EDIDS | b.hit18.new_edids(b) | b.hit19.NEW_EDIDS | set(b.tree_v04.NEW_PERK_EDIDS)
     for name,fid in stub_ids(version).items():
         r=by[name];assert r.sig=='QUST' and int(r.key.split('|')[1],16)==fid
         assert set(r.d)=={'EDID','FULL','DNAM','NEXT'}, (name,set(r.d))
