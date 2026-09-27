@@ -57,3 +57,6 @@ Function SetSync(Int aiCount) Global Native
 Function RequestSwitch(Int aiElement) Global Native
 ; round 25 審查修正：遊戲在跑的秒數（這次開遊戲以來；暫停、讀檔不算）。控制器的秒計時器用它。
 Float Function RunningSeconds() Global Native
+; round 26：探針 log（除錯等級 4）的 Papyrus 那一半——一行 [ESSB][T][pap] kind=… who=名字(0xFormID)[生命／魔力／耐力] 文字，
+; 跟 DLL 的行同一個序號寫進 ElementsSpellblade.log。只在等級 4 時呼叫（呼叫端先看等級）；唯讀。
+Function Trace(String asKind, Actor akActor, String asText) Global Native

@@ -15,6 +15,9 @@
 //                 list the adapter reports -- the tests feed a fake one
 //   DeathCounts   whether a death event is one the DLL handles (dead = false only, never you, something of ours on it)
 //   RunOp selects the op's crowd member (StatusOp::at) before running it
+// Round 26 (the probe log, Trace.h): an engine that answers Tracing() gets TraceOp before each op and TraceDone after the
+// ops that change an actor value; SelectCrowdWhy says why each actor of the list was picked or left out; DescribeRemoved
+// reads any of our effects' removal (not only the ones that settle). None of them changes what runs.
 #pragma once
 
 #include "Reactions.h"
@@ -110,12 +113,26 @@ int Wash(E& engine, Who who, int limit, Log&& log)
 
 // One op: Status.h Lower says which instances go first (native-verification-3 s5: always Dispel(true) before
 // re-applying) and what is cast; pay, wash and the ModEvent are not casts.
+// Round 26: the ops whose effect is a change of an actor value the probe log reads back right after (TraceDone).
+constexpr bool ChangesValue(Op op) noexcept
+{
+    return op == Op::kDamage || op == Op::kHeal || op == Op::kRestoreMagicka || op == Op::kRestoreStamina || op == Op::kPayHealth ||
+           op == Op::kBleedDrain || op == Op::kSpendMagicka || op == Op::kPayStamina || op == Op::kDrainStamina ||
+           op == Op::kHurtHealth || op == Op::kDrainMagicka || op == Op::kHealTarget || op == Op::kSilence || op == Op::kStaminaTarget;
+}
+
 template <class E>
 void RunOp(E& engine, const StatusOp& op, const Tuning& tuning)
 {
     engine.Select(op.at);   // round 24: the crowd member this op acts on (0 = the plan's own target)
     const Lowered l = Lower(op, tuning.slowCapPct);
     const Who on = l.onPlayer ? Who::kPlayer : Who::kTarget;
+    std::uint64_t traced = 0;   // round 26: the probe log's line of this op (0 = not tracing)
+    if constexpr (requires { engine.Tracing(); }) {
+        if (engine.Tracing()) {
+            traced = engine.TraceOp(op, l, on);
+        }
+    }
     if (l.dispelSpell) {
         DispelWhere(engine, on, [&](const EffectView& v) { return v.spell == l.dispelSpell; });
     }
@@ -184,6 +201,11 @@ void RunOp(E& engine, const StatusOp& op, const Tuning& tuning)
     default:
         break;
     }
+    if constexpr (requires { engine.Tracing(); }) {
+        if (traced != 0 && ChangesValue(op.op)) {
+            engine.TraceDone(traced, on);
+        }
+    }
 }
 
 template <class E>
@@ -237,6 +259,32 @@ Removed OnRemoved(E& engine, Who who, std::uint32_t uid, bool dead)
         return out;
     }
     out.crystals = board.Layers(StatusKind::kCrystal);
+    const bool expired = out.duration > 0.0f && out.elapsed >= out.duration;
+    out.reason = dead ? Removal::kDeath : expired ? Removal::kExpired : Removal::kDispelled;
+    return out;
+}
+
+// Round 26 (the probe log): the same read for ANY effect of ours that leaves (a status, a mark, a DoT, fear, frenzy, the
+// slow, the pool, 寂) -- reason expired / dispelled / death, as OnRemoved tells them apart; kIgnore = not ours or gone.
+// Read-only; nothing is settled from it.
+template <class E>
+Removed DescribeRemoved(E& engine, Who who, std::uint32_t uid, bool dead)
+{
+    Removed out;
+    bool found = false;
+    engine.ForEachIncludingEnding(who, [&](const EffectView& v, auto) {
+        if (v.uid == uid && !found) {
+            found = true;
+            out.tag = TagOf(v.effect);
+            out.magnitude = v.magnitude;
+            out.elapsed = v.elapsed;
+            out.duration = v.duration;
+        }
+    });
+    if (!found || out.tag.kind == TagKind::kNone) {
+        out.reason = Removal::kIgnore;
+        return out;
+    }
     const bool expired = out.duration > 0.0f && out.elapsed >= out.duration;
     out.reason = dead ? Removal::kDeath : expired ? Removal::kExpired : Removal::kDispelled;
     return out;
@@ -319,31 +367,58 @@ struct CrowdPick {
     bool ally = false;
 };
 
+// Round 26 (the probe log): why SelectCrowdWhy kept or left out one actor of the list.
+enum class Pick : std::uint8_t
+{
+    kPicked,         // a hostile (or engaged) actor in range, within the limit
+    kAlly,           // a teammate within range of you, within the 4 allies
+    kPrimary,        // the event's own target (member 0, read separately)
+    kYou,
+    kDead,
+    kUnloaded,
+    kCommanded,      // a summon / a raised servant: never in the crowd
+    kAllyFar,        // a teammate farther than `aroundYou` from you
+    kNeutral,        // 2.9: a neutral you have not attacked
+    kFar,            // farther than both radii
+    kOverLimit,      // in range, but the nearer ones filled the limit
+    kAllyOverLimit,  // a fifth ally or more
+};
+
+inline constexpr const char* kPickNames[] = { "picked", "ally", "primary", "you", "dead", "unloaded", "commanded", "ally-far",
+    "neutral", "far", "over-limit", "ally-over-limit" };
+
 // v0.4 2.9: (hostile or engaged) and not a teammate, not commanded, alive, loaded, not you; allies = teammates. Kept when
 // within `aroundCentre` of `centre` or `aroundYou` of you (allies: of you only), nearest first (by the nearer of the two),
 // at most `limit` hostiles and 4 allies. `skip` is the primary's index (member 0, read separately), -1 for none.
-inline std::vector<CrowdPick> SelectCrowd(const std::vector<ActorView>& list, int skip, const std::array<float, 3>& centre, float aroundCentre,
-    const std::array<float, 3>& you, float aroundYou, int limit)
+// Round 26: `why(index, Pick)` hears the verdict on every actor of the list (the probe log's scan lines).
+template <class Why>
+inline std::vector<CrowdPick> SelectCrowdWhy(const std::vector<ActorView>& list, int skip, const std::array<float, 3>& centre,
+    float aroundCentre, const std::array<float, 3>& you, float aroundYou, int limit, Why&& why)
 {
     std::vector<std::pair<float, CrowdPick>> hostile;
     std::vector<std::pair<float, CrowdPick>> allies;
     for (int i = 0; i < static_cast<int>(list.size()); ++i) {
         const ActorView& a = list[i];
         if (i == skip || a.you || a.dead || !a.loaded || a.commanded) {
+            why(i, i == skip ? Pick::kPrimary : a.you ? Pick::kYou : a.dead ? Pick::kDead : !a.loaded ? Pick::kUnloaded : Pick::kCommanded);
             continue;
         }
         const float toYou = Distance(a.pos, you);
         if (a.teammate) {
             if (toYou <= aroundYou) {
                 allies.push_back({ toYou, CrowdPick{ i, true } });
+            } else {
+                why(i, Pick::kAllyFar);
             }
             continue;
         }
         if (!a.hostile && !a.engaged) {
+            why(i, Pick::kNeutral);
             continue;   // 2.9: a neutral you have not attacked is never touched by a range effect
         }
         const float toCentre = Distance(a.pos, centre);
         if (toCentre > aroundCentre && toYou > aroundYou) {
+            why(i, Pick::kFar);
             continue;
         }
         hostile.push_back({ std::min(toCentre, toYou), CrowdPick{ i, false } });
@@ -354,14 +429,27 @@ inline std::vector<CrowdPick> SelectCrowd(const std::vector<ActorView>& list, in
     std::vector<CrowdPick> out;
     for (const auto& h : hostile) {
         if (static_cast<int>(out.size()) >= limit) {
-            break;
+            why(h.second.index, Pick::kOverLimit);
+            continue;
         }
         out.push_back(h.second);
+        why(h.second.index, Pick::kPicked);
     }
-    for (std::size_t i = 0; i < allies.size() && i < 4 && static_cast<int>(out.size()) < n5::kCrowdMax; ++i) {
-        out.push_back(allies[i].second);
+    for (std::size_t i = 0; i < allies.size(); ++i) {
+        if (i < 4 && static_cast<int>(out.size()) < n5::kCrowdMax) {
+            out.push_back(allies[i].second);
+            why(allies[i].second.index, Pick::kAlly);
+        } else {
+            why(allies[i].second.index, Pick::kAllyOverLimit);
+        }
     }
     return out;
+}
+
+inline std::vector<CrowdPick> SelectCrowd(const std::vector<ActorView>& list, int skip, const std::array<float, 3>& centre, float aroundCentre,
+    const std::array<float, 3>& you, float aroundYou, int limit)
+{
+    return SelectCrowdWhy(list, skip, centre, aroundCentre, you, aroundYou, limit, [](int, Pick) {});
 }
 
 // The death event the DLL handles (native-verification-3 s10): the dead = false one, sent inside KillImpl while the

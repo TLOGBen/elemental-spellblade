@@ -110,6 +110,7 @@ struct Forms {
     Global* hotkeysEnabled{};
     Global* formNotify{};
     std::array<Global*, kElementCount> hotkeys{};
+    Global* probeStep{};   // round 26: ESSB_ProbeStep, the probe log's step marker (Trace.h; only the log reads it)
     typename D::Class* necroClass{};
     typename D::Faction* necroFaction{};
     std::vector<typename D::Perk*> mainPerks;    // [localId - kMainPerkBase]
@@ -356,6 +357,7 @@ void ResolveGlobals(Diag<D>& d, const nlohmann::json& manifest, Forms<D>& f, Sum
     for (int i = 0; i < kElementCount; ++i) {
         f.hotkeys[i] = one(kHotkeyNames[i], essb::glob::kHotkey[i]);
     }
+    f.probeStep = one("ESSB_ProbeStep", essb::glob::kProbeStep);   // round 26
     ReadTimerTuning([&](std::uint32_t id) {
         d.CheckId(known(id), "timer tuning globals", id, kPlugin, "GLOB", "ReadTimerTuning reads it but it did not resolve from the manifest's globals");
         return 0.0f;

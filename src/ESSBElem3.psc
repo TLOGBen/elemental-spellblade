@@ -54,6 +54,9 @@ Function PoisonFormTick(ESSBController akCtl) Global
 	; 5.10 持續大師分支「以毒攻毒」：你中毒時生命回復 +20%。
 	If ESSBNodes.Br(akCtl, 7, 0, 3, 1) && akCtl.IsPoisoned(player) ; @node 以毒攻毒
 		akCtl.ApplyUtil(25, 20.0, 3, player)
+		If akCtl.CachedDebugLevel >= 4
+			akCtl.Probe("poison-self", player, "counter=1 healRate=+20% sec=3")   ; round 26：探針 log
+		EndIf
 	EndIf
 	; 5.10 持續傳奇分支「百毒不侵」：同調三段時免疫中毒與疾病，
 	; 且附近中毒敵人每秒替你回血。
@@ -73,6 +76,9 @@ Function PoisonFormTick(ESSBController akCtl) Global
 	EndWhile
 	If heal > 0.0
 		akCtl.ApplyUtil(4, heal, 0, player)
+	EndIf
+	If akCtl.CachedDebugLevel >= 4
+		akCtl.Probe("poison-self", player, "immune=1 heal=" + heal)   ; round 26：探針 log
 	EndIf
 EndFunction
 

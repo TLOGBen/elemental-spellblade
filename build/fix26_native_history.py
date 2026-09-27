@@ -1,0 +1,163 @@
+"""Round 26 seal of the DLL sources, the native tests, the generator modules, the verifiers and the probe judge. GENERATED
+by build/fix26_native_history_gen.py from this template -- write reasons there, never edit the digests here.
+
+FILES  path -> (state, sha256 now, why): 'unchanged' files equal the pre-fix26 snapshot (.codex/pre-fix26-snapshot, taken
+       before any round-26 edit); 'changed' / 'added' ones carry the declared reason. verify() fails on any byte that
+       differs, on a covered file that is missing and on a file in native/include, native/src or native/tests that is not
+       listed. build/fix25_native_history.py checks the snapshot (round 25 as shipped) only after this proof.
+"""
+from __future__ import annotations
+
+import hashlib
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SNAP = ROOT / '.codex/pre-fix26-snapshot'
+
+FILES = {
+    'native/include/EngineFacts.h': ('unchanged', 'd87e73a6b435df0e4b63e29d3f59f9e77f8543dfe251530e55a3804add18ebe4', ''),
+    'native/include/HitMath.h': ('unchanged', 'e5bbc95f57d37a68a1cd21194bf3a2e663cc7a5794ff9d3dc7ff36189bc1e469', ''),
+    'native/include/HitPipeline.h': ('unchanged', '24d441cb6742fc20e2fae6e21a2bf8d56e90d9f7a0c84bc9bc3545ee89e9bc09', ''),
+    'native/include/Hurt.h': ('unchanged', '5134900a241e8b9838df3fee3a90722e8e6839168493dedd36592fee9f742138', ''),
+    'native/include/Load.h': ('changed', '7a6a034758d61939917024e99b865c126cfa6cf9c75003e7723e41065fc01acb', 'Round 26（探針 log）：解析 ESSB_ProbeStep（站標記）'),
+    'native/include/ManifestData.h': ('changed', 'fc4423aba4e11cab1951dee01bb3f722f03028ebda86f90846984b364fc23082', '由 build/fix19_native.py 產生：版本 0.26.0、kProbeStep'),
+    'native/include/NodeIds.h': ('unchanged', 'fd843a2bded8e5bf423c87801bbbfe071a5189f8d5e05c15d0dee605ef8fe5f3', ''),
+    'native/include/Reactions.h': ('unchanged', '7f7a610d4b19a1c5e04b888a0a8d8d2e27e0ac7efdf493a3e76851ccb426803c', ''),
+    'native/include/Selection.h': ('unchanged', '51574fa1fe6649c234dc774526898c876bae6bb7bce310d1958a092959bccf1e', ''),
+    'native/include/SelfLayer.h': ('unchanged', '8bf4e37a7c9c64af40d8e97af675376f5bd5d3254efdb64db9efa27c7263dbd8', ''),
+    'native/include/Status.h': ('unchanged', '330450987b1aaebd5bafbda514fb00ba815e0044b59623a809c66332ea426464', ''),
+    'native/include/StatusEngine.h': ('changed', '363b9b8b9633f4e1aa3437ccf1d39b5096235780e7f9370ced485619214c73b1', 'Round 26（探針 log）：RunOp 在引擎有 Tracing() 時呼叫 TraceOp／TraceDone（ChangesValue 決定哪些 op 補一行 op-done）；SelectCrowdWhy 回報每個演員的判定（SelectCrowd 改成它的無回報版，選人不變）；DescribeRemoved（任何我們的效果離開的理由）'),
+    'native/include/Timer.h': ('unchanged', '10a28e3c079b55042bacec4e787a8c8f6735fd3cb10326f747aefadfdee0c601', ''),
+    'native/include/Trace.h': ('added', '43111a09cd2bc440d90280d244daab8b5f174beef63b7ebdef1391e7e06f9f96', 'Round 26（探針 log）：探針 log 的純標頭（新檔）：行格式 [ESSB][T][種類] #序號 g= r=、Line（480 位元組截斷記號 ~）、Buffer（序號在鎖內給、每秒由計時執行緒寫檔）、TraceRng（跟 SplitMix64 同一串擲骰，另記錄）、各種行的產生函式（op、op-done、proc、hit-end、remove、hurt、second、env、switch、key）、名稱表、數字鍵區 +／- 的代碼'),
+    'native/include/TrueHud.h': ('unchanged', '8d4b04e55642d3ab1956ab929731758872661efa50d1b8a9ed647d4be8cac886', ''),
+    'native/src/Plugin.cpp': ('changed', '66a6f9c7675b99bbd66036cdc561d5a97e02ce379cdcd3ac38ec98c57c09e920', 'Round 26（探針 log）：除錯等級 4 的探針 log（各 sink／task／原生函式的行、ctx 標籤、actor 的生命魔力耐力、TraceRng、每秒寫檔與故障／讀檔／存檔／卸載時寫檔、全域變數與節點的監看、站標記鍵與 ESSB_ProbeStep、ESSBNative.Trace）；Probe::kHurtTask（受擊 task 不再跟命中 sink 共用 kHurt，X1 兩行都會寫）；X1 改為每個 sink／task 的每條新執行緒一行，對照輸入 sink（主迴圈）、最近一次 SKSE task、遊戲視窗與 kDataLoaded（InitTESThread）的執行緒；玩法不變'),
+    'native/tests/engine_test.cpp': ('unchanged', 'dc87215b5bb9729b76222c4c6a45e927057d4f3a5bcd187169ae71301584d49a', ''),
+    'native/tests/hit_pipeline_test.cpp': ('unchanged', 'a6acfdd1ec3b77e8b2e9baddceb7190f9551c1e5366252c8852200a65846b357', ''),
+    'native/tests/load_test.cpp': ('unchanged', 'c1b5e69dc7e47d968f3afb2798bbbba4964bb7437d60e21c31598bdf8070148d', ''),
+    'native/tests/reaction_test.cpp': ('unchanged', 'a3191318c65dbb3d42918d053bfb5903966bbc2ac1fd06b29a378a0269cc245b', ''),
+    'native/tests/self_test.cpp': ('unchanged', 'c054b7cad605707de057098cb7ca916254dd34f79b05094e4a41bcd88cd9d732', ''),
+    'native/tests/status_test.cpp': ('unchanged', '83a54b98c94d99f479c7bab60e24953dab0e86f6bbc942d3b3c29cb43b41879e', ''),
+    'native/tests/timer_test.cpp': ('unchanged', 'ee17004ce2db03a452dd035f311b22ec64d2e8e0fdbd07f311be9b6af758b96f', ''),
+    'native/tests/trace_test.cpp': ('added', '518c9a5d30fcd68ce87b4c51fccc548ad354042d03227b6cc7de2dc95bbe5d36', 'Round 26（探針 log）：探針 log 的測試（新檔）：格式（build/fix26-trace-format.json 的 regex）、Buffer、TraceRng 不改擲骰、假世界上 RunPlan 的 op／op-done、DescribeRemoved、SelectCrowdWhy；並用真規劃器寫出 build/fix26-trace-sample.log'),
+    'native/CMakeLists.txt': ('changed', '62aa16f36ee210713d78b99bfcf0ea521e20d75874c36948bd262caa4f2db37f', 'Round 26（探針 log）：trace_test；版本 0.26.0'),
+    'native/build.py': ('changed', '750c532f455a0042a9a230b6ce1eaccb5078f0bb9773991d369f26e784aa3409', 'Round 26（探針 log）：寫出 build/fix26-trace-format.json；4 個探針 log 突變（錄骰改擲骰、截斷記號、op-done 多寫、掃描判定標錯）'),
+    'build_core.py': ('unchanged', 'c5468602b5a3d6889b6175bad7e5e1d5ef9321cf48638f6b905ea80b05195ce0', ''),
+    'build_melee.py': ('unchanged', '08e8cf2c7c1d386efc6a52d2d31302ba150b8b423b2cbffee1a6d534525c9d4a', ''),
+    'build_scripts.py': ('unchanged', '98e6d30c728bd98055c9cc98738e84b3a402979c02e65eb7b5ad9fd7ccd5d434', ''),
+    'build_v03.py': ('changed', '27c503b74ccd062111dc1e8706875ce2ed1def243a18b07af2dff09d476f5cd4', 'Round 26（探針 log）：ESSB_ProbeStep 記錄（fix26_records）、MCM 除錯等級加「4：探針 log」與說明、呼叫 build/fix26_verify.py'),
+    'fx_extract.py': ('unchanged', '4ae15444ac287131499f2a076c9611b11d40762e2cbae53cd290e0ef2927d9c5', ''),
+    'inspect_magic.py': ('unchanged', '2a7ec48b000b6647d0e625ff24901e591df9b3bba7f3d9fbeb00c3a46d746fab', ''),
+    'plan_coverage.py': ('unchanged', 'ce47f5d229a94dcb1b2c2c1ac4452cbd24da40a6b7cdc606ca729677b7af57dc', ''),
+    'plan_trees.py': ('unchanged', '6a921d3278dff9b1ebc81b1dcb58b063e677c58509e176a49a00de73d0af4123', ''),
+    'render_plan.py': ('unchanged', '266e1f87c3946bf91c927a8a8673c8fb518f67c25d104967f3e56c53a7b7db23', ''),
+    'setup_compiler.py': ('unchanged', '84cc8e0f6bf094c53ad281ab53c40a90718c8e654d3634cd2c787cb4f6763c36', ''),
+    'tes.py': ('unchanged', '0cec676788f1993014781215cdfde38c8a5b6363a0e5ab92fe876e2455610c74', ''),
+    'tree_v04.py': ('unchanged', '943483ba2a763b7de9ef13847fd4465fa6d472432a77dda5b9938e9661d9d18a', ''),
+    'build/fix19_native.py': ('changed', 'fdb06c774817249f7f9c9504d0014aa56750151c932b25fc4382ecb38efc4354', 'Round 26（探針 log）：NATIVE_VERSION 0.26.0；manifest 的 globals 加 ESSB_ProbeStep；NEW_EDIDS 含 round 26'),
+    'build/fix21_records.py': ('unchanged', 'ce5a656d0377bace72736048358cf8c74c79f997448d027a60be934ad8b1fd1f', ''),
+    'build/fix22_records.py': ('unchanged', 'ccb1c66da897f297e2a9d3062c7086f6ca6c690447f6125d3d2e5fa8141dfa08', ''),
+    'build/fix22_reference.py': ('unchanged', '8971bd504c97316243777ea6254832d4f8c8c3a737ca6d21e5c49f66015424e4', ''),
+    'build/fix22_fixture.py': ('unchanged', '394e99082502b57fe7a1a9e09476217f5eb3653a5a0ad8377eb268de51434da7', ''),
+    'build/fix23_records.py': ('unchanged', '3a0f7d2f1820798f3333dbd087041363f5b9ce235ae998bf80ffe877aa530dce', ''),
+    'build/fix23_reference.py': ('unchanged', 'bd233f160951f5f89e2f32147f0473845679702627c194816bac739bd9d2ddda', ''),
+    'build/fix23_fixture.py': ('unchanged', 'e0a52a875b1872b8ac1b7fc1e6fe40de355775154ed8959fb90b25424bf49156', ''),
+    'build/fix24_records.py': ('unchanged', '0116b08561c4a8575c2be56c8dcb174a0d46bf0b5c4b8273ca30dce7bed004e6', ''),
+    'build/fix24_reference.py': ('unchanged', 'd26b1128d410b884f8e2cd99f7007900de690965f90ec2a88bd85040bc36bdad', ''),
+    'build/fix24_fixture.py': ('unchanged', '67b0a52a95d46963bb9077c6129ec1dd7a95b1b07cddf6faba0e273bbb79c1bc', ''),
+    'build/fix25_records.py': ('unchanged', 'f3e2af2996a82effcad146d9b84308c9d8c35aa7bcb5fd47de058897cf77e0df', ''),
+    'build/fix25_reference.py': ('unchanged', '3a338ec86f0bdbec952d4156f4fb63ccbff38ac1e79f467e16043778ba0f1c04', ''),
+    'build/fix25_fixture.py': ('unchanged', '5a6856c16b38e6a07b363b7f4449415ea8fc2772bd37a1f43d3546e0b72b8835', ''),
+    'build/fix26_records.py': ('added', 'd805ba430bc67c01bae38e9f08b233dae082930bb192457b197bd2b4fa5eb9f8', 'Round 26（探針 log）：round 26 記錄表（新檔）：ESSB_ProbeStep 0x005C00'),
+    'build/fix26_format.py': ('added', '8837c8af2cdd52d0d70926f3902607ea7e0dde36ac0923f4f359764daca8b409', 'Round 26（探針 log）：探針 log 每種行的 regex（新檔），trace_test 與 probe-judge 共用'),
+    'build/probe-judge.py': ('added', 'ca546cb676986b868d661e13fe32604cddfa7fd9de498e1e14ea92a7fc1c7df1', 'Round 26（探針 log）：依 build/probes-all.md 的 91 站判定 102 步的判定器（新檔）'),
+    'build/fix6_verify.py': ('unchanged', '08a86662a4fc6e4dbbeac3a71f81875c411a14dfd8b946bf8fe89940857c20a7', ''),
+    'build/fix11_verify.py': ('unchanged', '5fb7e48ad43e7ec8d6c6315b435aa936ae969e0d70213d37666e8b1b38ba128b', ''),
+    'build/fix16_verify.py': ('unchanged', '2bec8fb1527226b91936f4f3140fec08d33ec88fb89cb84da1d5eebda3f5b26d', ''),
+    'build/fix21_verify.py': ('unchanged', '84f2650ff08009991e5d4a6541ec22f1249459e8bc212d78e40db737d3af7de0', ''),
+    'build/fix22_verify.py': ('unchanged', '1beec2474652e7d93a4eea578326c2ec7cc9dedccdec82149cfe34971bb8689e', ''),
+    'build/fix23_verify.py': ('unchanged', '531575bf68910efcb5a0e1b6472d9b36f20b13ab7fba684ac944f6fbff9e5e88', ''),
+    'build/fix24_verify.py': ('unchanged', '37691bbaf19d2bdaf49cd1a71f647afa7df0ff3e9777bb3324a9ed83277c8562', ''),
+    'build/fix25_verify.py': ('unchanged', '7ac9a6affbe2b4f8da538d482a57f784427f47940ffb48b107bad82c71e1239f', ''),
+    'build/fix26_verify.py': ('added', '7e29d81bc5d0b328e82348c00e1a2971d19d0e93efabf372bab719edb4c369a7', 'Round 26（探針 log）：round 26 的驗證器（新檔）：判定器涵蓋、卷與判定器一致、原生樣本與手寫樣本的 PASS／FAIL、原始碼的探針檢查、記錄、突變、封印、行尾'),
+    'build/fix21_identity.py': ('unchanged', 'c9cafeb6f206b2242fa9ca81931508d2d4460dbfc2bd78917af98a84cf187267', ''),
+    'build/fix22_history.py': ('unchanged', '240a13c40d9f71aef8ca1bde8a52d360fee3cdaa741b86bc603547cfe3de6400', ''),
+    'build/fix22_history_gen.py': ('unchanged', '9ce3e53af1a4b133c6b2b5f7923b8adf61a220a9514ff360f34114beb58a0986', ''),
+    'build/fix22_history_template.py': ('unchanged', 'a35ae3589d6915e83c958fd2ab50c12106758a749139297a2ac58df29e80a6ef', ''),
+    'build/fix22_native_history.py': ('unchanged', '7434300bdc494ce9b08e4be01dce3c17acfa0337a7d125c6fb29091d59cae3eb', ''),
+    'build/fix22_native_history_gen.py': ('unchanged', '4e3891aa13897b8e9128244f5e3fbe5a23f73e9c9037ce9743fad11d41a9fb89', ''),
+    'build/fix22_native_history_template.py': ('unchanged', 'dcacd1e45bf22b805eba7c942c1fbb67be2d95c16b8bf661ef1ed559e7880776', ''),
+    'build/fix23_history.py': ('unchanged', 'ddef56511804d1d5aa92631f2eaf5903a4b90a6838ba1ed83be6521c9e49c154', ''),
+    'build/fix23_history_gen.py': ('unchanged', '5d9a4998a5a220c72a6372f9158b5724ac40a05691559b77aa8968b71f745534', ''),
+    'build/fix23_history_template.py': ('unchanged', '102bfd1b1ae43e6cc442476dc6e71e2ca843f81b3141da731cb503d9523b4d3d', ''),
+    'build/fix23_native_history.py': ('unchanged', '7c7d137fe5082a3323727ec2dcd4d3674030216e8f642856d1a172716831af71', ''),
+    'build/fix23_native_history_gen.py': ('unchanged', 'fb56d60d5030e3c9b9bd0a9cdcff25747884b532a3b63a5283988b0c76611886', ''),
+    'build/fix23_native_history_template.py': ('unchanged', 'ba3bb7bd77ad59d86dd91a0ae5aebec2c9aca0b408de5ee4e723882bf13258f3', ''),
+    'build/fix24_history.py': ('unchanged', 'a8396d5d770d0b4e7a2ba16892cbc3e611db01521ccb52eb2ae9d025d933fff1', ''),
+    'build/fix24_history_gen.py': ('unchanged', '566509f432b8e7ae75d1125a59d5c4ac2b8dbd423eb07ee6c98e20ea2467b782', ''),
+    'build/fix24_history_template.py': ('unchanged', 'c7dd09804821427fe7ee083983240c745efb3402b0764140c8f14068f9fb3b4e', ''),
+    'build/fix24_native_history.py': ('unchanged', '65c8787b9c79794099e1f3efa1d0d0aee27893b46c58f822774bf672d441fd1a', ''),
+    'build/fix24_native_history_gen.py': ('unchanged', '237b7e91406ce4bab1bf3f513e900bb94da0e95aa569ad4a0a2dd22e79288f06', ''),
+    'build/fix24_native_history_template.py': ('unchanged', '49b8debbdd272a6c90d92868cff2338d71e440eede81718736cc64b7a495dce4', ''),
+    'build/fix25_history.py': ('changed', '3c215cd9f66d65f82736462108585f7f28c14746c918c98bdc48e8a272d5ea05', 'Round 26（探針 log）：round 25 的 Papyrus 封印改讀 pre-fix26 快照（先過 round 26 的證明；由產生器重寫，表格不變）'),
+    'build/fix25_history_gen.py': ('changed', '7bf425eebd501efb9690cef38cff3f0b3258f0ef56ef59e51ea4e0eb24cc38e4', 'Round 26（探針 log）：產生器讀 pre-fix26 快照的 src（round 25 出貨時的腳本）'),
+    'build/fix25_history_template.py': ('changed', 'bc2fe79a2a43aa51d0c8828b7962e811b224381f6b25cba4546cd352a8afd3f5', 'Round 26（探針 log）：current_dir 改成 fix26_history.legacy_source()'),
+    'build/fix25_native_history.py': ('changed', '9014bf547291024dda5578f0325065f4577e9b6c0cec2220266fd99d431a89b6', 'Round 26（探針 log）：round 25 的原生封印改讀 pre-fix26 快照（先過 round 26 的證明；由產生器重寫，表格不變）'),
+    'build/fix25_native_history_gen.py': ('changed', '8083578fae81e5bfb7921dd042601fe608d56f899cd4d7e9c8d04383a6105974', 'Round 26（探針 log）：產生器列出並雜湊 pre-fix26 快照（round 25 出貨時的位元組）'),
+    'build/fix25_native_history_template.py': ('changed', '720cf5f28fe5dc2a012956fc61a7b27eaa5d4aebc2aa847c52fb2412c69edfd7', 'Round 26（探針 log）：base() 讀 pre-fix26 快照（同 round 25 對 round 24 的做法）'),
+    'build/fix26_history.py': ('added', '6f182183f2860052eb229f2a710b4b628b3446ac57bb68dff2cfc249a8ea8262', 'Round 26（探針 log）：round 26 的 Papyrus 封印（產生的）'),
+    'build/fix26_history_gen.py': ('added', 'd40116a7d5b52f53af4d3ab1df5526e618e4c5c11c16fc589f32c29ee6bee29a', 'Round 26（探針 log）：round 26 Papyrus 封印產生器（新檔）'),
+    'build/fix26_history_template.py': ('added', '8fc3766afd401bf515af94f39c37a213d15038c3e52f2c1d78c265af089b480e', 'Round 26（探針 log）：round 26 Papyrus 封印樣板（新檔）'),
+    'build/fix26_native_history_gen.py': ('added', '791a908b73f9435e9f7787b73723390af1917452bc094e00dc2f2fe8c607d1ea', 'Round 26（探針 log）：round 26 原生封印產生器（新檔）'),
+    'build/fix26_native_history_template.py': ('added', 'c7d8713b8356faf9db373d6ed9d4aeb0d89d9a4a10d660fa319fe3e081c593a2', 'Round 26（探針 log）：round 26 原生封印樣板（新檔）'),
+}
+
+FOLDERS = ('native/include', 'native/src', 'native/tests')
+
+
+def _sha(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def check(rel: str, data: bytes) -> None:
+    state, sha, why = FILES[rel]
+    assert _sha(data) == sha, (rel, state, 'differs from the sealed bytes (edited after sealing; regenerate with a reason)')
+
+
+def verify() -> dict:
+    root = ROOT
+    for rel in FILES:
+        path = root / rel
+        assert path.is_file(), (rel, 'sealed file is missing')
+        check(rel, path.read_bytes())
+    for folder in FOLDERS:
+        for path in (root / folder).glob('*.*'):
+            rel = path.relative_to(root).as_posix()
+            assert rel in FILES, (rel, 'new file in a sealed folder, not in the seal')
+    return {s: sum(1 for v in FILES.values() if v[0] == s) for s in ('unchanged', 'changed', 'added')}
+
+
+# Silent edits (a constant or a condition changed without resealing): each must fail check().
+SILENT_EDITS = [
+    ('native/include/Trace.h', 'inline constexpr std::size_t kMaxLine = 480;', 'inline constexpr std::size_t kMaxLine = 481;'),
+    ('native/include/Trace.h', 'inline constexpr float kLevel = 4.0f;', 'inline constexpr float kLevel = 3.0f;'),
+    ('native/src/Plugin.cpp', 'LogThreadOnce(Probe::kHurtTask, "hurt task");', 'LogThreadOnce(Probe::kHurt, "hurt task");'),
+    ('native/include/StatusEngine.h', 'why(i, Pick::kNeutral);', 'why(i, Pick::kFar);'),
+    ('build/fix26_format.py', "B = r'[01]'", "B = r'[012]'"),
+    ('build/probe-judge.py', "if not 0.88 <= r <= 0.99:", "if not 0.80 <= r <= 0.99:"),
+    ('build/fix26_records.py', 'BASE = 0x5C00', 'BASE = 0x5C01'),
+]
+
+
+def self_check() -> dict:
+    counts = verify()
+    caught = []
+    for rel, old, new in SILENT_EDITS:
+        data = (ROOT / rel).read_bytes()
+        assert old.encode('utf-8') in data, (rel, old)
+        try:
+            check(rel, data.replace(old.encode('utf-8'), new.encode('utf-8'), 1))
+        except AssertionError:
+            caught.append(rel)
+            continue
+        raise AssertionError(('silent edit not caught', rel, old))
+    return dict(counts, silent_edits_caught=caught)

@@ -17,7 +17,12 @@ Int Function Level() Global
 EndFunction
 
 Function Log(Int aiLevel, String asMechanism, String asMessage) Global
-	If Level() < aiLevel
+	Int current = Level()
+	; round 26：等級 4（探針 log）時每一行也寫進 DLL 的 ElementsSpellblade.log（不節流，跟 DLL 的行同一個序號）。
+	If current >= 4
+		ESSBNative.Trace(asMechanism, None, asMessage)
+	EndIf
+	If current < aiLevel
 		Return
 	EndIf
 	Debug.Trace("[ESSB][" + asMechanism + "][L" + aiLevel + "] " + asMessage)

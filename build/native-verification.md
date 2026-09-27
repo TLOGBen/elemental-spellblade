@@ -319,3 +319,36 @@ snapshot 的 74 段中，R5→R1 priority 遞減；按 smoke 證實的最低 pri
 | 版本 | DLL 0.25.1（manifest 的 native_version 跟著變；log 開頭的版本可確認換上的是熱修版）。state schema 不變（14，控制器成員沒動）。 |
 
 建置：`python -B native/build.py` exit 0（ctest 6/6，突變 47/47＋3 個 Load.h 突變）；`python build_v03.py` exit 0（`FIX25 LOAD ok`：8/8 注入錯誤、3/3 突變）。
+
+
+## Round 26（探針 log，DLL 0.26.0）
+
+合約 `.codex/fix-round26-briefing.md`，紀錄 `.codex/impl-fix-round26.html`。這一輪只加 log 與修探針旗標，玩法不變。
+
+| 項目 | 內容 |
+|---|---|
+| 探針 log | MCM「除錯等級」新增 **4：探針 log**（預設 0）。每個可觀察事件一行 `[ESSB][T][種類] #序號 g=遊戲在跑的毫秒 r=實際毫秒 欄位=值…`，演員一律 `名字(0xFormID)[h=目前/上限 m=… s=…]`。行格式、緩衝、錄骰與各種行的產生函式在新純標頭 `native/include/Trace.h`；每種行的 regex 在 `build/fix26_format.py`（寫出 `build/fix26-trace-format.json`，trace_test 與判定器共用）。 |
+| 涵蓋 | proc（元素、法術、強度、暴擊、擲骰 `rolls=`、雷的 N／電荷／暴擊率、吸魔／燒魔、施放清單）、hit-end、每一個狀態 op（`ctx=` 事件標籤、Apply／Remove／Mark／Damage／Event…、狀態記錄名、強度、秒數、被取代的舊實例 `was=/left=/n=`）與 op-done（做完後的數值）、remove（expired／dispel／death 與剩餘秒數）、apply（引擎替我們掛的效果：領域標記、Papyrus 法術）、hurt（含冷卻）、second（維持費／扣血／長流與 dH dM dS）、env（每 5 秒，含天氣 FormID）、tick（停住／恢復）、menu、switch、key、mcm（每個全域變數的變動）、node（節點增減，每秒比一次）、scan／scan-c（每次範圍掃描、每個演員的判定理由：picked／ally／neutral／far／dead…，`StatusEngine.h SelectCrowdWhy`）、death／death-event、burst、settle、native、cast、casting、interrupt、wash、spread、silence、fire-source、domain 系列、Papyrus 那一半的 pap（推力、跌倒、復生、恐懼／瘋狂／幻視、神佑、換形態、魔力耗盡關閉、以毒攻毒、化灰、印出目標狀態、MCM 按鈕，經新原生函式 `ESSBNative.Trace`）。 |
+| 成本 | 等級不到 4 時：每個呼叫點一次浮點比較（RunOp 裡是引擎的 `Tracing()`）、TraceRng 每次擲骰多一個布林判斷；其他什麼都不做。等級 4：寫進記憶體緩衝（鎖內給序號），**計時執行緒每秒寫檔一次**，滿 1 MB、故障、讀檔前後、存檔時與 DLL 卸載時也立刻寫；單行上限 480 位元組（超過截斷、結尾 `~`）；緩衝超過 16 MB 會丟行並記一行數量。 |
+| TraceRng | 包住原本的 SplitMix64：抽到的數字與順序完全一樣（trace_test 對 200 組 Int／Real／Chance 逐一比對，錄與不錄都一樣），只是把抽到的數字另外記下來寫進 `rolls=`／`[rng]`。 |
+| 站標記 | 新記錄 `ESSB_ProbeStep`（GLOB 0x005C00，`build/fix26_records.py`，隨存檔保存）。等級 4 時數字鍵區 `+`（DIK 78）＝下一站、`-`（74）＝上一站，主控台 `set ESSB_ProbeStep to N` 直接跳；每次變動寫 `[ESSB][STEP] N #序號 g=… r=… via=key|key-back|console` 並在畫面顯示「探針站 N」。總開關關著時也有作用（D-24 要用）。 |
+| X1 旗標修正 | `Probe::kHurtTask`：受擊 task 以前跟命中 sink 的「you are the target」共用 `Probe::kHurt`，只會寫先到的一行；現在各自一個旗標。 |
+| 主執行緒查證（指揮官插單） | 見下一節。X1 改成每個 sink／task 遇到**每一條新執行緒**寫一行（最多 4 條），列原始 id、是否等於輸入 sink（主迴圈）、最近一次 SKSE task、遊戲視窗擁有者、kDataLoaded 的執行緒、當下是否暫停；新增 settle／death／spell-cast task 的探針。**執行緒模型沒有改。** |
+| 判定器 | `build/probe-judge.py <log>`：依 `build/probes-all.md` 的 91 站判定 102 步（PASS／FAIL／EYES／RECORD／NO-DATA＋證據行）。`build/fix26_verify.py` 檢查卷與判定器一致，並用 trace_test 以真規劃器產生的樣本（B-07、B-35、B-33、A-15、A-05、A-09）與手寫樣本（SETUP-1、A-01、A-06、A-10、A-11、A-12、B-08、B-13、C-01、D-01、D-24、E-01）各跑一次 PASS、各注入一個錯誤要 FAIL。 |
+| 版本 | DLL 0.26.0；state schema 不變（14：Papyrus 只加函式，沒動屬性／變數）。 |
+
+### 主執行緒查證（2026-09-27，SE 1.5.97 + SKSE 2.0.20）
+
+實測兩次：`kDataLoaded thread=42336`／`timer task 18188`（第一次）；`kDataLoaded 2744`、`timer task 22284`、`TESHitEvent 15464`（第二次，三個都不同）。靜態證據（`build/nv3-scratch/nv3.py` 唯讀反組譯 SkyrimSE.exe、SKSE 2.0.20 原始碼）：
+
+1. **kDataLoaded 在 InitTESThread**：SKSE `Hooks_Data.cpp` 在 `0x5B0120+0x3E8`（ID 35554，原本呼叫 `DataHandler::LoadScripts` ID 13657）送 kDataLoaded；35554 唯一呼叫者 ID 35631 沒有直接呼叫者，是 vtable `0x14164D900` 第 1 格，RTTI `.?AVInitTESThread@@`。所以它不是主迴圈，不能當 X1 的參考。
+2. **輸入 sink 在主迴圈**：`Main::Update`（ID 35565，呼叫鏈 35551 → 35545 → CRT `__scrt_common_main`＝WinMain）在 `0x1405B33B0` 呼叫 `PollInputDevices`（native-verification-3 §13）。
+3. **task 佇列有兩個處理點**：SKSE 的 `ProcessTasks` 接在 `ProcessTaskQueue`（ID 35916）的兩個呼叫點：`Main::Update+0x6B8`（`0x1405B36A8`）與 ID 35582+0x1C。前者前面是 `test dil,dil; jne`，dil 在 `0x1405B30A5` 依 `UI+0x160`（暫停選單計數）設定：**遊戲在跑時跳過**、暫停時才在 WinMain 處理。後者的唯一呼叫者 ID 38136 是 BSJobs 工作表（.data `0x141DEE620`）裡名為「Post process」的工作；它先把目前執行緒登記進 TLS 位元遮罩 ID 517486（與 Main::Update 在 `0x1405B368A` 呼叫的 ID 38082 同一段）再處理佇列。**所以遊戲在跑時，引擎的 task 佇列與 SKSE task 在「Post process」工作裡，由任一條工作執行緒處理。**
+4. **命中結算走同一個佇列**：送 TESHitEvent 的 ID 37650 只由 BSTaskPool 執行函式 ID 36016 呼叫；ID 35917 等約 60 個包裝函式在旗標 ID 509007（`0x141DEF8A0`，.data 初值 1；只有 ID 35552（關遊戲）與 ID 13646（暫存後還原）寫它）為真時把工作排進佇列。
+
+5. **第三次實測**（0.25.1）：輸入 sink＝Papyrus native＝6300；timer task 41528、queued native task 38544、`TESHitEvent (you are the target)` 38544、`TESHitEvent` 26956、`TESDeathEvent` 46780。輸入 sink 的 `SendEvent`（ID 67355）每次 `PollInputDevices` 都呼叫 sink、不檢查有沒有事件（每幀一次）；PollInputDevices 暫停時由 Main::Update、遊戲中由「Poll controls」工作（ID 38135）呼叫。
+6. **崩潰**（crash-2026-09-27-03-17-19）：76018＝bhkWorld vfunc 50 → 60562 hkpWorld 步進 → 60930／60931＝hkpSimulation vfunc 3／4 → 60941 → 61420 → 63800 約束求解，在 BSJobs::JobThread 上讀到壞指標（另一模組的 NPC「瘟疫狼」的 hkpConstraintInstance）。本 DLL 不在堆疊、不直接碰 Havok；在工作執行緒上做的施放／傷害（可能殺死而加入布娃娃約束）、Dispel、AV 寫入若與物理步進同時進行即可能破壞，但引擎自己的命中結算也在同一處，靜態上無法排除或坐實。
+
+結論：遊戲進行中 SKSE task、命中與死亡事件都在工作執行緒（Post process 等），不是主迴圈；10:34 那一版「同一情境、不必改」作廢。提案（**等指揮官定案才改，本輪沒有改任何執行緒行為**）：自有 FIFO，所有 sink 只記快照再入列，在主執行緒點消化——首選 SKSE `AddUITask`（UI::ProcessMessages ID 79945，Main::Update `0x1405B35BA` 呼叫），備選輸入 sink 的每幀呼叫。為了讓下一次實機定案，X1 再加兩個見證：每秒一個 `SKSE UI task`、`input sink (every frame)`，都對照遊戲視窗擁有者（WinMain）與最近一次 SKSE task 的執行緒。
+
+建置：見 `.codex/impl-fix-round26.html` 最後一段（`python -B native/build.py`、`python build_v03.py` 的 exit code 與檢查數）。

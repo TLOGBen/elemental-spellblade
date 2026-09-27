@@ -116,5 +116,8 @@ Function ShowNativeStatus()
 	If version == ""
 		version = "未載入／版本拒絕"
 	EndIf
+	If ESSBLog.Level() >= 4
+		ESSBNative.Trace("mcm-button", None, "button=ShowNativeStatus version=" + version + " active=" + active)   ; round 26：探針 log
+	EndIf
 	ShowMessage("ElementsSpellblade DLL：" + version + "\n命中附傷運作：" + active + "\n停用時不會退回 entry 51。", False, "確定", "")
 EndFunction

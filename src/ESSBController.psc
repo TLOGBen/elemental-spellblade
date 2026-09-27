@@ -2357,6 +2357,9 @@ Function ApplyFear(Actor akTarget, Int aiSeconds, Bool abScaled = False)
 	FearSpell.SetNthEffectMagnitude(0, ESSBElem3.CharmCap(Self) as Float)
 	FearSpell.SetNthEffectDuration(0, seconds)
 	player.DoCombatSpellApply(FearSpell, akTarget)
+	If CachedDebugLevel >= 4
+		Probe("fear", akTarget, "sec=" + seconds + " cap=" + ESSBElem3.CharmCap(Self))   ; round 26
+	EndIf
 	If CachedDebugLevel >= 1
 		LogThrottled(1, "fear", akTarget.GetFormID() + " sec=" + aiSeconds)
 	EndIf
@@ -2374,6 +2377,9 @@ Function ApplyFrenzy(Actor akTarget, Int aiSeconds, Bool abScaled = False)
 	FrenzySpell.SetNthEffectMagnitude(0, ESSBElem3.CharmCap(Self) as Float)
 	FrenzySpell.SetNthEffectDuration(0, seconds)
 	player.DoCombatSpellApply(FrenzySpell, akTarget)
+	If CachedDebugLevel >= 4
+		Probe("frenzy", akTarget, "sec=" + seconds + " cap=" + ESSBElem3.CharmCap(Self))   ; round 26
+	EndIf
 	; 5.12 開啟熟練分支「狂刃」：瘋狂中的目標造成的傷害 +50%（同樣秒數的引擎效果，AttackDamageMult +0.5）。
 	If ESSBNodes.Br(Self, 9, 1, 1, 2) && FrenzyBladeSpell ; @node 狂刃
 		FrenzyBladeSpell.SetNthEffectDuration(0, seconds)
@@ -2658,7 +2664,11 @@ Event OnESSBKnock(String asEventName, String asArgs, Float afForce, Form akSende
 	If !IsOperational() || !target || target.IsDead()
 		Return
 	EndIf
-	If !Knockdown(target, afForce) && afForce >= 3.0
+	Bool knocked = Knockdown(target, afForce)
+	If CachedDebugLevel >= 4
+		Probe("knock", target, "force=" + afForce + " knocked=" + knocked)   ; round 26
+	EndIf
+	If !knocked && afForce >= 3.0
 		ApplyUtil(0, 30.0, 3, target)
 	EndIf
 EndEvent
@@ -2680,6 +2690,9 @@ Event OnESSBCleanse(String asEventName, String asArgs, Float afPurge, Form akSen
 	If !IsOperational()
 		Return
 	EndIf
+	If CachedDebugLevel >= 4
+		Probe("cleanse", ThePlayer(), "purge=" + (afPurge > 0.5))   ; round 26
+	EndIf
 	ApplyCleanse(afPurge > 0.5)
 EndEvent
 
@@ -2687,6 +2700,9 @@ EndEvent
 Event OnESSBLethal(String asEventName, String asArgs, Float afUnused, Form akSender)
 	If !IsCurrentController()
 		Return
+	EndIf
+	If CachedDebugLevel >= 4
+		Probe("lethal", ThePlayer(), "armed=" + DivineArmed + " used=" + DivineSaveUsed)   ; round 26
 	EndIf
 	OnLethalHitWhileArmed()
 EndEvent
@@ -2703,6 +2719,9 @@ Event OnESSBHallucinate(String asEventName, String asArgs, Float afKind, Form ak
 	Int kind = EventArg(args, 0) as Int
 	Float seconds = EventArg(args, 1)
 	If !CanCharm(target)
+		If CachedDebugLevel >= 4
+			Probe("hallucinate", target, "kind=" + kind + " sec=" + seconds + " charm=False group=" + (EventArg(args, 2) > 0.5) + " level=" + target.GetLevel())   ; round 26
+		EndIf
 		If EventArg(args, 2) > 0.5
 			Return
 		EndIf
@@ -2719,6 +2738,9 @@ Event OnESSBHallucinate(String asEventName, String asArgs, Float afKind, Form ak
 	Int whole = (seconds + 0.5) as Int
 	If whole < 1
 		whole = 1
+	EndIf
+	If CachedDebugLevel >= 4
+		Probe("hallucinate", target, "kind=" + kind + " sec=" + whole + " charm=True level=" + target.GetLevel())   ; round 26
 	EndIf
 	If kind == 2
 		ApplyFrenzy(target, whole, True)
@@ -2756,6 +2778,9 @@ Event OnESSBPush(String asEventName, String asArgs, Float afKind, Form akSender)
 	ElseIf kind == 4
 		pushed = LiftUp(target, metres, EventArg(args, 2))
 	EndIf
+	If CachedDebugLevel >= 4
+		Probe("push", target, "kind=" + kind + " metres=" + metres + " landing=" + EventArg(args, 2) + " pushed=" + pushed + " slowIfStuck=" + (EventArg(args, 4) > 0.5))   ; round 26
+	EndIf
 	If !pushed && EventArg(args, 4) > 0.5
 		ApplyUtil(0, 30.0, 3, target)
 	EndIf
@@ -2768,7 +2793,11 @@ Event OnESSBAsh(String asEventName, String asArgs, Float afUnused, Form akSender
 	If !IsOperational() || !target
 		Return
 	EndIf
-	If ApplyAsh(target) && CachedDebugLevel >= 1
+	Bool ashed = ApplyAsh(target)
+	If CachedDebugLevel >= 4
+		Probe("ash", target, "ashed=" + ashed)   ; round 26
+	EndIf
+	If ashed && CachedDebugLevel >= 1
 		LogThrottled(1, "ash", target.GetFormID() + " turned to ash")
 	EndIf
 EndEvent
@@ -2784,17 +2813,27 @@ Event OnESSBRaise(String asEventName, String asArgs, Float afTier, Form akSender
 	Int levelCap = (EventArg(args, 1) + 0.5) as Int
 	Int seconds = (EventArg(args, 2) + 0.5) as Int
 	Float attack = EventArg(args, 3)
-	If !CanReanimate(target)
+	Bool can = CanReanimate(target)
+	If CachedDebugLevel >= 4
+		Probe("raise", target, "tier=" + ((afTier + 0.5) as Int) + " levelCap=" + levelCap + " sec=" + seconds + " attack=" + attack + " permanent=" + (EventArg(args, 4) > 0.5) + " can=" + can + " level=" + target.GetLevel())   ; round 26
+	EndIf
+	If !can
 		Return
 	EndIf
 	; 詛咒 5 層以上每層僕從攻擊 +10%（v0.4 5.12）：復生法術的第二個效果（審查修正 3，不改角色本身的數值）。
-	ApplyReanimate(target, levelCap, seconds, attack)
+	Bool raised = ApplyReanimate(target, levelCap, seconds, attack)
+	If CachedDebugLevel >= 4
+		Probe("raised", target, "raised=" + raised + " servants=" + ServantCount() + " cap=" + SummonCap())   ; round 26
+	EndIf
 EndEvent
 
 ; ESSB_Sneak：連殺（風印記目標被你的潛行攻擊殺死）：秒數內不解除潛行（DLL 已乘持續時間；下一次潛行攻擊 ×2 是 DLL 的視窗）。
 Event OnESSBSneak(String asEventName, String asArgs, Float afSeconds, Form akSender)
 	If !IsOperational()
 		Return
+	EndIf
+	If CachedDebugLevel >= 4
+		Probe("sneak", ThePlayer(), "sec=" + UnscaledSeconds(afSeconds))   ; round 26
 	EndIf
 	KeepSneak(UnscaledSeconds(afSeconds))
 EndEvent
@@ -2824,6 +2863,9 @@ Event OnESSBSwitch(String asEventName, String asArgs, Float afElement, Form akSe
 	If !IsOperational()
 		Return
 	EndIf
+	If CachedDebugLevel >= 4
+		Probe("form-switch", ThePlayer(), "element=" + ((afElement + 0.5) as Int) + " current=" + CurrentElement.GetValueInt() + " active=" + FormActive.GetValueInt() + " applied=" + AppliedElement)   ; round 26
+	EndIf
 	SwitchForm((afElement + 0.5) as Int)
 EndEvent
 
@@ -2831,6 +2873,9 @@ EndEvent
 Event OnESSBClose(String asEventName, String asArgs, Float afUnused, Form akSender)
 	If !IsOperational() || FormActive.GetValueInt() != 1
 		Return
+	EndIf
+	If CachedDebugLevel >= 4
+		Probe("form-close", ThePlayer(), "reason=magicka-empty element=" + CurrentElement.GetValueInt())   ; round 26
 	EndIf
 	CloseForm()
 	Debug.Notification("魔力耗盡，形態已關閉")
@@ -2925,7 +2970,7 @@ Function DumpStatus()
 	If !player
 		Return
 	EndIf
-	Debug.Trace("[ESSB][dump][L0] status element=" + CurrentElement.GetValueInt() \
+	String status = "element=" + CurrentElement.GetValueInt() \
 		+ " active=" + FormActive.GetValueInt() + " sync=" + Sync.GetValueInt() + " stage=" + SyncStage() \
 		+ " charge=" + GetSelf(1) + " rock=" + GetSelf(2) + " wind=" + GetSelf(3) \
 		+ " resolve=" + ESSBNative.GetStatus(player, 45) + " ice=" + ESSBNative.GetStatus(player, 46) \
@@ -2934,19 +2979,30 @@ Function DumpStatus()
 		+ " guard=" + ESSBNative.GetStatusFloat(player, 58) \
 		+ " heat=" + ESSBNative.GetStatus(player, 20) + " holy=" + ESSBNative.GetStatus(player, 21) \
 		+ " molten=" + ESSBNative.GetStatus(player, 22) \
-		+ " wet=" + IsEnvWet() + " stormy=" + IsEnvStormy() + " night=" + IsEnvNight())
+		+ " wet=" + IsEnvWet() + " stormy=" + IsEnvStormy() + " night=" + IsEnvNight()
+	Debug.Trace("[ESSB][dump][L0] status " + status)
+	If CachedDebugLevel >= 4
+		Probe("dump-status", player, status)   ; round 26：探針 log
+	EndIf
 	; 審查修正 1：帶印記目標的清單由 DLL 在主執行緒 task 裡掃描、寫進 DLL log（[ESSB][dump][L0] target=…）。
 	ESSBNative.DumpTargets(3500.0)
 	; 探針卡「新來的 NPC 沒有殘留狀態」（審查修正 7）：最近一個可打的目標，狀態碼 2～19 全部列在畫面上。
 	Actor nearest = ScanTargets(player, 2100.0, 1, player)[0]
 	String shown = "（附近沒有目標）"
 	If nearest
+		String codes = "marks=" + ESSBNative.MarksOn(nearest)
 		shown = nearest.GetDisplayName() + "：印記 " + ESSBNative.MarksOn(nearest)
 		Int c = 2
 		While c <= 19
 			shown = shown + " s" + c + "=" + ESSBNative.GetStatus(nearest, c)
+			codes = codes + " s" + c + "=" + ESSBNative.GetStatus(nearest, c)
 			c += 1
 		EndWhile
+		If CachedDebugLevel >= 4
+			Probe("dump-nearest", nearest, codes)   ; round 26：探針 log（訊息框那一行，給 log 判定）
+		EndIf
+	ElseIf CachedDebugLevel >= 4
+		Probe("dump-nearest", None, "none=1")   ; round 26
 	EndIf
 	Debug.MessageBox("元素魔戰士：附近帶印記的目標列在 ElementsSpellblade.log\n最近的目標 " + shown)
 EndFunction
@@ -2954,6 +3010,9 @@ EndFunction
 ; ---------------------------------------------------------------- 節流紀錄
 
 Function LogThrottled(Int aiLevel, String asMechanism, String asMessage)
+	If CachedDebugLevel >= 4
+		ESSBNative.Trace(asMechanism, None, asMessage)   ; round 26：探針 log 不節流
+	EndIf
 	If CachedDebugLevel < aiLevel
 		Return
 	EndIf
@@ -3641,8 +3700,19 @@ EndFunction
 
 ; Same L1 output as ESSBLog, using the init/load/MCM cache; intentionally unthrottled.
 Function LogEvent(Int aiLevel, String asMechanism, String asMessage)
+	If CachedDebugLevel >= 4
+		ESSBNative.Trace(asMechanism, None, asMessage)   ; round 26：探針 log
+	EndIf
 	If CachedDebugLevel >= aiLevel
 		Debug.Trace("[ESSB][" + asMechanism + "][L" + aiLevel + "] " + asMessage)
+	EndIf
+EndFunction
+
+; round 26：探針 log（除錯等級 4）。Papyrus 這一半的動作（推力、復生、恐懼／瘋狂、神佑、換形態、以毒攻毒……）
+; 寫進 DLL 的 ElementsSpellblade.log，跟 DLL 的行同一個序號（[ESSB][T][pap] kind=… who=…）。呼叫端先看等級。
+Function Probe(String asKind, Actor akActor, String asText)
+	If CachedDebugLevel >= 4
+		ESSBNative.Trace(asKind, akActor, asText)
 	EndIf
 EndFunction
 
@@ -3665,6 +3735,9 @@ Function RefreshDivineProtection()
 		ApplyCleanse(True)
 		player.RestoreActorValue("Health", 1.0 - player.GetActorValue("Health"))
 		player.EndDeferredKill()
+		If CachedDebugLevel >= 4
+			Probe("divine", player, "saved=1")   ; round 26
+		EndIf
 		Return
 	EndIf
 	Bool eligible = Enabled.GetValueInt() == 1 && FormActive.GetValueInt() == 1 && !DivineSaveUsed && SyncStage() >= 3 && ESSBNodes.Br(Self, 6, 0, 4, 0) ; @node 神佑
@@ -3672,10 +3745,16 @@ Function RefreshDivineProtection()
 		player.StartDeferredKill()
 		DivineArmed = True
 		SetGlobal(GDivineArmed, 1)
+		If CachedDebugLevel >= 4
+			Probe("divine", player, "armed=1")   ; round 26
+		EndIf
 	ElseIf !eligible && DivineArmed
 		DivineArmed = False
 		SetGlobal(GDivineArmed, 0)
 		player.EndDeferredKill()
+		If CachedDebugLevel >= 4
+			Probe("divine", player, "armed=0")   ; round 26
+		EndIf
 	EndIf
 EndFunction
 

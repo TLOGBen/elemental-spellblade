@@ -23,6 +23,7 @@ import fix22_records as hit22
 import fix23_records as hit23
 import fix24_records as hit24
 import fix25_records as hit25
+import fix26_records as hit26
 import fix20_fixture
 import fix22_fixture
 import fix23_fixture
@@ -34,12 +35,12 @@ import fix23_reference as _ref23
 import fix24_reference as _ref24
 import fix25_reference as _ref25
 NATIVE = ROOT / 'native'
-NATIVE_VERSION = '0.25.1'
+NATIVE_VERSION = '0.26.0'
 NATIVE_HIT = 0x52d1
 NATIVE_WANTED = 0x52d2
 NATIVE_GLOBALS = {'ESSB_NativeHit', 'ESSB_NativeWanted'}      # round 19: the MCM shows both
 NEW_EDIDS = (NATIVE_GLOBALS | hit20.new_edids() | hit21.new_edids() | hit22.new_edids() | hit23.new_edids() |
-             hit24.new_edids() | hit25.new_edids())   # every record the native slices added
+             hit24.new_edids() | hit25.new_edids() | hit26.new_edids())   # every record the native slices added
 DEPS = {
     'CommonLibSSE-NG': ('https://github.com/CharmedBaryon/CommonLibSSE-NG', 'b93280e832f263dbef44e44cbe2936622a02f91a'),
     'spdlog': ('https://github.com/gabime/spdlog', '27cb4c76708608465c413f6d0e6b8d99a4d84302'),
@@ -252,6 +253,7 @@ def globals_(b):
     for name in ['ESSB_MultUpkeep', 'ESSB_WaterFlowBasePct', 'ESSB_WaterFlowPerRankPct']:
         ids[name] = b.ID_BALANCE_GLOB[name][0]
     ids[hit25.THUNDER_GLOBAL] = hit25.thunder_global_id()
+    ids[hit26.PROBE_STEP_GLOBAL] = hit26.probe_step_id()   # round 26: the probe log's step marker
     ids['ESSB_FreeOpen'] = b.ID_MECH_GLOB + mech.index('ESSB_FreeOpen')
     ids['ESSB_HotkeysEnabled'] = b.hit18.KEY_ENABLE
     ids['ESSB_FormNotify'] = b.hit18.NOTIFY

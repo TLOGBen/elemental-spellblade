@@ -1457,6 +1457,7 @@ import fix22_records as hit22
 import fix23_records as hit23
 import fix24_records as hit24
 import fix25_records as hit25
+import fix26_records as hit26
 import tree_v04
 
 
@@ -1564,6 +1565,7 @@ def build_esp(plan):
     hit23.add_records(sys.modules[__name__], add)                 # round 23 (N4): your resources, windows, cooldowns
     hit24.add_records(sys.modules[__name__], add)                 # round 24 (N5): markers, 雙斷／安全閥, 血承, timed bodies
     hit25.add_records(sys.modules[__name__], add)                 # round 25 (N6): domain hazards, markers, the timer's windows
+    hit26.add_records(sys.modules[__name__], add)                 # round 26: ESSB_ProbeStep (the probe log's step marker)
 
     # -------------------------------------------------------------- KYWD
     add('KYWD', ID_KW_PROC, 'ESSB_Proc', [])
@@ -3206,9 +3208,11 @@ def write_mcm(manifest):
               button('ESSB_RespecAll', '洗點：全部', 'RespecAll',
                      '確認後呼叫既有全部洗點；需脫戰、關閉形態，冷卻中的樹略過。')]
     debug = [control('ESSB_DebugLevel', '除錯等級', 'enum',
-                     options=['0：關閉', '1：事件', '2：命中', '3：詳細'], defaultValue=settings['debug_level']),
+                     options=['0：關閉', '1：事件', '2：命中', '3：詳細', '4：探針 log'], defaultValue=settings['debug_level']),
              button('ESSB_DumpRegistry', '印出目標狀態', 'DumpRegistry',
                     '將附近帶印記的目標與你身上的狀態寫入 Papyrus 紀錄；遊戲需啟用 Papyrus logging 才會產生檔案。')]
+    debug[0]['help'] = ('4＝探針 log：每個可觀察的事件一行寫進 SKSE 資料夾的 ElementsSpellblade.log（每秒寫檔一次；數字鍵區 +／- 標記探針站），'
+                        '跑 build/probes-all.md 時用；平常放 0。')
     hotkeys = [control('ESSB_HotkeysEnabled', '直接切換熱鍵', 'toggle', defaultValue=1),
                control('ESSB_FormNotify', '切換文字提示', 'toggle', defaultValue=1),
                control('ESSB_FormSound', '切換音效', 'toggle', defaultValue=1)]
@@ -3462,6 +3466,7 @@ def main():
     runpy.run_path(str(WORK / 'build/fix23_verify.py'))['run'](sys.modules[__name__])   # round 23: seam, removals, records, resolve, guards, faults, seals
     runpy.run_path(str(WORK / 'build/fix24_verify.py'))['run'](sys.modules[__name__])   # round 24: bodies seam, removals, records, resolve, guards, faults, seals
     runpy.run_path(str(WORK / 'build/fix25_verify.py'))['run'](sys.modules[__name__])   # round 25: timer, hotkeys, domains, removals, records, resolve, nodes, faults, seals
+    runpy.run_path(str(WORK / 'build/fix26_verify.py'))['run'](sys.modules[__name__])   # round 26: the probe log, the judge and the sheet, samples, seals
     runpy.run_path(str(WORK / 'build/fix18_probes.py'))['run'](sys.modules[__name__])
     perks = sum(1 for r in check if r.sig == 'PERK')
     print(f'READBACK ok: masters={meta["masters"]} records={len(check)} manifest={written["record_count"]} '

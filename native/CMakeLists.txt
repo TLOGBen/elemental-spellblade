@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(ElementsSpellblade VERSION 0.25.1 LANGUAGES CXX)
+project(ElementsSpellblade VERSION 0.26.0 LANGUAGES CXX)
 if(NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   message(FATAL_ERROR "MSVC x64 is required")
 endif()
@@ -62,3 +62,10 @@ add_test(NAME timer_domains_hotkeys COMMAND timer_test "${CMAKE_CURRENT_SOURCE_D
 add_executable(load_test tests/load_test.cpp)
 target_include_directories(load_test PRIVATE include deps/json/single_include)
 target_compile_options(load_test PRIVATE /W4 /WX /EHsc /utf-8 /bigobj)
+# Round 26: the probe log (Trace.h) -- the line formats against build/fix26-trace-format.json (the patterns
+# build/probe-judge.py reads with), the buffer, the recording random source, the engine hooks; it writes the offline
+# sample log build/probe-judge.py is tested on.
+add_executable(trace_test tests/trace_test.cpp)
+target_include_directories(trace_test PRIVATE include deps/json/single_include)
+target_compile_options(trace_test PRIVATE /W4 /WX /EHsc /utf-8 /bigobj)
+add_test(NAME probe_log COMMAND trace_test "${CMAKE_CURRENT_SOURCE_DIR}/../build/fix26-trace-format.json" "${CMAKE_CURRENT_SOURCE_DIR}/../build/fix26-trace-sample.log")

@@ -188,6 +188,15 @@ MUTANTS = [
         }''', '''        (void)id;'''),
     ('the status effect table left unsorted (EffectById is a binary search)', 'Load.h', 'load',
      '    std::sort(s.effects.begin(), s.effects.end());\n', ''),
+    # Round 26 (the probe log): mutations of Trace.h and the probe-log hooks of StatusEngine.h; each must fail trace_test
+    # (against build/fix26-trace-format.json). The log may never change a roll, lose a line's cut marker, write op-done after
+    # an op that changes no value, or mislabel a scan verdict.
+    ('the tape changes the roll it records', 'Trace.h', 'trace',
+     'const bool v = rng_.Chance(probability);', 'const bool v = rng_.Chance(probability * 0.5f);'),
+    ('a cut line does not end in ~', 'Trace.h', 'trace', "text_ += '~';", "text_ += '+';"),
+    ('op-done after every apply', 'StatusEngine.h', 'trace',
+     'return op == Op::kDamage || op == Op::kHeal', 'return op == Op::kApply || op == Op::kDamage || op == Op::kHeal'),
+    ('a far actor reported as a neutral', 'StatusEngine.h', 'trace', 'why(i, Pick::kFar);', 'why(i, Pick::kNeutral);'),
 ]
 LOAD_DEFERRED = 'load'   # the mutants of this test run in build/fix25_verify.py (check_load), on the written ESP
 
@@ -215,7 +224,8 @@ def run_mutants(log):
                 (folder / other.name).write_bytes(other.read_bytes())
         (folder / header).write_text(text.replace(old, new), encoding='utf-8', newline='\n')
         source = n.NATIVE / 'tests' / {'status': 'status_test.cpp', 'engine': 'engine_test.cpp', 'self': 'self_test.cpp',
-                                       'reaction': 'reaction_test.cpp', 'timer': 'timer_test.cpp', 'load': 'load_test.cpp'}[test]
+                                       'reaction': 'reaction_test.cpp', 'timer': 'timer_test.cpp', 'load': 'load_test.cpp',
+                                       'trace': 'trace_test.cpp'}[test]
         lines += [f'add_executable(m{i} "{source.as_posix()}")',
                   f'target_include_directories(m{i} PRIVATE "{folder.as_posix()}" "{inc.as_posix()}" "{js.as_posix()}")',
                   f'target_compile_options(m{i} PRIVATE /EHsc /utf-8 /bigobj)']
@@ -233,7 +243,8 @@ def run_mutants(log):
         tables = {'status': ['build/fix22-status-table.json', 'build/fix22-wiring.json'],
                   'self': ['build/fix23-self-table.json', 'build/fix23-wiring.json'],
                   'reaction': ['build/fix24-body-table.json', 'build/fix24-wiring.json'],
-                  'timer': ['build/fix25-timer-table.json', 'build/fix25-wiring.json']}.get(test, [])
+                  'timer': ['build/fix25-timer-table.json', 'build/fix25-wiring.json'],
+                  'trace': ['build/fix26-trace-format.json']}.get(test, [])
         args = [exe] + [ROOT / t for t in tables]
         r = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf8', errors='replace')
         log.write(f'$ mutant {i} ({name}): exit {r.returncode}\n{r.stdout}\n')
@@ -247,6 +258,8 @@ def main():
     n.check_deps()
     n.generate_header(b)
     cases = n.fixture(b)
+    import fix26_format   # round 26: the probe log's line formats (trace_test and build/probe-judge.py read the same file)
+    fix26_format.FIXTURE()
     OUT.mkdir(exist_ok=True)
     receipt = OUT / 'build-receipt.json'
     if receipt.exists():

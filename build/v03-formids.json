@@ -4,7 +4,7 @@
     "Skyrim.esm"
   ],
   "esl_flagged": false,
-  "record_count": 5027,
+  "record_count": 5028,
   "next_object_id": "00601A",
   "allocation": [
     {
@@ -6724,6 +6724,11 @@
       "id": "005904",
       "formid": "01005904",
       "type": "SPEL"
+    },
+    "ESSB_ProbeStep": {
+      "id": "005C00",
+      "formid": "01005C00",
+      "type": "GLOB"
     },
     "ESSB_Proc": {
       "id": "000830",

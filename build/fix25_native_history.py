@@ -103,6 +103,14 @@ FILES = {
 FOLDERS = ('native/include', 'native/src', 'native/tests')
 
 
+def base() -> Path:
+    """Round 26 moved "now" for this seal to the pre-fix26 snapshot (round 25 as shipped): build/fix26_native_history.py
+    first proves today's bytes differ from it only by round 26's declared changes."""
+    import fix26_native_history
+    fix26_native_history.verify()
+    return fix26_native_history.SNAP
+
+
 def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -113,7 +121,7 @@ def check(rel: str, data: bytes) -> None:
 
 
 def verify() -> dict:
-    root = ROOT
+    root = base()
     for rel in FILES:
         path = root / rel
         assert path.is_file(), (rel, 'sealed file is missing')
@@ -141,7 +149,7 @@ def self_check() -> dict:
     counts = verify()
     caught = []
     for rel, old, new in SILENT_EDITS:
-        data = (ROOT / rel).read_bytes()
+        data = (base() / rel).read_bytes()
         assert old.encode('utf-8') in data, (rel, old)
         try:
             check(rel, data.replace(old.encode('utf-8'), new.encode('utf-8'), 1))

@@ -135,8 +135,10 @@ def snapshot_text(script: str) -> str:
 
 
 def current_dir() -> Path:
-    """Today's scripts (a later round moves this to its own pre-round snapshot, as round 25 did for build/fix24_history.py)."""
-    return ROOT / 'src'
+    """Round 26 moved "now" for this seal to the pre-fix26 snapshot (round 25 as shipped): build/fix26_history.py first
+    proves today's scripts differ from it only by round 26's declared changes."""
+    import fix26_history
+    return fix26_history.legacy_source()
 
 
 def current_text(script: str) -> str:

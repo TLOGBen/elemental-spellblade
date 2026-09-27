@@ -110,6 +110,7 @@ inline constexpr std::uint32_t kMultUpkeep = 0x516d;  // ESSB_MultUpkeep
 inline constexpr std::uint32_t kWaterFlowBasePct = 0x5161;  // ESSB_WaterFlowBasePct
 inline constexpr std::uint32_t kWaterFlowPerRankPct = 0x5162;  // ESSB_WaterFlowPerRankPct
 inline constexpr std::uint32_t kEnvThunder = 0x5907;  // ESSB_EnvThunder
+inline constexpr std::uint32_t kProbeStep = 0x5c00;  // ESSB_ProbeStep
 inline constexpr std::uint32_t kFreeOpen = 0x5011;  // ESSB_FreeOpen
 inline constexpr std::uint32_t kHotkeysEnabled = 0x520f;  // ESSB_HotkeysEnabled
 inline constexpr std::uint32_t kFormNotify = 0x520d;  // ESSB_FormNotify
@@ -868,6 +869,6 @@ inline constexpr float kUpkeepBasePct = 1.0f;
 inline constexpr float kUpkeepDarkPct = 2.0f;
 inline constexpr float kUpkeepLevelRelief = 0.7f;
 inline constexpr std::string_view elementNames[12] = {"無元素", "火焰", "冰霜", "雷電", "大地", "風", "鮮血", "神聖", "毒素", "水", "黑暗", "星界"};
-inline constexpr char nativeVersion[] = "0.25.1";
+inline constexpr char nativeVersion[] = "0.26.0";
 inline constexpr char addressHash[] = "1d7530d001139ca58f462ea0210a8055868159057ba8b5ebc624fc5e9c4f5e9a";
 }  // namespace essb

@@ -12,7 +12,8 @@ sys.path[:0] = [str(ROOT / 'build'), str(ROOT)]
 import fix21_history as h21
 
 SNAP = ROOT / '.codex/pre-fix25-snapshot/src'
-SRC = ROOT / 'src'
+# Round 26: round 25 as shipped is the pre-fix26 snapshot; regenerating reads it (today's scripts are round 26's seal).
+SRC = ROOT / '.codex/pre-fix26-snapshot/src'
 
 N6_DOMAIN = 'R4：領域是引擎的 hazard（DLL 在融斷目標腳下放 Spawn Hazard 法術，引擎管壽命與數量；對你與對內部敵人的每秒效果在 DLL 計時器 Timer.h）；Papyrus 的三格領域刪除'
 N6_SECOND = '成果 1：每秒工作搬進 DLL 計時器（Timer.h PlanFormSecond：維持費、魔力歸零 2 秒、血形態扣血、長流與長河、雷雨電荷；環境每 5 秒）'
