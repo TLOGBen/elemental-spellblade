@@ -1458,6 +1458,7 @@ import fix23_records as hit23
 import fix24_records as hit24
 import fix25_records as hit25
 import fix26_records as hit26
+import fix27_records as hit27
 import tree_v04
 
 
@@ -1494,12 +1495,20 @@ def build_esp(plan):
     rr = []
     manifest = {}
     used_ids = set()
+    # round 27 (G14): every spell the DLL casts takes No Absorb/Reflect (SPIT 0x00200000 -- xEdit's flag list and CommonLib
+    # SpellItem::SpellFlag::kNoAbsorb); the one-effect markers also Ignore Resistance (0x00100000): an Atronach's absorption
+    # or a reflect never eats a mark, a status or an end.
+    no_absorb, markers = hit27.dll_spell_flags(sys.modules[__name__])
 
     def add(sig, fid, edid, ss, flags=0):
         if edid in manifest:
             raise ValueError(f'duplicate EDID {edid}')
         if fid in used_ids:
             raise ValueError(f'duplicate FormID {fid:06X} for {edid}')
+        # round 27b (review C): also every spell of ours delivered to someone else (SPIT delivery contact / aimed) --
+        # the Papyrus casts too (恐懼、瘋狂、沉默、化灰、剝除、復生、ESSB_Util_* 減益、冰甲寒氣、交戰標記 ...)
+        if sig == 'SPEL' and (fid in no_absorb or hit27.delivered_to_others(ss)):
+            ss = hit27.flag_spit(ss, fid in markers)
         used_ids.add(fid)
         rr.append((sig, record(sig, own(fid), [('EDID', Z(edid))] + ss, flags)))
         manifest[edid] = {'id': f'{fid:06X}', 'formid': f'{own(fid):08X}', 'type': sig}
@@ -1566,6 +1575,7 @@ def build_esp(plan):
     hit24.add_records(sys.modules[__name__], add)                 # round 24 (N5): markers, 雙斷／安全閥, 血承, timed bodies
     hit25.add_records(sys.modules[__name__], add)                 # round 25 (N6): domain hazards, markers, the timer's windows
     hit26.add_records(sys.modules[__name__], add)                 # round 26: ESSB_ProbeStep (the probe log's step marker)
+    hit27.add_records(sys.modules[__name__], add, fx_ph)          # round 27 (G13): the weapon glow's ENCH, the open flash, 武器光
 
     # -------------------------------------------------------------- KYWD
     add('KYWD', ID_KW_PROC, 'ESSB_Proc', [])
@@ -1665,12 +1675,14 @@ def build_esp(plan):
             ('DNAM', Z(f'{ZH[ix]}形態啟用中。')),
         ])
         glow = []
-        for stage in range(3):
-            glow += [('EFID', I(own(hit18.WEAPON_EFFECT + ix * 3 + stage))),
+        for stage in range(hit27.RING_STAGES):
+            # round 27b (the user's decision 2026-09-27): the form's ring of light at your feet, one per sync stage 0..3
+            # (GetGlobalValue(ESSB_SyncStage) == stage: exactly one is on), gated by ESSB_WeaponGlow (MCM 形態光圈).
+            # Nothing on the weapon (round 27's Enhance Weapon glow is retired).
+            glow += [('EFID', I(own(hit27.ring_effect_id(ix, stage)))),
                      ('EFIT', struct.pack('<fII', 0.0, 0, 0)),
-                     ('CTDA', gv_ge(sync_stage_global, stage + 1 if stage else 0))]
-            if stage < 2:
-                glow.append(('CTDA', ctda(0x80, stage + 2, 74, sync_stage_global)))
+                     ('CTDA', gv_eq(sync_stage_global, stage)),
+                     ('CTDA', gv_eq(hit27.glow_id(), 1))]
         add('SPEL', ID_FORM_ABILITY_SPELL + ix, f'ESSB_FormAbility_{name}', [
             ('OBND', bytes(12)), ('FULL', Z(f'【魔戰士】{ZH[ix]}形態（效果）')),
             ('ETYP', I(ref('Skyrim.esm', 0x13F45))),
@@ -1744,11 +1756,11 @@ def build_esp(plan):
             ('VMAD', vmad(hit22.STUB_SCRIPT, {})),
             ('FULL', Z(f'{ZH[ix]}印記')),
             ('KSIZ', I(len(kws))), ('KWDA', b''.join(I(x) for x in kws)),
-            # 規劃 2.12「開印」：目標身上一次 ZZArt_<X> 閃現（Hit Effect Art）+ Charge_<X> 音效，
-            # 加上印記期間持續的元素光（Hit Shader + FX Persist 0x1000，8／10 秒隨效果時長）。
+            # 印記期間持續的元素光（Hit Shader + FX Persist 0x1000，8／10 秒隨效果時長）。round 27 (G13)：規劃 2.12
+            # 「開印：一次 ZZArt_<X> 閃現＋Charge 音；刷新版不播」——閃現與音效移到開印時 DLL 施放的 ESSB_MarkFlash_<X>
+            # （build/fix27_records.py），這裡不再帶 Art 與音效（它們原本 8 秒掛滿、每次刷新重播）。
             ('DATA', mgef_data(MGEF_MARK_FLAGS | 0x1000 | 0x00200000, 1, casting=1, delivery=1,
-                               hit_shader=fxe('mark', ix), hit_effect_art=fx_ph('ZZArt', ix))),
-            ('SNDD', sndd([(SND_CHARGE, fx_ph('ZZSoundDescriptor_Charge', ix))])),
+                               hit_shader=fxe('mark', ix))),
             ('DNAM', Z(f'帶有{ZH[ix]}印記。')),
         ])
         add('SPEL', ID_MARK_SPELL + ix, f'ESSB_MarkSpell_{name}', [
@@ -3166,7 +3178,7 @@ def write_mcm(manifest):
         ('ESSB_MultDuration', '持續時間', '印記、狀態與領域，最短 1 秒；毒血桶壽命與星痕引爆延遲固定。'),
     ]:
         low, high = NODE_SCALE_RANGE if edid == 'ESSB_NodeScale' else \
-            (0.25, 2.0 if edid == 'ESSB_MultCooldown' else 3.0)
+            (0.25, 3.0)   # round 27 (G15): v0.4 6.2 平衡 0.25～3.0 (the cooldown slider stopped at 2.0)
         knob = control(edid, label, 'slider', min=low, max=high, step=0.05,
                        formatString='{2} 倍', defaultValue=settings[ID_BALANCE_GLOB[edid][1]])
         knob['help'] = help_text
@@ -3203,6 +3215,10 @@ def write_mcm(manifest):
     truehud_toggle = control('ESSB_TrueHudBars', 'TrueHUD 資源條', 'toggle', defaultValue=1)
     truehud_toggle['help'] = '關閉時 DLL 完全不做 TrueHUD 資源條的工作（已顯示的會移除）；用來排查崩潰。預設開。'
     general.append(truehud_toggle)
+    # round 27b: the form ring's switch (the EditorID ESSB_WeaponGlow kept) -- off, no ring
+    glow_toggle = control('ESSB_WeaponGlow', '形態光圈', 'toggle', defaultValue=1)
+    glow_toggle['help'] = '開形態時腳下的元素光圈（顏色＝元素，隨同調 0～3 段換一個）。不碰武器與附魔。關閉時不顯示光圈。預設開。'
+    general.append(glow_toggle)
     balance.append(button('ESSB_ReleaseDivineProtection', '解除神佑保護', 'ReleaseDivineProtection',
                           '確認後解除延遲死亡並停用模組，避免重新上鎖；卸載前請先解除並存檔。'))
     balance.append(button('ESSB_RestoreDefaults', '恢復預設設定', 'RestoreDefaults',
@@ -3298,7 +3314,8 @@ def validate_mcm(records, written):
     expected_globals |= {'ESSB_Hotkey_'+n for n in ELEMENTS} | {'ESSB_HotkeysEnabled','ESSB_FormNotify','ESSB_FormSound'}
     expected_globals |= hit19.NATIVE_GLOBALS
     expected_globals |= {'ESSB_TrueHudBars'}   # round 26c (T2)
-    assert glob_edids == expected_globals and len(glob_edids) == 55
+    expected_globals |= {'ESSB_WeaponGlow'}    # round 27 (G13)
+    assert glob_edids == expected_globals and len(glob_edids) == 56
     assert functions == {'RespecCurrent', 'RespecAll', 'DumpRegistry', 'RestoreDefaults', 'ReleaseDivineProtection', 'ApplyNativeSetting', 'ShowNativeStatus'}
     rows = config['pages'][2]['content']
     tree_rows = [r for r in rows if r.get('id') in expected_globals]
@@ -3315,7 +3332,7 @@ def validate_mcm(records, written):
         v = row['valueOptions']
         bounds = (0.0, 3.0, 0.1) if row['id'] == 'ESSB_MultUpkeep' else \
             (*NODE_SCALE_RANGE, 0.05) if row['id'] == 'ESSB_NodeScale' else \
-            (0.25, 2.0 if row['id'] == 'ESSB_MultCooldown' else 3.0, 0.05)
+            (0.25, 3.0, 0.05)   # round 27 (G15): the cooldown slider reaches 3.0 as the others (v0.4 6.2)
         assert (v['min'], v['max'], v['step']) == bounds
         assert v['min'] <= v['defaultValue'] <= v['max']
     node = general['ESSB_NodeScale']['valueOptions']
@@ -3472,6 +3489,7 @@ def main():
     runpy.run_path(str(WORK / 'build/fix24_verify.py'))['run'](sys.modules[__name__])   # round 24: bodies seam, removals, records, resolve, guards, faults, seals
     runpy.run_path(str(WORK / 'build/fix25_verify.py'))['run'](sys.modules[__name__])   # round 25: timer, hotkeys, domains, removals, records, resolve, nodes, faults, seals
     runpy.run_path(str(WORK / 'build/fix26_verify.py'))['run'](sys.modules[__name__])   # round 26: the probe log, the judge and the sheet, samples, seals
+    runpy.run_path(str(WORK / 'build/fix27_verify.py'))['run'](sys.modules[__name__])   # round 27: visuals, sources, version, judge, mutants, seals
     runpy.run_path(str(WORK / 'build/fix18_probes.py'))['run'](sys.modules[__name__])
     perks = sum(1 for r in check if r.sig == 'PERK')
     print(f'READBACK ok: masters={meta["masters"]} records={len(check)} manifest={written["record_count"]} '
@@ -3616,6 +3634,7 @@ def validate_delivery(records):
     contact_names.update(hit23.contact_edids())   # round 23: 誓約, the retort / grudge cooldowns, the last-hit-sneak marker
     contact_names.update(hit24.contact_edids(sys.modules[__name__]))   # round 24: the corpse markers, 光耀, 星鏈, the timed debuffs
     contact_names.update(hit25.contact_edids())   # round 25: the domain markers, the hazard spells, the spawn spells
+    contact_names.update(hit27.contact_edids())   # round 27: the open flashes
     aimed_names |= hit22.aimed_edids()
     groups = {0: [], 1: []}
     rows = []

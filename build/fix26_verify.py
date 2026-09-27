@@ -119,9 +119,9 @@ def op(ctx, name, who='target', kind='-', el='none', mag=0.0, sec=0.0, on=None, 
 
 def s_setup(fault):
     L = Log()
-    L.raw('[ESSB][load] ElementsSpellblade 0.26.3; SE 1.5.97 + SKSE 2.0.20 only; no entry-51 fallback')
+    L.raw(f'[ESSB][load] ElementsSpellblade {judge_module().VERSION}; SE 1.5.97 + SKSE 2.0.20 only; no entry-51 fallback')   # round 27: the judged version
     L.step(1)
-    L.t('pap', ' kind=mcm-button who=- button=ShowNativeStatus version=0.26.3 active=True')
+    L.t('pap', f' kind=mcm-button who=- button=ShowNativeStatus version={judge_module().VERSION} active=True')
     probes = ['Papyrus native', 'queued native task', 'TESHitEvent', 'TESHitEvent (you are the target)', 'hurt task',
               'TESActiveEffectApplyRemoveEvent', 'TESDeathEvent', 'timer task', 'TESSpellCastEvent', 'input sink']
     for p in probes:
@@ -408,7 +408,8 @@ def check_trace(cpp, sources, trace_h, config_text):
     if 'essb::sink::DeathSink(' not in death or 'HasOurEffect(*killer' in death or 'ReadMember(' in death:
         errors.append('the death sink reads more than the corpse (round 26b)')
     inp = cpp[cpp.index('void InputCpp('):cpp.index('// The input sink (native-verification-3 s13')]
-    if 'RequestSwitch(' in inp or 'StepKey(' in inp or 'essb::sink::PlanInput(' not in inp or 'AddTask(' not in inp:
+    # round 27 (E3): tasks are queued through QueueTask (SKSE AddTask with the session's ticket)
+    if 'RequestSwitch(' in inp or 'StepKey(' in inp or 'essb::sink::PlanInput(' not in inp or ('AddTask(' not in inp and 'QueueTask(' not in inp):
         errors.append('the input sink runs a switch itself (round 26b: PlanInput, then AddTask)')
     if '[ESSB][X2]' not in cpp or 'RtlCaptureStackBackTrace(2, 12' not in cpp or 'REL::ID(528600)' not in cpp:
         errors.append('the X2 witness (call chains, the Havok TLS word) is missing')
@@ -463,7 +464,7 @@ def check_26c(cpp):
     errors = []
     sink = fn_text(cpp, 'void HitSinkCpp(const RE::TESHitEvent& ev) noexcept', '\nclass HitSink final')
     hurt = fn_text(cpp, 'void HandleHurt(const RE::TESHitEvent& ev, RE::PlayerCharacter& player)\n{', '\n}\n')
-    if not sink or 'AddTask(' not in sink or 'essb::sink::RouteHit(' not in sink:
+    if not sink or ('AddTask(' not in sink and 'QueueTask(' not in sink) or 'essb::sink::RouteHit(' not in sink:
         errors.append('the hit sink does not route (Sinks.h RouteHit) and queue the hit task (round 26c P1)')
     for body, name in ((sink, 'hit sink'), (hurt, 'hurt sink')):
         for word in SINK_FORBIDDEN:
@@ -473,7 +474,9 @@ def check_26c(cpp):
         body = fn_text(cpp, head, '\n}\n')
         if not body or f'TaskScope scope("{name}");' not in body:
             errors.append(f'the {name} body opens no TaskScope (round 26c P5)')
-    if '[ESSB][OVERLAP]' not in cpp or 'state.mutating.fetch_add(1) + 1 > 1' not in cpp:
+    runtime_h = (ROOT / 'native/include/Runtime.h').read_text(encoding='utf-8') if (ROOT / 'native/include/Runtime.h').is_file() else ''
+    # round 27 (E9): the count moved into Runtime.h Scope (c_.mutating), the report stays in Plugin.cpp
+    if '[ESSB][OVERLAP]' not in cpp or ('state.mutating.fetch_add(1) + 1 > 1' not in cpp and 'c_.mutating.fetch_add(1) + 1 > 1' not in runtime_h):
         errors.append('the overlap witness is missing (round 26c P5)')
     if 'thread_local bool t_selfDispel' not in cpp or 'state.selfDispel' in cpp or 'state.handling' in cpp or 'state.traceCtx' in cpp:
         errors.append('a thread-owned flag is shared across threads (round 26c P4)')
@@ -482,6 +485,8 @@ def check_26c(cpp):
             errors.append(f'{word}: a collect-then-dispel without the re-find (round 26c P2)')
     # the engine adapter's Dispel takes the handle StatusEngine.h DispelWhere has just re-found
     rest = cpp.replace('live->Dispel(true);', '').replace('void Dispel(essb::Who, Handle effect) { effect->Dispel(true); }', '')
+    # round 27 (G6, G9): the adapter's Dispel grew (no dispel on the corpse, the settled mark noted) -- still the handle it is given
+    rest = re.sub(r'(?s)\n    void Dispel\(essb::Who who, Handle effect\)\n    \{.*?\n        effect->Dispel\(true\);\n    \}', '', rest)
     if '->Dispel(true)' in rest:
         errors.append('a Dispel on a pointer kept across other dispels (round 26c P2)')
     if re.search(r'RE::BS\w*LockGuard \w+\(', cpp) or '__finally' not in cpp:
@@ -516,13 +521,16 @@ def check_versions(b):
     cmake = (ROOT / 'native/CMakeLists.txt').read_text(encoding='utf-8')
     header = (ROOT / 'native/include/ManifestData.h').read_text(encoding='utf-8')
     import fix19_native as n
-    if 'VERSION 0.26.3' not in cmake or 'nativeVersion[] = "0.26.3"' not in header or n.NATIVE_VERSION != '0.26.3':
-        errors.append('the DLL version is not 0.26.3 in CMakeLists / ManifestData.h / fix19_native')
+    # round 27: the version is the current one (build/fix27_verify.py pins 0.27.0), one value everywhere, not before 0.26.3
+    version = n.NATIVE_VERSION
+    if tuple(int(x) for x in version.split('.')) < (0, 26, 3) or f'VERSION {version}' not in cmake \
+            or f'nativeVersion[] = "{version}"' not in header:
+        errors.append(f'the DLL version is not one value (>= 0.26.3) in CMakeLists / ManifestData.h / fix19_native ({version})')
     if 'target_compile_options(ElementsSpellblade PRIVATE /W4 /we4717' not in cmake:
         errors.append('the DLL build does not make C4717 (a function that calls itself on every path) an error (round 26d)')
     manifest = json.loads((b.OUT / 'SKSE/Plugins/ElementsSpellblade/manifest.json').read_text(encoding='utf-8'))
-    if manifest.get('native_version') != '0.26.3':
-        errors.append('the packaged manifest is not 0.26.3')
+    if manifest.get('native_version') != version:
+        errors.append(f'the packaged manifest is not {version}')
     if manifest.get('globals', {}).get('ESSB_TrueHudBars') != 0x5C01:
         errors.append('ESSB_TrueHudBars is not in the manifest globals at 0x005C01 (round 26c T2)')
     if manifest.get('globals', {}).get('ESSB_ProbeStep') != 0x5C00:

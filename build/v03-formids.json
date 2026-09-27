@@ -4,7 +4,7 @@
     "Skyrim.esm"
   ],
   "esl_flagged": false,
-  "record_count": 5029,
+  "record_count": 5164,
   "next_object_id": "00601A",
   "allocation": [
     {
@@ -6734,6 +6734,681 @@
       "id": "005C01",
       "formid": "01005C01",
       "type": "GLOB"
+    },
+    "ESSB_WeaponGlow": {
+      "id": "005D00",
+      "formid": "01005D00",
+      "type": "GLOB"
+    },
+    "ESSB_FormSwitchTicket": {
+      "id": "005DC0",
+      "formid": "01005DC0",
+      "type": "GLOB"
+    },
+    "ESSB_FormSwitchTurn": {
+      "id": "005DC1",
+      "formid": "01005DC1",
+      "type": "GLOB"
+    },
+    "ESSB_WeaponGlowEnchEffect_Fire_Dim": {
+      "id": "005D10",
+      "formid": "01005D10",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Fire_Dim": {
+      "id": "005D40",
+      "formid": "01005D40",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Fire_Mid": {
+      "id": "005D11",
+      "formid": "01005D11",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Fire_Mid": {
+      "id": "005D41",
+      "formid": "01005D41",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Fire_Bright": {
+      "id": "005D12",
+      "formid": "01005D12",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Fire_Bright": {
+      "id": "005D42",
+      "formid": "01005D42",
+      "type": "ENCH"
+    },
+    "ESSB_FormRingEffect_Fire_0": {
+      "id": "005D90",
+      "formid": "01005D90",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Fire_1": {
+      "id": "005D91",
+      "formid": "01005D91",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Fire_2": {
+      "id": "005D92",
+      "formid": "01005D92",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Fire_3": {
+      "id": "005D93",
+      "formid": "01005D93",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlashEffect_Fire": {
+      "id": "005D70",
+      "formid": "01005D70",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlash_Fire": {
+      "id": "005D80",
+      "formid": "01005D80",
+      "type": "SPEL"
+    },
+    "ESSB_WeaponGlowEnchEffect_Frost_Dim": {
+      "id": "005D13",
+      "formid": "01005D13",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Frost_Dim": {
+      "id": "005D43",
+      "formid": "01005D43",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Frost_Mid": {
+      "id": "005D14",
+      "formid": "01005D14",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Frost_Mid": {
+      "id": "005D44",
+      "formid": "01005D44",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Frost_Bright": {
+      "id": "005D15",
+      "formid": "01005D15",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Frost_Bright": {
+      "id": "005D45",
+      "formid": "01005D45",
+      "type": "ENCH"
+    },
+    "ESSB_FormRingEffect_Frost_0": {
+      "id": "005D94",
+      "formid": "01005D94",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Frost_1": {
+      "id": "005D95",
+      "formid": "01005D95",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Frost_2": {
+      "id": "005D96",
+      "formid": "01005D96",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Frost_3": {
+      "id": "005D97",
+      "formid": "01005D97",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlashEffect_Frost": {
+      "id": "005D71",
+      "formid": "01005D71",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlash_Frost": {
+      "id": "005D81",
+      "formid": "01005D81",
+      "type": "SPEL"
+    },
+    "ESSB_WeaponGlowEnchEffect_Lightning_Dim": {
+      "id": "005D16",
+      "formid": "01005D16",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Lightning_Dim": {
+      "id": "005D46",
+      "formid": "01005D46",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Lightning_Mid": {
+      "id": "005D17",
+      "formid": "01005D17",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Lightning_Mid": {
+      "id": "005D47",
+      "formid": "01005D47",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Lightning_Bright": {
+      "id": "005D18",
+      "formid": "01005D18",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Lightning_Bright": {
+      "id": "005D48",
+      "formid": "01005D48",
+      "type": "ENCH"
+    },
+    "ESSB_FormRingEffect_Lightning_0": {
+      "id": "005D98",
+      "formid": "01005D98",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Lightning_1": {
+      "id": "005D99",
+      "formid": "01005D99",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Lightning_2": {
+      "id": "005D9A",
+      "formid": "01005D9A",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Lightning_3": {
+      "id": "005D9B",
+      "formid": "01005D9B",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlashEffect_Lightning": {
+      "id": "005D72",
+      "formid": "01005D72",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlash_Lightning": {
+      "id": "005D82",
+      "formid": "01005D82",
+      "type": "SPEL"
+    },
+    "ESSB_WeaponGlowEnchEffect_Earth_Dim": {
+      "id": "005D19",
+      "formid": "01005D19",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Earth_Dim": {
+      "id": "005D49",
+      "formid": "01005D49",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Earth_Mid": {
+      "id": "005D1A",
+      "formid": "01005D1A",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Earth_Mid": {
+      "id": "005D4A",
+      "formid": "01005D4A",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Earth_Bright": {
+      "id": "005D1B",
+      "formid": "01005D1B",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Earth_Bright": {
+      "id": "005D4B",
+      "formid": "01005D4B",
+      "type": "ENCH"
+    },
+    "ESSB_FormRingEffect_Earth_0": {
+      "id": "005D9C",
+      "formid": "01005D9C",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Earth_1": {
+      "id": "005D9D",
+      "formid": "01005D9D",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Earth_2": {
+      "id": "005D9E",
+      "formid": "01005D9E",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Earth_3": {
+      "id": "005D9F",
+      "formid": "01005D9F",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlashEffect_Earth": {
+      "id": "005D73",
+      "formid": "01005D73",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlash_Earth": {
+      "id": "005D83",
+      "formid": "01005D83",
+      "type": "SPEL"
+    },
+    "ESSB_WeaponGlowEnchEffect_Wind_Dim": {
+      "id": "005D1C",
+      "formid": "01005D1C",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Wind_Dim": {
+      "id": "005D4C",
+      "formid": "01005D4C",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Wind_Mid": {
+      "id": "005D1D",
+      "formid": "01005D1D",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Wind_Mid": {
+      "id": "005D4D",
+      "formid": "01005D4D",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Wind_Bright": {
+      "id": "005D1E",
+      "formid": "01005D1E",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Wind_Bright": {
+      "id": "005D4E",
+      "formid": "01005D4E",
+      "type": "ENCH"
+    },
+    "ESSB_FormRingEffect_Wind_0": {
+      "id": "005DA0",
+      "formid": "01005DA0",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Wind_1": {
+      "id": "005DA1",
+      "formid": "01005DA1",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Wind_2": {
+      "id": "005DA2",
+      "formid": "01005DA2",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Wind_3": {
+      "id": "005DA3",
+      "formid": "01005DA3",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlashEffect_Wind": {
+      "id": "005D74",
+      "formid": "01005D74",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlash_Wind": {
+      "id": "005D84",
+      "formid": "01005D84",
+      "type": "SPEL"
+    },
+    "ESSB_WeaponGlowEnchEffect_Blood_Dim": {
+      "id": "005D1F",
+      "formid": "01005D1F",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Blood_Dim": {
+      "id": "005D4F",
+      "formid": "01005D4F",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Blood_Mid": {
+      "id": "005D20",
+      "formid": "01005D20",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Blood_Mid": {
+      "id": "005D50",
+      "formid": "01005D50",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Blood_Bright": {
+      "id": "005D21",
+      "formid": "01005D21",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Blood_Bright": {
+      "id": "005D51",
+      "formid": "01005D51",
+      "type": "ENCH"
+    },
+    "ESSB_FormRingEffect_Blood_0": {
+      "id": "005DA4",
+      "formid": "01005DA4",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Blood_1": {
+      "id": "005DA5",
+      "formid": "01005DA5",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Blood_2": {
+      "id": "005DA6",
+      "formid": "01005DA6",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Blood_3": {
+      "id": "005DA7",
+      "formid": "01005DA7",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlashEffect_Blood": {
+      "id": "005D75",
+      "formid": "01005D75",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlash_Blood": {
+      "id": "005D85",
+      "formid": "01005D85",
+      "type": "SPEL"
+    },
+    "ESSB_WeaponGlowEnchEffect_Divine_Dim": {
+      "id": "005D22",
+      "formid": "01005D22",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Divine_Dim": {
+      "id": "005D52",
+      "formid": "01005D52",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Divine_Mid": {
+      "id": "005D23",
+      "formid": "01005D23",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Divine_Mid": {
+      "id": "005D53",
+      "formid": "01005D53",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Divine_Bright": {
+      "id": "005D24",
+      "formid": "01005D24",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Divine_Bright": {
+      "id": "005D54",
+      "formid": "01005D54",
+      "type": "ENCH"
+    },
+    "ESSB_FormRingEffect_Divine_0": {
+      "id": "005DA8",
+      "formid": "01005DA8",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Divine_1": {
+      "id": "005DA9",
+      "formid": "01005DA9",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Divine_2": {
+      "id": "005DAA",
+      "formid": "01005DAA",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Divine_3": {
+      "id": "005DAB",
+      "formid": "01005DAB",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlashEffect_Divine": {
+      "id": "005D76",
+      "formid": "01005D76",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlash_Divine": {
+      "id": "005D86",
+      "formid": "01005D86",
+      "type": "SPEL"
+    },
+    "ESSB_WeaponGlowEnchEffect_Poison_Dim": {
+      "id": "005D25",
+      "formid": "01005D25",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Poison_Dim": {
+      "id": "005D55",
+      "formid": "01005D55",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Poison_Mid": {
+      "id": "005D26",
+      "formid": "01005D26",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Poison_Mid": {
+      "id": "005D56",
+      "formid": "01005D56",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Poison_Bright": {
+      "id": "005D27",
+      "formid": "01005D27",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Poison_Bright": {
+      "id": "005D57",
+      "formid": "01005D57",
+      "type": "ENCH"
+    },
+    "ESSB_FormRingEffect_Poison_0": {
+      "id": "005DAC",
+      "formid": "01005DAC",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Poison_1": {
+      "id": "005DAD",
+      "formid": "01005DAD",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Poison_2": {
+      "id": "005DAE",
+      "formid": "01005DAE",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Poison_3": {
+      "id": "005DAF",
+      "formid": "01005DAF",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlashEffect_Poison": {
+      "id": "005D77",
+      "formid": "01005D77",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlash_Poison": {
+      "id": "005D87",
+      "formid": "01005D87",
+      "type": "SPEL"
+    },
+    "ESSB_WeaponGlowEnchEffect_Water_Dim": {
+      "id": "005D28",
+      "formid": "01005D28",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Water_Dim": {
+      "id": "005D58",
+      "formid": "01005D58",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Water_Mid": {
+      "id": "005D29",
+      "formid": "01005D29",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Water_Mid": {
+      "id": "005D59",
+      "formid": "01005D59",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Water_Bright": {
+      "id": "005D2A",
+      "formid": "01005D2A",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Water_Bright": {
+      "id": "005D5A",
+      "formid": "01005D5A",
+      "type": "ENCH"
+    },
+    "ESSB_FormRingEffect_Water_0": {
+      "id": "005DB0",
+      "formid": "01005DB0",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Water_1": {
+      "id": "005DB1",
+      "formid": "01005DB1",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Water_2": {
+      "id": "005DB2",
+      "formid": "01005DB2",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Water_3": {
+      "id": "005DB3",
+      "formid": "01005DB3",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlashEffect_Water": {
+      "id": "005D78",
+      "formid": "01005D78",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlash_Water": {
+      "id": "005D88",
+      "formid": "01005D88",
+      "type": "SPEL"
+    },
+    "ESSB_WeaponGlowEnchEffect_Darkness_Dim": {
+      "id": "005D2B",
+      "formid": "01005D2B",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Darkness_Dim": {
+      "id": "005D5B",
+      "formid": "01005D5B",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Darkness_Mid": {
+      "id": "005D2C",
+      "formid": "01005D2C",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Darkness_Mid": {
+      "id": "005D5C",
+      "formid": "01005D5C",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Darkness_Bright": {
+      "id": "005D2D",
+      "formid": "01005D2D",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Darkness_Bright": {
+      "id": "005D5D",
+      "formid": "01005D5D",
+      "type": "ENCH"
+    },
+    "ESSB_FormRingEffect_Darkness_0": {
+      "id": "005DB4",
+      "formid": "01005DB4",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Darkness_1": {
+      "id": "005DB5",
+      "formid": "01005DB5",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Darkness_2": {
+      "id": "005DB6",
+      "formid": "01005DB6",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Darkness_3": {
+      "id": "005DB7",
+      "formid": "01005DB7",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlashEffect_Darkness": {
+      "id": "005D79",
+      "formid": "01005D79",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlash_Darkness": {
+      "id": "005D89",
+      "formid": "01005D89",
+      "type": "SPEL"
+    },
+    "ESSB_WeaponGlowEnchEffect_Astral_Dim": {
+      "id": "005D2E",
+      "formid": "01005D2E",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Astral_Dim": {
+      "id": "005D5E",
+      "formid": "01005D5E",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Astral_Mid": {
+      "id": "005D2F",
+      "formid": "01005D2F",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Astral_Mid": {
+      "id": "005D5F",
+      "formid": "01005D5F",
+      "type": "ENCH"
+    },
+    "ESSB_WeaponGlowEnchEffect_Astral_Bright": {
+      "id": "005D30",
+      "formid": "01005D30",
+      "type": "MGEF"
+    },
+    "ESSB_WeaponGlowEnch_Astral_Bright": {
+      "id": "005D60",
+      "formid": "01005D60",
+      "type": "ENCH"
+    },
+    "ESSB_FormRingEffect_Astral_0": {
+      "id": "005DB8",
+      "formid": "01005DB8",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Astral_1": {
+      "id": "005DB9",
+      "formid": "01005DB9",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Astral_2": {
+      "id": "005DBA",
+      "formid": "01005DBA",
+      "type": "MGEF"
+    },
+    "ESSB_FormRingEffect_Astral_3": {
+      "id": "005DBB",
+      "formid": "01005DBB",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlashEffect_Astral": {
+      "id": "005D7A",
+      "formid": "01005D7A",
+      "type": "MGEF"
+    },
+    "ESSB_MarkFlash_Astral": {
+      "id": "005D8A",
+      "formid": "01005D8A",
+      "type": "SPEL"
     },
     "ESSB_Proc": {
       "id": "000830",

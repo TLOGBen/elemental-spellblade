@@ -12,7 +12,8 @@ sys.path[:0] = [str(ROOT / 'build'), str(ROOT)]
 import fix21_history as h21
 
 SNAP = ROOT / '.codex/pre-fix26-snapshot/src'
-SRC = ROOT / 'src'
+# Round 27: round 26 as shipped is the pre-fix27 snapshot (today's scripts are round 27's, sealed by fix27_history).
+SRC = ROOT / '.codex/pre-fix27-snapshot/src'
 
 LOG = 'Round 26（探針 log）：除錯等級 4 時把這裡的動作寫進 DLL 的 ElementsSpellblade.log（ESSBNative.Trace，前面先看等級）；玩法不變'
 REASONS = {

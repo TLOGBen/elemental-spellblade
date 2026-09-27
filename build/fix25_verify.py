@@ -103,6 +103,8 @@ def check_contract(sources, cpp, status_h, reactions, engine_h, timer_h):
     if not domain or 'PlaceFx(' not in domain[0] or re.search(r'StartDomain|Domain(Left|X|Elem)', domain[0]):
         errors.append('OnESSBDomain does more than the opening effect (the domain is the DLL\'s hazard)')
     request = fn_body(cpp, 'void RequestSwitch')
+    if request and 'SwitchWork(' in request:   # round 27 (G8): the switch itself (and its ESSB_Switch) runs in SwitchWork
+        request += fn_body(cpp, 'void SwitchWork') or ''
     if not request or 'essb::PlanSwitch(' not in request or 'essb::Event::kSwitch' not in request:
         errors.append('RequestSwitch does not decide through Timer.h PlanSwitch and send ESSB_Switch')
     if 'MakeEvent(Event::kClose)' not in timer_h:
@@ -128,16 +130,20 @@ def check_contract(sources, cpp, status_h, reactions, engine_h, timer_h):
 def check_timer(cpp):
     errors = []
     loop = fn_body(cpp, 'void TimerLoop')
-    if not loop or 'state.tickQueued.exchange(true)' not in loop or loop.count('AddTask(') != 1:
+    posts = loop.count('QueueTask(') if loop and 'AddTask(' not in loop else (loop or '').count('AddTask(')   # round 27 (E3): QueueTask
+    if not loop or 'state.tickQueued.exchange(true)' not in loop or posts != 1:
         errors.append('TimerLoop does not post exactly one task a tick behind tickQueued (R3)')
     tick = fn_body(cpp, 'void TickCpp')
     guarded = fn_body(cpp, 'void TickGuarded')
     if not tick or 'AddTask(' in tick or (guarded and 'AddTask(' in guarded):
         errors.append('the timer task queues work itself (R3: never self-rescheduling)')
-    if not tick or 'essb::Step(state.cadence' not in tick or 'GameStopped(ui)' not in tick or 'if (beat.second)' not in tick:
+    # round 27 (T): the order is Runtime.h PlanTick (tick.second = beat.second while running)
+    if not tick or 'essb::Step(state.cadence' not in tick or 'GameStopped(ui)' not in tick or \
+            ('if (beat.second)' not in tick and not ('essb::rt::PlanTick(' in tick and 'if (tick.second)' in tick)):
         errors.append('the timer task does not pace its per-second work on the game-running clock (N6-1)')
     stopped = fn_body(cpp, 'bool GameStopped')
-    if not stopped or 'GameIsPaused()' not in stopped or 'LoadingMenu' not in stopped or 'state.inGame' not in stopped:
+    if not stopped or 'GameIsPaused()' not in stopped or 'LoadingMenu' not in stopped or \
+            ('state.inGame' not in stopped and 'state.session.inGame' not in stopped):   # round 27 (E3): the session's flag
         errors.append('GameStopped does not cover pause, loading and the load gap')
     for needle, why in (('FormSecondWork(', 'the upkeep / 長流 / storm second'), ('EnvironmentCheck(', 'the environment'),
                         ('SilenceSecond(', 'the silence drain'), ('ScanDomains(', 'the domains'), ('PlanDomainSelf(', 'your domains'),
@@ -226,8 +232,9 @@ def check_records(b):
         if (limit, hflags) != (rec.HAZARD_LIMIT, rec.HAZARD_FLAGS) or abs(radius - rec.DOMAIN_RADIUS_FEET) > 1e-3 or \
                 abs(interval - rec.HAZARD_TARGET_INTERVAL) > 1e-6 or spell != b.own(rec.hazard_spell_id(e)):
             errors.append(f'{rec.hazard_edid(e)}: DATA is not 3 m / Inherit Duration + Drop to Ground / limit 0 / 0.3 s / its spell')
-        if hazard.d.get('MODL', b'').rstrip(b'\0').decode('ascii', 'replace') != rec.HAZARD_MODEL:
-            errors.append(f'{rec.hazard_edid(e)}: model is not the invisible vanilla hazard model')
+        # round 27 (G13): fire, frost, divine and astral domains show a vanilla hazard model (build/fix25_records.HAZARD_MODELS)
+        if hazard.d.get('MODL', b'').rstrip(b'\0').decode('ascii', 'replace') != getattr(rec, 'HAZARD_MODELS', {}).get(e, rec.HAZARD_MODEL):
+            errors.append(f'{rec.hazard_edid(e)}: model is not the vanilla hazard model it should be')
         efids = [struct.unpack('<I', v)[0] for tag, v in hspell.ss if tag == 'EFID']
         want = [b.own(x[0]) for x in rec.hazard_effects(b, e)]
         if efids != want:

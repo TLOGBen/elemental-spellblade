@@ -49,8 +49,12 @@ inline constexpr std::uint32_t kRiposte = 0x5345;  // ESSB_RiposteWindow
 inline constexpr std::uint32_t kHush = 0x5341;  // ESSB_Hush
 inline constexpr std::uint32_t kHealTarget = 0x5151;  // ESSB_UtilTarget_RestoreHealth
 inline constexpr std::uint32_t kStaminaTarget = 0x5153;  // ESSB_UtilTarget_RestoreStamina
+inline constexpr std::uint32_t kEchoPendingSpell = 0x5306;  // ESSB_EchoPending
+inline constexpr std::uint32_t kTwinWindowSpell = 0x5308;  // ESSB_TwinWindow
 inline constexpr std::uint32_t kSilence[8] = {0x5310, 0x5311, 0x5312, 0x5313, 0x5314, 0x5315, 0x5316, 0x5317};  // ESSB_Native_Silence_1..8
 inline constexpr std::uint32_t kSoak[30] = {0x5320, 0x5321, 0x5322, 0x5323, 0x5324, 0x5325, 0x5326, 0x5327, 0x5328, 0x5302, 0x5329, 0x532a, 0x532b, 0x532c, 0x532d, 0x532e, 0x532f, 0x5330, 0x5331, 0x5332, 0x5333, 0x5334, 0x5335, 0x5336, 0x5337, 0x5338, 0x5339, 0x533a, 0x533b, 0x533c};  // soaked slow of 1..30 s: ESSB_Native_Soak_<s>, 10 s = ESSB_Native_SoakSlow
+inline constexpr float kTwinWindowRecordSeconds = 30.0f;  // ESSB_TwinWindow as written (the DLL scales it)
+inline constexpr std::uint32_t kMarkFlash[12] = {0x0, 0x5d80, 0x5d81, 0x5d82, 0x5d83, 0x5d84, 0x5d85, 0x5d86, 0x5d87, 0x5d88, 0x5d89, 0x5d8a};  // [element]: ESSB_MarkFlash_<X>, the open's flash (round 27, G13)
 }  // namespace spell
 
 // Effects the DLL looks for on the target or the player.
@@ -502,6 +506,7 @@ inline constexpr NodeId kWaterFlowSync{8, 0, 3};  // v0.4 water 同調每段長�
 inline constexpr NodeId kWaterLongRiver{8, 0, 4};  // v0.4 water 長河
 inline constexpr BranchId kCommonComposure{12, 0, 2, 0};  // v0.4 common 定神
 inline constexpr BranchId kCommonSmoothSwitch{12, 1, 1, 0};  // v0.4 common 順轉
+inline constexpr BranchId kCommonTwin{12, 2, 4, 1};  // v0.4 common 雙生
 inline constexpr NodeId kProcAdept[12] = {kNoNode, {0, 0, 1}, {1, 0, 1}, {2, 0, 1}, {3, 0, 1}, {4, 0, 1}, {5, 0, 1}, {6, 0, 1}, {7, 0, 1}, kNoNode, {9, 0, 1}, {10, 0, 1}};  // [element]; water has none
 inline constexpr NodeId kProcMaster[12] = {kNoNode, {0, 0, 3}, {1, 0, 3}, {2, 0, 3}, {3, 0, 3}, {4, 0, 3}, {5, 0, 3}, {6, 0, 3}, {7, 0, 3}, kNoNode, {9, 0, 3}, {10, 0, 3}};  // [element]; water has none
 inline constexpr NodeId kOpenProc[12] = {kNoNode, {0, 1, 1}, {1, 1, 1}, {2, 1, 1}, {3, 1, 1}, kNoNode, {5, 1, 1}, {6, 1, 1}, {7, 1, 1}, {8, 1, 1}, {9, 1, 1}, {10, 1, 1}};  // [element]; round 22, checked by v0.4 label
@@ -870,6 +875,6 @@ inline constexpr float kUpkeepBasePct = 1.0f;
 inline constexpr float kUpkeepDarkPct = 2.0f;
 inline constexpr float kUpkeepLevelRelief = 0.7f;
 inline constexpr std::string_view elementNames[12] = {"無元素", "火焰", "冰霜", "雷電", "大地", "風", "鮮血", "神聖", "毒素", "水", "黑暗", "星界"};
-inline constexpr char nativeVersion[] = "0.26.3";
+inline constexpr char nativeVersion[] = "0.27.1";
 inline constexpr char addressHash[] = "1d7530d001139ca58f462ea0210a8055868159057ba8b5ebc624fc5e9c4f5e9a";
 }  // namespace essb

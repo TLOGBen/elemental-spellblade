@@ -406,3 +406,77 @@ TrueHUD 資源條的稽核（T1）找到的具體問題：
 - **修法**：`Rng()` 的本體搬進 Trace.h `TaskRng(rng, inTask, outsideReported, onOutside)`（task 外的擲骰只報一次、未播種就播種、一律回傳來源）；Plugin.cpp 的 `Rng()` 只呼叫它。DLL 目標加 `/we4717`：任何「所有路徑都呼叫自己」的函式直接編譯失敗。
 - **檢查**：① trace_test `TaskRngChecks`：task 內、task 外（只報一次）、先 Record 再擲、未播種，每次都在 3 秒看門狗下跑，卡住就以失敗結束（不會把 ctest 卡死）。② native/build.py 突變「Rng() calls itself (the 0.26.2 freeze)」：把 TaskRng 改回自我呼叫，trace_test 以 exit 3「never returned」失敗——離線重現了凍結。③ fix26_verify `check_26d`：Rng() 本體必須經 TaskRng、不能出現 `Rng()`、CMakeLists 有 `/we4717`；兩個注入錯誤（本體改回 `return Rng();`、繞過 TaskRng）都被抓到。新 DLL 反組譯：沒有原地打轉的迴圈。
 - 版本 0.26.3（CMakeLists、ManifestData.h、fix19_native、manifest、probe-judge、測試卷）。玩法不變。
+
+## Round 27（DLL 0.27.0）：引擎膠合、時序、數值、視覺、可測性
+
+### G12 新遊戲載入失敗的根因
+
+0.26.x 的 `SKSEPlugin_Query` 第一件事是 `OpenLog()`：`CreateFileW(..., FILE_SHARE_READ, CREATE_ALWAYS)`，失敗就丟例外，`Query` 回 false，SKSE 把 DLL 記成「reported as incompatible during query」，整個 session 不載入。上一個 SkyrimSE.exe 還沒完全結束（log 還被它開著）時開新遊戲就會這樣。修法：`Runtime.h Query(fill, openLog, check)` 先填 PluginInfo、log 的失敗吞掉；`OpenLog()` noexcept、共用讀寫刪、失敗改 `ElementsSpellblade-<pid>.log`、再失敗就沒有 log（`OpenLogWith`）。runtime_test：log 三種結果、Query 在 log 丟例外時仍回 true；突變「a failing log escapes SKSEPlugin_Query」必須失敗。
+
+### E1～E13
+
+| 項目 | 做法 | 離線證據 |
+|---|---|---|
+| E1 效果清單 | `Registry.h`：task 讀板子時發布我們自己效果的快照（uid → 標籤、強度、時長、開始）；移除 sink、死亡 sink、唯讀 native 只讀登記表；移除時 `EraseUid`；到期判定 0.35 秒寬容；task 外走清單記 `[ESSB][OVERLAP-READ]`（判定器 FAIL） | runtime_test 兩條執行緒同時讀寫；突變 E1×2 |
+| E2 SEH | 每個 `__except` 走 `SehFilter`：只吞本 DLL 位址範圍內的存取違規；其他（引擎的、stack overflow、C++ 例外）記 `[ESSB][crash]`、try-lock 寫檔、`EXCEPTION_CONTINUE_SEARCH` | `SehVerdict` 測試；突變 E2；fix27_verify 查每個 `__except` |
+| E3 session | `Session` epoch：PreLoadGame／NewGame／主選單遞增，主選單時 inGame＝false；`QueueTask` 帶 Ticket，舊 session 的工作只做收尾 | 突變 E3×2；fix27_verify：`AddTask` 只在 QueueTask（另有通知與主執行緒見證兩處，不碰遊戲狀態） |
+| E4 受擊幀序 | 輸入 sink 數幀；受擊只處理較早幀的項目（引擎已扣血），計時器 150 ms 備援 | 突變 E4 |
+| E5 時鐘 | TickCpp 先走遊戲時鐘，故障或關閉也走（RunningSeconds 的視窗照樣結束） | `PlanTick` 測試 |
+| E6 選單 | GateNow 不走 `ui->menuStack`，改用 UI 的計數與 `IsMenuOpen`（`kInputMenus`） | `GateFrom` 測試 |
+| E7 結束寫檔 | `Buffer::TryTake`（不等鎖） | trace_test |
+| E8 領域掃描 | 先收 NiPointer＋FormID，走完才做事與記 log | — |
+| E9 scope | 每個 `__except` 處理段 `ResetTaskScope` | `Scope` 測試 |
+| E10 null cell | `EnvironmentCheck` 檢查 parent cell | — |
+| E11 ESL | 我們的外掛是輕量時拒絕載入；檔名比對不分大小寫 | — |
+| E12 字串 | `EventText` 不截斷；`Utf8Fit` 名字與切斷的行不留半個字 | runtime_test／trace_test |
+| E13 TrueHUD | 每次載入的 generation，舊回呼作廢；關閉或故障時移除資源條 | — |
+
+### G14 的旗標值更正
+
+契約寫 SPIT「0x400000」；xEdit（`wbDefinitionsTES5.pas` 的 SPIT flags）與 CommonLib `SpellItem::SpellFlag::kNoAbsorb` 都是 **0x00200000**（No Absorb/Reflect），0x00100000 是 Ignore Resistance。實作用 0x200000，沒有寫 0x400000。
+
+### G13 武器光的機制
+
+自身能力上的一般效果只會播 Hit Shader（全身），Enchant Shader 只畫在「附魔的武器」上；round 18 的武器光效果是 archetype 1（script），所以從沒顯示。改成原版 VoiceElementalFury（0x02C56F，關聯 VoiceEnchElementalFury 0x02C594）的做法：Enhance Weapon（archetype 39）效果、關聯一個 ENCH，ENCH 的效果帶那一檔的 Enchant Shader；引擎的 EnhanceWeaponEffect 會把附魔套到手上的武器並跟著 ActorInventoryEvent 換武器。另外「< 下一段」的條件少了 `own()`，讀的是 Skyrim.esm:005000，淡檔在任何段都亮；已改讀自己的 ESSB_SyncStage。遊戲內要看：有附魔的武器照常生效（測試卷站 1 目視題）。
+
+### T：可測性
+
+- **為什麼 0.26.2 的 `Rng()` 沒有被任何離線測試執行**：它是 Plugin.cpp 裡的三行包裝；Plugin.cpp 只編進 DLL（CommonLib-NG 的 RE 型別、Address Library 解析 SkyrimSE.exe 1.5.97 的位址），9 個測試程式都只編 `native/include/*.h`，沒有一個連結 Plugin.cpp。
+- **這一輪搬進標頭、由 runtime_test 執行的 Plugin.cpp 規則**：TaskScope／Overlap（`Scope`、`ResetScope`）、QueueTask 的 session 票（`Session`、`Ticket`）、Guard（`GuardOpen`、`GuardRun`）、受擊帳（`HurtQueue`、`AssignAfter`、`HealthLedger`）、DispelLive 的重找（`DispelCollected`）、BuildCrowd 的 engaged 讀取規則（`ReadEngaged`；人群挑選本來就在 `SelectCrowdWhy`）、TickCpp 的順序（`PlanTick`；每秒的計畫本來就在 `PlanFormSecond`）、GateNow（`GateFrom`；切換計畫本來就在 `PlanSwitch`；輸入對應在 `Sinks.h PlanInput`）、命中 sink 的路由（`Sinks.h RouteHit`）、MessageCpp／主選單／OnGameReady（`Transition`、`OnMessage`、`GameReady`）、Query 與 log 的失敗路徑（`Query`、`OpenLogWith`）、ModEvent 字串（`EventText`）。每項至少一個突變（native/build.py，共 84 個）。
+- **仍然只在遊戲裡跑的 Plugin.cpp 函式與原因**：它們的本體就是呼叫引擎，離線做假的只會測到假的。
+  - 引擎配接器 `RealEngine` 的施放、驅散、回復數值（`MagicCaster::CastSpellImmediate`、`ActiveEffect::Dispel`、`RestoreActorValue`）。
+  - 讀演員的函式：`ReadBoard`／`ForEachRunningEffect`／`ReadMember`（走 `RE::ActiveEffect` 清單）、`ReadHand`／`HandIsEmpty`（`TESConditionItem`）、`ReadAttack`／`ReadSource`（`TESHitEvent`／`HitData`）。
+  - 世界：`BuildCrowd` 的清單走訪（`ProcessLists::highActorHandles`）、`ScanDomains`（cell 參照）、`EnvironmentCheck`（天空、天氣）。
+  - 平台：`SehFilter` 本身（要真的例外與模組位址；判定 `SehVerdict` 已測）、`OpenLog` 的 `CreateFileW`（選擇 `OpenLogWith` 已測）、X1／X2 的堆疊擷取、`TimerLoop` 執行緒、TrueHUD API 呼叫、Papyrus 註冊與 sink 註冊的膠水、`SKSEPlugin_Load`。
+- **防同類錯誤的最便宜做法**：規則寫在標頭、Plugin.cpp 只留「讀引擎→呼叫標頭→寫引擎」；DLL 目標 `/we4717`；fix27_verify 靜態查 `__except`、`AddTask`、Query、切換與魔力耗盡的融斷。
+
+### 建置
+
+`python -B native/build.py` exit 0：ctest 9/9（新 runtime、anchors），突變 84/84。`python -B build_v03.py` exit 0：FIX22～FIX27、FIX25 LOAD 全 ok；fix27_verify 13 個視覺注入錯誤、7 個原始碼注入錯誤、SETUP-1 三種 FAIL、23 個以上 round 27 突變、兩條封印的無聲修改都被抓到。
+
+## Round 27b（DLL 0.27.1）：三份複審的修正
+
+| 項目 | 做法 | 離線證據 |
+|---|---|---|
+| A N1 | 武器光由使用者決定換成腳下光圈，Enhance Weapon 不再使用（不碰武器） | fix27_verify：光圈沒有任何著色、附魔、Enhance Weapon；形態能力不再引用退役效果 |
+| A N2 | Registry.h `Key`＝FormID＋handle（index＋重用位元）；Get／Has／EraseUid 要 handle 相同；Forget 在死亡的第二個事件（dead = true，屍體模式的命中 sink 已讀過）與新的 TESObjectLoadedEvent（loaded = false） | runtime_test；突變 A-N2 |
+| A N3 | 登記表時鐘：輸入 sink 每幀加 `RE::GetSecondsSinceLastFrame()`（SE 523660，世界時間）；`WorldClock` 丟掉 0 與 > 1 秒的幀 | runtime_test；突變 A-N3 |
+| A N4 | `Locks.h`：lk::Mutex 在持有的執行緒上計數，QuestObjectAlias 的引擎讀鎖手動計數；`SehVerdict(..., locksHeld)` 計數 > 0 時一律交還 | runtime_test；突變 A-N4 |
+| A N5 | `SehQuiet`：stack overflow 時 SehFilter 什麼都不做，直接 CONTINUE_SEARCH | runtime_test |
+| A N6 | 遊戲就緒 task 用 `QueueTask(fn, true)`：只看 epoch（SameSession），不看還沒打開的 inGame | runtime_test |
+| A N7 | `CorpseSends`：屍體模式只送 kEnd（切掉的終焉）；其他以屍體為對象的事件丟掉並寫探針行；順序＝死亡 task 先（死亡事件在傷害裡，命中事件在後），命中 task 的屍體模式在後 | runtime_test；突變 A-N7 |
+| A N8 | 選單 sink 在 faulted 時仍處理主選單（`MenuEndsSession`） | runtime_test |
+| A N9 | QueueRefresh 的 GetHandle 在 refreshLock 外 | fix27 封印 |
+| A N10 | 施放在你身上的法術只記 `OwnDelta`（強度範圍內的變化）；付血、扣血記精確數值 | runtime_test；突變 A-N10 |
+| B N1 | 連鎖終焉的 `mult` 是主終焉的 body（K × M_mod），子終焉的 ModScope 用主終焉的 M_mod（`carry_`＋`Current`），它的線加進同一個加總；Status.h `PlanEndBody(..., carried)` 的暗蝕熔斷同理 | anchor_test：焚天子終焉 ≤ 主終焉；突變 B-N1 |
+| B N2 | 開印事件 arg[4]＝未乘節點倍率的層數；淬毒、毒濺的劑數讀它，風痕／牽引距離不乘倍率 | anchor_test：節點倍率 1 與 5 傳的劑數相同；突變 B-N2 |
+| B N3 | `FireSourceBurns(火形態 || 餘壓)`、`FireSourceCosts(火形態 && 白熱)` | anchor_test；突變 B-N3 |
+| B N4 | 放電每格 +1%／點用 `EndMove`、風刃傷害 +2%／點用 `Joined`，都加進終焉的加總 | reaction_bodies 夾具（參考模型同步） |
+| B N5 | `CatalysedLine`＝(1 + 每劑 + 催毒線) ÷ (1 + 每劑)；係數 ×2／×3／×4 不變 | anchor_test（38）；突變 B-N5 |
+| B N6 | `CorpseHitPlan`：屍體模式不花超載、不用破式、不加滅法戰意、不消耗餘響 | anchor_test；突變 B-N6 |
+| B N7 | `NoteSneakHit`：每一刀取代該目標的紀錄，不是潛行就清掉 | runtime_test；突變 B-N7 |
+| B N8 | ESSBController.OnESSBSwitch：`ESSB_FormSwitchTicket`（0x5DC0）用 GlobalVariable.Mod 取號、等 `ESSB_FormSwitchTurn`（0x5DC1）輪到（最多 1 秒）、做完推進；不新增腳本成員（不升 schema） | fix27 Papyrus 封印；測試卷站 6 |
+| B N9 | `ExpiredMarkOf`：過期結算前把跑完的印記記進 settled | runtime_test；突變 B-N9 |
+| C | 所有 SPIT delivery 為接觸／瞄準的我們的法術加 0x200000；形態光圈；火領域 FXFireOilHazard；INVENTORY 重寫 | fix27_verify：15 個視覺注入錯誤 |
+
+建置：`python -B native/build.py` exit 0（ctest 9/9，runtime 141 項、anchors 30 項，突變 96/96）；`python -B build_v03.py` exit 0（FIX22～FIX27、FIX25 LOAD 全 ok）。v0.4 由指揮官回寫（35986e5）後，fix8 的規劃檔檢查通過，產生的樹描述已用新文字（順風、土削耐）。

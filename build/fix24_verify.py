@@ -119,19 +119,22 @@ def check_contract(sources, cpp, status_h, reactions, sinks_h=None):
             needles = (('if (s.dyingIsYou) {', 'never reads your own death'),
                        ('if (dead) {', 'handles only dead = false'),
                        ('engine::DeathCounts(e,', 'goes through DeathCounts'),
-                       ('AddTask(', 'hands the plan to a task (no scan in the sink)'),
-                       ('ReadMemberSelf(*member, *corpse', 'reads the corpse in the sink, while its effects are there'),
+                       # round 27 (E3): tasks go through QueueTask (SKSE AddTask with the session's ticket); the corpse's
+                       # effects come from the registry, or the list itself in a task (ReadMemberFrom)
+                       ('QueueTask(' if 'QueueTask(' in body else 'AddTask(', 'hands the plan to a task (no scan in the sink)'),
+                       ('ReadMemberFrom(*member, *corpse' if 'ReadMemberFrom(' in body else 'ReadMemberSelf(*member, *corpse',
+                        'reads the corpse in the sink, while its effects are there'),
                        ('snapshot.handled = snapshot.seen.snapshot;', 'plans only what DeathCounts accepts'))
         for needle, why in needles:
             if needle not in body:
                 errors.append(f'the death sink no longer {why}')
         if 'ProcessLists' in body or 'BuildCrowd' in body:
             errors.append('the death sink scans the process list itself (R3: scans run in the task)')
-    closed = re.search(r'(?ms)^Function OnFormClosed\(Int aiIndex\).*?^EndFunction', ctl)
+    closed = re.search(r'(?ms)^Function OnFormClosed\(Int aiIndex[^)]*\).*?^EndFunction', ctl)   # round 27: + abByDll, sync, stage
     if not closed or 'ESSBNative.Burst(aiIndex)' not in closed[0]:
         errors.append('OnFormClosed does not burst through ESSBNative.Burst(aiIndex)')
     for fn in ('OnFormClosed', 'OnFormOpened'):
-        block = re.search(r'(?ms)^Function ' + fn + r'\(Int aiIndex\).*?^EndFunction', ctl)
+        block = re.search(r'(?ms)^Function ' + fn + r'\(Int aiIndex[^)]*\).*?^EndFunction', ctl)
         if block and re.search(r'\bScanTargets\(|\bForceOpenOn\(|\bMarkedNear\(', block[0]):
             errors.append(f'{fn} still scans or opens on its own (R4: the DLL does)')
     for name in QUEUED_NATIVES:
@@ -139,6 +142,9 @@ def check_contract(sources, cpp, status_h, reactions, sinks_h=None):
         if not fn or 'QueueNative("' + name + '"' not in fn[1]:
             errors.append(f'ESSBNative.{name} scans or casts outside a queued task (review fix 1)')
     queue = re.search(r'bool QueueNative\(.*?\n\}', cpp, re.S)
+    task = re.search(r'bool QueueTask\(Fn fn[^)]*\) noexcept.*?\n\}', cpp, re.S)   # round 27 (E3): QueueNative -> QueueTask -> AddTask
+    if queue and 'QueueTask(' in queue[0] and task and 'AddTask(' in task[0]:
+        queue = task
     if not queue or 'AddTask(' not in queue[0]:
         errors.append('QueueNative does not hand the work to SKSE AddTask')
     counts['queued_natives'] = len(QUEUED_NATIVES)

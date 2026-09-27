@@ -407,7 +407,7 @@ class World:
         if self.base_doses() + 0.001 < threshold:
             return 0.0
         rate = 1.0 if t.has('Catalyzed') else 0.5
-        return rate + self.pct(self.rank('poison', '瘴氣每秒傳遞劑量'), 0.05)
+        return rate + 0.05 * self.rank('poison', '瘴氣每秒傳遞劑量')   # round 27 (G5): a dose count, no NodeScale
 
     def plague_chance(self):
         return 0.05 * self.rank('poison', '瘟疫') if self.target.poison and self.sync >= 3 else 0.0
@@ -543,7 +543,9 @@ class World:
         return 1 if f > 0.7 else 2 if f >= 0.3 else 3
 
     # ---------------------------------------------------------------- open (2.6, the state part)
-    def open_state(self, element, mult, cut_from):
+    def open_state(self, element, mult, cut_from, stacks=None):
+        if stacks is None:
+            stacks = mult
         t, me = self.target, self.me
         window = 5.0 + (0.5 * (self.rank('fire', '開印後 5 秒內熱度升階免等待') // 5) if element == FIRE else 0.0)
         self.put(me, 'OpenBoost', element, self.scaled(window))
@@ -565,7 +567,7 @@ class World:
                 if not t.has('Frozen'):
                     self.freeze(self.frozen_seconds(), 1.0)
             else:
-                self.add_freeze((3 + self.rank('frost', '開印凍結') // 3) * mult)
+                self.add_freeze((3 + self.rank('frost', '開印凍結') // 3) * stacks)   # round 27 (G3)
             if self.has('frost', '霜鎖'):
                 if t.max_slow >= min(self.slow_cap, 70.0):
                     self.add_freeze(1.0)
@@ -583,18 +585,18 @@ class World:
             if self.has('blood', '深血痕'):
                 zone = self.blood_zone()
                 layers += 2 if zone == 1 else 1 if zone == 2 else 0
-            self.add_bleed(self.stochastic(layers * mult))
+            self.add_bleed(self.stochastic(layers * stacks))   # round 27 (G3)
         elif element == DIVINE:
             self.raise_holy(1)
             if self.has('divine', '聖啟') and self.sync >= 3 and self.holy_tier() < 2:
                 self.set_holy(2)
             if self.has('divine', '慈光'):
-                self.put(me, 'Punish', min(5, me.layers('Punish') + 2), self.scaled(8.0))
+                self.put(me, 'Punish', min(8 if self.has('divine', '天誅') else 5, me.layers('Punish') + 2), self.scaled(8.0))   # round 27: 天誅 8
         elif element == POISON:
             doses = 3 + self.rank('poison', '開印劑數') // 3
             if self.has('poison', '劇毒之始') and self.sync >= 3:
                 doses *= 2
-            self.add_doses(self.stochastic(doses * mult))
+            self.add_doses(self.stochastic(doses * stacks))   # round 27 (G3)
         elif element == WATER:
             lock = self.has('water', '汪洋之始') and self.sync >= 3
             self.put(t, 'Soak', 2 if lock else 1, 3600.0 if lock else self.soak_seconds())
@@ -622,13 +624,15 @@ class World:
 
     # ---------------------------------------------------------------- end (2.6, the state part)
     def end_node_mult(self, element):
-        common = 1 + self.pct(self.rank('common', '終焉'), 0.01) + self.pct(self.rank('common', '終焉再'), 0.01)
+        # round 27 (G1, v0.4 2.7 M_mod = 1 + Σ): the closing lines are added (were the common part × the tree's part)
+        lines = self.pct(self.rank('common', '終焉'), 0.01) + self.pct(self.rank('common', '終焉再'), 0.01)
         if self.sync >= 3:
-            common += self.pct(self.rank('common', '同調三段時終焉'), 0.01)
-        return common * (1 + self.pct(self.rank(TREE[element], '終焉'), 0.02))
+            lines += self.pct(self.rank('common', '同調三段時終焉'), 0.01)
+        return 1 + lines + self.pct(self.rank(TREE[element], '終焉'), 0.02)
 
-    def end_body(self, element, reason, mult, power=False, chain=False):
+    def end_body(self, element, reason, mult, power=False, chain=False, carried=1.0):
         t, me = self.target, self.me
+        carried = carried if carried > 0 else 1.0   # round 27b (B N1): a chain end's mult carries the primary's M_mod
         self.put(t, 'EndCooldown', 1, self.cooldown(1.0))
         cut = reason == CUT
         if t.has('Guided'):
@@ -675,7 +679,7 @@ class World:
         elif element == FROST:
             # 冰封融斷 (5.4, round 24 commander ruling): a fusion shatters a frozen target only with the branch
             if t.has('Frozen') and (reason != BURST or self.has('frost', '冰封融斷')):
-                self.shatter(2, settle)
+                self.shatter(2)   # round 27 (G1): % of max health -- its own lines only
                 value[0] = 1.0
         elif element == LIGHTNING:
             hit_cut = cut and power
@@ -695,10 +699,15 @@ class World:
                 factor = 3.0 if self.has('poison', '潰爛') else 2.0
                 if reason == BURST and self.has('poison', '毒斷'):
                     factor = 4.0                                    # 5.10 毒斷（round 24）：融斷的催毒 ×4
-                factor *= 1 + self.pct(self.rank('poison', '催毒期間中毒傷害'), 0.03)
+                # round 27b (B N5): ×2 exactly; 催毒期間中毒傷害 joins the per-dose M_mod (1 + 每劑 + 催毒) / (1 + 每劑)
+                dose = self.pct(self.rank('poison', '每劑傷害'), 0.02)
+                factor *= (1 + dose + self.pct(self.rank('poison', '催毒期間中毒傷害'), 0.03)) / (1 + dose)
                 remaining = t.poison.remaining() + (self.scaled(4.0) if self.has('poison', '延毒') else 0.0)
-                self.put(t, 'Catalyzed', self.factor() * factor * settle, remaining)
-                self.set_poison(t.poison.magnitude * factor * settle, remaining)
+                # round 27 (G1): no compounding -- the base doses × the larger factor; no end lines, guide or 協奏
+                base = t.poison.magnitude / self.factor()
+                whole = max(self.factor(), factor)
+                self.put(t, 'Catalyzed', whole, remaining)
+                self.set_poison(base * whole, remaining)
         elif element == WATER:
             if cut:
                 guide = (2.0 if self.has('water', '強引') else 1.5) * (1 + self.pct(self.rank('water', '導引'), 0.03))
@@ -711,7 +720,8 @@ class World:
                 self.put(t, 'WashCooldown', 1, self.cooldown(10.0))
                 self.op('wash', 2 * self.bmax(WATER) if self.has('water', '淨潮') else 0.0)
         elif element == DARKNESS:
-            fuse = settle * (1 + self.pct(self.rank('darkness', '死咒'), 0.03))
+            line = self.pct(self.rank('darkness', '死咒'), 0.03)
+            fuse = mult * (carried + line) / carried if chain else mult * (self.end_node_mult(element) + line)   # round 27 (G1) / 27b (B N1)
             self.put(t, 'DeathCurse', fuse, self.scaled(3.0))
             if cut and self.has('darkness', '冥印'):
                 self.put(t, 'Nether', 1, self.scaled(8.0))
@@ -738,6 +748,7 @@ class World:
         refresh = element in t.marks
         linger = False
         open_mult = 1 + self.pct(self.rank(TREE[element], '開印效果'), 0.03)
+        open_stacks = 1 + 0.03 * self.rank(TREE[element], '開印效果')   # round 27 (G3): counts without NodeScale
         cut_from = 0
         if not refresh:
             others = len(t.marks)
@@ -749,13 +760,14 @@ class World:
                 linger = old == FROST and self.has('frost', '寒留')
                 if old == FIRE and self.has('fire', '餘燼'):
                     open_mult *= 1.5
+                    open_stacks *= 1.5
                 if old == WATER and t.has('Soak') and t.mag('Soak') > 1.5:
                     self.put(t, 'Soak', 1, self.soak_seconds())
         t.marks[element] = Slot(0, 0, self.mark_seconds(element, linger))
         if not refresh and not t.has('OpenCooldown'):
             self.put(t, 'OpenCooldown', 1, self.cooldown(1.0))
-            self.open_state(element, open_mult, cut_from)
-            self.event('Open', element, open_mult, cut_from, 1 if hit_work else 0)
+            self.open_state(element, open_mult, cut_from, open_stacks)
+            self.event('Open', element, open_mult, cut_from, 1 if hit_work else 0, open_stacks)   # round 27b (B N2)
         if not hit_work:
             return
         if refresh:
@@ -801,12 +813,14 @@ class World:
             if count >= needed:
                 self.drop(t, 'Judge')
                 b = self.body
+                judge_line = self.pct(self.rank('divine', '聖裁傷害'), 0.02)
+                tier_t = 1 + [0.0, 0.10, 0.20, 0.35][holy]
+                # round 27 (G1): the tier's bonus is T (a factor), the node lines one sum; III (% of max health) its own line only
                 if holy >= 3:
-                    damage = b['health_max'] * (0.02 if b['vip'] else 0.04) * self.base
+                    damage = b['health_max'] * (0.02 if b['vip'] else 0.04) * self.base * tier_t * (1 + judge_line)
                 else:
-                    damage = self.bmax(DIVINE) * 1.0 * self.react_scale(DIVINE)
-                damage *= 1 + [0.0, 0.10, 0.20, 0.35][holy] + self.pct(self.rank('divine', '聖佑各階武器傷害與聖傷加成'), 0.01) * holy
-                damage *= 1 + self.pct(self.rank('divine', '聖裁傷害'), 0.02)
+                    damage = self.bmax(DIVINE) * 1.0 * self.react_scale(DIVINE) * tier_t * (
+                        1 + self.pct(self.rank('divine', '聖佑各階武器傷害與聖傷加成'), 0.01) * holy + judge_line)
                 if b['undead'] or (self.has('divine', '聖痕') and DIVINE in t.marks):
                     damage *= 3
                 damage *= self.vulnerability()
@@ -862,13 +876,16 @@ class World:
     def death_curse_end(self, fuse):
         t, b = self.target, self.body
         self.drop(t, 'DeathCurse')
-        fuse *= self.vulnerability()
+        vuln = self.vulnerability()
+        fuse *= vuln
         ratio = 0.15 + self.pct(self.rank('darkness', '死咒的「已損失生命」係數'), 0.005)
         if self.has('darkness', '噬咒'):
             ratio += 0.03 * t.layers('Curse')
             self.drop(t, 'Curse')
         lost = max(0.0, b['health_max'] - b['health'])
-        self.op('damage', DARKNESS, (self.bmax(DARKNESS) * 2.0 * self.react_scale(DARKNESS) + lost * ratio) * fuse)
+        # round 27 (G1): the lost-health part takes only its own lines; B-small: 冥召／亡魂's marker before the damage
+        self.put(t, 'CurseKill', 1, 1.0)
+        self.op('damage', DARKNESS, self.bmax(DARKNESS) * 2.0 * self.react_scale(DARKNESS) * fuse + lost * ratio * vuln)
         if self.has('darkness', '饕餮'):
             self.op('heal', self.bmax(DARKNESS) * self.recovery)
             self.op('magicka', self.bmax(DARKNESS) * self.recovery)
@@ -877,9 +894,23 @@ class World:
         if self.has('darkness', '回魘'):
             self.add_curse(2)
 
+    def vent(self, tier):
+        me = self.me
+        self.put(me, 'VentedHeat', tier, self.scaled(30.0))
+        self.drop(me, 'MoltenBody')
+        self.drop(me, 'FireBath')
+        if self.has('fire', '餘壓'):
+            self.set_heat(2)
+            self.put(me, 'SourceLinger', 1, self.scaled(2.0))
+        else:
+            self.set_heat(1 if self.has('fire', '熔心') else 0)
+
     def fuse_end(self, tier):
         me = self.me
         self.drop(me, f'Heat{tier}')
+        if getattr(self, 'form', FIRE) != FIRE:
+            self.vent(tier)   # round 27 (G4): 熔斷 kept the heat; no fire form when the fuse runs out -- a vent
+            return
         if tier == 3 and self.has('fire', '熔爐'):
             self.set_heat(4)
             return
@@ -896,14 +927,7 @@ class World:
         if element == FIRE and not (burst and self.has('fire', '熔斷')):
             tier = self.heat_tier()
             if tier >= 3:
-                self.put(me, 'VentedHeat', tier, self.scaled(30.0))
-                self.drop(me, 'MoltenBody')
-                self.drop(me, 'FireBath')
-                if self.has('fire', '餘壓'):
-                    self.set_heat(2)
-                    self.put(me, 'SourceLinger', 1, self.scaled(2.0))
-                else:
-                    self.set_heat(1 if self.has('fire', '熔心') else 0)
+                self.vent(tier)
             else:
                 self.set_heat(0)
         if element == DIVINE:

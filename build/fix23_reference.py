@@ -323,7 +323,7 @@ class World23(_n3.World):
             mult *= 2.0
         return mult, flags
 
-    def end_body(self, element, reason, mult, power=False, chain=False):
+    def end_body(self, element, reason, mult, power=False, chain=False, carried=1.0):
         """v0.4 2.6 with the N4 parts: the charge the lightning end discharges, 協奏／三重奏／過載終焉, the self parts."""
         me = self.me
         cut = reason == CUT
@@ -335,7 +335,7 @@ class World23(_n3.World):
             extra, bits = self.end_extra(element, charge)
             flags |= bits
         before = len(self.ops)
-        super().end_body(element, reason, mult * extra, power, chain)
+        super().end_body(element, reason, mult * extra, power, chain, carried)   # round 27b (B N1): the carried sum
         # rewrite the End event: flags and the charge (the base model writes chain as 0/1 and no charge)
         for i in range(len(self.ops) - 1, before - 1, -1):
             row = self.ops[i]
@@ -713,6 +713,7 @@ class World23(_n3.World):
                 guard = f['guard_left'] if f.get('guard_left', -1.0) >= 0 else f['guard_before']   # a same-frame second hit
                 left = guard - blocked
                 self.op('guardPool', max(0.0, left))
+                me.guard = left if left > 0 else None                            # round 27: the board follows the pool
                 if left < 0:
                     hurt_you(-left)                                              # 池不夠的部分是真的傷害，不留 1 點
         if form == 0 and f.get('spell') and lost + blocked > 0:

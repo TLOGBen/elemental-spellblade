@@ -267,6 +267,9 @@ struct Link {
     int waitTicks = 0;             // AddWidget waits a tick after the load (the loadClip is asynchronous)
     int pendingTicks = 0;          // timer ticks since the load was requested (review: TrueHUD may never call back)
     bool enabled = true;           // round 26c (T2): the MCM switch ESSB_TrueHudBars as the last tick saw it
+    // Round 27 (E13): each load request's number; an answer to an older request (one given up after kLoadTimeoutTicks,
+    // or made before the bars were switched off) is ignored.
+    std::atomic<unsigned> generation{};
 };
 
 // Round 26c: every call into TrueHUD from an SKSE UI task (the UI job; TrueHUD's menu runs there).
@@ -357,10 +360,15 @@ inline void Reload() noexcept
     h.added = false;
     h.waitTicks = 0;
     h.pendingTicks = 0;
-    OnUi([]() {
+    const unsigned generation = h.generation.fetch_add(1) + 1;
+    OnUi([generation]() {
         Note("LoadCustomWidgets");
         Link& link = Hud();
-        link.api->LoadCustomWidgets(link.plugin, kSwf, [](ApiResult result) {
+        link.api->LoadCustomWidgets(link.plugin, kSwf, [generation](ApiResult result) {
+            if (Hud().generation.load() != generation) {
+                Note("stale load answer (ignored)");   // round 27 (E13)
+                return;
+            }
             Note(result == ApiResult::kOk ? "loaded" : "load failed");
             Hud().loaded = result == ApiResult::kOk;
             Hud().requested = false;
@@ -391,6 +399,7 @@ inline void Tick(bool enabled) noexcept
             h.added = false;
             h.requested = false;
             h.loaded = false;
+            h.generation.fetch_add(1);   // round 27 (E13): a load still on its way is answered into nothing
             return;
         }
         Reload();
@@ -403,7 +412,7 @@ inline void Tick(bool enabled) noexcept
         // TrueHUD never answered the load (review): give up this request after the timeout and ask again.
         if (h.requested && ++h.pendingTicks >= kLoadTimeoutTicks) {
             h.requested = false;
-            Reload();
+            Reload();   // a new generation: the old request's late answer is ignored (round 27, E13)
         }
         return;
     }

@@ -393,13 +393,21 @@ class World24(_n4.World23):
             ratio += 0.10
         return ratio
 
-    def sig(self, element):
+    def sig_pct(self, element):
         tree = TREE[element]
-        return 1 + self.pct(self.rank(tree, SIGNATURE[tree]), 0.03)
+        return self.pct(self.rank(tree, SIGNATURE[tree]), 0.03)
 
-    def burst_node_mult(self, element):
+    def sig(self, element):
+        # round 27 (G1): the move's legend line is a term of the running end's M_mod sum (body × sig = K × (mod + line))
+        mod = getattr(self, 'mod', 1.0)
+        return (mod + self.sig_pct(element)) / mod
+
+    def burst_lines(self, element):
+        """Round 27 (G1): the tree's 融斷 lines + the common and 冷寂 融斷 lines -- terms of the burst's M_mod sum."""
         tree, x = TREE[element], SHORT[element]
-        return 1 + self.pct(self.rank(tree, f'{x}印記的融斷'), 0.02) + self.pct(self.rank(tree, f'{x}印記的融斷再'), 0.02)
+        return (self.pct(self.rank(tree, f'{x}印記的融斷'), 0.02) + self.pct(self.rank(tree, f'{x}印記的融斷再'), 0.02) +
+                self.pct(self.rank('common', '融斷'), 0.01) + self.pct(self.rank('common', '融斷再'), 0.02) +
+                self.pct(self.rank('noform', '融斷'), 0.02) + self.pct(self.rank('noform', '融斷再'), 0.03))
 
     def g_noform(self):
         return 1 + 0.05 * max(1, self.level.get('noform', 1))
@@ -456,7 +464,8 @@ class World24(_n4.World23):
         return self.bmax(WIND) * k
 
     # ---------------------------------------------------------------- 2.6 開印 bodies and the open branches
-    def open_body(self, k, element, mult, cut_from, from_hit):
+    def open_body(self, k, element, mult, cut_from, from_hit, stacks=None):
+        stacks = mult if stacks is None else stacks   # round 27b (B N2): the open line without 節點倍率
         m = self.members[k]
         if element == FIRE:
             self.damage(k, FIRE, self.react(FIRE, 0.5 * mult, k))                          # 點燃 B_max ×0.5
@@ -503,11 +512,11 @@ class World24(_n4.World23):
             ambush = self.has('wind', '奇襲') and self.sneak and from_hit
             if not ambush:
                 metres = min(3.0, 1.5 + 0.1 * self.rank('wind', '開印拉近距離'))
-                self.push(k, 2, metres * mult, 0.0, 0, False)                             # 風痕：拉近 1.5 m
+                self.push(k, 2, metres, 0.0, 0, False)                                    # 風痕：拉近 1.5 m（距離不吃倍率）
                 if self.has('wind', '牽引'):
                     behind = distance(self.you, m.pos)
                     for j in self.around(k, 1.5 * METRE, CROWD_MAX, lambda x: distance(self.you, x.pos) > behind)[:2]:
-                        self.push(j, 2, metres * mult, 0.0, 0, False)
+                        self.push(j, 2, metres, 0.0, 0, False)
                         self.on(j, lambda: self.put(self.target, 'Unbalance', 1, self.scaled(3.0)))
             if self.has('wind', '風襲'):
                 self.spread_mark(k, WIND, lambda j: self.on(j, lambda: self.put(self.target, 'Unbalance', 1, self.scaled(3.0))))
@@ -532,7 +541,7 @@ class World24(_n4.World23):
                 for _ in range(2 if zone == 3 else 1 if zone == 2 else 0):
                     self.heal_leech(50.0 * self.leech())
             if self.has('blood', '血祭之始') and self.sync >= 3:
-                self.surge_on(k, 0.5, True)
+                self.surge_on(k, 0.5, True, 0.5)
         elif element == DIVINE:
             self.heal(self.bmax(DIVINE) * (0.5 * mult + 0.05 * self.rank('divine', '開印回血')))
             if self.has('divine', '聖輝'):
@@ -542,12 +551,12 @@ class World24(_n4.World23):
                     if j >= 1 and x.has and x.ally and distance(self.you, x.pos) <= NEAR:
                         self.op_at(j, 'healTarget', self.bmax(DIVINE) * self.recovery)
         elif element == POISON:
-            doses = self.stochastic(mult)
+            doses = self.stochastic(stacks)
             for j in self.around(k, 3 * METRE, 1):
                 if doses > 0:
                     self.on(j, lambda: self.spread_doses(doses))                             # 淬毒：3 公尺內一人 1 劑
             if self.has('poison', '毒濺'):
-                splash = self.stochastic(2.0 * mult)
+                splash = self.stochastic(2.0 * stacks)
                 for j in self.around(k, NEAR, 1):
                     self.on(j, lambda: self.spread_doses(splash))
             if self.has('poison', '濃毒'):
@@ -610,13 +619,23 @@ class World24(_n4.World23):
     def end_event_body(self, k, element, reason, mult, flags, v1, v2, v3, charge):
         chain, after_switch = bool(flags & 1), bool(flags & 2)
         burst = reason == BURST
-        body = mult
+        # round 27 (G1): one M_mod = 1 + Σ (closing lines, 融斷 lines, 雷斷's charges added); `mult` is the event's K
+        mod = 1.0
         if not chain:
-            body *= self.end_node_mult(element)
+            mod = self.end_node_mult(element)
             if burst:
-                body *= self.burst_node_mult(element)
+                mod += self.burst_lines(element)
                 if element == LIGHTNING and self.has('lightning', '雷斷'):
-                    body *= 1 + 0.3 * charge                                               # 雷斷：全部電荷的放電加成
+                    mod += 0.3 * charge                                                    # 雷斷：全部電荷的放電加成
+        prev_mod = getattr(self, 'mod', 1.0)
+        # round 27b (B N1): a chain end runs in the primary's sum (its line joins it, never multiplies the body again)
+        self.mod = getattr(self, 'carry', {}).get(getattr(self, 'current', -1), 1.0) if chain else mod
+        try:
+            self._end_event_body(k, element, reason, mult, flags, v1, v2, v3, charge, chain, after_switch, burst, mult * mod)
+        finally:
+            self.mod = prev_mod
+
+    def _end_event_body(self, k, element, reason, mult, flags, v1, v2, v3, charge, chain, after_switch, burst, body):
         m = self.members[k]
         # 融斷 (v0.4 2.7 D_burst, commander ruling): each fused mark deals B_max × K_sync × G × M_mod, no K_react; the end
         # move itself is not dealt; the end's non-damage part and every branch still apply
@@ -763,7 +782,14 @@ class World24(_n4.World23):
                 return
             del t.marks[element]
             if not t.has('EndCooldown'):
-                self.end_body(element, EXPIRE, mult, False, chain=True)
+                before = len(self.ops)
+                carried = getattr(self, 'mod', 1.0)
+                self.end_body(element, EXPIRE, mult, False, chain=True, carried=carried)
+                if not hasattr(self, 'carry'):
+                    self.carry = {}
+                for i in range(before, len(self.ops)):
+                    if self.ops[i][0] == 'event' and self.ops[i][1] == 'End':
+                        self.carry[i] = carried
         self.on(j, run)
 
     # ---------------------------------------------------------------- the pieces the bodies share
@@ -778,8 +804,10 @@ class World24(_n4.World23):
         """放電: 電荷 × 30% B_max (+1%／點) × R × 暴擊 × mult; 削魔 50%; 跳附近 2 人 40%（電弧 3 人 55%、連鎖 5 人）."""
         if charges <= 0:
             return
-        per = 0.3 * (1 + self.pct(self.rank('lightning', '放電每格電荷傷害'), 0.01))
-        raw = self.bmax(LIGHTNING) * per * charges * mult * self.sig(LIGHTNING) * power * crit
+        # round 27b (B N4): 每格 +1%／點 joins the end's sum with the move's line
+        mod = getattr(self, 'mod', 1.0)
+        joined = (mod + self.sig_pct(LIGHTNING) + self.pct(self.rank('lightning', '放電每格電荷傷害'), 0.01)) / mod
+        raw = self.bmax(LIGHTNING) * 0.3 * charges * mult * joined * power * crit
         self.hit_discharge(k, raw, 1.0)
         if not jumps:
             return
@@ -835,7 +863,8 @@ class World24(_n4.World23):
             one(j)
 
     def blade(self, k, mult):
-        amount = self.bmax(WIND) * 1.0 * mult * (1 + self.pct(self.rank('wind', '風刃傷害'), 0.02))
+        mod = getattr(self, 'mod', 1.0)   # round 27b (B N4): 風刃傷害 joins the running end's sum
+        amount = self.bmax(WIND) * 1.0 * mult * (mod + self.pct(self.rank('wind', '風刃傷害'), 0.02)) / mod
         self.blade_one(k, amount)
         if self.has('wind', '迴旋'):
             for j in self.around(k, NEAR, 2):
@@ -860,19 +889,22 @@ class World24(_n4.World23):
         for j in self.around(k, NEAR, 5 if self.has('wind', '亂流') else 2):
             self.blade(j, mult)
 
-    def surge(self, k, remaining, mult, reason, chain):
-        """血潮: (流血剩餘 × 血位曲線 + 當前生命 10%〔首領 3%〕) × 血潮 +3%／點；治療＝× 吸血 × 2（+0.1／點）."""
+    def surge(self, k, remaining, mult, reason, chain, pct_scale=1.0):
+        """血潮: (流血剩餘 × 血位曲線 + 當前生命 10%〔首領 3%〕) × 血潮 +3%／點；治療＝× 吸血 × 2（+0.1／點）.
+        Round 27 (G1): the current-health part reads only its own lines (放血終焉, 血契, 血潮 +3%／點) and the surge's share."""
         m = self.members[k]
         surge = mult
+        pact = 1.0
         if self.has('blood', '血契') and self.fraction() >= 0.7:
             self.op('pay', self.hp_max * 0.10)
             surge *= 2.0
+            pact = 2.0
         bleed = remaining * (1.5 if self.has('blood', '飽飲') else 1.0) * interpolate(self.curve_fraction(), HIT_CURVE)
         pct = 0.03 if m.body['vip'] else 0.10
         if self.has('blood', '放血終焉'):
             pct *= 2
-        health = m.body['health'] * pct * self.base
-        amount = (bleed + health) * surge * self.sig(BLOOD) * self.vuln(k)
+        health = m.body['health'] * pct * self.base * pct_scale * pact * (1 + self.sig_pct(BLOOD))
+        amount = (bleed * surge * self.sig(BLOOD) + health) * self.vuln(k)
         self.damage(k, BLOOD, amount)
         self.heal_leech(amount * self.leech() * (2.0 + 0.1 * self.rank('blood', '血潮治療倍率 ×2')))
         sea = self.rank('blood', '血海')
@@ -880,7 +912,7 @@ class World24(_n4.World23):
             for j in self.around(k, (1 + 0.2 * sea) * METRE, NEAR_LIMIT, lambda x: x.board.has('Bleed')):
                 self.surge_on(j, mult, True)
 
-    def surge_on(self, k, mult, clear):
+    def surge_on(self, k, mult, clear, pct_scale=1.0):
         b = self.members[k].board
         remaining = b.bleed.magnitude * b.bleed.remaining() if b.bleed else 0.0
         if clear:
@@ -891,7 +923,7 @@ class World24(_n4.World23):
                     t.bleed = None
                 self.drop(t, 'Bleed')
             self.on(k, run)
-        self.surge(k, remaining, mult, EXPIRE, True)
+        self.surge(k, remaining, mult, EXPIRE, True, pct_scale)
 
     def judge_area(self, k, mult, holy):
         punish = self.me.layers('Punish')
@@ -929,9 +961,11 @@ class World24(_n4.World23):
             vulnerability += 0.2
             if self.has('divine', '聖痕') and not m.body['undead']:
                 vulnerability += 0.1
-        tier = HOLY_PROC[max(0, min(3, holy))] + self.pct(self.rank('divine', '聖佑各階武器傷害與聖傷加成'), 0.01) * holy
-        amount = self.react(DIVINE, (3.0 if self.has('divine', '重裁') else 2.0) * mult * self.sig(DIVINE) * vulnerability *
-                            (1 + tier), k)
+        # round 27 (G1): the tier's bonus is T; 聖佑各階 joins the end's sum with 裁決 +3%／點
+        tier_t = 1 + HOLY_PROC[max(0, min(3, holy))]
+        mod = getattr(self, 'mod', 1.0)
+        move = (mod + self.sig_pct(DIVINE) + self.pct(self.rank('divine', '聖佑各階武器傷害與聖傷加成'), 0.01) * holy) / mod
+        amount = self.react(DIVINE, (3.0 if self.has('divine', '重裁') else 2.0) * mult * move * vulnerability * tier_t, k)
         if m.body['undead'] or (self.has('divine', '聖痕') and marked):
             amount *= 3
         self.damage(k, DIVINE, amount)
@@ -980,7 +1014,7 @@ class World24(_n4.World23):
 
     def splash_body(self):
         for j in self.around(-1, NEAR, NEAR_LIMIT, lambda x: x.board.has('Bleed')):
-            self.surge_on(j, 0.5, False)                                                   # 濺血 ×0.5，不清血痕
+            self.surge_on(j, 0.5, False, 0.5)                                                   # 濺血 ×0.5，不清血痕
 
     def rise_body(self):
         if not self.has('blood', '血約'):
@@ -1017,9 +1051,10 @@ class World24(_n4.World23):
                 a = [float(x) for x in row[2:]] + [0.0] * 8
                 if ev == 'Open':
                     if present:
-                        self.open_body(k, int(a[0] + 0.5), a[1], int(a[2] + 0.5), a[3] > 0.5)
+                        self.open_body(k, int(a[0] + 0.5), a[1], int(a[2] + 0.5), a[3] > 0.5, a[4] if a[4] > 0 else a[1])
                 elif ev == 'End':
                     if present:
+                        self.current = i   # round 27b (B N1)
                         self.end_event_body(k, int(a[0] + 0.5), int(a[1] + 0.5), a[2], int(a[3] + 0.5), a[4], a[5], a[6],
                                             int(a[7] + 0.5))
                 elif ev == 'Hallucinate':
@@ -1137,9 +1172,7 @@ class World24(_n4.World23):
         return (20 * METRE if self.has('noform', '收束') else NEAR) + 0.3 * METRE * self.rank('noform', '融斷範圍')
 
     def burst_mult(self, stage):
-        common = 1 + self.pct(self.rank('common', '融斷'), 0.01) + self.pct(self.rank('common', '融斷再'), 0.02)
-        quiet = 1 + self.pct(self.rank('noform', '融斷'), 0.02) + self.pct(self.rank('noform', '融斷再'), 0.03)
-        return SYNC_K[max(0, min(3, stage))] * common * quiet
+        return SYNC_K[max(0, min(3, stage))]   # round 27 (G1): K_sync only; the 融斷 lines are in the end's sum
 
     def burst(self, stage, form):
         start = len(self.ops)
@@ -1897,8 +1930,9 @@ HAND = {
     'fire end: 爆燃 at 灼熱 with a 25% consume bonus; 焚天 chains a 3 m fire mark; 火葬 marks both': dict(
         ops=[['damage', 0, FIRE, 37.8], ['damage', 1, FIRE, 12.6]], absent=[['damage', 2]],
         boards={(0, 'Cremation'): [37.8, 1.0], (1, 'Cremation'): [12.6, 1.0]}),
-    # 碎冰 10 × 1.0 × (1 + 5×3%×3 = 1.45) × end lines (1 + 3×1%×3)(1 + 2×2%×3) = 1.09 × 1.12 × 1.05 G = 18.58668
-    'frost end unfrozen: 碎冰 ×1.0 with 碎冰 5 points and 終焉 lines': dict(ops=[['damage', 0, FROST, 18.58668]]),
+    # round 27 (G1): one sum -- 碎冰 10 × 1.0 × M_mod (1 + 碎冰 5×3%×3 0.45 + common 終焉 3×1%×3 0.09 + 冰 終焉 2×2%×3 0.12
+    # = 1.66) × 1.05 G = 17.43 (was the product 1.45 × 1.09 × 1.12 → 18.58668)
+    'frost end unfrozen: 碎冰 ×1.0 with 碎冰 5 points and 終焉 lines': dict(ops=[['damage', 0, FROST, 17.43]]),
     # 放電 25 × 0.3 × 4 × 1.5 = 45 → ×1.05 = 47.25, drain 45 × 0.5 × 1.05 = 23.625; jumps 45 × 0.4 = 18 → 18.9 / 9.45
     'lightning end: 4 charges ×1.5 on a cutting power hit, 2 jumps ×40%, 雷殛 on the shocked': dict(
         ops=[['damage', 0, LIGHTNING, 47.25], ['drainMagicka', 0, 23.625], ['damage', 1, LIGHTNING, 18.9],
@@ -1925,10 +1959,11 @@ HAND = {
     'Judgment III: 破防, the 3 m blast (undead ×3), 破邪斬 50% within 4 m': dict(
         ops=[['timed', 0, 'armorDebuff', 60.0, 5.0], ['timed', 0, 'magicResistDebuff', 10.0, 5.0], ['damage', 1, DIVINE, 18.9],
              ['damage', 1, DIVINE, 60.0], ['damage', 2, DIVINE, 20.0]], absent=[['damage', 3]]),
-    # burst stage 2: K 2 × common (1 + 2×1%×3 + 1×2%×3 = 1.12) × no-form (1 + 2×2%×3 = 1.12) = 2.5088;
-    # fire at no heat: 12 × 1 × 2.5088 × 1.05 = 31.6109; 寂 burns 200 × (5% + 4 × 0.5%) = 14 (one layer)
+    # burst stage 2: K_sync 2 × M_mod (round 27 G1, one sum: 1 + common 2×1%×3 + 1×2%×3 + no-form 2×2%×3 = 1.24) = 2.48;
+    # fire at no heat: 12 × 2.48 × 1.05 = 31.248 (was the product 2 × 1.12 × 1.12 → 31.6109); 寂 burns 200 × (5% + 4 × 0.5%)
+    # = 14 (one layer)
     'burst: stage 2 ×2, the common / no-form lines, 寂 burns magicka; the ally, the empty and the far untouched': dict(
-        ops=[['damage', 1, FIRE, 31.61088], ['drainMagicka', 1, 14.0], ['drainMagicka', 2, 14.0], ['hush', 1, 1.0], ['hush', 2, 2.0]],
+        ops=[['damage', 1, FIRE, 31.248], ['drainMagicka', 1, 14.0], ['drainMagicka', 2, 14.0], ['hush', 1, 1.0], ['hush', 2, 2.0]],
         absent=[['damage', 4], ['damage', 5]], boards={(1, 'Hush'): [1.0, 10.0], (2, 'Hush'): [2.0, 10.0]}),
     # 萬寂: 寂 1 + 2 settled = 3 (cap 5 + 寂上限 5/5 = 6) -> clears the curse, the poison, the soak: each B_max × 0.5 × G 1.05
     # true (暗 5.25, 毒 4.725, 水 3.675), 寂 3 + 3 = 6; the burn counts the 2 new layers only: 100 × 5% × 2 = 10.

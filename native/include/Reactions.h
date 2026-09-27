@@ -341,6 +341,14 @@ constexpr StatusOp PushOp(int kind, float metres, float landing, int centre, boo
 
 // ================================================================ the bodies
 
+// Round 27 (G1): the common 融斷 +1%／點, 融斷再 +2%／點 and 冷寂's 融斷 +2%／點, 融斷再 +3%／點 -- terms of the burst's sum.
+template <NodeReader Nodes>
+constexpr float BurstCommonLines(const Tuning& t, const Nodes& nodes)
+{
+    return Pct(t, nodes.Rank(node::kCommonBurst), 0.01f) + Pct(t, nodes.Rank(node::kCommonBurstAgain), 0.02f) +
+           Pct(t, nodes.Rank(node::kNoFormBurst), 0.02f) + Pct(t, nodes.Rank(node::kNoFormBurstAgain), 0.03f);
+}
+
 template <NodeReader Nodes, RandomSource Rng>
 class Bodies
 {
@@ -427,7 +435,9 @@ public:
 
     // ---------------------------------------------------------------- open (2.6 開印 + the open branches)
 
-    void Open(int k, int element, float mult, int cutFrom, bool fromHit)
+    // Round 27b (review B N2, v0.4 3「層數類不吃倍率」): `stacks` is the open line without 節點倍率 -- the doses an open
+    // passes on (淬毒, 毒濺) read it; a distance (風痕's pull) takes neither.
+    void Open(int k, int element, float mult, int cutFrom, bool fromHit, float stacks)
     {
         (void)cutFrom;
         Member& m = c_.m[k];
@@ -508,14 +518,14 @@ public:
             const bool ambush = Has(node::kWindAmbush) && bin_.hitSneak && fromHit;   // 奇襲
             if (!ambush) {
                 const float metres = std::min(n5::kPullMax, n5::kPull + n5::kPullPerPoint * static_cast<float>(Rank(node::kWindPullRange)));
-                Event(k, PushOp(2, metres * mult, 0.0f, 0, false));   // 風痕：拉近你 1.5 m（推力在 Papyrus）
+                Event(k, PushOp(2, metres, 0.0f, 0, false));   // 風痕：拉近你 1.5 m（推力在 Papyrus；距離不吃倍率）
                 if (Has(node::kWindDrag)) {
                     // 牽引：目標身後（比目標離你遠）1.5 m 內的其他敵人也一起拉近並失衡，最多 2 人。
                     const float behind = Distance(c_.you, m.pos);
                     const Picked p = Around(c_, k, n5::kDrag, n5::kCrowdMax,
                         [&](const Member& x) { return Distance(c_.you, x.pos) > behind; });
                     for (int i = 0; i < p.n && i < n5::kDragLimit; ++i) {
-                        Event(p.k[i], PushOp(2, metres * mult, 0.0f, 0, false));
+                        Event(p.k[i], PushOp(2, metres, 0.0f, 0, false));
                         On(p.k[i], [&](Board& b, const StatusInputs& in) {
                             Writer{ plan_, b, Who::kTarget }.Set(StatusKind::kUnbalance, 1.0f, Scaled(*in.tuning, n3::kUnbalance));
                         });
@@ -565,7 +575,7 @@ public:
                 }
             }
             if (Has(node::kBloodSacrifice) && T().syncStage >= 3) {
-                SurgeOn(k, n5::kSacrifice, true);   // 血祭之始：×0.5 血潮
+                SurgeOn(k, n5::kSacrifice, true, n5::kSacrifice);   // 血祭之始：×0.5 血潮
             }
             break;
         }
@@ -587,13 +597,13 @@ public:
         case kPoison: {
             // 淬毒：立即向 3 公尺內一名敵人傳 1 劑（2.7 擴散一劑）。
             const Picked p = Around(c_, k, n5::kTransfer, 1);
-            const int doses = RoundStochastic(mult, rng_);
+            const int doses = RoundStochastic(stacks, rng_);
             for (int i = 0; i < p.n && doses > 0; ++i) {
                 On(p.k[i], [&](Board& b, const StatusInputs& in) { rule::SpreadDoses(plan_, b, static_cast<float>(doses), in, nodes_); });
             }
             if (Has(node::kPoisonSplash)) {
                 const Picked q = Around(c_, k, n5::kNear, 1);   // 毒濺：附近 1 人 2 劑（擴散一劑的規則）
-                const int splash = RoundStochastic(n5::kPoisonSplash * mult, rng_);
+                const int splash = RoundStochastic(n5::kPoisonSplash * stacks, rng_);
                 for (int i = 0; i < q.n; ++i) {
                     On(q.k[i], [&](Board& b, const StatusInputs& in) { rule::SpreadDoses(plan_, b, static_cast<float>(splash), in, nodes_); });
                 }
@@ -689,16 +699,23 @@ public:
         // the death-curse fuse and its no-heal, the star detonation; 2.5's lift) and every branch still apply.
         // 2.7: the closing lines (common 終焉／終焉再／同調三段時終焉 × the tree's 終焉 main) and, for a burst, the tree's
         // 融斷 main lines (and 雷斷); a chain end takes none of them (like the Papyrus body did).
-        float body = mult;
+        // Round 27 (G1): one M_mod = 1 + Σ (v0.4 2.7): the closing lines, for a burst the 融斷 lines (the tree's, the common
+        // ones, 冷寂's) and 雷斷's charge bonus -- all ADDED; `mult` is the event's K (K_sync, 導引, 協奏／三重奏／過載終焉).
+        // The move's own legend line (Signature) joins the same sum (ModScope).
+        float mod = 1.0f;
         if (!chain) {
-            body *= EndNodeMult(element, T(), nodes_);
+            mod = EndNodeMult(element, T(), nodes_);
             if (reason == EndReason::kBurst) {
-                body *= BurstNodeMult(element);
+                mod += BurstLines(element);
                 if (element == kLightning && Has(node::kLightningBurstBonus)) {
-                    body *= 1.0f + n5::kPerCharge * static_cast<float>(charge);   // 雷斷：附加全部電荷的放電加成
+                    mod += n5::kPerCharge * static_cast<float>(charge);   // 雷斷：附加全部電荷的放電加成
                 }
             }
         }
+        // Round 27b (review B N1): a chain end's `mult` is the primary's body (K × its M_mod); its move's own line joins
+        // the PRIMARY's sum (the carried M_mod), never multiplies the modded body again -- child ≤ primary.
+        const ModScope scope(*this, chain ? CarriedMod() : mod);
+        float body = mult * mod;
         const bool fused = reason == EndReason::kBurst && !chain;
         if (fused) {
             FusionHit(k, element, body);
@@ -992,7 +1009,7 @@ public:
     {
         const Picked p = Around(c_, kAroundYou, n5::kNear, n5::kNearLimit, [](const Member& x) { return x.board.Has(StatusKind::kBleed); });
         for (int i = 0; i < p.n; ++i) {
-            SurgeOn(p.k[i], 0.5f, false);
+            SurgeOn(p.k[i], 0.5f, false, 0.5f);
         }
     }
 
@@ -1063,15 +1080,49 @@ public:
         }
     }
 
+    // 關閉傳奇主線：該元素終焉招式 +3%／點. Round 27 (G1): a term of the running end's M_mod sum, not a second factor --
+    // body (K × mod) × Signature = K × (mod + the line). Outside an end mod_ is 1 (the plain 1 + the line).
     float Signature(int element) const
     {
-        return 1.0f + Pct(Rank(node::kSignature[element]), 0.03f);   // 關閉傳奇主線：該元素終焉招式 +3%／點
+        return EndMove(element, 0.0f);
     }
 
-    float BurstNodeMult(int element) const
+    // The move's factor on `body`: (mod + its legend line + `extra` node lines) / mod -- body × it = K × (the whole sum).
+    float EndMove(int element, float extra) const
     {
-        return 1.0f + Pct(Rank(node::kBurstMain[element]), 0.02f) + Pct(Rank(node::kBurstAgain[element]), 0.02f);
+        return (mod_ + SignaturePct(element, T(), nodes_) + extra) / mod_;
     }
+
+    // The 融斷 lines of 2.7's sum (round 27, G1: added, were a product): the tree's 融斷 +2%／點 and 融斷再 +2%／點, the
+    // common 融斷 +1%／點 and 融斷再 +2%／點, 冷寂's 融斷 +2%／點 and 融斷再 +3%／點.
+    float BurstLines(int element) const
+    {
+        return Pct(Rank(node::kBurstMain[element]), 0.02f) + Pct(Rank(node::kBurstAgain[element]), 0.02f) + BurstCommonLines(T(), nodes_);
+    }
+
+    // Round 27b (B N1): the op the walk runs now (RunBodies sets it) and the sums chained ends carry.
+    void Current(int op) noexcept { current_ = op; }
+    float CarriedMod() const noexcept
+    {
+        for (const auto& [op, mod] : carry_) {
+            if (op == current_) {
+                return mod;
+            }
+        }
+        return 1.0f;
+    }
+    // A line that joins the running end's sum (outside an end: 1 + the line).
+    float Joined(float extra) const { return (mod_ + extra) / mod_; }
+
+    // The running end's M_mod (Signature reads it); nested ends (a chain) set their own and put it back.
+    struct ModScope {
+        Bodies& b;
+        float prev;
+        ModScope(Bodies& bodies, float mod) noexcept : b(bodies), prev(bodies.mod_) { b.mod_ = mod > 0.0f ? mod : 1.0f; }
+        ~ModScope() { b.mod_ = prev; }
+        ModScope(const ModScope&) = delete;
+        ModScope& operator=(const ModScope&) = delete;
+    };
 
     float QuakeRadius() const { return Has(node::kEarthWide) ? n5::kWideQuake : n5::kArea; }
 
@@ -1118,8 +1169,10 @@ public:
         if (charges <= 0) {
             return;
         }
-        const float per = n5::kPerCharge * (1.0f + Pct(Rank(node::kLightningPerCharge), 0.01f));
-        const float raw = BMax(kLightning) * per * static_cast<float>(charges) * mult * Signature(kLightning) * power * crit;
+        // Round 27b (review B N4): 每格 +1%／點 joins the end's one sum with the move's line (EndMove), not a factor.
+        const float per = n5::kPerCharge;
+        const float raw = BMax(kLightning) * per * static_cast<float>(charges) * mult *
+                          EndMove(kLightning, Pct(Rank(node::kLightningPerCharge), 0.01f)) * power * crit;
         HitDischarge(k, raw, 1.0f);
         if (!jumps) {
             return;
@@ -1211,7 +1264,8 @@ public:
     // stamina +3 and unbalance; 空中追擊: an airborne target is pushed 1 m higher (Papyrus).
     void Blade(int k, float mult)
     {
-        const float amount = BMax(kWind) * n5::kBlade * mult * (1.0f + Pct(Rank(node::kWindBladeDamage), n5::kBladePerPoint));
+        // Round 27b (review B N4): 風刃傷害 +2%／點 joins the running end's sum (outside an end: 1 + the line).
+        const float amount = BMax(kWind) * n5::kBlade * mult * Joined(Pct(Rank(node::kWindBladeDamage), n5::kBladePerPoint));
         BladeOne(k, amount);
         if (Has(node::kWindWhirl)) {
             const Picked p = Around(c_, k, n5::kNear, n5::kBladeNear);
@@ -1264,13 +1318,17 @@ public:
     // 聖裁 III), × 血潮 +3%／點; 飽飲 ×1.5 on the bleed part; 血契 at ≥70% health pays 10% and doubles; heal = that ×
     // the leech ratio × 2 (+0.1／點); 血斷 heals 50% on a burst; 血海 (sync 3): the bleeding within 1 m + 0.2 m a point
     // surge too.
-    void Surge(int k, float remaining, float mult, EndReason reason, bool chain)
+    // Round 27 (G1): the current-health part is a percentage -- it reads only its own lines (放血終焉's ×2, 血契's ×2, 血潮
+    // +3%／點) and the surge's own share `pctScale` (濺血 ×0.5, 血祭之始 ×0.5), not the end lines, the guide or 協奏 in `mult`.
+    void Surge(int k, float remaining, float mult, EndReason reason, bool chain, float pctScale = 1.0f)
     {
         Member& m = c_.m[k];
         float surge = mult;
+        float pact = 1.0f;
         if (Has(node::kBloodContract) && bin_.in->self.Fraction() >= n3::kZoneHigh) {
             plan_.Push(Amount(Op::kPayHealth, bin_.in->self.healthMax * n5::kPactCost));
             surge *= n5::kPactMult;
+            pact = n5::kPactMult;
         }
         const float bleed = remaining * (Has(node::kBloodSated) ? n5::kSated : 1.0f) *
                             Interpolate(BloodCurveFraction(bin_.in->player, nodes_), kBloodHitCurve);
@@ -1278,8 +1336,8 @@ public:
         if (Has(node::kBloodEndBleed)) {
             percent *= 2.0f;
         }
-        const float health = m.body.health * percent * T().baseDamageMult;
-        const float amount = (bleed + health) * surge * Signature(kBlood) * ReactionVulnerability(m.board, self_, T(), nodes_);
+        const float health = m.body.health * percent * T().baseDamageMult * pctScale * pact * (1.0f + SignaturePct(kBlood, T(), nodes_));
+        const float amount = (bleed * surge * Signature(kBlood) + health) * ReactionVulnerability(m.board, self_, T(), nodes_);
         Damage(k, kBlood, amount);
         HealLeech(amount * Leech() * (n5::kSurgeHeal + n5::kSurgeHealPerPoint * static_cast<float>(Rank(node::kBloodSurgeHeal))));
         (void)reason;
@@ -1294,7 +1352,7 @@ public:
     }
 
     // A surge on another bleeding target (血海, 血漫, 血祭之始, 濺血): its own bleed remaining; `clear` takes the bleed off.
-    void SurgeOn(int k, float mult, bool clear)
+    void SurgeOn(int k, float mult, bool clear, float pctScale = 1.0f)
     {
         Member& m = c_.m[k];
         const float remaining = m.board.bleedDot.magnitude * m.board.bleedDot.Remaining();
@@ -1307,7 +1365,7 @@ public:
                 Writer{ plan_, b, Who::kTarget }.Clear(StatusKind::kBleed);
             });
         }
-        Surge(k, remaining, mult, EndReason::kExpire, true);
+        Surge(k, remaining, mult, EndReason::kExpire, true, pctScale);
     }
 
     // 裁決 (2.6, 5.9): B_max ×2.0 (重裁 ×3.0) × 裁決 +3%／點 × (1 + 聖印 20% [+ 聖痕 10%]) × (1 + 聖佑階的聖傷加成) × mult,
@@ -1368,9 +1426,11 @@ public:
                 vulnerability += n3::kStigma;
             }
         }
-        const float tier = n3::kHolyProc[std::clamp(holy, 0, 3)] + Pct(Rank(node::kDivineHolyBonus), 0.01f) * static_cast<float>(holy);
-        float amount = React(kDivine, (Has(node::kDivineHeavyJudge) ? n5::kHeavyJudge : n5::kJudge) * mult * Signature(kDivine) *
-                                          vulnerability * (1.0f + tier), k);
+        // Round 27 (G1): the tier's bonus is T (a factor); 聖佑各階 +1%／點 × tier is a node line -- a term of the end's sum
+        // with 裁決 +3%／點 (EndMove).
+        const float tierT = 1.0f + n3::kHolyProc[std::clamp(holy, 0, 3)];
+        float amount = React(kDivine, (Has(node::kDivineHeavyJudge) ? n5::kHeavyJudge : n5::kJudge) * mult *
+                                          EndMove(kDivine, Pct(Rank(node::kDivineHolyBonus), 0.01f) * static_cast<float>(holy)) * vulnerability * tierT, k);
         const bool prey = m.body.undeadOrDaedra || (Has(node::kDivineStigma) && m.board.mark[kDivine].has);
         if (prey) {
             amount *= n3::kPrey;
@@ -1400,7 +1460,13 @@ public:
             }
             Writer{ plan_, b, Who::kTarget }.Unmark(element);
             if (!b.Has(StatusKind::kEndCooldown)) {
-                PlanEndBody(plan_, element, EndReason::kExpire, mult, false, b, self_, in, nodes_, rng_, true);
+                const int before = plan_.count;
+                PlanEndBody(plan_, element, EndReason::kExpire, mult, false, b, self_, in, nodes_, rng_, true, mod_);
+                for (int i = before; i < plan_.count; ++i) {
+                    if (plan_.ops[i].op == Op::kEvent && plan_.ops[i].event == Event::kEnd) {
+                        carry_.push_back({ i, mod_ });   // round 27b (B N1): the child end runs in the primary's sum
+                    }
+                }
             }
         });
     }
@@ -1449,6 +1515,9 @@ public:
     const BodyInputs& bin_;
     const Nodes& nodes_;
     Rng& rng_;
+    float mod_ = 1.0f;
+    int current_ = -1;
+    std::vector<std::pair<int, float>> carry_;   // round 27 (G1): the running end's M_mod (1 + Σ); Signature adds its line to it
 };
 
 // ================================================================ the body pass
@@ -1486,12 +1555,14 @@ int RunBodies(StatusPlan& plan, int from, Crowd& crowd, Board& self, const BodyI
             switch (op.event) {
             case Event::kOpen:
                 if (present) {
-                    b.Open(k, static_cast<int>(op.arg[0] + 0.5f), op.arg[1], static_cast<int>(op.arg[2] + 0.5f), op.arg[3] > 0.5f);
+                    b.Open(k, static_cast<int>(op.arg[0] + 0.5f), op.arg[1], static_cast<int>(op.arg[2] + 0.5f), op.arg[3] > 0.5f,
+                        op.arg[4] > 0.0f ? op.arg[4] : op.arg[1]);   // round 27b (B N2): the unscaled stacks
                 }
                 ++handled;
                 break;   // the event stays: Papyrus gives the open's experience
             case Event::kEnd:
                 if (present) {
+                    b.Current(i);
                     b.End(k, static_cast<int>(op.arg[0] + 0.5f), static_cast<EndReason>(static_cast<int>(op.arg[1] + 0.5f)), op.arg[2],
                         static_cast<int>(op.arg[3] + 0.5f), op.arg[4], op.arg[5], op.arg[6], static_cast<int>(op.arg[7] + 0.5f));
                 }
@@ -1753,13 +1824,14 @@ constexpr float BurstRadius(const Nodes& nodes)
     return (nodes.Has(node::kNoFormGather) ? n5::kGather : n5::kBurst) + n5::kBurstPerPoint * static_cast<float>(nodes.Rank(node::kNoFormBurstRadius));
 }
 
-// K_sync × the common closing 融斷 lines (+1%／點, 再 +2%／點) × the no-form 冷寂 lines (+2%／點, 再 +3%／點).
+// Round 27 (G1): the burst's K is K_sync alone; the common 融斷 lines and 冷寂's are terms of the end's M_mod sum
+// (Bodies::BurstLines -> BurstCommonLines), added to the tree's 融斷 lines and the closing lines.
 template <NodeReader Nodes>
 constexpr float BurstMult(int stage, const Tuning& t, const Nodes& nodes)
 {
-    const float common = 1.0f + Pct(t, nodes.Rank(node::kCommonBurst), 0.01f) + Pct(t, nodes.Rank(node::kCommonBurstAgain), 0.02f);
-    const float quiet = 1.0f + Pct(t, nodes.Rank(node::kNoFormBurst), 0.02f) + Pct(t, nodes.Rank(node::kNoFormBurstAgain), 0.03f);
-    return n5::kSync[std::clamp(stage, 0, 3)] * common * quiet;
+    (void)t;
+    (void)nodes;
+    return n5::kSync[std::clamp(stage, 0, 3)];
 }
 
 // The state part of the burst on every member within the radius of you, then the bodies. `formElement` is the form

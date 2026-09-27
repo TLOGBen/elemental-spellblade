@@ -24,6 +24,7 @@ import fix23_records as hit23
 import fix24_records as hit24
 import fix25_records as hit25
 import fix26_records as hit26
+import fix27_records as hit27
 import fix20_fixture
 import fix22_fixture
 import fix23_fixture
@@ -35,12 +36,12 @@ import fix23_reference as _ref23
 import fix24_reference as _ref24
 import fix25_reference as _ref25
 NATIVE = ROOT / 'native'
-NATIVE_VERSION = '0.26.3'
+NATIVE_VERSION = '0.27.1'
 NATIVE_HIT = 0x52d1
 NATIVE_WANTED = 0x52d2
 NATIVE_GLOBALS = {'ESSB_NativeHit', 'ESSB_NativeWanted'}      # round 19: the MCM shows both
 NEW_EDIDS = (NATIVE_GLOBALS | hit20.new_edids() | hit21.new_edids() | hit22.new_edids() | hit23.new_edids() |
-             hit24.new_edids() | hit25.new_edids() | hit26.new_edids())   # every record the native slices added
+             hit24.new_edids() | hit25.new_edids() | hit26.new_edids() | hit27.new_edids())   # every record the native slices added
 DEPS = {
     'CommonLibSSE-NG': ('https://github.com/CharmedBaryon/CommonLibSSE-NG', 'b93280e832f263dbef44e44cbe2936622a02f91a'),
     'spdlog': ('https://github.com/gabime/spdlog', '27cb4c76708608465c413f6d0e6b8d99a4d84302'),
@@ -64,11 +65,13 @@ ENTRY_51 = 51    # Apply Combat Hit Spell
 # Every node:: constant the DLL reads -> (tree id, v0.4 node name): the hit formulas' (build/fix20_reference.NODE_NAMES)
 # and, from round 22, the status layer's (build/fix22_reference.NODE_NAMES); the slot of each is looked up by name in
 # the identity table.
+# Round 27 (G8): the switch is the DLL's -- 雙生's 30 s marker is cast there (ESSBController.OnFormSwitched did it).
+ROUND27_NODES = {'kCommonTwin': ('common', '雙生')}
 NODE_IDENTITY = (dict(_ref.NODE_NAMES) | dict(_ref22.NODE_NAMES) | dict(_ref23.NODE_NAMES) |   # round 23 (N4): the self layer's
                  dict(_ref24.NODE_NAMES) |                                                         # round 24 (N5): the bodies'
-                 dict(_ref25.NODE_NAMES))                                                          # round 25 (N6): the timer's
+                 dict(_ref25.NODE_NAMES) | ROUND27_NODES)                                          # round 25 (N6): the timer's
 assert len(NODE_IDENTITY) == (len(_ref.NODE_NAMES) + len(_ref22.NODE_NAMES) + len(_ref23.NODE_NAMES) + len(_ref24.NODE_NAMES) +
-                              len(_ref25.NODE_NAMES)), \
+                              len(_ref25.NODE_NAMES) + len(ROUND27_NODES)), \
     'a node constant is named twice'
 ELEMENT_SHORT = ['火', '冰', '雷', '土', '風', '血', '聖', '毒', '水', '暗', '星']
 TREE_IDS = ['fire', 'frost', 'lightning', 'earth', 'wind', 'blood', 'divine', 'poison', 'water', 'darkness', 'astral']
@@ -299,7 +302,13 @@ def spells(b):
         'kHush': (hit21.HUSH, 'ESSB_Hush'),                  # round 24: 寂 (冷寂 at 融斷, 萬寂)
         'kHealTarget': (0x005151, 'ESSB_UtilTarget_RestoreHealth'),   # round 24: 聖光 heals an ally
         'kStaminaTarget': (0x005153, 'ESSB_UtilTarget_RestoreStamina'),   # round 25: 長河 an ally's stamina
+        # round 27 (G8): the switch's markers, cast by the DLL in the switch task (were Papyrus DoCombatSpellApply)
+        'kEchoPendingSpell': (hit20.ECHO, 'ESSB_EchoPending'),
+        'kTwinWindowSpell': (hit20.TWIN, 'ESSB_TwinWindow'),
     }
+    # round 27 (G13): the open's flash, one spell per element (the DLL casts it when a mark opens)
+    for ix, name in enumerate(hit27.ELEMENTS):
+        rows[f'kMarkFlash{ix + 1}'] = (hit27.flash_spell_id(ix), f'ESSB_MarkFlash_{name}')
     for seconds in range(1, hit20.SILENCE_COUNT + 1):
         rows[f'kSilence{seconds}'] = (hit20.SILENCE + seconds - 1, hit20.silence_edid(seconds))
     for seconds in range(1, hit21.SOAK_MAX_SECONDS + 1):
@@ -365,13 +374,16 @@ def header_text(b):
     L += ['};', '', '// Spell per planned cast (HitMath.h Cast). Local FormIDs in Elements Spellblade.esp.', 'namespace spell {']
     sp = spells(b)
     for name, row in sp.items():
-        if not name.startswith(('kSilence', 'kSoak')):
+        if not name.startswith(('kSilence', 'kSoak', 'kMarkFlash')):
             L.append(f'inline constexpr std::uint32_t {name} = {hex(row["local_id"])};  // {row["editor_id"]}')
     L.append('inline constexpr std::uint32_t kSilence[' + str(hit20.SILENCE_COUNT) + '] = {'
              + ', '.join(hex(sp[f'kSilence{i}']['local_id']) for i in range(1, hit20.SILENCE_COUNT + 1)) + '};  // ESSB_Native_Silence_1..8')
     L.append('inline constexpr std::uint32_t kSoak[' + str(hit21.SOAK_MAX_SECONDS) + '] = {'
              + ', '.join(hex(sp[f'kSoak{i}']['local_id']) for i in range(1, hit21.SOAK_MAX_SECONDS + 1))
              + '};  // soaked slow of 1..30 s: ESSB_Native_Soak_<s>, 10 s = ESSB_Native_SoakSlow')
+    L.append(f'inline constexpr float kTwinWindowRecordSeconds = {float(hit20.TWIN_SECONDS)}f;  // ESSB_TwinWindow as written (the DLL scales it)')
+    L.append('inline constexpr std::uint32_t kMarkFlash[12] = {0x0, ' + ', '.join(hex(sp[f'kMarkFlash{i}']['local_id']) for i in range(1, 12))
+             + '};  // [element]: ESSB_MarkFlash_<X>, the open\'s flash (round 27, G13)')
     L += ['}  // namespace spell', '', '// Effects the DLL looks for on the target or the player.', 'namespace effect {']
     for name, row in effects(b).items():
         L.append(f'inline constexpr std::uint32_t {name} = {hex(row["local_id"])};  // {row["editor_id"]}')

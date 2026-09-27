@@ -54,6 +54,8 @@ Function DumpTargets(Float afRadius) Global Native
 Function CastProc(Actor akActor, Bool abPower) Global Native
 Function FormEnter(Int aiElement) Global Native
 Function SetSync(Int aiCount) Global Native
+; round 27 (G8)：切換／開形態時 DLL 已把同調歸零並加上新形態開啟的所得；這裡把 Papyrus 規則保留的份（承接、連斷、永續、三重奏）加上去（不算升段）。
+Function KeepSync(Int aiCount) Global Native
 Function RequestSwitch(Int aiElement) Global Native
 ; round 25 審查修正：遊戲在跑的秒數（這次開遊戲以來；暫停、讀檔不算）。控制器的秒計時器用它。
 Float Function RunningSeconds() Global Native

@@ -31,6 +31,8 @@ struct HurtFacts {
     float guardBefore = 0.0f;    // your 護血 pool at the sink (the PERK cut this hit while it was up)
     float guardLeft = -1.0f;     // the pool a same-frame earlier hit left (the task's current read); < 0: guardBefore
     float healthAfter = 0.0f;    // the task (after the damage)
+    float ownDelta = 0.0f;       // round 27 (G7): what our own costs / heals did to your health between the sink and "after"
+                                 // (Runtime.h HealthLedger): a payment is -, a heal +; lost = before - after + ownDelta
     float dotDamage = 0.0f;      // the task: Σ magnitude × remaining seconds of this spell's damage-over-time effects on
                                  // you (after the PERK cut; round 23 review: DoTs are not shared)
     std::uint32_t sourceSpell = 0;   // engine plumbing: the spell that hit (the task finds its DoTs by it)
@@ -101,7 +103,7 @@ constexpr void PlanHurt(StatusPlan& plan, const HurtFacts& f, Board& attacker, B
     const Writer pw{ plan, me, Who::kPlayer };
     const Writer aw{ plan, attacker, Who::kTarget };
     const int form = in.formElement;
-    const float lost = std::max(0.0f, f.healthBefore - f.healthAfter);
+    const float lost = std::max(0.0f, f.healthBefore - f.healthAfter + f.ownDelta);   // round 27 (G7): not our own costs
 
     // ---- 殘影's window took this hit (the PERK made it 0): it closes now (v0.4 5.7「讓下一次攻擊無效」).
     if (f.afterimage) {
@@ -172,6 +174,7 @@ constexpr void PlanHurt(StatusPlan& plan, const HurtFacts& f, Board& attacker, B
             const float guard = f.guardLeft >= 0.0f ? f.guardLeft : f.guardBefore;
             const float left = guard - blocked;
             plan.Push(Amount(Op::kBloodGuardPool, std::max(0.0f, left)));
+            me.guardPool = left > 0.0f ? Slot{ true, left, me.guardPool.elapsed, me.guardPool.duration } : Slot{};   // round 27: the board follows
             if (left < 0.0f) {
                 hurtYou(-left);
             }

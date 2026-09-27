@@ -465,6 +465,10 @@ def x2_verdicts(log):
     return bad, eyes, rows
 
 
+# The DLL version this sheet judges (round 27b: 0.27.1). build/fix26_verify.py and build/fix27_verify.py build their samples with it.
+VERSION = '0.27.1'
+
+
 @rule('SETUP-1')
 def r_setup(seg, ctx):
     log = ctx.all
@@ -472,11 +476,19 @@ def r_setup(seg, ctx):
     button = [x for x in log.of('pap') if x['kind'] == 'mcm-button' and 'ShowNativeStatus' in x.text]
     if not version:
         return NODATA('log 裡沒有 [ESSB][load] ElementsSpellblade 版本行（不是這一版的 log？）')
-    if '0.26.3' not in version[0].text:
-        return FAIL('DLL 版本不是 0.26.3', version[0])
+    if f'ElementsSpellblade {VERSION}' not in version[0].text:
+        return FAIL(f'DLL 版本不是 {VERSION}', version[0])
+    # round 27 (E1): an effect list walked outside a task is a FAIL of its own (the removal / death sinks read the registry)
+    overlap_read = [x for x in log if x.kind == 'raw' and x.text.startswith('[ESSB][OVERLAP-READ]')]
+    if overlap_read:
+        return FAIL('出現 [ESSB][OVERLAP-READ]：有人在 task 外走了效果清單（round 27 E1 規定永遠不能出現）', *overlap_read[:4])
     overlap = [x for x in log if x.kind == 'raw' and x.text.startswith('[ESSB][OVERLAP]')]
     if overlap:
         return FAIL('出現 [ESSB][OVERLAP]：兩個改引擎的工作同時在跑（round 26c 規定永遠不能出現）', *overlap[:4])
+    # round 27 (E2): an exception the DLL did not swallow (not its own access violation) is logged before the game sees it
+    crash = [x for x in log if x.kind == 'raw' and x.text.startswith('[ESSB][crash]')]
+    if crash:
+        return FAIL('出現 [ESSB][crash]：DLL 裡發生了不是自己存取違規的例外（已交還遊戲）', *crash[:2])
     rng = [x for x in log if x.kind == 'raw' and x.text.startswith('[ESSB][RNG]')]
     if rng:
         return FAIL('擲骰出現在 task 以外', *rng[:2])
@@ -497,12 +509,12 @@ def r_setup(seg, ctx):
         return FAIL('X2 缺命中 task 或計時器 task 的呼叫鏈', *evidence)
     if bad:
         return FAIL('X2：' + '；'.join(r for x, r in bad[:4]), *[x for x, r in bad[:6]])
-    ok_button = bool(button) and 'version=0.26.3' in button[-1].text and 'active=True' in button[-1].text
+    ok_button = bool(button) and f'version={VERSION}' in button[-1].text and 'active=True' in button[-1].text
     if eyes or not ok_button:
         why = ('；'.join(r for x, r in eyes[:4]) + '；') if eyes else ''
-        return EYES(why + ('MCM 版本按鈕沒寫進 log 或不是 0.26.3／True，請看畫面；' if not ok_button else '') + '呼叫鏈：' + chains,
+        return EYES(why + (f'MCM 版本按鈕沒寫進 log 或不是 {VERSION}／True，請看畫面；' if not ok_button else '') + '呼叫鏈：' + chains,
                     *(evidence + [x for x, r in eyes[:3]]))
-    return PASS('版本 0.26.3；X1 十種都在；沒有 OVERLAP；X2：遊戲中所有 task（含命中 task）在 Post process、輸入／UI／VM 在各自的 job、暫停時在視窗執行緒（命中 sink 只記錄）。'
+    return PASS(f'版本 {VERSION}；X1 十種都在；沒有 OVERLAP、OVERLAP-READ、crash；X2：遊戲中所有 task（含命中 task）在 Post process、輸入／UI／VM 在各自的 job、暫停時在視窗執行緒（命中 sink 只記錄）。'
                 '呼叫鏈：' + chains, *(evidence + [x for x, n, p, k in rows[:4]]))
 
 

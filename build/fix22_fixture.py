@@ -56,7 +56,8 @@ HAND = {
     'spread 0.5 dose into a catalysed poison': dict(target={'PoisonDot': [17.99658, 13.0], 'Catalyzed': [2.0, 13.0]}),
     'miasma: 5 doses give 0.5 a second, 4 give none': dict(ops=[['miasmaDoses', 0.5]]),
     'miasma below the threshold': dict(ops=[['miasmaDoses', 0.0]]),
-    'miasma catalysed + 瘴氣每秒傳遞劑量 10 points': dict(ops=[['miasmaDoses', 2.5]]),
+    # round 27 (G5): a dose rate takes no NodeScale -- 1.0 (catalysed) + 0.05 × 10 = 1.5 (was 1.0 + 0.05 × 10 × 3 = 2.5)
+    'miasma catalysed + 瘴氣每秒傳遞劑量 10 points': dict(ops=[['miasmaDoses', 1.5]]),
     'plague: 5%/pt at sync 3': dict(ops=[['plagueChance', 0.2]]),
     '凍傷 with the crystals already gone: the removal sink carried 3 (review fix 2)': dict(ops=[['damage', 2, 15.75]]),
     'freezing keeps the stored crystals 1 s past the frozen end': dict(target={'Frozen': [1.0, 3.0], 'Crystal': [2.0, 4.0]}),

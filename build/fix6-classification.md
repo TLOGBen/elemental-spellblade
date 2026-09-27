@@ -16,7 +16,7 @@
 | fire | 關閉（爆燃） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 火印記的融斷 +2%／點 | 火印記的融斷 +6%／點 | native/include/Reactions.h:kBurstMain |
 | fire | 關閉（爆燃） | 專精 | ×3：純百分比傷害主線（規劃 3） | 爆燃的消耗加成 +1%／點 × 被消耗的狀態數 | 爆燃的消耗加成 +3%／點 × 被消耗的狀態數 | native/include/Status.h:kFireConsume |
 | fire | 關閉（爆燃） | 大師 | ×3：純百分比傷害主線（規劃 3） | 火印記的融斷再 +2%／點 | 火印記的融斷再 +6%／點 | native/include/Reactions.h:kBurstAgain |
-| fire | 關閉（爆燃） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 爆燃 +3%／點 | 爆燃 +9%／點 | native/include/Reactions.h:kSignature |
+| fire | 關閉（爆燃） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 爆燃 +3%／點 | 爆燃 +9%／點 | native/include/Status.h:kSignature |
 | frost | 持續（凍結） | 新手 | 不改：時間、機率、範圍、層數、回復、抗性、分擔或比例類（規劃 3 不吃節點倍率） | 每次命中凍結累積 +5%／點（小數以機率取整） | 每次命中凍結累積 +5%／點（小數以機率取整） | DLL native/include/Status.h（node::kFrostAccumulate） |
 | frost | 持續（凍結） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 冰附傷 +1%／點 | 冰附傷 +3%／點 | native/include/HitMath.h:NodeSum[kProcAdept]；native/include/HitMath.h:kProcAdept |
 | frost | 持續（凍結） | 專精 | ×3：純百分比傷害主線（規劃 3） | 冰封目標受冰附傷 +2%／點 | 冰封目標受冰附傷 +6%／點 | native/include/Status.h:kFrostFrozenProc |
@@ -31,7 +31,7 @@
 | frost | 關閉（碎冰） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 冰印記的融斷 +2%／點 | 冰印記的融斷 +6%／點 | native/include/Reactions.h:kBurstMain |
 | frost | 關閉（碎冰） | 專精 | ×3：純百分比傷害主線（規劃 3） | 終焉後 5 秒內接管元素附傷 +1%／點 | 終焉後 5 秒內接管元素附傷 +3%／點 | native/include/Status.h:kTakeover |
 | frost | 關閉（碎冰） | 大師 | ×3：純百分比傷害主線（規劃 3） | 冰印記的融斷再 +2%／點 | 冰印記的融斷再 +6%／點 | native/include/Reactions.h:kBurstAgain |
-| frost | 關閉（碎冰） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 碎冰 +3%／點（乘在 20% 上） | 碎冰 +9%／點（乘在 20% 上） | native/include/Status.h:kSignature；native/include/Reactions.h:kSignature |
+| frost | 關閉（碎冰） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 碎冰 +3%／點（乘在 20% 上） | 碎冰 +9%／點（乘在 20% 上） | native/include/Status.h:kSignature；native/include/Status.h:kSignature |
 | lightning | 持續（充能） | 新手 | ×3：純百分比傷害主線（規劃 3） | 放電每格電荷傷害 +1%／點 | 放電每格電荷傷害 +3%／點 | native/include/Reactions.h:kLightningPerCharge |
 | lightning | 持續（充能） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 雷附傷 +1%／點 | 雷附傷 +3%／點 | native/include/HitMath.h:NodeSum[kProcAdept]；native/include/HitMath.h:kProcAdept |
 | lightning | 持續（充能） | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 電荷上限 +1／每 3 點 | 電荷上限 +1／每 3 點 | DLL native/include/Status.h res::ChargeCap（node::kLightningChargeCap） |
@@ -46,10 +46,10 @@
 | lightning | 關閉（放電） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 雷印記的融斷 +2%／點 | 雷印記的融斷 +6%／點 | native/include/Reactions.h:kBurstMain |
 | lightning | 關閉（放電） | 專精 | ×3：純百分比傷害主線（規劃 3） | 終焉後 5 秒內接管元素附傷 +1%／點 | 終焉後 5 秒內接管元素附傷 +3%／點 | native/include/Status.h:kTakeover |
 | lightning | 關閉（放電） | 大師 | ×3：純百分比傷害主線（規劃 3） | 雷印記的融斷再 +2%／點 | 雷印記的融斷再 +6%／點 | native/include/Reactions.h:kBurstAgain |
-| lightning | 關閉（放電） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 放電 +3%／點 | 放電 +9%／點 | native/include/Reactions.h:kSignature |
+| lightning | 關閉（放電） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 放電 +3%／點 | 放電 +9%／點 | native/include/Status.h:kSignature |
 | earth | 持續（裂甲） | 新手 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 裂痕護甲削減 +2／點（-30 → -60） | 裂痕護甲削減 +2／點（-30 → -60） | DLL native/include/Reactions.h（node::kEarthFissureArmor） |
 | earth | 持續（裂甲） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 土附傷 +1%／點 | 土附傷 +3%／點 | native/include/HitMath.h:NodeSum[kProcAdept]；native/include/HitMath.h:kProcAdept |
-| earth | 持續（裂甲） | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 命中削減目標耐力 +0.5／點 | 命中削減目標耐力 +0.5／點 | DLL native/include/HitMath.h AddFlatHitNodes（node::kEarthStaminaCut） |
+| earth | 持續（裂甲） | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 命中削減目標耐力 +0.5／點（2026-09-27 依實作：實際削耐量＝3 × 點數 × G(L)，取代 +0.5／點，見『實作紀錄.md』Round 27） | 命中削減目標耐力 +0.5／點（2026-09-27 依實作：實際削耐量＝3 × 點數 × G(L)，取代 +0.5／點，見『實作紀錄.md』Round 27） | DLL native/include/HitMath.h AddFlatHitNodes（node::kEarthStaminaCut） |
 | earth | 持續（裂甲） | 大師 | ×3：純百分比傷害主線（規劃 3） | 同調每段土附傷 +1%／點 | 同調每段土附傷 +3%／點 | native/include/HitMath.h:NodeSum[kProcMaster]；native/include/HitMath.h:kProcMaster |
 | earth | 持續（裂甲） | 傳奇 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 地動，同調三段時重擊對耐力低於 30% 的目標跌倒，機率 5%／點 | 地動，同調三段時重擊對耐力低於 30% 的目標跌倒，機率 5%／點 | DLL native/include/SelfLayer.h PlanSelfHit（node::kEarthQuakeKnock）＋ ESSBController.OnESSBKnock |
 | earth | 開啟（地臨） | 新手 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 開印岩甲 +1／每 5 點 | 開印岩甲 +1／每 5 點 | DLL native/include/SelfLayer.h res::OpenGains（node::kEarthOpenRock） |
@@ -61,7 +61,7 @@
 | earth | 關閉（地震） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 土印記的融斷 +2%／點 | 土印記的融斷 +6%／點 | native/include/Reactions.h:kBurstMain |
 | earth | 關閉（地震） | 專精 | 不改：v0.4 明寫「不吃節點倍率」 | 地震耐力削減 +3%／點（不吃節點倍率） | 地震耐力削減 +3%／點（不吃節點倍率） | DLL native/include/Reactions.h（node::kEarthQuakeStamina） |
 | earth | 關閉（地震） | 大師 | ×3：純百分比傷害主線（規劃 3） | 土印記的融斷再 +2%／點 | 土印記的融斷再 +6%／點 | native/include/Reactions.h:kBurstAgain |
-| earth | 關閉（地震） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 地震 +3%／點 | 地震 +9%／點 | native/include/Reactions.h:kSignature |
+| earth | 關閉（地震） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 地震 +3%／點 | 地震 +9%／點 | native/include/Status.h:kSignature |
 | wind | 持續（連斬） | 新手 | ×3：純百分比傷害主線（規劃 3） | 風刃傷害 +2%／點 | 風刃傷害 +6%／點 | native/include/Reactions.h:kWindBladeDamage |
 | wind | 持續（連斬） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 風附傷 +1%／點 | 風附傷 +3%／點 | native/include/HitMath.h:NodeSum[kProcAdept]；native/include/HitMath.h:kProcAdept |
 | wind | 持續（連斬） | 專精 | 不改：時間、機率、範圍、層數、回復、抗性、分擔或比例類（規劃 3 不吃節點倍率） | 風形態移速再 +0.5%／點（+10% → +17.5%） | 風形態移速再 +0.5%／點（+10% → +17.5%） | ESSBElem2.WindSpeedBonus → ESSBController.RefreshWindAbilities |
@@ -76,7 +76,7 @@
 | wind | 關閉（吹飛） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 風印記的融斷 +2%／點 | 風印記的融斷 +6%／點 | native/include/Reactions.h:kBurstMain |
 | wind | 關閉（吹飛） | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 多段觸發，風印記被切掉時接管元素的命中觸發次數 +1／每 5 點（2 → 最多 5） | 多段觸發，風印記被切掉時接管元素的命中觸發次數 +1／每 5 點（2 → 最多 5） | DLL native/include/SelfLayer.h MultiTriggerRepeats ＋ Plugin.cpp Handle（node::kWindMulti） |
 | wind | 關閉（吹飛） | 大師 | ×3：純百分比傷害主線（規劃 3） | 風印記的融斷再 +2%／點 | 風印記的融斷再 +6%／點 | native/include/Reactions.h:kBurstAgain |
-| wind | 關閉（吹飛） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 落地傷害 +5%／點（×0.5 → ×1.25） | 落地傷害 +15%／點（×0.5 → ×2.75） | native/include/Reactions.h:kSignature；native/include/Reactions.h:kWindLanding |
+| wind | 關閉（吹飛） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 落地傷害 +5%／點（×0.5 → ×1.25） | 落地傷害 +15%／點（×0.5 → ×2.75） | native/include/Status.h:kSignature；native/include/Reactions.h:kWindLanding |
 | blood | 持續（血位） | 新手 | ×3：fix8 使用者核准：只縮放流血每層傷害，放血係數保持原值（v0.4 明寫） | 流血每層傷害 +2%／點，放血係數 +0.01%／點（0.3% → 0.45%，不吃節點倍率） | 流血每層傷害 +6%／點，放血係數 +0.01%／點（0.3% → 0.45%，不吃節點倍率） | native/include/Status.h:kBloodLayerDamage |
 | blood | 持續（血位） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 血附傷 +1%／點 | 血附傷 +3%／點 | native/include/HitMath.h:NodeSum[kProcAdept]；native/include/HitMath.h:kProcAdept |
 | blood | 持續（血位） | 專精 | 不改：時間、機率、範圍、層數、回復、抗性、分擔或比例類（規劃 3 不吃節點倍率） | 吸血比例各血位 +1%／點 | 吸血比例各血位 +1%／點 | DLL native/include/HitMath.h LeechRatio（node::kBloodLeechRatio）＋ESSBController.GetBloodLeechRatio |
@@ -91,7 +91,7 @@
 | blood | 關閉（血潮） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 血印記的融斷 +2%／點 | 血印記的融斷 +6%／點 | native/include/Reactions.h:kBurstMain |
 | blood | 關閉（血潮） | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 血潮治療倍率 ×2，每點 +0.1 | 血潮治療倍率 ×2，每點 +0.1 | DLL native/include/Reactions.h（node::kBloodSurgeHeal） |
 | blood | 關閉（血潮） | 大師 | ×3：純百分比傷害主線（規劃 3） | 血印記的融斷再 +2%／點 | 血印記的融斷再 +6%／點 | native/include/Reactions.h:kBurstAgain |
-| blood | 關閉（血潮） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 血潮 +3%／點 | 血潮 +9%／點 | native/include/Reactions.h:kSignature |
+| blood | 關閉（血潮） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 血潮 +3%／點 | 血潮 +9%／點 | native/include/Status.h:kSignature |
 | divine | 持續（聖佑） | 新手 | ×3：純百分比傷害主線（規劃 3） | 聖佑各階武器傷害與聖傷加成 +1%／點 × 階數（I 1、II 2、III 3） | 聖佑各階武器傷害與聖傷加成 +3%／點 × 階數（I 1、II 2、III 3） | native/include/Status.h:kDivineHolyBonus；native/include/Status.h:kDivineHolyBonus；native/include/Reactions.h:kDivineHolyBonus |
 | divine | 持續（聖佑） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 聖附傷 +1%／點 | 聖附傷 +3%／點 | native/include/HitMath.h:NodeSum[kProcAdept]；native/include/HitMath.h:kProcAdept |
 | divine | 持續（聖佑） | 專精 | ×3：純百分比傷害主線（規劃 3） | 聖裁傷害 +2%／點 | 聖裁傷害 +6%／點 | native/include/Status.h:kDivineJudgeDamage |
@@ -106,8 +106,8 @@
 | divine | 關閉（裁決） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 聖印記的融斷 +2%／點 | 聖印記的融斷 +6%／點 | native/include/Reactions.h:kBurstMain |
 | divine | 關閉（裁決） | 專精 | ×3：純百分比傷害主線（規劃 3） | 終焉後 5 秒內接管元素附傷 +1%／點 | 終焉後 5 秒內接管元素附傷 +3%／點 | native/include/Status.h:kTakeover |
 | divine | 關閉（裁決） | 大師 | ×3：純百分比傷害主線（規劃 3） | 聖印記的融斷再 +2%／點 | 聖印記的融斷再 +6%／點 | native/include/Reactions.h:kBurstAgain |
-| divine | 關閉（裁決） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 裁決 +3%／點 | 裁決 +9%／點 | native/include/Reactions.h:kSignature |
-| poison | 持續（疫毒） | 新手 | ×3：純百分比傷害主線（規劃 3） | 每劑傷害 +2%／點 | 每劑傷害 +6%／點 | native/include/Status.h:kPoisonDoseDamage |
+| divine | 關閉（裁決） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 裁決 +3%／點 | 裁決 +9%／點 | native/include/Status.h:kSignature |
+| poison | 持續（疫毒） | 新手 | ×3：純百分比傷害主線（規劃 3） | 每劑傷害 +2%／點 | 每劑傷害 +6%／點 | native/include/Status.h:kPoisonDoseDamage；native/include/Status.h:kPoisonDoseDamage |
 | poison | 持續（疫毒） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 毒附傷 +1%／點 | 毒附傷 +3%／點 | native/include/HitMath.h:NodeSum[kProcAdept]；native/include/HitMath.h:kProcAdept |
 | poison | 持續（疫毒） | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 瘴氣每秒傳遞劑量 +0.05／點（0.5 → 2.0，催毒中 1.0 → 3.5，可調） | 瘴氣每秒傳遞劑量 +0.05／點（0.5 → 2.0，催毒中 1.0 → 3.5，可調） | DLL native/include/Status.h rule::MiasmaDoses ＋ native/src/Plugin.cpp TargetSecond（node::kPoisonMiasmaRate） |
 | poison | 持續（疫毒） | 大師 | ×3：純百分比傷害主線（規劃 3） | 同調每段毒附傷 +1%／點 | 同調每段毒附傷 +3%／點 | native/include/HitMath.h:NodeSum[kProcMaster]；native/include/HitMath.h:kProcMaster |
@@ -121,7 +121,7 @@
 | poison | 關閉（催毒） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 毒印記的融斷 +2%／點 | 毒印記的融斷 +6%／點 | native/include/Reactions.h:kBurstMain |
 | poison | 關閉（催毒） | 專精 | ×3：純百分比傷害主線（規劃 3） | 終焉後 5 秒內接管元素附傷 +1%／點 | 終焉後 5 秒內接管元素附傷 +3%／點 | native/include/Status.h:kTakeover |
 | poison | 關閉（催毒） | 大師 | ×3：純百分比傷害主線（規劃 3） | 毒印記的融斷再 +2%／點 | 毒印記的融斷再 +6%／點 | native/include/Reactions.h:kBurstAgain |
-| poison | 關閉（催毒） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 催毒期間中毒傷害 +3%／點 | 催毒期間中毒傷害 +9%／點 | native/include/Status.h:kSignature；native/include/Reactions.h:kSignature |
+| poison | 關閉（催毒） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 催毒期間中毒傷害 +3%／點 | 催毒期間中毒傷害 +9%／點 | native/include/Status.h:kSignature；native/include/Status.h:kSignature |
 | water | 持續（潮汐） | 新手 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 浸濕持續 +0.3 秒／點（只延長浸濕本身，不影響水印記時長） | 浸濕持續 +0.3 秒／點（只延長浸濕本身，不影響水印記時長） | ESSBElem3.WetSeconds（Papyrus 浸濕）＋DLL 雨雪浸濕（固定時長法術 ESSB_Native_Soak_*，node::kWaterSoakDuration） |
 | water | 持續（潮汐） | 熟練 | 不改：時間、機率、範圍、層數、回復、抗性、分擔或比例類（規劃 3 不吃節點倍率） | 長流每秒回復 +0.2%／點（2.0% → 5.0%；只加生命與耐力） | 長流每秒回復 +0.2%／點（2.0% → 5.0%；只加生命與耐力） | DLL native/include/Timer.h FlowFraction／PlanFormSecond（node::kWaterFlowRate）← Plugin.cpp FormSecondWork（計時器每秒） |
 | water | 持續（潮汐） | 專精 | ×3：純百分比傷害主線（規劃 3） | 水壓每層水附傷 +1%／點 | 水壓每層水附傷 +3%／點 | native/include/Status.h:kWaterPressureDamage |
@@ -136,7 +136,7 @@
 | water | 關閉（導引） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 水印記的融斷 +2%／點 | 水印記的融斷 +6%／點 | native/include/Reactions.h:kBurstMain |
 | water | 關閉（導引） | 專精 | ×3：純百分比傷害主線（規劃 3） | 終焉後 5 秒內接管元素附傷 +1%／點 | 終焉後 5 秒內接管元素附傷 +3%／點 | native/include/Status.h:kTakeover |
 | water | 關閉（導引） | 大師 | ×3：純百分比傷害主線（規劃 3） | 水印記的融斷再 +2%／點 | 水印記的融斷再 +6%／點 | native/include/Reactions.h:kBurstAgain |
-| water | 關閉（導引） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 導引 +3%／點 | 導引 +9%／點 | native/include/Status.h:kSignature；native/include/Reactions.h:kSignature |
+| water | 關閉（導引） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 導引 +3%／點 | 導引 +9%／點 | native/include/Status.h:kSignature；native/include/Status.h:kSignature |
 | darkness | 持續（侵蝕） | 新手 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 詛咒每層抗性侵蝕 -0.2%／點（-2% → -5%） | 詛咒每層抗性侵蝕 -0.2%／點（-2% → -5%） | DLL native/include/Reactions.h（node::kDarkErosion） |
 | darkness | 持續（侵蝕） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 暗附傷 +1%／點 | 暗附傷 +3%／點 | native/include/HitMath.h:NodeSum[kProcAdept]；native/include/HitMath.h:kProcAdept |
 | darkness | 持續（侵蝕） | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 幻覺持續 +0.1 秒／點（恐懼 2 → 3.5 秒、瘋狂 3 → 4.5 秒） | 幻覺持續 +0.1 秒／點（恐懼 2 → 3.5 秒、瘋狂 3 → 4.5 秒） | DLL native/include/Status.h（node::kDarkIllusionTime） |
@@ -151,7 +151,7 @@
 | darkness | 關閉（死咒） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 暗印記的融斷 +2%／點 | 暗印記的融斷 +6%／點 | native/include/Reactions.h:kBurstMain |
 | darkness | 關閉（死咒） | 專精 | ×3：純百分比傷害主線（規劃 3） | 死咒的「已損失生命」係數 +0.5%／點（15% → 22.5%） | 死咒的「已損失生命」係數 +1.5%／點（15% → 37.5%） | native/include/Status.h:kDarkCurseLost |
 | darkness | 關閉（死咒） | 大師 | ×3：純百分比傷害主線（規劃 3） | 暗印記的融斷再 +2%／點 | 暗印記的融斷再 +6%／點 | native/include/Reactions.h:kBurstAgain |
-| darkness | 關閉（死咒） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 死咒 +3%／點 | 死咒 +9%／點 | native/include/Status.h:kSignature；native/include/Reactions.h:kSignature |
+| darkness | 關閉（死咒） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 死咒 +3%／點 | 死咒 +9%／點 | native/include/Status.h:kSignature |
 | astral | 持續（共鳴） | 新手 | 不改：v0.4 明寫「不吃節點倍率」 | 回聲比例 +1%／點（25% → 40%，不吃節點倍率） | 回聲比例 +1%／點（25% → 40%，不吃節點倍率） | DLL native/include/Reactions.h（node::kAstralEcho） |
 | astral | 持續（共鳴） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 星附傷 +1%／點 | 星附傷 +3%／點 | native/include/HitMath.h:NodeSum[kProcAdept]；native/include/HitMath.h:kProcAdept |
 | astral | 持續（共鳴） | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 星痕層數上限 +1／每 5 點（也提高闇星每一擊） | 星痕層數上限 +1／每 5 點（也提高闇星每一擊） | DLL native/include/Status.h StarCap（node::kAstralCap） |
@@ -166,7 +166,7 @@
 | astral | 關閉（星落） | 熟練 | ×3：純百分比傷害主線（規劃 3） | 星印記的融斷 +2%／點 | 星印記的融斷 +6%／點 | native/include/Reactions.h:kBurstMain |
 | astral | 關閉（星落） | 專精 | ×3：純百分比傷害主線（規劃 3） | 終焉後 5 秒內接管元素附傷 +1%／點 | 終焉後 5 秒內接管元素附傷 +3%／點 | native/include/Status.h:kTakeover |
 | astral | 關閉（星落） | 大師 | ×3：純百分比傷害主線（規劃 3） | 星印記的融斷再 +2%／點 | 星印記的融斷再 +6%／點 | native/include/Reactions.h:kBurstAgain |
-| astral | 關閉（星落） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 星落 +3%／點 | 星落 +9%／點 | native/include/Reactions.h:kSignature |
+| astral | 關閉（星落） | 傳奇 | ×3：純百分比傷害主線（規劃 3） | 星落 +3%／點 | 星落 +9%／點 | native/include/Status.h:kSignature |
 | noform | 大師 | 新手 | 不改：v0.4 明寫「不吃節點倍率」 | 吸魔量 +5%／點（不吃節點倍率；×1.0 → ×1.75） | 吸魔量 +5%／點（不吃節點倍率；×1.0 → ×1.75） | DLL native/include/HitMath.h PlanNoFormHit（node::kNoFormSiphonAmount） |
 | noform | 大師 | 熟練 | 不改：時間、機率、範圍、層數、回復、抗性、分擔或比例類（規劃 3 不吃節點倍率） | 超載上限 +2%／點（+50% → +80%） | 超載上限 +2%／點（+50% → +80%） | DLL native/include/Status.h res::OverloadCap（node::kNoFormOverloadCap） |
 | noform | 大師 | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 法盾效率，每擋 1 點花的魔力 -2%／點（最多 -30%：1.0 → 0.7，超載 0.75 → 0.53） | 法盾效率，每擋 1 點花的魔力 -2%／點（最多 -30%：1.0 → 0.7，超載 0.75 → 0.53） | DLL native/include/Hurt.h hurt::ShareOf（node::kNoFormShieldCost） |

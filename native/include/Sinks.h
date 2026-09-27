@@ -116,7 +116,10 @@ inline std::vector<Action> PlanInput(const std::vector<Press>& presses, const In
         if (!p.down) {
             continue;
         }
-        if (f.active && f.trace && p.device == Device::kKeyboard && open &&
+        // Round 27 (G15): a key bound to an element hotkey is that hotkey -- never also the step marker (numpad + / - can
+        // be bound to a form).
+        const bool hotkey = f.enabled && f.hotkeys && HotkeyElement(KeyCodeOf(p.device, p.id), true, f.keys) != 0;
+        if (!hotkey && f.active && f.trace && p.device == Device::kKeyboard && open &&
             (static_cast<int>(p.id) == f.stepNext || static_cast<int>(p.id) == f.stepBack)) {
             out.push_back(Action{ ActionKind::kStep, 0, static_cast<int>(p.id) == f.stepNext ? 1 : -1, static_cast<int>(p.id), true });
             continue;

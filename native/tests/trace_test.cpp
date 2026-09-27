@@ -548,6 +548,18 @@ void SinkChecks()
     f.enabled = false;
     a = essb::sink::PlanInput(presses, f);
     Check(a.size() == 1 && a[0].kind == essb::sink::ActionKind::kStep, "input: the master switch off keeps the step key only");
+    // round 27 (G15): numpad + bound to a form is that form's hotkey, not also the step marker
+    f.enabled = true;
+    const std::vector<essb::sink::Press> plus{ { essb::Device::kKeyboard, static_cast<std::uint32_t>(tr::kStepKeyNext), true } };
+    f.keys[essb::kFrost - 1] = tr::kStepKeyNext;
+    a = essb::sink::PlanInput(plus, f);
+    Check(a.size() == 1 && a[0].kind == essb::sink::ActionKind::kSwitch && a[0].element == essb::kFrost && a[0].accepted,
+        "input: a step key bound to a form switches and is not also a step (G15)");
+    f.hotkeys = false;
+    a = essb::sink::PlanInput(plus, f);
+    Check(a.size() == 1 && a[0].kind == essb::sink::ActionKind::kStep, "input: hotkeys off -- the bound step key is the step marker again");
+    f.hotkeys = true;
+    f.keys[essb::kFrost - 1] = 80;
     // the X2 chain keys: unique offsets, the ones the commander named
     std::set<std::uintptr_t> offsets;
     for (const auto& k : tr::kChainKeys) {

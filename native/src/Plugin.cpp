@@ -35,6 +35,8 @@
 #include "Load.h"
 #include "ManifestData.h"
 #include "Reactions.h"
+#include "Registry.h"
+#include "Runtime.h"
 #include "Selection.h"
 #include "Sinks.h"
 #include "SelfLayer.h"
@@ -89,6 +91,8 @@ static_assert(std::size(essb::kStatusRecords) == essb::kStatusKindCount);
 // ---------------------------------------------------------------- the only mutable state
 
 void Log(std::string_view line) noexcept;
+int SehFilter(EXCEPTION_POINTERS* info, const char* where) noexcept;   // round 27 (E2): below
+RE::SpellItem* CastSpellById(std::uint32_t localId) noexcept;             // round 27 (G8, G13): below
 
 // The form source Load.h resolves against (round 25 hotfix): the game's TESDataHandler. The resolution itself -- every
 // record, every identity check, the status tables -- is Load.h's, so native/tests/load_test.cpp runs the same code on
@@ -149,7 +153,10 @@ static_assert(std::string_view(essb::load::kPlugin) == kPlugin && std::string_vi
 struct State {
     std::atomic_bool ready{};     // manifest resolved and sinks registered
     std::atomic_bool faulted{};   // latched until the game restarts
-    std::atomic_bool inGame{};    // from PostLoadGame/NewGame until the next PreLoadGame
+    std::atomic_bool loaded{};    // round 27 (E5): the manifest was resolved once (a fault does not clear it)
+    // Round 27 (E3): the game session -- inGame from PostLoadGame / NewGame until the next PreLoadGame or the main menu,
+    // and the epoch every queued task carries (Runtime.h Ticket): a task from an older session does nothing.
+    essb::rt::Session session;
     std::atomic_bool echoDispelQueued{};     // a consumed echo marker waits for its main-thread dispel
     std::atomic_bool riposteDispelQueued{};  // a used 反擊 window waits for its main-thread dispel
     std::atomic_bool tickQueued{};           // one timer task at a time (a task never re-queues itself)
@@ -164,17 +171,31 @@ struct State {
     Forms forms{};
     std::optional<essb::trace::TraceRng> rng;  // damage rolls; seeded once per game process (round 26: with a tape)
     // Notices raised before the HUD exists (data load). Round 26c: Fault can raise one from any thread -- locked.
-    std::mutex noticeLock;
+    essb::lk::Mutex noticeLock;   // round 27b (A N4): our locks count themselves (Locks.h)
     std::vector<std::string> deferredNotices;
     // Round 26c: your pools as the last task left them (WriteMirrors), so the hurt sink reads no effect list.
     std::atomic<float> mirrorGuard{};
     std::atomic<float> mirrorOverload{};
     std::atomic_bool mirrorAfterimage{};
     std::atomic_bool mirrorLinger{};
-    // Round 26c (P5): how many engine-mutating bodies run now (a task; > 1 = two at once), and which.
-    std::atomic<int> mutating{};
-    std::atomic<const char*> mutatingName{};
-    std::mutex overlapLock;
+    // Round 26c (P5): how many engine-mutating bodies run now (a task; > 1 = two at once), and which (Runtime.h Scope).
+    essb::rt::ScopeCounters scopes;
+    // Round 27 (E1): our effects on each actor as the tasks last read them; the sinks and read-only natives read this.
+    essb::reg::Registry registry;
+    essb::reg::SettledMarks settled;             // round 27 (G9): marks our tasks took off in the last second
+    // Round 27 (G6): the sneak flag of your last accepted hit on each actor (the hit sink), for a death that comes before
+    // the hit task (連殺 reads it): FormID, the form element (12 = no form), when.
+    essb::lk::Mutex sneakLock;
+    std::vector<std::tuple<std::uint32_t, int, std::uint64_t>> sneakHits;
+    essb::lk::Mutex refreshLock;                 // actors an effect of ours landed on outside our tasks (Papyrus, a hazard)
+    std::vector<RE::ActorHandle> refresh;
+    std::atomic_bool refreshQueued{};
+    std::array<std::atomic<const char*>, 8> offTaskReads{};   // OVERLAP-READ: the contexts seen walking a list off a task
+    // Round 27 (G7, E4): your own health changes, and the frame the input sink counts (one poll a frame).
+    essb::rt::HealthLedger ownHealth;
+    std::atomic<std::uint64_t> frame{};
+    essb::rt::WorldClock world;   // round 27b (A N3): the game-world clock the effects' elapsed follows (the registry's)
+    essb::lk::Mutex overlapLock;
     std::vector<std::pair<const char*, const char*>> overlapsSeen;
     std::atomic_bool rngOutsideLogged{};
     std::atomic_bool traceReset{};   // round 26c: OnGameReady asks the tick task to reset the probe log's watchers
@@ -196,10 +217,9 @@ struct State {
     std::array<std::array<std::atomic<ULONG>, 8>, 20> chainSeen{};
     std::uintptr_t exeBase = 0, exeEnd = 0, dllBase = 0, dllEnd = 0;
     std::uintptr_t havokTlsIndex = 0;
-    // Round 23: the hits you took this frame, between the hit sink (before the damage) and the one task that reads the
-    // damage (native-verification-2 s15). Plumbing between two calls of the same frame, not design state.
-    std::mutex hurtLock;
-    std::vector<std::pair<RE::ActorHandle, essb::HurtFacts>> hurts;
+    // Round 23: the hits you took, between the hit sink (before the damage) and the task that reads the damage
+    // (native-verification-2 s15). Round 27 (E4): with their frame; the task takes those of earlier frames only.
+    essb::rt::HurtQueue<RE::ActorHandle> hurtQueue;
     std::atomic_bool hurtQueued{};
     // Probe N4-2 (debug level 3 only): the last actor you hit and its casters' last logged state (main thread).
     RE::ActorHandle probeTarget{};
@@ -207,7 +227,7 @@ struct State {
     // Round 26 (the probe log, Trace.h): the buffer, the real clock's origin, the running event's label and what the
     // watchers saw last. Logging only -- nothing here is read by a rule.
     essb::trace::Buffer trace;
-    std::mutex flushLock;
+    essb::lk::Mutex flushLock;
     std::uint64_t realStart = 0;
     std::atomic<std::uint64_t> lastFlush{};
     std::vector<std::pair<std::uint32_t, std::string>> globalNames; // manifest "globals": local id -> editor ID
@@ -231,6 +251,9 @@ thread_local bool t_selfDispel = false;
 thread_local bool t_inHitTask = false;
 thread_local bool t_inTask = false;
 thread_local const char* t_traceCtx = "-";
+// Round 27 (G6): the actor the running hit task treats as a corpse (the hit killed it before the task): nothing is cast on
+// or dispelled from it; everything else of the hit happens.
+thread_local RE::Actor* t_corpse = nullptr;
 constexpr essb::Config kConfig = essb::MakeConfig();
 
 // ---------------------------------------------------------------- log and on-screen notices
@@ -242,12 +265,28 @@ bool TraceOn() noexcept
 }
 
 // Writes what the probe log's buffer holds (one WriteFile; under its own lock so two flushes never swap order).
-void FlushTrace() noexcept
+// Round 27 (E7): `exiting` -- the DLL's unload or a crash on its way out: both locks are only tried (a thread the exit killed
+// may hold one); nothing is written rather than waiting.
+void FlushTrace(bool exiting = false) noexcept
 {
     try {
-        std::lock_guard lock(state.flushLock);
+        std::unique_lock lock(state.flushLock, std::defer_lock);
+        if (exiting) {
+            if (!lock.try_lock()) {
+                return;
+            }
+        } else {
+            lock.lock();
+        }
         std::uint64_t dropped = 0;
-        std::string text = state.trace.Take(dropped);
+        std::string text;
+        if (exiting) {
+            if (!state.trace.TryTake(text, dropped)) {
+                return;
+            }
+        } else {
+            text = state.trace.Take(dropped);
+        }
         if (dropped > 0) {
             char line[128];
             std::snprintf(line, sizeof(line), "[ESSB][T][trace] dropped=%llu lines (the buffer was full)\n", static_cast<unsigned long long>(dropped));
@@ -264,7 +303,7 @@ void FlushTrace() noexcept
 
 // Writes the buffer once the DLL unloads (a normal exit); the timer thread writes it every second before that.
 struct TraceAtExit {
-    ~TraceAtExit() { FlushTrace(); }
+    ~TraceAtExit() { FlushTrace(true); }   // round 27 (E7): try-locks only
 } traceAtExit;
 
 std::uint64_t RealMs() noexcept
@@ -330,23 +369,42 @@ void Logf(const char* format, Args... args) noexcept
     Log(line);
 }
 
-void OpenLog()
+// Round 27 (G12): the log never fails the plugin. 0.26.x opened it first thing in SKSEPlugin_Query with CREATE_ALWAYS and
+// FILE_SHARE_READ and threw when the file was still held by a game process that had not exited yet -- Query returned false
+// and SKSE rejected the DLL for the whole run ("reported as incompatible during query"; the new-game report). Now: read /
+// write / delete sharing; if the main file cannot be opened, ElementsSpellblade-<pid>.log; if that fails too, no log.
+void OpenLog() noexcept
 {
     if (state.log != INVALID_HANDLE_VALUE) {
         return;
     }
-    const auto directory = SKSE::log::log_directory();
-    if (!directory) {
-        throw std::runtime_error("SKSE log directory unavailable");
+    try {
+        state.realStart = GetTickCount64();
+        const auto directory = SKSE::log::log_directory();
+        if (!directory) {
+            return;
+        }
+        std::error_code ignored;
+        std::filesystem::create_directories(*directory, ignored);
+        const DWORD pid = GetCurrentProcessId();
+        const essb::rt::LogPick pick = essb::rt::OpenLogWith([&](bool withPid) {
+            const std::wstring name = withPid ? L"ElementsSpellblade-" + std::to_wstring(pid) + L".log" : std::wstring(L"ElementsSpellblade.log");
+            const auto path = *directory / name;
+            state.log = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, CREATE_ALWAYS,
+                FILE_ATTRIBUTE_NORMAL, nullptr);
+            return state.log != INVALID_HANDLE_VALUE;
+        });
+        if (pick == essb::rt::LogPick::kNone) {
+            return;
+        }
+        Logf("[ESSB][load] ElementsSpellblade %s; SE 1.5.97 + SKSE 2.0.20 only; no entry-51 fallback", essb::nativeVersion);
+        if (pick == essb::rt::LogPick::kPid) {
+            Logf("[ESSB][load] ElementsSpellblade.log is held by another process (a game still exiting?): this run logs to "
+                 "ElementsSpellblade-%lu.log",
+                pid);
+        }
+    } catch (...) {
     }
-    std::filesystem::create_directories(*directory);
-    const auto path = *directory / L"ElementsSpellblade.log";
-    state.realStart = GetTickCount64();
-    state.log = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (state.log == INVALID_HANDLE_VALUE) {
-        throw std::runtime_error("Cannot open ElementsSpellblade.log");
-    }
-    Logf("[ESSB][load] ElementsSpellblade %s; SE 1.5.97 + SKSE 2.0.20 only; no entry-51 fallback", essb::nativeVersion);
 }
 
 // Probe X1 (native-verification-3 s16): the first event of each sink logs whether it arrived on the main thread.
@@ -391,7 +449,7 @@ bool ReadHavokTls(std::uintptr_t indexAddress, std::uint32_t& out) noexcept
         auto** tls = reinterpret_cast<std::uint8_t**>(__readgsqword(0x58));
         out = *reinterpret_cast<const std::uint32_t*>(tls[index] + 0x688);
         return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (SehFilter(GetExceptionInformation(), "Havok TLS read")) {
         return false;
     }
 }
@@ -519,7 +577,7 @@ void MainThreadGuarded() noexcept
 {
     __try {
         MainThreadCpp();
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (SehFilter(GetExceptionInformation(), "first SKSE task")) {
     }
 }
 
@@ -541,33 +599,23 @@ void Overlap(const char* name, const char* other) noexcept
     Logf("[ESSB][OVERLAP] %s thread=%lu with=%s", name, GetCurrentThreadId(), other ? other : "?");
 }
 
+struct OverlapReport {
+    void operator()(const char* name, const char* other) const noexcept { Overlap(name, other); }
+};
+
 struct TaskScope {
-    const char* name;
-    bool outer;
-    explicit TaskScope(const char* n) noexcept : name(n), outer(t_inTask)
-    {
-        if (outer) {
-            return;   // a nested scope on the same thread (a task body calling another body)
-        }
-        t_inTask = true;
-        const char* other = state.mutatingName.exchange(n);
-        if (state.mutating.fetch_add(1) + 1 > 1) {
-            Overlap(n, other);
-        }
-    }
-    ~TaskScope()
-    {
-        if (outer || !t_inTask) {
-            return;
-        }
-        t_inTask = false;
-        if (state.mutating.fetch_sub(1) <= 0) {
-            state.mutating = 0;
-        }
-    }
+    essb::rt::Scope<OverlapReport> scope;
+    explicit TaskScope(const char* n) noexcept : scope(n, t_inTask, state.scopes, OverlapReport{}) {}
     TaskScope(const TaskScope&) = delete;
     TaskScope& operator=(const TaskScope&) = delete;
 };
+
+// Round 27 (E9): every __except resets the thread's task scope (an SEH exit skips the scope's destructor).
+void ResetTaskScope() noexcept
+{
+    essb::rt::ResetScope(t_inTask, state.scopes);
+    t_selfDispel = false;
+}
 
 // A hit task's scope: a TESHitEvent our own casts raise on this thread is dropped by the sink (the old re-entrancy guard).
 struct InHitTask {
@@ -608,7 +656,7 @@ void Notify(std::string text) noexcept
 {
     try {
         Log("[ESSB][notice] " + text);
-        if (state.inGame) {
+        if (state.session.inGame) {
             Show(std::move(text));
         } else {
             std::lock_guard lock(state.noticeLock);   // round 26c: Fault may raise a notice from any thread
@@ -637,13 +685,13 @@ void WriteNativeHit(float value) noexcept
         if (state.forms.nativeHit) {
             state.forms.nativeHit->value = value;
         }
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (SehFilter(GetExceptionInformation(), "ESSB_NativeHit write")) {
     }
 }
 
 bool Active() noexcept
 {
-    if (!state.ready || state.faulted || !state.inGame || !state.forms.wanted) {
+    if (!state.ready || state.faulted || !state.session.inGame || !state.forms.wanted) {
         return false;
     }
     return state.forms.wanted->value == 1.0f;
@@ -668,13 +716,7 @@ void Fault(const char* reason) noexcept
     state.ready = false;
     const bool first = !state.faulted.exchange(true);
     WriteNativeHit(0.0f);
-    t_selfDispel = false;
-    if (t_inTask) {   // round 26c: a fault inside a task body (an SEH exit skips its scope's destructor)
-        t_inTask = false;
-        if (state.mutating.fetch_sub(1) <= 0) {
-            state.mutating = 0;
-        }
-    }
+    ResetTaskScope();   // round 26c / 27 (E9): a fault inside a task body (an SEH exit skips its scope's destructor)
     if (!first) {
         return;
     }
@@ -683,6 +725,58 @@ void Fault(const char* reason) noexcept
     try {
         Notify(std::string("元素魔戰士 DLL 故障：") + reason + "。命中附傷已停用，重開遊戲前不會恢復");
     } catch (...) {
+    }
+}
+
+// Round 27 (E2): the filter of every __except. Only an access violation inside this DLL is swallowed (the guard faults
+// the DLL off and the game goes on); anything else -- an access violation inside the engine, a stack overflow, a
+// breakpoint -- is logged, the probe log flushed (try-locks only), and passed on (EXCEPTION_CONTINUE_SEARCH): the game's
+// own crash handling sees it, instead of an engine lock abandoned by a swallowed exception turning a crash into a hang.
+// A C++ exception passing through is left to its own catch, silently.
+int SehFilter(EXCEPTION_POINTERS* info, const char* where) noexcept
+{
+    const EXCEPTION_RECORD* record = info ? info->ExceptionRecord : nullptr;
+    const std::uint32_t code = record ? static_cast<std::uint32_t>(record->ExceptionCode) : 0u;
+    if (essb::rt::SehQuiet(code)) {
+        return EXCEPTION_CONTINUE_SEARCH;   // round 27b (A N5): no stack left -- do nothing at all
+    }
+    const auto at = record ? reinterpret_cast<std::uintptr_t>(record->ExceptionAddress) : std::uintptr_t{ 0 };
+    // Round 27b (A N4): never while this thread holds a lock of ours or an engine lock scope we entered.
+    if (essb::rt::SehVerdict(code, at, state.dllBase, state.dllEnd, essb::lk::Held()) == essb::rt::Seh::kHandle) {
+        return EXCEPTION_EXECUTE_HANDLER;
+    }
+    if (code != essb::rt::kCppException && state.log != INVALID_HANDLE_VALUE) {
+        FlushTrace(true);
+        char line[320];
+        const int n = std::snprintf(line, sizeof(line),
+            "[ESSB][crash] %s: exception 0x%08X at 0x%llX (%s) -- not this DLL's access violation; passed on to the game\n", where, code,
+            static_cast<unsigned long long>(at), at >= state.exeBase && at < state.exeEnd ? "SkyrimSE.exe" : at >= state.dllBase && at < state.dllEnd ? "ESSB" : "other");
+        if (n > 0) {
+            DWORD written = 0;
+            WriteFile(state.log, line, static_cast<DWORD>((std::min)(n, static_cast<int>(sizeof(line)) - 1)), &written, nullptr);
+        }
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+// Round 27 (E3): every task is queued with the session's ticket; it runs its body only in the same session while a game
+// runs (`live`), and always runs its bookkeeping (the one-at-a-time flags). Returns false when nothing was queued.
+// Round 27b (A N6): `sessionOnly` -- the game-ready task, queued before inGame turns on: the epoch alone decides.
+template <class Fn>
+bool QueueTask(Fn fn, bool sessionOnly = false) noexcept
+{
+    try {
+        const auto* tasks = SKSE::GetTaskInterface();
+        if (!tasks) {
+            return false;
+        }
+        const essb::rt::Ticket ticket = essb::rt::Take(state.session);
+        tasks->AddTask([ticket, sessionOnly, fn = std::move(fn)]() mutable {
+            fn(sessionOnly ? essb::rt::SameSession(state.session, ticket) : essb::rt::Valid(state.session, ticket));
+        });
+        return true;
+    } catch (...) {
+        return false;
     }
 }
 
@@ -807,10 +901,36 @@ essb::RawAttack ReadAttack(const RE::TESHitEvent& ev, RE::PlayerCharacter& playe
     return raw;
 }
 
-// Active effects that are running (not waiting on conditions, not being dispelled).
+// Round 27 (E1): a walk of an effect list outside our tasks (a sink, a native on the VM's thread) races the tasks that
+// change the lists. None is left (the sinks and natives read Registry.h); if one appears it is logged once per context:
+// "[ESSB][OVERLAP-READ] ctx=<the running event> thread=<id>" -- the probe judge fails the run on it.
+void OffTaskRead() noexcept
+{
+    const char* ctx = t_traceCtx;
+    for (auto& slot : state.offTaskReads) {
+        const char* known = slot.load();
+        if (known == ctx) {
+            return;
+        }
+        if (!known) {
+            if (slot.compare_exchange_strong(known, ctx)) {
+                Logf("[ESSB][OVERLAP-READ] ctx=%s thread=%lu (an effect list walked outside a task)", ctx ? ctx : "-", GetCurrentThreadId());
+                return;
+            }
+            if (known == ctx) {
+                return;
+            }
+        }
+    }
+}
+
+// Active effects that are running (not waiting on conditions, not being dispelled). Tasks only (round 27, E1).
 template <class Visit>
 void ForEachRunningEffect(RE::Actor& actor, Visit&& visit)
 {
+    if (!t_inTask) {
+        OffTaskRead();
+    }
     auto* list = actor.AsMagicTarget()->GetActiveEffectList();
     if (!list) {
         return;
@@ -883,7 +1003,40 @@ essb::PlayerFacts ReadPlayer(RE::PlayerCharacter& player)
     return p;
 }
 
+// The facts of a target that are not on its effect list (keywords, class, faction, hands, flags, magicka).
+essb::RawTarget ReadTargetNoList(RE::Actor& target);
+
 essb::RawTarget ReadTarget(RE::Actor& target)
+{
+    essb::RawTarget raw = ReadTargetNoList(target);
+    const auto& f = state.forms;
+    ForEachRunningEffect(target, [&](RE::ActiveEffect& active, RE::EffectSetting& effect) {
+        raw.bloodMark = raw.bloodMark || &effect == f.bloodMark;
+        raw.silenced = raw.silenced || &effect == f.silence;
+        if (&effect == f.hush) {
+            raw.hushMagnitude = (std::max)(raw.hushMagnitude, active.magnitude);
+        }
+        raw.hushSpent = raw.hushSpent || &effect == f.hushSpent;
+        raw.armorSpellEffect = raw.armorSpellEffect || (f.armorSpell && effect.HasKeyword(f.armorSpell));
+        raw.cloakEffect = raw.cloakEffect || (f.cloak && effect.HasKeyword(f.cloak));
+    });
+    return raw;
+}
+
+// Round 27 (E1): the same facts from the registry's snapshot (the death sink: no list walk).
+essb::RawTarget ReadTargetFrom(RE::Actor& target, const essb::reg::Snapshot& s)
+{
+    essb::RawTarget raw = ReadTargetNoList(target);
+    raw.bloodMark = s.bloodMark;
+    raw.silenced = s.silenced;
+    raw.hushMagnitude = s.hushMagnitude;
+    raw.hushSpent = s.hushSpent;
+    raw.armorSpellEffect = s.armorSpell;
+    raw.cloakEffect = s.cloak;
+    return raw;
+}
+
+essb::RawTarget ReadTargetNoList(RE::Actor& target)
 {
     const auto& f = state.forms;
     essb::RawTarget raw;
@@ -896,16 +1049,6 @@ essb::RawTarget ReadTarget(RE::Actor& target)
     if (process && process->middleHigh) {
         raw.commandedActors = static_cast<int>(process->middleHigh->commandedActors.size());
     }
-    ForEachRunningEffect(target, [&](RE::ActiveEffect& active, RE::EffectSetting& effect) {
-        raw.bloodMark = raw.bloodMark || &effect == f.bloodMark;
-        raw.silenced = raw.silenced || &effect == f.silence;
-        if (&effect == f.hush) {
-            raw.hushMagnitude = (std::max)(raw.hushMagnitude, active.magnitude);
-        }
-        raw.hushSpent = raw.hushSpent || &effect == f.hushSpent;
-        raw.armorSpellEffect = raw.armorSpellEffect || (f.armorSpell && effect.HasKeyword(f.armorSpell));
-        raw.cloakEffect = raw.cloakEffect || (f.cloak && effect.HasKeyword(f.cloak));
-    });
     auto* left = target.GetEquippedObject(true);
     auto* right = target.GetEquippedObject(false);
     raw.spellInLeftHand = left && left->As<RE::SpellItem>();
@@ -1012,6 +1155,9 @@ public:
     void ForEachIncludingEnding(essb::Who who, Fn&& fn)
     {
         RE::Actor* actor = ActorOf(who);
+        if (!t_inTask) {
+            OffTaskRead();   // round 27 (E1)
+        }
         auto* list = actor ? actor->AsMagicTarget()->GetActiveEffectList() : nullptr;
         if (!list) {
             return;
@@ -1030,11 +1176,58 @@ protected:
     RE::Actor* target_;
 };
 
-// Everything of ours on the actor, as essb::Board (Status.h Read through StatusEngine.h). Read-only.
+// Round 27 (E1): one walk of the actor's list in a task -> its snapshot (our effects, the foreign facts a sink needs).
+essb::reg::Snapshot ReadSnapshot(RE::Actor& actor)
+{
+    essb::reg::Snapshot s;
+    s.atMs = state.world.Ms();   // round 27b (A N3): the effects' own clock
+    const auto& f = state.forms;
+    ForEachRunningEffect(actor, [&](RE::ActiveEffect& effect, RE::EffectSetting& base) {
+        const essb::engine::EffectView v = ViewOf(effect, base);
+        const RE::TESFile* file = base.GetFile(0);
+        const bool ourFile = file && _stricmp(file->GetFilename().data(), kPlugin) == 0;   // round 27 (E11): case-insensitive
+        if (ourFile) {
+            ++s.fromOurFile;
+        }
+        if (v.effect || v.ours || ourFile) {
+            s.ours.push_back(v);
+        }
+        s.armorSpell = s.armorSpell || (f.armorSpell && base.HasKeyword(f.armorSpell));
+        s.cloak = s.cloak || (f.cloak && base.HasKeyword(f.cloak));
+        s.servant = s.servant || (f.reanimate && &base == f.reanimate);
+        s.bloodMark = s.bloodMark || (f.bloodMark && &base == f.bloodMark);
+        s.silenced = s.silenced || (f.silence && &base == f.silence);
+        s.hushSpent = s.hushSpent || (f.hushSpent && &base == f.hushSpent);
+        if (f.hush && &base == f.hush) {
+            s.hushMagnitude = (std::max)(s.hushMagnitude, effect.magnitude);
+        }
+    });
+    return s;
+}
+
+// Everything of ours on the actor, as essb::Board (Status.h Read through StatusEngine.h). Read-only; tasks only. Round 27
+// (E1): the same walk publishes the actor's snapshot in the registry (the sinks' and the read-only natives' source).
+// Round 27b (A N2): an actor in the registry is its FormID and its handle (the reuse bits tell a new reference from a
+// deleted one with the same FormID).
+essb::reg::Key RegKey(RE::Actor& actor)
+{
+    return essb::reg::Key{ actor.GetFormID(), actor.GetHandle().native_handle() };
+}
+
 essb::Board ReadBoard(RE::Actor& actor)
 {
-    EffectLists lists(actor, nullptr);
-    return essb::engine::ReadBoard(lists, essb::Who::kPlayer);
+    essb::reg::Snapshot s = ReadSnapshot(actor);
+    const essb::reg::SnapshotView view(s, 0.0f);
+    const essb::Board board = essb::engine::ReadBoard(view, essb::Who::kPlayer);
+    state.registry.Publish(RegKey(actor), std::move(s));
+    return board;
+}
+
+// Round 27 (E1): the board of an actor as the last task saw it (the sinks, the read-only natives): no list walk.
+essb::Board RegistryBoard(const RE::Actor& actor)
+{
+    const auto s = state.registry.Get(RegKey(const_cast<RE::Actor&>(actor)));
+    return s ? essb::reg::BoardOf(*s, state.world.Ms()) : essb::Board{};
 }
 
 // Round 26b: the body of an actor without the player (the death sink reads the corpse only; the task adds the distance).
@@ -1126,12 +1319,15 @@ void WriteMirrors(RE::PlayerCharacter& player, const essb::Board& me, const Node
     const float magickaMax = MaxOf(player, RE::ActorValue::kMagicka);
     const float healthMax = MaxOf(player, RE::ActorValue::kHealth);
     // Round 26c: the pools the hurt sink needs at hit time, so it reads no effect list (the sink runs beside the tasks).
-    state.mirrorGuard = me.guardPool.has ? me.guardPool.magnitude : 0.0f;
-    state.mirrorOverload = me.Has(K::kOverload) ? me[K::kOverload].magnitude : 0.0f;
-    state.mirrorAfterimage = me.Has(K::kAfterimage);
-    state.mirrorLinger = me.Has(K::kLingerShield);
-    essb::hud::Publish(0, me.Has(K::kOverload) ? me[K::kOverload].magnitude : 0.0f, essb::res::OverloadCap(magickaMax, nodes));
-    essb::hud::Publish(1, me.guardPool.has ? me.guardPool.magnitude : 0.0f, essb::kBloodGuardCapOfMaxHealth * healthMax);
+    // Round 27 (B-small): read again from your list after the plan -- a planner's board does not follow the pool casts
+    // (血溢's 護血 cast by the hit, the pool a hit you took left), so the mirrors lagged a timer tick.
+    const essb::Board now = ReadBoard(player);
+    state.mirrorGuard = now.guardPool.has ? now.guardPool.magnitude : 0.0f;
+    state.mirrorOverload = now.Has(K::kOverload) ? now[K::kOverload].magnitude : 0.0f;
+    state.mirrorAfterimage = now.Has(K::kAfterimage);
+    state.mirrorLinger = now.Has(K::kLingerShield);
+    essb::hud::Publish(0, now.Has(K::kOverload) ? now[K::kOverload].magnitude : 0.0f, essb::res::OverloadCap(magickaMax, nodes));
+    essb::hud::Publish(1, now.guardPool.has ? now.guardPool.magnitude : 0.0f, essb::kBloodGuardCapOfMaxHealth * healthMax);
     essb::hud::Publish(2, static_cast<float>(me.Layers(K::kStoredForce)), static_cast<float>(essb::n4::kForceCap));
     const bool form = state.forms.formActive->value == 1.0f;
     essb::hud::Publish(3, form ? static_cast<float>(sync) : 0.0f, static_cast<float>(th.at[2]));
@@ -1167,8 +1363,29 @@ bool CausedLogging() noexcept
     return state.forms.debug && state.forms.debug->value >= 3.0f;
 }
 
+// Round 27 (G7): one of our own writes that may change your health (a cost, a heal, a cast on you): the change goes to the
+// ledger the hurt task subtracts (Runtime.h HealthLedger). Tasks only.
+// Round 27b (A N10): only what the write itself can do counts -- a cast of magnitude m moves the ledger by at most m
+// (Runtime.h OwnDelta); a hit landing in the same moment stays the enemy's. The payments record their exact amount.
+template <class Write>
+void OwnHealth(RE::Actor& on, float bound, Write&& write)
+{
+    auto* player = RE::PlayerCharacter::GetSingleton();
+    if (&on != player) {
+        write();
+        return;
+    }
+    auto* values = player->AsActorValueOwner();
+    const float before = values->GetActorValue(RE::ActorValue::kHealth);
+    write();
+    state.ownHealth.Add(essb::rt::OwnDelta(before, values->GetActorValue(RE::ActorValue::kHealth), bound));
+}
+
 void Apply(RE::PlayerCharacter& player, RE::Actor& target, const essb::Plan& plan)
 {
+    if (&target == t_corpse) {
+        return;   // round 27 (G6): the proc of a killing blow lands on nothing
+    }
     auto& caster = CasterOf(player);
     const bool watch = CausedLogging() && !target.IsDead();   // round 26b
     for (int i = 0; i < plan.count; ++i) {
@@ -1178,13 +1395,15 @@ void Apply(RE::PlayerCharacter& player, RE::Actor& target, const essb::Plan& pla
             throw std::runtime_error("plan asks for a spell the manifest does not have");
         }
         const float magnitude = essb::UsesOverride(step.cast) ? step.magnitude : kNoMagnitudeOverride;
-        RE::TESObjectREFR* on = essb::CastsOnPlayer(step.cast) ? static_cast<RE::TESObjectREFR*>(&player) : &target;
+        RE::Actor* on = essb::CastsOnPlayer(step.cast) ? static_cast<RE::Actor*>(&player) : &target;
         // Every hit re-applies, like entry 51 did (no same-spell gate; see native-verification.md).
-        caster.CastSpellImmediate(spell, false, on, kEffectiveness, false, magnitude, &player);
+        OwnHealth(*on, essb::UsesOverride(step.cast) ? step.magnitude * kEffectiveness : 0.0f,
+            [&]() { caster.CastSpellImmediate(spell, false, on, kEffectiveness, false, magnitude, &player); });   // round 27 (G7)
     }
     if (watch && target.IsDead()) {
         LogCaused("kill", &target, "proc");
     }
+    (void)ReadBoard(target);   // round 27 (E1): the target's snapshot after the proc's casts
 }
 
 // The two single-use markers the DLL consumes on the player: 餘響待發 (echo) and the 反擊 window.
@@ -1207,29 +1426,20 @@ std::atomic_bool& MarkerQueued(Marker marker) noexcept
 // Round 26c (P2): dispels the running effects `match` picks. Each is collected by its unique id and base effect, and
 // re-found in the live list right before its Dispel (an earlier dispel may have changed the list), never by a pointer
 // kept across dispels. Returns how many were dispelled.
+// Round 27 (T): the rule is Runtime.h DispelCollected (runtime_test runs it on a list that changes under the dispels).
 template <class Match>
 int DispelLive(RE::Actor& actor, Match&& match)
 {
-    std::vector<std::pair<std::uint16_t, const RE::EffectSetting*>> found;
-    ForEachRunningEffect(actor, [&](RE::ActiveEffect& effect, RE::EffectSetting& base) {
-        if (match(effect, base)) {
-            found.emplace_back(effect.usUniqueID, &base);
-        }
-    });
-    int dispelled = 0;
-    for (const auto& [uid, base] : found) {
-        RE::ActiveEffect* live = nullptr;
-        ForEachRunningEffect(actor, [&](RE::ActiveEffect& effect, RE::EffectSetting& b) {
-            if (!live && effect.usUniqueID == uid && &b == base) {
-                live = &effect;
-            }
-        });
-        if (live) {
-            live->Dispel(true);
-            ++dispelled;
-        }
-    }
-    return dispelled;
+    return essb::rt::DispelCollected(
+        [&](auto&& visit) {
+            ForEachRunningEffect(actor, [&](RE::ActiveEffect& effect, RE::EffectSetting& base) {
+                visit(effect.usUniqueID, static_cast<const void*>(&base), &effect);
+            });
+        },
+        [&](RE::ActiveEffect* effect, const void* base) {
+            return match(*effect, *const_cast<RE::EffectSetting*>(static_cast<const RE::EffectSetting*>(base)));
+        },
+        [](RE::ActiveEffect* live) { live->Dispel(true); });
 }
 
 // Main-thread body of a marker dispel. The effects are collected first and dispelled after the walk, so the
@@ -1252,12 +1462,14 @@ void DispelMarkerCpp(Marker marker) noexcept
 }
 
 // SEH-only wrapper (no C++ objects here), the same two layers as the hit sink.
-void DispelMarkerGuarded(Marker marker) noexcept
+void DispelMarkerGuarded(Marker marker, bool live) noexcept
 {
-    __try {
-        DispelMarkerCpp(marker);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        Fault("access violation in marker dispel task");
+    if (live) {
+        __try {
+            DispelMarkerCpp(marker);
+        } __except (SehFilter(GetExceptionInformation(), "access violation in marker dispel task")) {
+            Fault("access violation in marker dispel task");
+        }
     }
     MarkerQueued(marker) = false;
 }
@@ -1265,11 +1477,12 @@ void DispelMarkerGuarded(Marker marker) noexcept
 // A used marker is removed on the main thread; until then ReadPlayer ignores it (it is never used twice).
 void QueueMarkerDispel(Marker marker)
 {
-    const auto* tasks = SKSE::GetTaskInterface();
-    if (!tasks || MarkerQueued(marker).exchange(true)) {
+    if (MarkerQueued(marker).exchange(true)) {
         return;
     }
-    tasks->AddTask([marker]() { DispelMarkerGuarded(marker); });
+    if (!QueueTask([marker](bool live) { DispelMarkerGuarded(marker, live); })) {
+        MarkerQueued(marker) = false;
+    }
 }
 
 // ---------------------------------------------------------------- round 22: executing status plans
@@ -1290,18 +1503,12 @@ void SendEvent(const essb::StatusOp& op, RE::Actor* target, RE::Actor* centre = 
     if (essb::BodyOnly(op.event)) {
         return;   // round 24: the bodies are the DLL's (Reactions.h); Papyrus has no handler for these any more
     }
-    // Fixed-point: Papyrus' String -> Float cast does not read exponents.
-    char text[256];
-    if (op.event == essb::Event::kPush) {
-        // The pull-to centre (風渦) is a crowd member; Papyrus gets its FormID as a signed 32-bit integer (`as Int`, then
-        // Game.GetForm); 0 = none.
-        const std::int32_t id = centre ? static_cast<std::int32_t>(centre->GetFormID()) : 0;
-        std::snprintf(text, sizeof(text), "%.5f|%.5f|%.5f|%d|%.5f", op.arg[0], op.arg[1], op.arg[2], id, op.arg[4]);
-    } else {
-        std::snprintf(text, sizeof(text), "%.5f|%.5f|%.5f|%.5f|%.5f|%.5f|%.5f|%.5f", op.arg[0], op.arg[1], op.arg[2], op.arg[3],
-            op.arg[4], op.arg[5], op.arg[6], op.arg[7]);
-    }
-    SKSE::ModCallbackEvent ev{ kEventNames[static_cast<int>(op.event)], text, op.arg[0], target };
+    // Fixed-point: Papyrus' String -> Float cast does not read exponents. Round 27 (E12): never truncated (Runtime.h).
+    // The pull-to centre (風渦) is a crowd member; Papyrus gets its FormID as a signed 32-bit integer (`as Int`, then
+    // Game.GetForm); 0 = none.
+    const std::int32_t id = centre ? static_cast<std::int32_t>(centre->GetFormID()) : 0;
+    const std::string text = essb::rt::EventText(op.arg, op.event == essb::Event::kPush, id);
+    SKSE::ModCallbackEvent ev{ kEventNames[static_cast<int>(op.event)], text.c_str(), op.arg[0], target };
     source->SendEvent(&ev);
 }
 
@@ -1341,7 +1548,21 @@ public:
         }
     }
 
-    void Dispel(essb::Who, Handle effect) { effect->Dispel(true); }
+    void Dispel(essb::Who who, Handle effect)
+    {
+        RE::Actor* actor = ActorOf(who);
+        if (actor && actor == t_corpse) {
+            return;   // round 27 (G6): nothing on the corpse
+        }
+        Touch(actor);
+        if (RE::EffectSetting* base = effect->GetBaseObject(); base && actor) {
+            const essb::Tag tag = essb::TagOf(EffectIdOf(base));
+            if (tag.kind == essb::TagKind::kMark) {
+                state.settled.Note(actor->GetFormID(), tag.index, state.runningMs.load());   // round 27 (G9): before the damage
+            }
+        }
+        effect->Dispel(true);
+    }
     bool SelfDispel() const noexcept { return t_selfDispel; }
     void SetSelfDispel(bool on) noexcept { t_selfDispel = on; }
 
@@ -1357,8 +1578,13 @@ public:
     void Cast(essb::Who who, std::uint32_t spell, float magnitude, float effectiveness)
     {
         RE::Actor& on = On(who);
+        if (&on == t_corpse) {
+            return;   // round 27 (G6): nothing on the corpse (its end's bodies on the others still run)
+        }
+        Touch(&on);
         const bool watch = CausedLogging() && !on.IsDead();   // round 26b (L3 A/B)
-        caster_.CastSpellImmediate(SpellById(spell), false, &on, effectiveness, false, magnitude, &playerCharacter_);
+        OwnHealth(on, magnitude > 0.0f ? magnitude * effectiveness : 0.0f,
+            [&]() { caster_.CastSpellImmediate(SpellById(spell), false, &on, effectiveness, false, magnitude, &playerCharacter_); });
         if (CausedLogging()) {
             for (const auto& row : essb::status::kDomainSpawn) {
                 if (std::find(std::begin(row), std::end(row), spell) != std::end(row) && spell != 0) {
@@ -1373,6 +1599,8 @@ public:
     }
 
     bool Dead(essb::Who who) { return On(who).IsDead(); }
+    // Round 27 (G6): StatusEngine.h RunOp skips the casts and dispels of an op on the killing blow's corpse.
+    bool IsCorpse(essb::Who who) const noexcept { return t_corpse && ActorOf(who) == t_corpse; }
 
     // Round 25 (N6): a silence takes the magicka to 0 at once (was ESSBSilence.OnEffectStart).
     void DrainMagickaAll(essb::Who who)
@@ -1388,11 +1616,49 @@ public:
         const float pay = (std::min)(amount, values->GetActorValue(RE::ActorValue::kHealth) - 1.0f);
         if (pay > 0.0f) {
             values->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -pay);
+            state.ownHealth.Add(-pay);   // round 27b (A N10): the exact payment
+        }
+    }
+
+    // Round 27 (G13): the body events the DLL settles itself place their element's burst through Papyrus's PlaceFx
+    // ("ESSB_Fx": 碎冰 frost, 放電 lightning, 過熱引爆 fire at you) -- v0.4 2.12 各一次專屬爆炸; visual only.
+    void BodyFx(const essb::StatusOp& op)
+    {
+        int element = 0;
+        switch (op.event) {
+        case essb::Event::kShatter: element = essb::kFrost; break;
+        case essb::Event::kDischarge: element = essb::kLightning; break;
+        case essb::Event::kOverheat: element = essb::kFire; break;
+        default: return;
+        }
+        RE::Actor* at = op.event == essb::Event::kOverheat || !target_ ? static_cast<RE::Actor*>(&playerCharacter_) : target_;
+        if (auto* source = SKSE::GetModCallbackEventSource()) {
+            SKSE::ModCallbackEvent ev{ "ESSB_Fx", "", static_cast<float>(element), at };
+            source->SendEvent(&ev);
         }
     }
 
     void Send(const essb::StatusOp& op)
     {
+        // Round 27 (G13): a mark opened -- its element's flash (ZZArt, the Charge sound) once on the target (v0.4 2.12: the
+        // open only; the mark effect itself keeps just its edge light).
+        if (op.event == essb::Event::kOpen && target_ && target_ != t_corpse) {
+            const int element = static_cast<int>(op.arg[0] + 0.5f);
+            if (essb::IsElement(element)) {
+                if (RE::SpellItem* flash = CastSpellById(essb::spell::kMarkFlash[element])) {
+                    caster_.CastSpellImmediate(flash, false, target_, 1.0f, false, kNoMagnitudeOverride, &playerCharacter_);
+                }
+            }
+        }
+        // Round 27b (A N7): in corpse mode only the cut end's event names the corpse (the death task does the rest).
+        if (target_ && target_ == t_corpse && op.who == essb::Who::kTarget && op.at == 0 && !essb::engine::CorpseSends(op.event)) {
+            if (TraceOn()) {
+                essb::trace::Line line("hit-late");
+                line.F(" corpse-event=%d dropped", static_cast<int>(op.event));
+                Emit(line);
+            }
+            return;
+        }
         RE::Actor* centre = nullptr;
         if (op.event == essb::Event::kPush && op.arg[3] >= 0.5f) {
             const std::size_t member = static_cast<std::size_t>(op.arg[3] + 0.5f) - 1;
@@ -1411,7 +1677,9 @@ public:
     {
         if (amount > 0.0f) {
             const bool watch = CausedLogging() && !playerCharacter_.IsDead();
+            const float before = playerCharacter_.AsActorValueOwner()->GetActorValue(RE::ActorValue::kHealth);
             playerCharacter_.AsActorValueOwner()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -amount);
+            state.ownHealth.Add(-(std::min)(amount, (std::max)(before, 0.0f)));   // round 27b (A N10): the exact part taken
             if (watch && playerCharacter_.IsDead()) {
                 LogCaused("kill", &playerCharacter_, t_traceCtx);   // round 26b (L3 A/B)
             }
@@ -1494,11 +1762,30 @@ public:
         }
     }
 
+    // Round 27 (E1): every actor this plan cast on or dispelled from is read again after the plan (its snapshot).
+    void PublishTouched()
+    {
+        for (RE::Actor* actor : touched_) {
+            if (actor) {
+                (void)ReadBoard(*actor);
+            }
+        }
+        touched_.clear();
+    }
+
 private:
+    void Touch(RE::Actor* actor)
+    {
+        if (actor && std::find(touched_.begin(), touched_.end(), actor) == touched_.end()) {
+            touched_.push_back(actor);
+        }
+    }
+
     RE::PlayerCharacter& playerCharacter_;
     RE::MagicCaster& caster_;
     RE::Actor* primary_;
     const std::vector<RE::Actor*>* crowd_;
+    std::vector<RE::Actor*> touched_;
 };
 
 class Executor
@@ -1511,9 +1798,11 @@ public:
     void Run(const essb::StatusPlan& plan)
     {
         if (plan.overflow) {
-            throw std::runtime_error("status plan overflow");
+            // Round 27 (B-small): never a fault -- the ops past the cap were dropped by the planner; the rest runs.
+            Logf("[ESSB][plan] overflow: more than %d ops, the rest dropped (ctx=%s)", essb::kMaxStatusOps, t_traceCtx);
         }
         essb::engine::RunPlan(engine_, plan, tuning_);
+        engine_.PublishTouched();   // round 27 (E1): the registry holds what this plan left
     }
 
 private:
@@ -1572,19 +1861,6 @@ bool HasOurEffect(RE::Actor& actor, const RE::EffectSetting* wanted)
     return found;
 }
 
-// Probe N5-1: how many of our effects an actor still runs (the death sink logs it for both death events).
-int CountOurEffects(RE::Actor& actor)
-{
-    int count = 0;
-    ForEachRunningEffect(actor, [&](RE::ActiveEffect&, RE::EffectSetting& base) {
-        const auto* file = base.GetFile(0);
-        if (file && file->GetFilename() == kPlugin) {
-            ++count;
-        }
-    });
-    return count;
-}
-
 // Round 26c (P6): the alias list's read lock is taken and released in this SEH-only frame (__finally), so an access
 // violation inside the walk, caught by a task's __except further up, still releases the engine lock (a BSReadLockGuard's
 // destructor would be skipped by the SEH unwind under /EHsc).
@@ -1592,6 +1868,7 @@ bool QuestObjectAlias(const RE::ExtraAliasInstanceArray* aliases) noexcept
 {
     auto& lock = const_cast<RE::BSReadWriteLock&>(aliases->lock);
     lock.LockForRead();
+    essb::lk::EnterEngineLock();   // round 27b (A N4): SehFilter passes an access violation in here on
     bool found = false;
     __try {
         for (std::uint32_t i = 0; i < aliases->aliases.size() && !found; ++i) {
@@ -1599,6 +1876,7 @@ bool QuestObjectAlias(const RE::ExtraAliasInstanceArray* aliases) noexcept
             found = data && data->alias && data->alias->IsQuestObject();
         }
     } __finally {
+        essb::lk::LeaveEngineLock();
         lock.UnlockForRead();
     }
     return found;
@@ -1622,14 +1900,15 @@ bool EssentialOf(RE::Actor& actor)
 }
 
 // Everything a body reads about one actor (Reactions.h Member).
-// Round 26b: everything a body reads about one actor except its distance to you (the death sink's corpse read).
-void ReadMemberSelf(essb::Member& m, RE::Actor& actor, bool ally)
+// Round 26b: everything a body reads about one actor except its distance to you (the death sink's corpse read). Round 27
+// (E1): its effects from the registry's snapshot (the sink walks no list).
+void ReadMemberFrom(essb::Member& m, RE::Actor& actor, const essb::reg::Snapshot& s)
 {
-    const essb::TargetFacts facts = TargetFactsOf(actor);
+    const essb::TargetFacts facts = essb::MakeTarget(ReadTargetFrom(actor, s));
     m = essb::Member{};
     m.has = true;
-    m.ally = ally;
-    m.board = ReadBoard(actor);
+    m.ally = false;
+    m.board = essb::reg::BoardOf(s, state.runningMs.load());
     m.body = ReadBodyOnly(actor, facts);
     m.pos = PosOf(actor);
     m.level = actor.GetLevel();
@@ -1721,8 +2000,8 @@ void BuildCrowd(CrowdRead& out, RE::PlayerCharacter& player, RE::Actor* primary,
     for (std::size_t i = 0; i < views.size(); ++i) {
         if (seen[i].get() == primary) {
             skip = static_cast<int>(i);
-        } else if (!views[i].hostile && !views[i].teammate && !views[i].dead &&
-                   (essb::Distance(views[i].pos, centre) <= aroundPrimary || essb::Distance(views[i].pos, c.you) <= aroundYou)) {
+        } else if (essb::rt::ReadEngaged(views[i].hostile, views[i].teammate, views[i].dead, essb::Distance(views[i].pos, centre),
+                       essb::Distance(views[i].pos, c.you), aroundPrimary, aroundYou)) {   // round 27 (T): Runtime.h
             views[i].engaged = HasOurEffect(*seen[i], state.forms.engaged);
         }
     }
@@ -1965,14 +2244,32 @@ struct HitSeen {
     essb::HitFacts facts{};
     essb::Verdict verdict{};
     essb::RawAttack raw{};
+    // Round 27 (G10): the target as the hit found it -- casting (法術麻痺, 斷咒) and its health before the damage (烈火之始's
+    // > 80%, the body's current health); (G6) our effects on it as the registry knew them (a killing blow's corpse mode).
+    bool targetCasting = false;
+    float targetHealth = 0.0f;
+    essb::Board board{};
+};
+
+// Round 27 (G6): the corpse mode's scope on the task's thread.
+struct CorpseScope {
+    RE::Actor* prev;
+    explicit CorpseScope(RE::Actor* corpse) noexcept : prev(t_corpse) { t_corpse = corpse; }
+    ~CorpseScope() { t_corpse = prev; }
+    CorpseScope(const CorpseScope&) = delete;
+    CorpseScope& operator=(const CorpseScope&) = delete;
 };
 
 // The hit task's body: everything a hit does, from the snapshot. `player` and `target` are live (checked by the caller).
-void Handle(const HitSeen& seen, RE::PlayerCharacter& playerRef, RE::Actor& targetRef)
+void Handle(const HitSeen& seen, RE::PlayerCharacter& playerRef, RE::Actor& targetRef, bool corpse)
 {
     RE::PlayerCharacter* player = &playerRef;
     RE::Actor* target = &targetRef;
-    TraceCtx traceCtx("hit");   // round 26
+    TraceCtx traceCtx(corpse ? "hit-corpse" : "hit");   // round 26 / 27
+    // Round 27 (G6): the killing blow -- the hit's own damage killed the target before this task. The hit is planned from
+    // what the sink saw (its board, its health); nothing is cast on the corpse, but its cut end still settles (the end's
+    // bodies around the corpse), the chains and areas reach the others, and your resources still accrue.
+    CorpseScope corpseScope(corpse ? target : nullptr);
     const essb::HitFacts& hit = seen.facts;
     const essb::Verdict& verdict = seen.verdict;
     if (state.forms.debug->value >= 3.0f) {
@@ -1985,7 +2282,7 @@ void Handle(const HitSeen& seen, RE::PlayerCharacter& playerRef, RE::Actor& targ
     const bool realPower = attack.power;
     const auto perks = MakeNodes(*player, formActive);
     const essb::TargetFacts targetFacts = TargetFactsOf(*target);
-    essb::Board targetBoard = ReadBoard(*target);
+    essb::Board targetBoard = corpse ? seen.board : ReadBoard(*target);   // round 27 (G6): the corpse's as the sink saw it
     essb::Board selfBoard = ReadBoard(*player);
     const auto nodes = essb::WithAvatar(perks, selfBoard);   // 化身: the form's legend main line reads full for 10 s
     // v0.4 2.1: every hit on a downed target counts as a power attack (without the power attack's costs).
@@ -1995,6 +2292,7 @@ void Handle(const HitSeen& seen, RE::PlayerCharacter& playerRef, RE::Actor& targ
     const bool iceArmor = formActive && attack.element == essb::kFrost && nodes.Has(essb::node::kFrostIceArmor);
     Context c = MakeContext(*player, iceArmor);
     c.in.body = ReadBody(*target, *player, targetFacts);
+    c.in.body.health = seen.targetHealth;   // round 27 (G10): the health before this hit's damage
     // Round 23 (N4): your resources feed the hit -- the charges (雷's N and crit, 疾電), the overload pool (滅法 spends it
     // first, ×1.5), 破式 at full resolve, and a blood power hit's cost / 回湧 / 血刃.
     c.player.overload = selfBoard.Has(K::kOverload) ? selfBoard[K::kOverload].magnitude : 0.0f;
@@ -2020,7 +2318,7 @@ void Handle(const HitSeen& seen, RE::PlayerCharacter& playerRef, RE::Actor& targ
     self.power = attack.power;
     self.sneak = attack.sneakAttack;
     self.bloodCost = essb::BloodPowerTerms(attack.element, attack.power, realPower, c.in.self, selfBoard, nodes, terms, self.surgeUp);
-    self.targetCasting = IsCasting(*target);
+    self.targetCasting = seen.targetCasting;   // round 27 (G10): read in the sink
     // 聖痕 (5.9): a target carrying the divine mark is judged undead / daedra for the hit's ×1.5 (review fix 4); the
     // body facts above keep the real answer for ProcTerms' +10% on the living.
     const essb::TargetFacts judged = essb::JudgedTarget(targetFacts, targetBoard, nodes);
@@ -2028,7 +2326,10 @@ void Handle(const HitSeen& seen, RE::PlayerCharacter& playerRef, RE::Actor& targ
     if (tracing) {
         Rng().Record(true);
     }
-    const essb::Plan plan = essb::PlanHit(attack, kConfig, c.tuning, c.player, judged, nodes, Rng(), terms);
+    essb::Plan plan = essb::PlanHit(attack, kConfig, c.tuning, c.player, judged, nodes, Rng(), terms);
+    if (corpse) {
+        plan = essb::CorpseHitPlan(plan);   // round 27b (B N6): no overload spent, no 破式 wipe, no 滅法 resolve, the echo kept
+    }
     if (tracing) {
         TraceProc("hit", plan, attack, verdict.weaponType, target, terms.charges, terms.critBonus);
     }
@@ -2067,6 +2368,7 @@ void Handle(const HitSeen& seen, RE::PlayerCharacter& playerRef, RE::Actor& targ
             crowd.crowd->m[0].board = targetBoard;
             crowd.crowd->you = PosOf(*player);
         }
+        crowd.crowd->m[0].body.health = seen.targetHealth;   // round 27 (G10)
         c.in.body = crowd.crowd->m[0].body;
         {
             const essb::BodyInputs bin = BodyInputsOf(*player, c, attack.sneakAttack);
@@ -2112,7 +2414,7 @@ void Handle(const HitSeen& seen, RE::PlayerCharacter& playerRef, RE::Actor& targ
             essb::PlanSelfHit(repeatPlan, self, repeated, targetBoard, selfBoard, repeatIn, nodes, Rng(), true);
             RunWithBodies(*player, target, &targetBoard, repeatPlan, 0, selfBoard, c, nodes, crowd);
         }
-        if (result.extraProc && !target->IsDead()) {
+        if (result.extraProc && !target->IsDead() && !corpse) {
             ExtraProc(*player, *target, attack, c, judged, terms, nodes);
         }
     } else {
@@ -2158,21 +2460,22 @@ void HitTaskCpp(const HitSeen& seen) noexcept
         InHitTask inHit;   // a hit event our own casts raise here is dropped (the old re-entrancy guard)
         LogThreadOnce(Probe::kHitTask, "hit task");
         NoteTaskThread();
-        if (target->IsDead()) {
-            // Round 26c: the hit's own damage killed the target before this task (one frame after the hit): no proc on a
-            // corpse. Logged so the probe sheet can tell it from a missing proc.
+        const bool corpse = target->IsDead();
+        if (corpse) {
+            // Round 26c: the hit's own damage killed the target before this task (one frame after the hit). Round 27 (G6):
+            // the corpse mode (Handle): no proc and nothing on the corpse; its cut end, the chains and areas on the others and
+            // your resources still happen. Logged so the probe sheet can tell it from a missing proc.
             if (state.forms.debug->value >= 3.0f) {
-                Logf("[ESSB][hit-late][L3] %08X dead before the hit task (no proc)", target->GetFormID());
+                Logf("[ESSB][hit-late][L3] %08X dead before the hit task (corpse mode)", target->GetFormID());
             }
             if (TraceOn()) {
                 essb::trace::Line line("hit-late");
                 line.Actor("tgt", FactsOf(target));
-                line.F(" reason=dead");
+                line.F(" reason=dead mode=corpse");
                 Emit(line);
             }
-            return;
         }
-        Handle(seen, *player, *target);
+        Handle(seen, *player, *target, corpse);
     } catch (const std::exception& e) {
         Fault(e.what());
     } catch (...) {
@@ -2184,7 +2487,7 @@ void HitTaskGuarded(const HitSeen& seen) noexcept
 {
     __try {
         HitTaskCpp(seen);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (SehFilter(GetExceptionInformation(), "access violation in the hit task")) {
         Fault("access violation in the hit task");
     }
 }
@@ -2231,9 +2534,23 @@ void HitSinkCpp(const RE::TESHitEvent& ev) noexcept
         }
         seen.raw = ReadAttack(ev, *player, seen.verdict.weaponType);
         seen.target = target->GetHandle();
-        if (const auto* tasks = SKSE::GetTaskInterface()) {
-            tasks->AddTask([seen]() { HitTaskGuarded(seen); });
+        // Round 27 (G10): casting and the health before this hit's damage are read here (the task comes after the damage);
+        // (G6) the board as the registry knows it, for the corpse mode.
+        seen.targetCasting = IsCasting(*target);
+        seen.targetHealth = target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kHealth);
+        seen.board = RegistryBoard(*target);
+        {
+            // 連殺 (G6): a death before the hit task reads this hit's sneak flag (the form's element; 12 = no form).
+            // Round 27b (review B N7): every accepted hit replaces the target's row -- a non-sneak one clears it.
+            const int formElement = seen.facts.formActive == 1.0f ? static_cast<int>(seen.facts.element + 0.5f) : 12;
+            std::lock_guard lock(state.sneakLock);
+            essb::rt::NoteSneakHit(state.sneakHits, target->GetFormID(), seen.raw.sneakFlag, formElement, state.runningMs.load());
         }
+        QueueTask([seen](bool live) {
+            if (live) {
+                HitTaskGuarded(seen);
+            }
+        });
     } catch (const std::exception& e) {
         Fault(e.what());
     } catch (...) {
@@ -2251,7 +2568,7 @@ public:
         }
         __try {
             HitSinkCpp(*ev);
-        } __except (EXCEPTION_EXECUTE_HANDLER) {
+        } __except (SehFilter(GetExceptionInformation(), "access violation in the hit sink")) {
             Fault("access violation in the hit sink");
         }
         return RE::BSEventNotifyControl::kContinue;
@@ -2287,14 +2604,10 @@ void HurtCpp() noexcept
 {
     try {
         TaskScope scope("hurt task");   // round 26c (P5)
-        std::vector<std::pair<RE::ActorHandle, essb::HurtFacts>> hits;
-        {
-            std::lock_guard lock(state.hurtLock);
-            hits.swap(state.hurts);
-        }
-        state.hurtQueued = false;
+        // Round 27 (E4): only the hits of frames that are over (their damage is applied); this frame's wait for the next.
+        essb::rt::HurtBatch<RE::ActorHandle> batch = state.hurtQueue.Take(state.frame.load(), GetTickCount64());
         auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!Enabled() || !player || hits.empty()) {   // master switch (review fix 3)
+        if (!Enabled() || !player || batch.ready.empty()) {   // master switch (review fix 3)
             return;
         }
         LogThreadOnce(Probe::kHurtTask, "hurt task");   // round 26: its own flag (it shared kHurt with the sink's line)
@@ -2303,10 +2616,11 @@ void HurtCpp() noexcept
         const bool tracing = TraceOn();
         auto* values = player->AsActorValueOwner();
         const float healthNow = values->GetActorValue(RE::ActorValue::kHealth);
+        essb::rt::AssignAfter(batch, healthNow, state.ownHealth.Now());   // round 27 (G7): after, and our own changes between
+        const auto& hits = batch.ready;
         for (std::size_t i = 0; i < hits.size(); ++i) {
-            essb::HurtFacts f = hits[i].second;
-            f.healthAfter = i + 1 < hits.size() ? hits[i + 1].second.healthBefore : healthNow;
-            auto attackerPtr = hits[i].first.get();
+            essb::HurtFacts f = hits[i].facts;
+            auto attackerPtr = hits[i].attacker.get();
             RE::Actor* attacker = attackerPtr.get();
             if (attacker && attacker->IsDead()) {
                 attacker = nullptr;
@@ -2360,9 +2674,9 @@ void HurtCpp() noexcept
             }
             WriteMirrors(*player, me, nodes);
             if (state.forms.debug->value >= 3.0f) {   // probe P8 / N4: the damage the task measured
-                Logf("[ESSB][hurt][L3] before=%.2f after=%.2f lost=%.2f melee=%d spell=%d blocked=%d guard=%.2f magicka=%.2f dot=%.2f ops=%d",
-                    f.healthBefore, f.healthAfter, (std::max)(0.0f, f.healthBefore - f.healthAfter), f.melee ? 1 : 0, f.spell ? 1 : 0,
-                    f.blocked ? 1 : 0, f.guardBefore, f.magickaBefore, f.dotDamage, plan.count);
+                Logf("[ESSB][hurt][L3] before=%.2f after=%.2f own=%.2f lost=%.2f melee=%d spell=%d blocked=%d guard=%.2f magicka=%.2f dot=%.2f ops=%d",
+                    f.healthBefore, f.healthAfter, f.ownDelta, (std::max)(0.0f, f.healthBefore - f.healthAfter + f.ownDelta), f.melee ? 1 : 0,
+                    f.spell ? 1 : 0, f.blocked ? 1 : 0, f.guardBefore, f.magickaBefore, f.dotDamage, plan.count);
             }
         }
     } catch (const std::exception& e) {
@@ -2372,12 +2686,27 @@ void HurtCpp() noexcept
     }
 }
 
-void HurtGuarded() noexcept
+void HurtGuarded(bool live) noexcept
 {
-    __try {
-        HurtCpp();
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        Fault("access violation in the hurt task");
+    if (live) {
+        __try {
+            HurtCpp();
+        } __except (SehFilter(GetExceptionInformation(), "access violation in the hurt task")) {
+            Fault("access violation in the hurt task");
+        }
+    }
+    state.hurtQueued = false;
+}
+
+// Round 27 (E4): one hurt task at a time; queued by the hit sink and, while hits wait for their frame to end, by the input
+// sink every frame (and the timer, if the frames stop).
+void QueueHurt() noexcept
+{
+    if (!state.hurtQueue.Pending() || state.hurtQueued.exchange(true)) {
+        return;
+    }
+    if (!QueueTask([](bool live) { HurtGuarded(live); })) {
+        state.hurtQueued = false;
     }
 }
 
@@ -2436,14 +2765,16 @@ void HandleHurt(const RE::TESHitEvent& ev, RE::PlayerCharacter& player)
     f.guardBefore = state.mirrorGuard.load();
     f.afterimage = state.mirrorAfterimage.load();
     f.linger = state.mirrorLinger.load();
-    {
-        std::lock_guard lock(state.hurtLock);
-        state.hurts.emplace_back(attacker ? attacker->GetHandle() : RE::ActorHandle{}, f);
-    }
-    const auto* tasks = SKSE::GetTaskInterface();
-    if (tasks && !state.hurtQueued.exchange(true)) {
-        tasks->AddTask([]() { HurtGuarded(); });
-    }
+    // Round 27 (E4, G7): with the frame it arrived in and your own health ledger now; the hurt task takes it once its frame
+    // is over (the engine has applied the damage by then) and subtracts what our own tasks did to your health meanwhile.
+    essb::rt::HurtEntry<RE::ActorHandle> entry;
+    entry.attacker = attacker ? attacker->GetHandle() : RE::ActorHandle{};
+    entry.facts = f;
+    entry.frame = state.frame.load();
+    entry.atMs = GetTickCount64();
+    entry.ledger = state.ownHealth.Now();
+    state.hurtQueue.Push(std::move(entry));
+    QueueHurt();
 }
 
 // ---------------------------------------------------------------- round 23: an enemy casts (反咒, 逼近)
@@ -2459,7 +2790,7 @@ void CastGuarded(const CastSeen& seen) noexcept
 {
     __try {
         CastCpp(seen);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (SehFilter(GetExceptionInformation(), "access violation in the spell-cast task")) {
         Fault("access violation in the spell-cast task");
     }
 }
@@ -2479,9 +2810,11 @@ void OnCastCpp(const RE::TESSpellCastEvent& ev) noexcept
         }
         LogThreadOnce(Probe::kCast, "TESSpellCastEvent");
         const CastSeen seen{ caster->GetHandle(), ev.spell };
-        if (const auto* tasks = SKSE::GetTaskInterface()) {
-            tasks->AddTask([seen]() { CastGuarded(seen); });
-        }
+        QueueTask([seen](bool live) {
+            if (live) {
+                CastGuarded(seen);
+            }
+        });
     } catch (const std::exception& e) {
         Fault(e.what());
     } catch (...) {
@@ -2499,7 +2832,7 @@ public:
         }
         __try {
             OnCastCpp(*ev);
-        } __except (EXCEPTION_EXECUTE_HANDLER) {
+        } __except (SehFilter(GetExceptionInformation(), "access violation in the spell-cast sink")) {
             Fault("access violation in the spell-cast sink");
         }
         return RE::BSEventNotifyControl::kContinue;
@@ -2507,6 +2840,8 @@ public:
 };
 
 CastSink castSink;
+
+void EndSession(const essb::rt::Transition& t) noexcept;   // round 27 (E3): below
 
 // Round 26c (T3): the bars' lifecycle calls at debug level 3, with the calling thread and TrueHUD's own.
 void HudLog(const char* what, int bar) noexcept
@@ -2530,7 +2865,7 @@ void HudReloadGuarded() noexcept
 {
     __try {
         HudReloadCpp();
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (SehFilter(GetExceptionInformation(), "access violation in the hud reload task")) {
         Fault("access violation in the hud reload task");
     }
 }
@@ -2545,10 +2880,17 @@ void OnMenuCpp(const RE::MenuOpenCloseEvent& ev) noexcept
             line.F(" name=%s opening=%d paused=%d", ev.menuName.c_str(), ev.opening ? 1 : 0, ui && ui->GameIsPaused() ? 1 : 0);
             Emit(line);
         }
+        // Round 27 (E3): the main menu ends the session (quit to it): no task of the old game acts after this.
+        if (essb::rt::MenuEndsSession(ev.opening, ev.menuName == RE::MainMenu::MENU_NAME, state.session.inGame.load())) {
+            EndSession(essb::rt::OnMessage(state.session, essb::rt::Msg::kMainMenu));
+            Log("[ESSB][load] main menu: the session ended (inGame off; queued tasks of it do nothing)");
+        }
         if (ev.opening && ev.menuName == "TrueHUD") {
-            if (const auto* tasks = SKSE::GetTaskInterface()) {
-                tasks->AddTask([]() { HudReloadGuarded(); });
-            }
+            QueueTask([](bool live) {
+                if (live) {
+                    HudReloadGuarded();
+                }
+            });
         }
     } catch (...) {
     }
@@ -2559,12 +2901,20 @@ class MenuSink final : public RE::BSTEventSink<RE::MenuOpenCloseEvent>
 public:
     RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* ev, RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override
     {
-        if (!ev || state.faulted) {
+        if (!ev) {
+            return RE::BSEventNotifyControl::kContinue;
+        }
+        if (state.faulted) {
+            // Round 27b (A N8): a faulted DLL's session still ends at the main menu (its queued tasks must stop).
+            if (essb::rt::MenuEndsSession(ev->opening, ev->menuName == RE::MainMenu::MENU_NAME, state.session.inGame.load())) {
+                EndSession(essb::rt::OnMessage(state.session, essb::rt::Msg::kMainMenu));
+            }
             return RE::BSEventNotifyControl::kContinue;
         }
         __try {
             OnMenuCpp(*ev);
-        } __except (EXCEPTION_EXECUTE_HANDLER) {
+        } __except (SehFilter(GetExceptionInformation(), "menu sink")) {
+            ResetTaskScope();
         }
         return RE::BSEventNotifyControl::kContinue;
     }
@@ -2599,6 +2949,9 @@ void SettleCpp(const Expiry& expiry) noexcept
         Context c = MakeContext(*player, false);
         const bool onPlayer = actor == player;
         RE::Actor* target = onPlayer ? nullptr : actor;
+        if (const int expired = essb::reg::ExpiredMarkOf(expiry.removed); expired != 0 && target) {
+            state.settled.Note(target->GetFormID(), expired, state.runningMs.load());   // round 27b (B N9): before the end's damage
+        }
         essb::Board selfBoard = ReadBoard(*player);
         essb::Board targetBoard = target ? ReadBoard(*target) : essb::Board{};
         if (target) {
@@ -2649,7 +3002,7 @@ void SettleGuarded(const Expiry& expiry) noexcept
 {
     __try {
         SettleCpp(expiry);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (SehFilter(GetExceptionInformation(), "access violation in expiry task")) {
         Fault("access violation in expiry task");
     }
 }
@@ -2723,7 +3076,8 @@ void TraceAppliedGuarded(const AppliedSeen& seen) noexcept
 {
     __try {
         TraceAppliedCpp(seen);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (SehFilter(GetExceptionInformation(), "apply trace task")) {
+        ResetTaskScope();
         Log("[ESSB][T][trace] an applied effect could not be read (logging only; nothing else changes)");
     }
 }
@@ -2737,9 +3091,12 @@ void TraceEffectEvent(const RE::TESActiveEffectApplyRemoveEvent& ev) noexcept
             return;
         }
         if (!ev.isApplied) {
-            // The same read the removal sink already makes (OnRemoved): the event arrives before the effect leaves the list.
-            EffectLists lists(*player, actor);
-            const essb::engine::Removed r = essb::engine::DescribeRemoved(lists, essb::Who::kTarget, ev.activeEffectUniqueID, actor->IsDead());
+            // Round 27 (E1): from the registry (what the last task read), no list walk.
+            const auto snapshot = state.registry.Get(RegKey(*actor));
+            if (!snapshot) {
+                return;
+            }
+            const essb::engine::Removed r = essb::reg::RemovedFrom(*snapshot, ev.activeEffectUniqueID, actor->IsDead(), state.world.Ms(), false);
             if (r.reason == essb::engine::Removal::kIgnore) {
                 return;
             }
@@ -2749,23 +3106,79 @@ void TraceEffectEvent(const RE::TESActiveEffectApplyRemoveEvent& ev) noexcept
             Emit(line);
             return;
         }
-        const AppliedSeen seen{ actor->GetHandle(), ev.activeEffectUniqueID };
-        if (const auto* tasks = SKSE::GetTaskInterface()) {
-            tasks->AddTask([seen]() { TraceAppliedGuarded(seen); });
+        const AppliedSeen seen{ actor->GetHandle(), static_cast<std::uint16_t>(ev.activeEffectUniqueID) };
+        QueueTask([seen](bool live) {
+            if (live) {
+                TraceAppliedGuarded(seen);
+            }
+        });
+    } catch (...) {
+    }
+}
+
+// Round 27 (E1): an effect landed on an actor outside our tasks (a Papyrus spell of ours, a domain's hazard, a spell you
+// cast): its list is read again in one task a frame (the registry must know it before it leaves).
+void RefreshCpp() noexcept
+{
+    try {
+        TaskScope scope("registry refresh");
+        std::vector<RE::ActorHandle> actors;
+        {
+            std::lock_guard lock(state.refreshLock);
+            actors.swap(state.refresh);
+        }
+        for (const auto& handle : actors) {
+            auto held = handle.get();
+            if (RE::Actor* actor = held.get(); actor && !actor->IsDead()) {
+                (void)ReadBoard(*actor);
+            }
+        }
+    } catch (const std::exception& e) {
+        Fault(e.what());
+    } catch (...) {
+        Fault("unknown C++ exception in the registry refresh task");
+    }
+}
+
+void RefreshGuarded(bool live) noexcept
+{
+    if (live) {
+        __try {
+            RefreshCpp();
+        } __except (SehFilter(GetExceptionInformation(), "access violation in the registry refresh task")) {
+            Fault("access violation in the registry refresh task");
+        }
+    }
+    state.refreshQueued = false;
+}
+
+void QueueRefresh(RE::Actor& actor) noexcept
+{
+    try {
+        const RE::ActorHandle handle = actor.GetHandle();   // round 27b (A N9): the engine's handle table, outside our lock
+        {
+            std::lock_guard lock(state.refreshLock);
+            if (std::find(state.refresh.begin(), state.refresh.end(), handle) == state.refresh.end()) {
+                state.refresh.push_back(handle);
+            }
+        }
+        if (!state.refreshQueued.exchange(true) && !QueueTask([](bool live) { RefreshGuarded(live); })) {
+            state.refreshQueued = false;
         }
     } catch (...) {
     }
 }
 
 // The effect-removed event arrives inside Finish(), before the effect leaves the list (native-verification-3 s2), and
-// often from the actor's own effect update loop: read only here, act in a main-thread task.
+// often from the actor's own effect update loop. Round 27 (E1): the sink walks no list -- it reads the actor's snapshot in
+// the registry (what our last task read), erases the effect that left, and queues the settle task.
 void OnRemoveCpp(const RE::TESActiveEffectApplyRemoveEvent& ev) noexcept
 {
     try {
         if (!t_selfDispel && ev.target && TraceOn()) {
             TraceEffectEvent(ev);   // round 26
         }
-        if (ev.isApplied || t_selfDispel || !Enabled() || !ev.target) {
+        if (!ev.target || !Enabled()) {
             return;
         }
         auto* actor = ev.target->As<RE::Actor>();
@@ -2773,9 +3186,26 @@ void OnRemoveCpp(const RE::TESActiveEffectApplyRemoveEvent& ev) noexcept
         if (!actor || !player) {
             return;
         }
-        EffectLists lists(*player, actor);
+        if (ev.isApplied) {
+            // An effect landed: if it may be ours and our task did not cast it (Papyrus, a hazard), the list is read again
+            // in a task. Our own casts happen inside tasks (t_inTask) and publish themselves.
+            RE::TESObjectREFR* caster = ev.caster.get();
+            if (!t_inTask && (caster == player || actor == player || state.registry.Has(RegKey(*actor)))) {
+                QueueRefresh(*actor);
+            }
+            return;
+        }
+        if (t_selfDispel) {
+            return;
+        }
+        const essb::reg::Key key = RegKey(*actor);
+        const auto snapshot = state.registry.Get(key);
+        if (!snapshot) {
+            return;   // nothing of ours on it as far as our tasks know
+        }
         const bool dead = actor->IsDead();
-        const essb::engine::Removed removed = essb::engine::OnRemoved(lists, essb::Who::kTarget, ev.activeEffectUniqueID, dead);
+        const essb::engine::Removed removed = essb::reg::RemovedFrom(*snapshot, ev.activeEffectUniqueID, dead, state.world.Ms(), true);
+        state.registry.EraseUid(key, ev.activeEffectUniqueID);
         if (removed.reason == essb::engine::Removal::kIgnore) {
             return;
         }
@@ -2790,9 +3220,11 @@ void OnRemoveCpp(const RE::TESActiveEffectApplyRemoveEvent& ev) noexcept
             return;
         }
         const Expiry expiry{ actor->GetHandle(), removed };
-        if (const auto* tasks = SKSE::GetTaskInterface()) {
-            tasks->AddTask([expiry]() { SettleGuarded(expiry); });
-        }
+        QueueTask([expiry](bool live) {
+            if (live) {
+                SettleGuarded(expiry);
+            }
+        });
     } catch (const std::exception& e) {
         Fault(e.what());
     } catch (...) {
@@ -2811,7 +3243,7 @@ public:
         }
         __try {
             OnRemoveCpp(*ev);
-        } __except (EXCEPTION_EXECUTE_HANDLER) {
+        } __except (SehFilter(GetExceptionInformation(), "access violation in the effect-removed sink")) {
             Fault("access violation in the effect-removed sink");
         }
         return RE::BSEventNotifyControl::kContinue;
@@ -2913,6 +3345,7 @@ void DeathCpp(const DeathSnapshot& snapshot) noexcept
             TraceDraws("death");
         }
         WriteMirrors(*player, selfBoard, nodes);
+        state.registry.Forget(corpse->GetFormID());   // round 27 (E1): its effects go with the corpse
         if (state.forms.debug->value >= 1.0f) {   // probe N5-1: the corpse, the killer, what was on it
             Logf("[ESSB][death][L1] %08X killerYou=%d frenzied=%d servant=%d marks=%d curse=%d poison=%d frozen=%d crowd=%d ops=%d",
                 corpse->GetFormID(), facts.killerYou ? 1 : 0, facts.killerFrenzied ? 1 : 0, facts.servant ? 1 : 0, board.MarkCount(),
@@ -2930,29 +3363,66 @@ void DeathGuarded(const DeathSnapshot& snapshot) noexcept
 {
     __try {
         DeathCpp(snapshot);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (SehFilter(GetExceptionInformation(), "access violation in the death task")) {
         Fault("access violation in the death task");
     }
 }
 
 // Round 26b: the corpse's reads for essb::sink::DeathSink (the corpse only; the snapshot keeps the full member).
+// Round 27 (E1): from the registry's snapshot of the corpse (what our last task read; the removal sink keeps it current):
+// no list walk in the sink. A death our own task causes (its damage cast kills: KillImpl sends the event inside the cast,
+// on the task's thread) reads the corpse's list itself -- it is the task's own thread, and the markers the plan put on just
+// before the damage (火葬, 冥召) are there.
 struct CorpseWorld {
     essb::Member* member;
-    bool Servant(RE::Actor* corpse) { return HasOurEffect(*corpse, state.forms.reanimate); }
-    int CountOurs(RE::Actor* corpse) { return CountOurEffects(*corpse); }
+    std::optional<essb::reg::Snapshot> snapshot;
+    const essb::reg::Snapshot& Of(RE::Actor* corpse)
+    {
+        if (!snapshot) {
+            if (t_inTask) {
+                snapshot = ReadSnapshot(*corpse);
+            } else {
+                snapshot = state.registry.Get(RegKey(*corpse));
+            }
+            if (!snapshot) {
+                snapshot.emplace();
+            }
+        }
+        return *snapshot;
+    }
+    bool Servant(RE::Actor* corpse) { return Of(corpse).servant; }
+    int CountOurs(RE::Actor* corpse) { return Of(corpse).fromOurFile; }
     const essb::Board& ReadCorpse(RE::Actor* corpse)
     {
-        ReadMemberSelf(*member, *corpse, false);   // read-only, in the sink: the effects are all still there
+        ReadMemberFrom(*member, *corpse, Of(corpse));
+        // Round 27 (G9): a mark our task settled in the last second (the end that killed it) counts as carried.
+        essb::reg::WithSettled(member->board, state.settled.Recent(corpse->GetFormID(), state.runningMs.load()));
         return member->board;
     }
 };
 
 // Round 26b (the commander's threading ruling): the sink reads the corpse only -- the killer and the player are compared
 // by identity (Sinks.h DeathSink); the killer's frenzy, the player, the crowd, the logs and every write run in the task.
+// Round 27b (A N2): every death forgets the corpse's snapshot at its second event (dead = true; switched off too).
+struct ForgetCorpse {
+    std::uint32_t id = 0;
+    ~ForgetCorpse()
+    {
+        if (id) {
+            state.registry.Forget(id);
+        }
+    }
+};
+
 void OnDeathCpp(const RE::TESDeathEvent& ev) noexcept
 {
     try {
-        if (!Enabled() || !ev.actorDying) {   // master switch (review fix 3)
+        if (!ev.actorDying) {
+            return;
+        }
+        // the second event (dead = true) comes after the killing blow's hit sink read the corpse (G6's corpse mode)
+        const ForgetCorpse forget{ ev.dead ? ev.actorDying->GetFormID() : 0u };
+        if (!Enabled()) {   // master switch (review fix 3)
             return;
         }
         auto* actor = ev.actorDying->As<RE::Actor>();
@@ -2977,9 +3447,21 @@ void OnDeathCpp(const RE::TESDeathEvent& ev) noexcept
         snapshot.dead = ev.dead;
         snapshot.facts.killerYou = snapshot.seen.killerYou;
         snapshot.facts.servant = snapshot.seen.servant;
-        if (const auto* tasks = SKSE::GetTaskInterface()) {
-            tasks->AddTask([snapshot]() { DeathGuarded(snapshot); });
+        // Round 27 (G6): your killing hit's sneak flag, from the hit sink (the hit task comes after the death): 連殺 reads it.
+        if (snapshot.seen.killerYou) {
+            const std::uint64_t now = state.runningMs.load();
+            std::lock_guard lock(state.sneakLock);
+            for (const auto& [id, element, at] : state.sneakHits) {
+                if (id == actor->GetFormID() && now - at <= 2000) {
+                    snapshot.corpse.board[essb::StatusKind::kLastHitSneak] = essb::Slot{ true, static_cast<float>(element), 0.0f, 1.0f };
+                }
+            }
         }
+        QueueTask([snapshot](bool live) {
+            if (live) {
+                DeathGuarded(snapshot);
+            }
+        });
     } catch (const std::exception& e) {
         Fault(e.what());
     } catch (...) {
@@ -2997,7 +3479,7 @@ public:
         }
         __try {
             OnDeathCpp(*ev);
-        } __except (EXCEPTION_EXECUTE_HANDLER) {
+        } __except (SehFilter(GetExceptionInformation(), "access violation in the death sink")) {
             Fault("access violation in the death sink");
         }
         return RE::BSEventNotifyControl::kContinue;
@@ -3005,6 +3487,37 @@ public:
 };
 
 DeathSink deathSink;
+
+// Round 27b (A N2): an actor unloaded (a cell left, a reference deleted): its snapshot goes, so a later reference with the
+// same FormID never reads it.
+void OnLoadedCpp(const RE::TESObjectLoadedEvent& ev) noexcept
+{
+    try {
+        if (!ev.loaded) {
+            state.registry.Forget(ev.formID);
+        }
+    } catch (...) {
+    }
+}
+
+class LoadedSink final : public RE::BSTEventSink<RE::TESObjectLoadedEvent>
+{
+public:
+    RE::BSEventNotifyControl ProcessEvent(const RE::TESObjectLoadedEvent* ev, RE::BSTEventSource<RE::TESObjectLoadedEvent>*) override
+    {
+        if (!ev) {
+            return RE::BSEventNotifyControl::kContinue;
+        }
+        __try {
+            OnLoadedCpp(*ev);
+        } __except (SehFilter(GetExceptionInformation(), "access violation in the unload sink")) {
+            Fault("access violation in the unload sink");
+        }
+        return RE::BSEventNotifyControl::kContinue;
+    }
+};
+
+LoadedSink loadedSink;
 
 // ---------------------------------------------------------------- round 22: the timer (ladder decay, fire source)
 
@@ -3041,11 +3554,14 @@ void FireSecond(RE::PlayerCharacter& player, essb::Board& selfBoard, Context& c,
 {
     using K = essb::StatusKind;
     const int tier = essb::HeatTier(selfBoard);
-    if (tier >= 3 && c.in.self.Fraction() < essb::n3::kAutoVent) {
+    // Round 27 (G4): the source burns only in the fire form -- 熔斷 keeps the heat after a close, but with no form there is
+    // no source and no cost (its fuse running out then counts as a vent: Status.h OnFuseEnd).
+    const bool inForm = c.in.formElement == essb::kFire;
+    if (inForm && tier >= 3 && c.in.self.Fraction() < essb::n3::kAutoVent) {
         essb::OnFormLeave(self, essb::kFire, false, selfBoard, c.in, nodes);   // 自動洩壓（永遠先於過熱判定）
         return;
     }
-    const essb::FireSource source = essb::PlanFireSource(selfBoard, c.in, nodes);
+    const essb::FireSource source = essb::FireSourceBurns(inForm, selfBoard) ? essb::PlanFireSource(selfBoard, c.in, nodes) : essb::FireSource{};   // 27b (B N3)
     if (source.active) {
         TraceCtx traceCtx("fire-source");   // round 26
         const auto hostiles = HostilesNear(player, source.radius);
@@ -3073,7 +3589,7 @@ void FireSecond(RE::PlayerCharacter& player, essb::Board& selfBoard, Context& c,
             }
             Executor(player, enemy, c.tuning).Run(burn);
         }
-        if (source.cost > 0.0f && tier >= 3) {
+        if (source.cost > 0.0f && essb::FireSourceCosts(inForm, tier)) {
             self.Push(essb::Amount(essb::Op::kPayHealth, source.cost));
         }
         // 火浴：白熱點燃當下依燒到的人數固定回血量，之後每秒 B_max ×0.1 × 該人數（人數不隨後續增減變動）。
@@ -3092,9 +3608,11 @@ void FireSecond(RE::PlayerCharacter& player, essb::Board& selfBoard, Context& c,
 // hazard of ours whose owner is you, found two ways (both read-only, main thread) -- the references of the loaded cells
 // near you, and the Spawn Hazard effect on the actors of the high process list (its hazard handle; the effect lasts as
 // long as the hazard, build/fix25_records.py). Counted once each. Probe N6-3 logs both counts.
+// Round 27 (E8): the hazards are held (NiPointer) with their FormIDs; nothing is logged while a cell walk holds its lock.
 struct DomainScan {
     std::vector<essb::DomainSite> sites;
-    std::vector<const RE::TESObjectREFR*> seen;
+    std::vector<RE::NiPointer<RE::TESObjectREFR>> seen;
+    std::vector<std::uint32_t> ids;
     int fromCells = 0;
     int fromEffects = 0;
 };
@@ -3109,12 +3627,13 @@ int DomainElementOf(const RE::BGSHazard* base) noexcept
     return 0;
 }
 
-bool AddDomain(DomainScan& scan, RE::TESObjectREFR* ref, RE::PlayerCharacter& player, float radius)
+bool AddDomain(DomainScan& scan, const RE::NiPointer<RE::TESObjectREFR>& held, RE::PlayerCharacter& player, float radius)
 {
+    RE::TESObjectREFR* ref = held.get();
     if (!ref || ref->GetFormType() != RE::FormType::PlacedHazard || ref->IsDisabled() || ref->IsDeleted()) {
         return false;
     }
-    if (std::find(scan.seen.begin(), scan.seen.end(), ref) != scan.seen.end()) {
+    if (std::any_of(scan.seen.begin(), scan.seen.end(), [ref](const auto& p) { return p.get() == ref; })) {
         return false;
     }
     auto* hazard = static_cast<RE::Hazard*>(ref);
@@ -3130,31 +3649,56 @@ bool AddDomain(DomainScan& scan, RE::TESObjectREFR* ref, RE::PlayerCharacter& pl
     if (ref->GetPosition().GetDistance(player.GetPosition()) > radius) {
         return false;
     }
-    scan.seen.push_back(ref);
+    scan.seen.push_back(held);
+    scan.ids.push_back(ref->GetFormID());
     scan.sites.push_back(essb::DomainSite{ element, PosOfRef(*ref) });
-    if (TraceOn()) {   // round 26
-        essb::trace::Line line("domain");
-        line.F(" el=%s ref=0x%08X age=%.1f lifetime=%.1f radius=%.2f magnitude=%.2f owner=you d=%.0f", essb::trace::ElementName(element),
-            ref->GetFormID(), data.age, data.lifetime, data.radius, data.magnitude, ref->GetPosition().GetDistance(player.GetPosition()));
-        Emit(line);
-    }
-    if (state.forms.debug->value >= 3.0f) {   // probe N6-3: every live domain the second found
-        Logf("[ESSB][N6-3][L3] domain element=%d ref=%08X age=%.1f lifetime=%.1f radius=%.2f magnitude=%.2f owner=you d=%.0f", element,
-            ref->GetFormID(), data.age, data.lifetime, data.radius, data.magnitude, ref->GetPosition().GetDistance(player.GetPosition()));
-    }
     return true;
+}
+
+// The domains found, logged after both walks (round 27, E8).
+void LogDomains(const DomainScan& scan, RE::PlayerCharacter& player)
+{
+    const bool tracing = TraceOn();
+    const bool l3 = state.forms.debug->value >= 3.0f;
+    if (!tracing && !l3) {
+        return;
+    }
+    for (std::size_t i = 0; i < scan.seen.size(); ++i) {
+        auto* hazard = static_cast<RE::Hazard*>(scan.seen[i].get());
+        const auto& data = hazard->GetHazardRuntimeData();
+        const int element = scan.sites[i].element;
+        const float d = hazard->GetPosition().GetDistance(player.GetPosition());
+        if (tracing) {   // round 26
+            essb::trace::Line line("domain");
+            line.F(" el=%s ref=0x%08X age=%.1f lifetime=%.1f radius=%.2f magnitude=%.2f owner=you d=%.0f", essb::trace::ElementName(element),
+                scan.ids[i], data.age, data.lifetime, data.radius, data.magnitude, d);
+            Emit(line);
+        }
+        if (l3) {   // probe N6-3: every live domain the second found
+            Logf("[ESSB][N6-3][L3] domain element=%d ref=%08X age=%.1f lifetime=%.1f radius=%.2f magnitude=%.2f owner=you d=%.0f", element,
+                scan.ids[i], data.age, data.lifetime, data.radius, data.magnitude, d);
+        }
+    }
 }
 
 DomainScan ScanDomains(RE::PlayerCharacter& player, float radius)
 {
     DomainScan scan;
+    // Round 27 (E2): the cell walk holds the cells' locks -- it only collects the placed hazards (held); everything else
+    // happens after it returns.
+    std::vector<RE::NiPointer<RE::TESObjectREFR>> placed;
     if (auto* tes = RE::TES::GetSingleton()) {
         tes->ForEachReferenceInRange(&player, radius, [&](RE::TESObjectREFR* ref) {
-            if (ref && ref->GetFormType() == RE::FormType::PlacedHazard && AddDomain(scan, ref, player, radius)) {
-                ++scan.fromCells;
+            if (ref && ref->GetFormType() == RE::FormType::PlacedHazard) {
+                placed.emplace_back(ref);
             }
             return RE::BSContainer::ForEachResult::kContinue;
         });
+    }
+    for (const auto& ref : placed) {
+        if (AddDomain(scan, ref, player, radius)) {
+            ++scan.fromCells;
+        }
     }
     if (auto* lists = RE::ProcessLists::GetSingleton()) {
         std::vector<RE::NiPointer<RE::TESObjectREFR>> hazards;
@@ -3175,11 +3719,12 @@ DomainScan ScanDomains(RE::PlayerCharacter& player, float radius)
             });
         }
         for (auto& ref : hazards) {
-            if (AddDomain(scan, ref.get(), player, radius)) {
+            if (AddDomain(scan, ref, player, radius)) {
                 ++scan.fromEffects;
             }
         }
     }
+    LogDomains(scan, player);
     if (state.forms.debug->value >= 3.0f && !scan.sites.empty()) {
         Logf("[ESSB][N6-3][L3] domains=%d cells=%d effects=%d", static_cast<int>(scan.sites.size()), scan.fromCells, scan.fromEffects);
     }
@@ -3403,6 +3948,16 @@ essb::FormSecond FormSecondWork(RE::PlayerCharacter& player, essb::Board& selfBo
     essb::StatusPlan& own = *ownPtr;
     TraceCtx traceCtx("form-second");   // round 26
     const essb::FormSecond out = essb::PlanFormSecond(own, selfBoard, f, c.in, tt, nodes, allies, allyCount);
+    if (out.closing) {
+        // Round 27 (G8): the close is the DLL's own (CloseByMagicka after this second's plan), not ESSB_Close.
+        int kept = 0;
+        for (int i = 0; i < own.count; ++i) {
+            if (!(own.ops[i].op == essb::Op::kEvent && own.ops[i].event == essb::Event::kClose)) {
+                own.ops[kept++] = own.ops[i];
+            }
+        }
+        own.count = kept;
+    }
     if (allyCount > 0) {
         Executor(player, nullptr, c.tuning, &members).Run(own);   // 長河's ops name their ally
     } else {
@@ -3436,7 +3991,7 @@ void EnvironmentCheck(RE::PlayerCharacter& player)
     facts.swimming = actorState && actorState->IsSwimming();
     // PO3 IsRefUnderwater's test (the reference's position more than 87.5% under the water level).
     const RE::TESObjectREFR& ref = player;
-    facts.underwater = ref.IsPointSubmergedMoreThan(player.GetPosition(), player.GetParentCell(), 0.875f);
+    facts.underwater = cell && ref.IsPointSubmergedMoreThan(player.GetPosition(), player.GetParentCell(), 0.875f);   // round 27 (E10)
     if (auto* calendar = RE::Calendar::GetSingleton()) {
         facts.hour = calendar->GetHour();
     }
@@ -3729,13 +4284,10 @@ void ProbeWatch(RE::PlayerCharacter& player)
 // hostiles the rules act on), and whether you do.
 void TraceDomains(RE::PlayerCharacter& player, const DomainScan& scan, const essb::DomainSet& you)
 {
-    std::vector<std::uint32_t> ids;
-    for (std::size_t i = 0; i < scan.seen.size(); ++i) {
-        ids.push_back(scan.seen[i]->GetFormID());
-    }
+    std::vector<std::uint32_t> ids = scan.ids;   // round 27 (E8): the FormIDs read at the scan
     std::sort(ids.begin(), ids.end());
-    for (std::size_t i = 0; i < scan.seen.size(); ++i) {
-        const std::uint32_t id = scan.seen[i]->GetFormID();
+    for (std::size_t i = 0; i < scan.ids.size(); ++i) {
+        const std::uint32_t id = scan.ids[i];
         if (!std::binary_search(state.domainsSeen.begin(), state.domainsSeen.end(), id)) {
             essb::trace::Line line("domain-new");
             line.F(" ref=0x%08X el=%s", id, essb::trace::ElementName(scan.sites[i].element));
@@ -3762,7 +4314,7 @@ void TraceDomains(RE::PlayerCharacter& player, const DomainScan& scan, const ess
                 const float d = actor->GetPosition().GetDistance(at);
                 if (d <= essb::n6::kDomainRadius) {
                     essb::trace::Line line("domain-in");
-                    line.F(" ref=0x%08X el=%s d=%.0f", scan.seen[i]->GetFormID(), essb::trace::ElementName(scan.sites[i].element), d);
+                    line.F(" ref=0x%08X el=%s d=%.0f", scan.ids[i], essb::trace::ElementName(scan.sites[i].element), d);
                     line.Actor("who", FactsOf(actor));
                     line.F(" hostile=%d teammate=%d commanded=%d", actor->IsHostileToActor(&player) ? 1 : 0, actor->IsPlayerTeammate() ? 1 : 0,
                         actor->IsCommandedActor() ? 1 : 0);
@@ -3810,34 +4362,42 @@ void TraceSecond(RE::PlayerCharacter& player, const essb::FormSecond& fs, int fo
 // paused), loading, or between a load's start and its end. The timer counts none of that.
 bool GameStopped(RE::UI* ui)
 {
-    if (!state.inGame) {
+    if (!state.session.inGame) {
         return true;
     }
     return ui && (ui->GameIsPaused() || ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME));
 }
 
+void CloseByMagicka(RE::PlayerCharacter& player);   // round 27 (G8): below
+
 void TickCpp() noexcept
 {
     try {
         TaskScope scope("timer task");   // round 26c (P5)
+        const bool enabled = Enabled();   // the master switch, read once (round 27: the clock below runs either way)
+        auto* ui = RE::UI::GetSingleton();
+        // Round 27 (E5): the game-running clock first, whatever else -- faulted, switched off or not wanted, Papyrus's
+        // windows (ESSBNative.RunningSeconds) still end.
+        const bool stopped = GameStopped(ui);
+        const essb::Beat beat = essb::Step(state.cadence, GetTickCount64(), stopped);
+        state.runningMs.fetch_add(static_cast<std::uint64_t>(std::llround(beat.seconds * 1000.0f)));   // 0 while stopped
+        auto* player = RE::PlayerCharacter::GetSingleton();
+        const essb::rt::TickPlan tick = essb::rt::PlanTick(enabled, player != nullptr, stopped, beat);   // round 27 (T): Runtime.h
         // Round 26: the probe log's watchers run before the master switch (turning it off is logged too).
         if (auto* watched = RE::PlayerCharacter::GetSingleton(); watched && Active()) {
             ProbeWatch(*watched);
         }
+        QueueHurt();   // round 27 (E4): a hit waiting for its frame, if the input sink's frames stopped
         // The master switch (ESSB_Enabled) stops the per-second work too, not only hits (round 22: the old ghost
-        // statuses ignored it).
-        if (!Enabled()) {
+        // statuses ignored it). Round 27 (E13): off or faulted, the bars go.
+        if (tick.hudOff) {
+            essb::hud::Tick(false);
             return;
         }
-        auto* ui = RE::UI::GetSingleton();
-        auto* player = RE::PlayerCharacter::GetSingleton();
         if (!player) {
             return;
         }
         TraceCtx traceCtx("tick");   // round 26
-        const bool stopped = GameStopped(ui);
-        const essb::Beat beat = essb::Step(state.cadence, GetTickCount64(), stopped);
-        state.runningMs.fetch_add(static_cast<std::uint64_t>(std::llround(beat.seconds * 1000.0f)));   // 0 while stopped
         if (stopped) {
             if (state.forms.debug->value >= 3.0f && !state.stoppedLogged) {   // probe N6-1: the clock stops
                 state.stoppedLogged = true;
@@ -3864,7 +4424,7 @@ void TickCpp() noexcept
         }
         LogThreadOnce(Probe::kTick, "timer task");
         NoteTaskThread();   // round 26: the X1 lines compare the sinks with the latest task's thread
-        if (beat.env) {
+        if (tick.env) {
             EnvironmentCheck(*player);   // round 25: before the second, so the storm's charge reads this check
         }
         const auto perks = MakeNodes(*player, FormIsActive());
@@ -3875,7 +4435,7 @@ void TickCpp() noexcept
         essb::StatusPlan& plan = *planPtr;
         essb::PlanDecay(plan, selfBoard, c.in, nodes);
         essb::FormSecond second{};   // round 26: the probe log's second line reads it
-        if (beat.second) {
+        if (tick.second) {
             // 審查修正: no domain node, no hazard of yours -- skip the 60 m cell walk (read each second, nothing cached).
             const DomainScan domains = essb::HasDomainNode(nodes) ? ScanDomains(*player, essb::n6::kDomainScan) : DomainScan{};
             FireSecond(*player, selfBoard, c, nodes, plan);
@@ -3902,6 +4462,9 @@ void TickCpp() noexcept
             TraceSecond(*player, second, c.in.formElement);   // round 26
         }
         WriteMirrors(*player, selfBoard, nodes);   // an effect that ran out takes its mirror to 0
+        if (second.closing) {
+            CloseByMagicka(*player);   // round 27 (G8)
+        }
         essb::hud::Tick(!state.forms.trueHudBars || state.forms.trueHudBars->value == 1.0f);   // round 26c (T2): the MCM switch
     } catch (const std::exception& e) {
         Fault(e.what());
@@ -3910,12 +4473,14 @@ void TickCpp() noexcept
     }
 }
 
-void TickGuarded() noexcept
+void TickGuarded(bool live) noexcept
 {
-    __try {
-        TickCpp();
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        Fault("access violation in the timer task");
+    if (live) {
+        __try {
+            TickCpp();
+        } __except (SehFilter(GetExceptionInformation(), "access violation in the timer task")) {
+            Fault("access violation in the timer task");
+        }
     }
     state.tickQueued = false;
 }
@@ -3928,7 +4493,7 @@ void UiWitnessGuarded() noexcept
 {
     __try {
         LogThreadOnce(Probe::kUiTask, "SKSE UI task");
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (SehFilter(GetExceptionInformation(), "UI witness task")) {
     }
     state.uiWitnessQueued = false;
 }
@@ -3939,7 +4504,7 @@ void TimerLoop() noexcept
         std::this_thread::sleep_for(kTickInterval);
         if (GetTickCount64() - state.lastFlush.load() >= 1000) {
             FlushTrace();   // round 26: the probe log reaches the file once a second (paused or not)
-            if (state.ready && !state.faulted && state.inGame && !state.uiWitnessQueued.exchange(true)) {
+            if (state.ready && !state.faulted && state.session.inGame && !state.uiWitnessQueued.exchange(true)) {
                 try {
                     if (const auto* tasks = SKSE::GetTaskInterface()) {
                         tasks->AddUITask([]() { UiWitnessGuarded(); });
@@ -3951,16 +4516,15 @@ void TimerLoop() noexcept
                 }
             }
         }
-        if (state.faulted || !state.ready || !state.inGame) {
+        // Round 27 (E5): a faulted DLL still ticks -- the game-running clock (ESSBNative.RunningSeconds: Papyrus's windows end
+        // by it) and the bars' removal; TickCpp does nothing else then.
+        if (!state.loaded || !state.session.inGame) {
             continue;
         }
-        const auto* tasks = SKSE::GetTaskInterface();
-        if (!tasks || state.tickQueued.exchange(true)) {
+        if (state.tickQueued.exchange(true)) {
             continue;
         }
-        try {
-            tasks->AddTask([]() { TickGuarded(); });
-        } catch (...) {
+        if (!QueueTask([](bool live) { TickGuarded(live); })) {
             state.tickQueued = false;
         }
     }
@@ -3983,10 +4547,102 @@ struct TimerStopper {
 
 // ---------------------------------------------------------------- round 25 (N6): hotkeys (ruling R6)
 
+// Round 27 (G8): the form's own work of a switch runs here, in the task that decided it, before the next hit can read the
+// new form (the switching hit met a missing 協奏; a close and a fast reopen lost the burst -- Papyrus's handler took the
+// switch path once the reopen had written the globals). Papyrus only swaps the ability, plays the sounds and keeps its
+// sync rules (ESSB_Switch: element, kind 1 open / 2 switch / 3 close, the sync and its stage before, the reason).
+void BurstWork(int element);
+void FormLeaveWork(int element, bool burst);
+void FormEnterWork(int element);
+void SetSyncWork(int count, bool keep);
+
+void SetGlobalById(std::uint32_t localId, float value) noexcept
+{
+    for (const auto& [id, global] : state.forms.globals) {
+        if (id == localId && global) {
+            global->value = value;
+        }
+    }
+}
+
+RE::SpellItem* CastSpellById(std::uint32_t localId) noexcept
+{
+    if (localId == 0) {
+        return nullptr;
+    }
+    for (const auto& [id, spell] : state.forms.spells) {
+        if (id == localId) {
+            return spell;
+        }
+    }
+    return nullptr;
+}
+
+// 餘響 and 雙生 (5.2) on a switch (were ESSBController.OnFormSwitched's): the markers, ESSB_PrevElement / ESSB_TwinElement.
+void SwitchMarkers(RE::PlayerCharacter& player, int from)
+{
+    const auto nodes = MakeNodes(player, true);
+    const essb::Tuning t = essb::ReadTuning(Global);
+    auto& caster = CasterOf(player);
+    auto recast = [&](RE::EffectSetting* effect, std::uint32_t spellId, float effectiveness) {
+        RE::SpellItem* spell = CastSpellById(spellId);
+        if (!spell || !effect) {
+            return;
+        }
+        t_selfDispel = true;
+        DispelLive(player, [&](RE::ActiveEffect&, RE::EffectSetting& base) { return &base == effect; });
+        t_selfDispel = false;
+        caster.CastSpellImmediate(spell, false, &player, effectiveness, false, kNoMagnitudeOverride, &player);
+    };
+    if (essb::EchoRatio(t, nodes) > 0.0f) {
+        recast(state.forms.echoPending, essb::spell::kEchoPendingSpell, 1.0f);   // until the first hit after the switch
+    }
+    if (nodes.Has(essb::node::kCommonTwin)) {
+        SetGlobalById(essb::glob::kTwinElement, static_cast<float>(from));
+        recast(state.forms.twinWindow, essb::spell::kTwinWindowSpell,
+            essb::EffectivenessFor(essb::Scaled(t, 30.0f), essb::spell::kTwinWindowRecordSeconds));   // 30 s × 持續時間倍率
+    }
+    (void)ReadBoard(player);   // the registry sees the markers
+}
+
+void SwitchWork(RE::PlayerCharacter& player, essb::SwitchKind kind, int from, int to, int reason)
+{
+    auto& f = state.forms;
+    using K = essb::StatusKind;
+    const essb::Board before = ReadBoard(player);
+    const auto nodes = essb::WithAvatar(MakeNodes(player, true), before);
+    const int syncBefore = before.Layers(K::kSync);
+    const int stageBefore = essb::res::StageOf(syncBefore, essb::res::Thresholds(essb::ReadTuning(Global), before, nodes));
+    if (kind == essb::SwitchKind::kClose) {
+        f.formActive->value = 0.0f;
+        f.element->value = 0.0f;
+        SetGlobalById(essb::glob::kPrevElement, static_cast<float>(from));
+        BurstWork(from);             // 融斷 (hotkey, Z, and magicka empty: the user's decision 2026-09-27)
+        FormLeaveWork(from, true);
+        SetSyncWork(0, false);       // 融斷後同調歸零 (Papyrus adds the share it keeps at the next open)
+        t_selfDispel = true;         // 關形態不是切換：沒有餘響
+        DispelLive(player, [&](RE::ActiveEffect&, RE::EffectSetting& base) { return &base == f.echoPending; });
+        t_selfDispel = false;
+        (void)ReadBoard(player);
+        SendEvent(essb::MakeEvent(essb::Event::kSwitch, from, 3, syncBefore, stageBefore, reason), &player);
+        return;
+    }
+    f.element->value = static_cast<float>(to);
+    f.formActive->value = 1.0f;
+    if (kind == essb::SwitchKind::kSwitch && essb::IsElement(from)) {
+        SetGlobalById(essb::glob::kPrevElement, static_cast<float>(from));
+        FormLeaveWork(from, false);   // the old form's ladders, your resources, 協奏's pending end
+        SwitchMarkers(player, from);
+    }
+    SetSyncWork(0, false);            // the count starts again; Papyrus adds what it keeps (KeepSync)
+    FormEnterWork(to);                // 專一, 雷臨／地臨強化, the 臨 (every open and every switch: the user's decision)
+    SendEvent(essb::MakeEvent(essb::Event::kSwitch, to, kind == essb::SwitchKind::kOpen ? 1 : 2, syncBefore, stageBefore, reason), &player);
+}
+
 // The switch both routes share (v0.4 1.1: 熱鍵與 Z 路線呼叫同一個切換函式): the hotkey sink and ESSBNative.RequestSwitch
-// (the form powers). Main thread. Timer.h PlanSwitch decides; the DLL writes ESSB_CurrentElement / ESSB_FormActive first
-// (the next hit already uses the new element), shows the one-line notice, then ESSB_Switch tells Papyrus to change the
-// form (abilities, sync keep, the burst on a close: v0.4 1.1 形態開關 Papyrus).
+// (the form powers). A task. Timer.h PlanSwitch decides; the DLL writes ESSB_CurrentElement / ESSB_FormActive first
+// (the next hit already uses the new element), shows the one-line notice, runs the form's work (round 27, G8) and sends
+// ESSB_Switch (Papyrus: the abilities, the sounds, its sync rules).
 void RequestSwitch(int element, const char* via)
 {
     auto* player = RE::PlayerCharacter::GetSingleton();
@@ -4019,14 +4675,7 @@ void RequestSwitch(int element, const char* via)
     case essb::SwitchKind::kRefuse:
         RE::DebugNotification("魔力不足，無法開啟形態");
         return;
-    case essb::SwitchKind::kClose:
-        f.formActive->value = 0.0f;
-        f.element->value = 0.0f;
-        break;
-    case essb::SwitchKind::kOpen:
-    case essb::SwitchKind::kSwitch:
-        f.element->value = static_cast<float>(p.element);
-        f.formActive->value = 1.0f;
+    default:
         break;
     }
     if (p.consumeFree && f.freeOpen) {
@@ -4037,32 +4686,53 @@ void RequestSwitch(int element, const char* via)
                                                                      : std::string("元素魔戰士：") + essb::kFormLabels[p.element];
         RE::DebugNotification(text.c_str());
     }
-    SendEvent(essb::MakeEvent(essb::Event::kSwitch, static_cast<float>(element), p.kind == essb::SwitchKind::kOpen ? 1.0f : 0.0f), player);
+    SwitchWork(*player, p.kind, facts.active ? facts.current : 0, p.element, 0);   // round 27 (G8)
+}
+
+// Round 27 (G8): 魔力歸零 2 秒 closes the form -- the same close as a hotkey (with the burst: the user's decision
+// 2026-09-27, 燃盡 stays), run by the timer task that found it; ESSB_Switch reason 1 (Papyrus shows 魔力耗盡).
+void CloseByMagicka(RE::PlayerCharacter& player)
+{
+    auto& f = state.forms;
+    if (f.formActive->value != 1.0f) {
+        return;
+    }
+    const int from = static_cast<int>(f.element->value);
+    if (TraceOn()) {
+        essb::trace::Line line("switch");
+        line.F(" via=magicka wanted=%s kind=close element=none active=1 current=%s", essb::trace::ElementName(from), essb::trace::ElementName(from));
+        line.Actor("you", FactsOf(&player));
+        Emit(line);
+    }
+    SwitchWork(player, essb::SwitchKind::kClose, from, 0, 1);
 }
 
 // Probe N6-2: whether input reaches gameplay now (Timer.h InputOpen). A menu that pauses, uses the cursor or the menu
 // input context, or is modal blocks it (Papyrus Utility.IsInMenuMode); so do the console and a text box.
+// Round 27 (E6): no walk of UI::menuStack (the UI thread changes it): the UI's counters (paused, modal, item and application
+// menus) and the input-taking menus by name (Runtime.h kInputMenus; IsMenuOpen reads the registered map and a flag).
 essb::InputGate GateNow()
 {
-    essb::InputGate g;
-    g.loading = !state.inGame;
-    auto* ui = RE::UI::GetSingleton();
-    if (ui) {
-        g.paused = ui->GameIsPaused();
-        g.console = ui->IsMenuOpen(RE::Console::MENU_NAME);
-        g.loading = g.loading || ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME);
-        using Flag = RE::UI_MENU_FLAGS;
-        for (const auto& menu : ui->menuStack) {
-            if (menu && menu->menuFlags.any(Flag::kPausesGame, Flag::kUsesCursor, Flag::kUsesMenuContext, Flag::kModal)) {
-                g.menu = true;
+    essb::rt::UiFacts u;
+    u.inGame = state.session.inGame;
+    if (auto* ui = RE::UI::GetSingleton()) {
+        u.paused = ui->GameIsPaused();
+        u.modal = ui->IsModalMenuOpen();
+        u.itemMenu = ui->IsItemMenuOpen();
+        u.applicationMenu = ui->IsApplicationMenuOpen();
+        u.console = ui->IsMenuOpen(RE::Console::MENU_NAME);
+        u.loading = ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME);
+        for (const std::string_view name : essb::rt::kInputMenus) {
+            if (ui->IsMenuOpen(name)) {
+                u.inputMenu = true;
                 break;
             }
         }
     }
     if (auto* controls = RE::ControlMap::GetSingleton()) {
-        g.textEntry = controls->textEntryCount > 0;
+        u.textEntry = controls->textEntryCount > 0;
     }
-    return g;
+    return essb::rt::GateFrom(u);
 }
 
 essb::Device DeviceOf(RE::INPUT_DEVICE device) noexcept
@@ -4105,7 +4775,7 @@ void InputActionGuarded(const essb::sink::Action& a) noexcept
 {
     __try {
         InputActionCpp(a);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (SehFilter(GetExceptionInformation(), "access violation in the input task")) {
         Fault("access violation in the input task");
     }
 }
@@ -4172,9 +4842,11 @@ void InputCpp(RE::InputEvent* first) noexcept
             if (!a.accepted || !open) {
                 continue;
             }
-            if (const auto* tasks = SKSE::GetTaskInterface()) {
-                tasks->AddTask([a]() { InputActionGuarded(a); });
-            }
+            QueueTask([a](bool live) {
+                if (live) {
+                    InputActionGuarded(a);
+                }
+            });
         }
     } catch (const std::exception& e) {
         Fault(e.what());
@@ -4193,6 +4865,12 @@ public:
         // Round 26 (X1): the input sink runs in Main::Update (PollInputDevices), the main loop's thread; its first event of
         // any kind names it (an atomic compare, before anything else).
         LogThreadOnce(Probe::kInputFrame, "input sink (every frame)");   // round 26 threading witness: every thread it runs on
+        // Round 27 (E4): the frame counter (PollInputDevices sends once a frame) and a hurt that waited for its frame's end.
+        state.frame.fetch_add(1);
+        state.world.Frame(RE::GetSecondsSinceLastFrame());   // round 27b (A N3): a read of the engine's world-time delta
+        if (!state.faulted) {
+            QueueHurt();
+        }
         if (DWORD none = 0; state.inputThread.load() == 0 && state.inputThread.compare_exchange_strong(none, GetCurrentThreadId())) {
             Logf("[ESSB][X1] input sink thread=%lu (Main::Update -> BSInputDeviceManager::PollInputDevices: the main loop) window=%lu %s "
                  "dataLoaded=%lu",
@@ -4203,7 +4881,7 @@ public:
         }
         __try {
             InputCpp(*ev);
-        } __except (EXCEPTION_EXECUTE_HANDLER) {
+        } __except (SehFilter(GetExceptionInformation(), "access violation in the input sink")) {
             Fault("access violation in the input sink");
         }
         return RE::BSEventNotifyControl::kContinue;
@@ -4219,6 +4897,11 @@ void LoadManifest()
     auto* data = RE::TESDataHandler::GetSingleton();
     if (!data) {
         throw std::runtime_error("TESDataHandler unavailable");
+    }
+    // Round 27 (E11): an ESL-flagged copy of the plugin would give our local FormIDs another meaning (a light file keeps
+    // only 12 bits): refused before anything is resolved.
+    if (const RE::TESFile* mod = data->LookupModByName(kPlugin); mod && mod->IsLight()) {
+        throw std::runtime_error("Elements Spellblade.esp is flagged light (ESL): refused, its FormIDs would alias");
     }
     state.forms.nativeHit = data->LookupForm<RE::TESGlobal>(essb::glob::kNativeHit, kPlugin);
     WriteNativeHit(0.0f);
@@ -4252,6 +4935,7 @@ void LoadManifest()
     source->AddEventSink<RE::TESActiveEffectApplyRemoveEvent>(&removeSink);
     source->AddEventSink<RE::TESDeathEvent>(&deathSink);
     source->AddEventSink<RE::TESSpellCastEvent>(&castSink);   // round 23: 反咒, 逼近
+    source->AddEventSink<RE::TESObjectLoadedEvent>(&loadedSink);   // round 27b (A N2): unloads forget the registry row
     if (auto* ui = RE::UI::GetSingleton()) {
         ui->AddEventSink<RE::MenuOpenCloseEvent>(&menuSink);   // round 23: TrueHUD's menu clears custom widgets on close
     }
@@ -4289,11 +4973,34 @@ void LoadManifest()
         tasks->AddTask([]() { MainThreadGuarded(); });
     }
     timerThread = std::thread(TimerLoop);   // round 26c (P7): kept, stopped before `state` is destroyed
+    state.loaded = true;   // round 27 (E5)
     state.ready = true;
     PublishStatus();
     Log("[ESSB][load] manifest resolved; hit (yours and on you), effect-removed, death and spell-cast sinks registered; timer running; "
         "round 24: the reaction bodies, the burst and the death handling are native; round 25: the per-second work, the domains "
         "and the hotkeys are native");
+}
+
+// Round 27 (E3): a session ends (a load starts, a new game, the main menu): the old session's snapshots, waiting hits and
+// refreshes go; the status and the probe log are written.
+void EndSession(const essb::rt::Transition& t) noexcept
+{
+    try {
+        if (t.clearRegistry) {
+            state.registry.Clear();
+            state.settled.Clear();
+            state.hurtQueue.Clear();
+            std::lock_guard lock(state.refreshLock);
+            state.refresh.clear();
+        }
+    } catch (...) {
+    }
+    if (t.publish) {
+        PublishStatus();
+    }
+    if (t.flush) {
+        FlushTrace();
+    }
 }
 
 // Once per game load / new game, after the HUD exists.
@@ -4328,35 +5035,32 @@ void GameReadyCpp() noexcept
     }
 }
 
-void GameReadyGuarded() noexcept
+void GameReadyGuarded(bool live) noexcept
 {
+    if (!live) {
+        return;
+    }
     __try {
         GameReadyCpp();
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (SehFilter(GetExceptionInformation(), "access violation in the game-ready task")) {
         Fault("access violation in the game-ready task");
     }
 }
 
 void OnGameReady()
 {
-    if (const auto* tasks = SKSE::GetTaskInterface()) {
-        tasks->AddTask([]() { GameReadyGuarded(); });   // round 26c: queued before inGame turns on (the timer waits for it)
-    }
+    QueueTask([](bool live) { GameReadyGuarded(live); }, true);   // round 26c: queued before inGame turns on; 27b (A N6): the epoch decides
     if (TraceOn()) {
         essb::trace::Line line("trace");
         line.F(" game-ready running=%llu", static_cast<unsigned long long>(state.runningMs.load()));
         Emit(line);
     }
     FlushTrace();
-    state.inGame = true;
+    essb::rt::GameReady(state.session);   // round 27 (E3): the game runs from here
     state.echoDispelQueued = false;
     state.riposteDispelQueued = false;
     t_selfDispel = false;
-    state.hurtQueued = false;
-    {
-        std::lock_guard lock(state.hurtLock);
-        state.hurts.clear();
-    }
+    state.hurtQueue.Clear();
     PublishStatus();
     std::vector<std::string> notices;
     {
@@ -4377,13 +5081,13 @@ void MessageCpp(SKSE::MessagingInterface::Message* message) noexcept
         }
         switch (message->type) {
         case SKSE::MessagingInterface::kDataLoaded:
+            essb::rt::OnMessage(state.session, essb::rt::Msg::kDataLoaded);
             if (!state.faulted) {
                 LoadManifest();
             }
             break;
         case SKSE::MessagingInterface::kPreLoadGame:
-            state.inGame = false;
-            PublishStatus();
+            EndSession(essb::rt::OnMessage(state.session, essb::rt::Msg::kPreLoadGame));   // round 27 (E3)
             if (TraceOn()) {   // round 26
                 essb::trace::Line line("trace");
                 line.F(" loading running=%llu", static_cast<unsigned long long>(state.runningMs.load()));
@@ -4402,10 +5106,14 @@ void MessageCpp(SKSE::MessagingInterface::Message* message) noexcept
         case SKSE::MessagingInterface::kPostLoadGame:
             // SKSE passes the success flag as the pointer value itself, not as bool*.
             if (message->data != nullptr) {
+                essb::rt::OnMessage(state.session, essb::rt::Msg::kPostLoadGame);
                 OnGameReady();
+            } else {
+                essb::rt::OnMessage(state.session, essb::rt::Msg::kPostLoadGameFailed);
             }
             break;
         case SKSE::MessagingInterface::kNewGame:
+            EndSession(essb::rt::OnMessage(state.session, essb::rt::Msg::kNewGame));   // round 27 (E3): a new session
             OnGameReady();
             break;
         default:
@@ -4422,7 +5130,7 @@ void Message(SKSE::MessagingInterface::Message* message)
 {
     __try {
         MessageCpp(message);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (SehFilter(GetExceptionInformation(), "access violation while loading")) {
         Fault("access violation while loading");
     }
 }
@@ -4433,7 +5141,7 @@ bool IsActiveGuarded() noexcept
 {
     __try {
         return Active();
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (SehFilter(GetExceptionInformation(), "access violation in IsNativeHitActive")) {
         Fault("access violation in IsNativeHitActive");
         return false;
     }
@@ -4459,7 +5167,7 @@ void SetWantedGuarded(bool on) noexcept
 {
     __try {
         SetWantedCpp(on);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (SehFilter(GetExceptionInformation(), "access violation in SetNativeHit")) {
         Fault("access violation in SetNativeHit");
     }
 }
@@ -4506,35 +5214,34 @@ bool SehInvoke(F& f) noexcept
     __try {
         f();
         return true;
-    } __except (GetExceptionCode() == 0xE06D7363 ? EXCEPTION_CONTINUE_SEARCH : EXCEPTION_EXECUTE_HANDLER) {
+    } __except (SehFilter(GetExceptionInformation(), "ESSBNative")) {   // round 27 (E2): a C++ exception passes to Guard's catch
         return false;
     }
 }
 
-// Every ESSBNative function body runs here: C++ catch and the SEH frame above (round 22 crash guards).
+// Every ESSBNative function body runs here: C++ catch and the SEH frame above (round 22 crash guards). Round 27 (T): the
+// decisions are Runtime.h GuardOpen / GuardRun (runtime_test runs them).
 template <class Body>
 auto Guard(const char* what, Body&& body, decltype(body()) fallback, bool readOnly = false) noexcept -> decltype(body())
 {
-    try {
-        // Master switch (review fix 3): natives that change anything stop; the read-only ones (GetStatus, MarksOn, ...)
-        // keep answering so the MCM status button works with the switch off (commander ruling).
-        if (readOnly ? !Active() : !Enabled()) {   // master switch (review fix 3)
-            return fallback;
-        }
-        LogThreadOnce(Probe::kNative, "Papyrus native");
-        std::optional<decltype(body())> out;
-        auto run = [&]() { out.emplace(body()); };
-        if (!SehInvoke(run)) {
-            Fault((std::string("access violation in ESSBNative.") + what).c_str());
-            return fallback;
-        }
-        return std::move(*out);
-    } catch (const std::exception& e) {
-        Fault(e.what());
-    } catch (...) {
-        Fault(what);
-    }
-    return fallback;
+    return essb::rt::GuardRun(
+        [&]() {
+            // Master switch (review fix 3): natives that change anything stop; the read-only ones (GetStatus, MarksOn,
+            // ...) keep answering so the MCM status button works with the switch off (commander ruling).
+            if (!essb::rt::GuardOpen(readOnly, Active(), Enabled())) {
+                return false;
+            }
+            LogThreadOnce(Probe::kNative, "Papyrus native");
+            return true;
+        },
+        std::forward<Body>(body), std::move(fallback), [](auto& run) { return SehInvoke(run); },
+        [what](essb::rt::GuardFault kind, const char* message) {
+            if (kind == essb::rt::GuardFault::kSeh) {
+                Fault((std::string("access violation in ESSBNative.") + what).c_str());
+            } else {
+                Fault(kind == essb::rt::GuardFault::kException && message ? message : what);
+            }
+        });
 }
 
 // Round 24 review fix 1: a native that scans or casts only queues its work (SKSE AddTask, thread-safe) and returns; the
@@ -4561,24 +5268,25 @@ void NativeJobCpp(NativeJob* job) noexcept
     }
 }
 
-void NativeJobGuarded(NativeJob* job) noexcept
+void NativeJobGuarded(NativeJob* job, bool live) noexcept
 {
-    __try {
-        NativeJobCpp(job);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        Fault("access violation in a queued ESSBNative task");
+    if (live) {
+        __try {
+            NativeJobCpp(job);
+        } __except (SehFilter(GetExceptionInformation(), "access violation in a queued ESSBNative task")) {
+            Fault("access violation in a queued ESSBNative task");
+        }
     }
     delete job;
 }
 
 bool QueueNative(const char* what, std::function<void()> run)
 {
-    auto* tasks = SKSE::GetTaskInterface();
-    if (!tasks) {
+    auto* job = new NativeJob{ what, std::move(run) };
+    if (!QueueTask([job](bool live) { NativeJobGuarded(job, live); })) {
+        delete job;
         return false;
     }
-    auto* job = new NativeJob{ what, std::move(run) };
-    tasks->AddTask([job]() { NativeJobGuarded(job); });
     return true;
 }
 
@@ -4667,16 +5375,18 @@ void InterruptGuarded(const RE::ActorHandle& handle) noexcept
 {
     __try {
         InterruptCpp(handle);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (SehFilter(GetExceptionInformation(), "access violation in the interrupt task")) {
         Fault("access violation in the interrupt task");
     }
 }
 
 void QueueInterrupt(RE::ActorHandle actor)
 {
-    if (const auto* tasks = SKSE::GetTaskInterface()) {
-        tasks->AddTask([actor]() { InterruptGuarded(actor); });
-    }
+    QueueTask([actor](bool live) {
+        if (live) {
+            InterruptGuarded(actor);
+        }
+    });
 }
 
 // 反咒 and 逼近 (5.1), in the task after TESSpellCastEvent.
@@ -4734,10 +5444,10 @@ void CastCpp(const CastSeen& seen) noexcept
     }
 }
 
-float ReadCode(RE::Actor& actor, int code)
+// Round 27 (E1): `b` is the registry's board (the natives on the VM's thread) or a task's read (DumpTargets).
+float ReadCode(const essb::Board& b, int code)
 {
     using K = essb::StatusKind;
-    const essb::Board b = ReadBoard(actor);
     auto* player = RE::PlayerCharacter::GetSingleton();
     switch (code) {
     case 1: return b.mark[essb::kFire].has ? 1.0f : 0.0f;
@@ -4790,12 +5500,12 @@ float ReadCode(RE::Actor& actor, int code)
 
 std::int32_t PapyrusGetStatus(RE::StaticFunctionTag*, RE::Actor* actor, std::int32_t code)
 {
-    return Guard("GetStatus", [&]() -> std::int32_t { return actor ? static_cast<std::int32_t>(ReadCode(*actor, code) + 0.001f) : 0; }, 0, true);
+    return Guard("GetStatus", [&]() -> std::int32_t { return actor ? static_cast<std::int32_t>(ReadCode(RegistryBoard(*actor), code) + 0.001f) : 0; }, 0, true);
 }
 
 float PapyrusGetStatusFloat(RE::StaticFunctionTag*, RE::Actor* actor, std::int32_t code)
 {
-    return Guard("GetStatusFloat", [&]() -> float { return actor ? ReadCode(*actor, code) : 0.0f; }, 0.0f, true);
+    return Guard("GetStatusFloat", [&]() -> float { return actor ? ReadCode(RegistryBoard(*actor), code) : 0.0f; }, 0.0f, true);
 }
 
 // Adds (or with `set` sets) layers of a target status through the same rules as a hit (caps, the freeze at 5, the
@@ -5012,16 +5722,16 @@ std::int32_t MarksOf(const essb::Board& b)
 
 std::int32_t PapyrusMarksOn(RE::StaticFunctionTag*, RE::Actor* actor)
 {
-    return Guard("MarksOn", [&]() -> std::int32_t { return actor ? MarksOf(ReadBoard(*actor)) : 0; }, 0, true);
+    return Guard("MarksOn", [&]() -> std::int32_t { return actor ? MarksOf(RegistryBoard(*actor)) : 0; }, 0, true);
 }
 
 // 融斷 (2.5, round 24): Papyrus CloseForm calls this before FormLeave. The DLL reads the crowd once (you and 15 m past the
 // burst radius), settles every mark in range (B_max × K_sync × G × M_mod, v0.4 2.7 D_burst; the end's non-damage part
 // per 2.6) and runs the bodies (冷寂's 寂, 萬寂, 斷界, 回流, 雙斷, 安全閥, 地斷, 颶風, 墜星's burst half). Queued (review fix 1).
-void PapyrusBurst(RE::StaticFunctionTag*, std::int32_t element)
+// Round 27 (G8): the burst's body, a function of its own -- the switch task runs it on a close (hotkey, Z, magicka empty);
+// ESSBNative.Burst (the MCM's close) queues it.
+void BurstWork(int element)
 {
-    Guard("Burst", [&]() -> bool {
-        return QueueNative("Burst", [element]() {   // review fix 1: the scan and the casts run in a task
             auto* player = RE::PlayerCharacter::GetSingleton();
             if (!player) {
                 return;
@@ -5060,36 +5770,41 @@ void PapyrusBurst(RE::StaticFunctionTag*, std::int32_t element)
                 Emit(line);
                 TraceDraws("burst");
             }
-        });
+}
+
+void PapyrusBurst(RE::StaticFunctionTag*, std::int32_t element)
+{
+    Guard("Burst", [&]() -> bool {
+        return QueueNative("Burst", [element]() { BurstWork(element); });   // review fix 1: the scan and the casts run in a task
     }, false);
 }
 
 // Leaving a form (Papyrus OnFormSwitched / CloseForm): 洩壓 and the self ladders (Status.h OnFormLeave).
+// Round 27 (G8): leaving a form, a function of its own (the switch task; ESSBNative.FormLeave for the MCM's close).
+void FormLeaveWork(int element, bool burst)
+{
+    TraceCtx traceCtx("leave");   // round 26
+    TraceNative("FormLeave", RE::PlayerCharacter::GetSingleton(), element, burst ? 1 : 0);
+    RunRule(RE::PlayerCharacter::GetSingleton(), [&](auto& plan, auto&, auto& self, auto& c, const auto& nodes) {
+        essb::OnFormLeave(plan, element, burst, self, c.in, nodes);
+        essb::PlanSelfLeave(plan, element, burst, self, c.in, nodes);   // round 23: your resources (SelfLayer.h)
+    });
+}
+
 void PapyrusFormLeave(RE::StaticFunctionTag*, std::int32_t element, bool burst)
 {
     Guard("FormLeave", [&]() -> bool {
-        return QueueNative("FormLeave", [element, burst]() {
-        TraceCtx traceCtx("leave");   // round 26
-        TraceNative("FormLeave", RE::PlayerCharacter::GetSingleton(), element, burst ? 1 : 0);
-        RunRule(RE::PlayerCharacter::GetSingleton(), [&](auto& plan, auto&, auto& self, auto& c, const auto& nodes) {
-            essb::OnFormLeave(plan, element, burst, self, c.in, nodes);
-            essb::PlanSelfLeave(plan, element, burst, self, c.in, nodes);   // round 23: your resources (SelfLayer.h)
-        });
-        });
+        return QueueNative("FormLeave", [element, burst]() { FormLeaveWork(element, burst); });
     }, false);
 }
 
 // Round 23 (N4): opening a form (Papyrus OnFormOpened): the 專一 clock, 雷臨強化, 地臨強化 (SelfLayer.h PlanSelfEnter);
 // round 24 (N5): the advents (Reactions.h PlanAdvent).
-void PapyrusFormEnter(RE::StaticFunctionTag*, std::int32_t element)
+// Round 27 (G8): opening a form (a switch opens the new one too), a function of its own -- the switch task runs it.
+void FormEnterWork(int element)
 {
-    Guard("FormEnter", [&]() -> bool {
-        if (!essb::IsElement(element)) {
-            return false;
-        }
-        return QueueNative("FormEnter", [element]() {   // review fix 1: the scan and the casts run in a task
             auto* player = RE::PlayerCharacter::GetSingleton();
-            if (!player) {
+            if (!player || !essb::IsElement(element)) {
                 return;
             }
             const auto perks = MakeNodes(*player, true);
@@ -5108,21 +5823,48 @@ void PapyrusFormEnter(RE::StaticFunctionTag*, std::int32_t element)
             essb::PlanAdvent(plan, *crowd.crowd, selfBoard, bin, element, nodes, Rng());
             Executor(*player, nullptr, c.tuning, &crowd.actors).Run(plan);
             WriteMirrors(*player, selfBoard, nodes);
-        });
+}
+
+void PapyrusFormEnter(RE::StaticFunctionTag*, std::int32_t element)
+{
+    Guard("FormEnter", [&]() -> bool {
+        if (!essb::IsElement(element)) {
+            return false;
+        }
+        return QueueNative("FormEnter", [element]() { FormEnterWork(element); });   // review fix 1: the scan and the casts run in a task
     }, false);
 }
 
 // Round 23 (N4): the sync count a switch or a burst leaves (Papyrus decides the keep: 承接、連斷、永續、三重奏).
+// The sync count set (`keep` = false) or a kept share added on top of what it is now (`keep` = true: round 27 G8's
+// KeepSync -- the switch task already started the count again and added what the new form's open gave). No stage-up
+// feedback either way (the kept share is not earned).
+void SetSyncWork(int count, bool keep)
+{
+    TraceCtx traceCtx(keep ? "native:KeepSync" : "native:SetSync");   // round 26
+    TraceNative(keep ? "KeepSync" : "SetSync", RE::PlayerCharacter::GetSingleton(), count, 0);
+    RunRule(RE::PlayerCharacter::GetSingleton(), [&](auto& plan, auto&, auto& self, auto& c, const auto& nodes) {
+        const int now = keep ? self.Layers(essb::StatusKind::kSync) : 0;
+        essb::res::SetSync(plan, self, (std::max)(0, now + count), c.in, nodes, false);
+    });
+}
+
 void PapyrusSetSync(RE::StaticFunctionTag*, std::int32_t count)
 {
     Guard("SetSync", [&]() -> bool {
-        return QueueNative("SetSync", [count]() {
-        TraceCtx traceCtx("native:SetSync");   // round 26
-        TraceNative("SetSync", RE::PlayerCharacter::GetSingleton(), count, 0);
-        RunRule(RE::PlayerCharacter::GetSingleton(), [&](auto& plan, auto&, auto& self, auto& c, const auto& nodes) {
-            essb::res::SetSync(plan, self, (std::max)(0, count), c.in, nodes, false);
-        });
-        });
+        return QueueNative("SetSync", [count]() { SetSyncWork(count, false); });
+    }, false);
+}
+
+// Round 27 (G8): the share of the sync a switch or an open keeps (承接, 連斷, 永續, 三重奏: Papyrus's rules), added to
+// the count the switch task started again.
+void PapyrusKeepSync(RE::StaticFunctionTag*, std::int32_t count)
+{
+    Guard("KeepSync", [&]() -> bool {
+        if (count <= 0) {
+            return false;
+        }
+        return QueueNative("KeepSync", [count]() { SetSyncWork(count, true); });
     }, false);
 }
 
@@ -5175,14 +5917,15 @@ void PapyrusDumpTargets(RE::StaticFunctionTag*, float radius)
                     continue;
                 }
                 const float d = actor->GetPosition().GetDistance(player->GetPosition());
-                const std::int32_t marks = MarksOf(ReadBoard(*actor));
+                const essb::Board board = ReadBoard(*actor);
+                const std::int32_t marks = MarksOf(board);
                 if (d > radius || marks == 0) {
                     continue;
                 }
                 ++count;
                 std::string line;
                 for (int code = 2; code <= 19; ++code) {
-                    const int value = static_cast<int>(ReadCode(*actor, code) + 0.001f);
+                    const int value = static_cast<int>(ReadCode(board, code) + 0.001f);
                     if (value != 0) {
                         line += " s" + std::to_string(code) + "=" + std::to_string(value);
                     }
@@ -5280,6 +6023,7 @@ bool RegisterPapyrus(RE::BSScript::IVirtualMachine* vm)
         vm->RegisterFunction("CastProc", kClass, PapyrusCastProc);
         vm->RegisterFunction("FormEnter", kClass, PapyrusFormEnter);
         vm->RegisterFunction("SetSync", kClass, PapyrusSetSync);
+        vm->RegisterFunction("KeepSync", kClass, PapyrusKeepSync);   // round 27 (G8)
         vm->RegisterFunction("Trace", kClass, PapyrusTrace);   // round 26: the probe log's Papyrus lines
         return true;
     } catch (...) {
@@ -5378,21 +6122,21 @@ bool CheckRuntime(const SKSE::QueryInterface* skse)
 
 }  // namespace
 
+// Round 27 (G12): the plugin info first (Runtime.h Query), then the log (it decides nothing), then the runtime check.
 extern "C" __declspec(dllexport) bool SKSEPlugin_Query(const SKSE::QueryInterface* skse, SKSE::PluginInfo* info)
 {
-    try {
-        OpenLog();
-        if (!info) {
-            return false;
-        }
-        info->infoVersion = SKSE::PluginInfo::kVersion;
-        info->name = "ElementsSpellblade";
-        info->version = 24;
-        return CheckRuntime(skse);
-    } catch (...) {
-        Log("[ESSB][refuse] Query failed; native hit OFF");
-        return false;
-    }
+    return essb::rt::Query(
+        [info]() {
+            if (!info) {
+                return false;
+            }
+            info->infoVersion = SKSE::PluginInfo::kVersion;
+            info->name = "ElementsSpellblade";
+            info->version = 24;
+            return true;
+        },
+        []() { OpenLog(); },
+        [skse]() { return CheckRuntime(skse); });
 }
 
 extern "C" __declspec(dllexport) bool SKSEPlugin_Load(const SKSE::LoadInterface* skse)

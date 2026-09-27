@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(ElementsSpellblade VERSION 0.26.3 LANGUAGES CXX)
+project(ElementsSpellblade VERSION 0.27.1 LANGUAGES CXX)
 if(NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   message(FATAL_ERROR "MSVC x64 is required")
 endif()
@@ -69,3 +69,15 @@ add_executable(trace_test tests/trace_test.cpp)
 target_include_directories(trace_test PRIVATE include deps/json/single_include)
 target_compile_options(trace_test PRIVATE /W4 /WX /EHsc /utf-8 /bigobj)
 add_test(NAME probe_log COMMAND trace_test "${CMAKE_CURRENT_SOURCE_DIR}/../build/fix26-trace-format.json" "${CMAKE_CURRENT_SOURCE_DIR}/../build/fix26-trace-sample.log")
+# Round 27: the engine glue without the engine (Runtime.h, Registry.h) -- task scopes, the session and the new-game path, the
+# log and Query, the SEH verdict, the input gate, the ModEvent text, the effect registry (two threads), the hurt queue.
+add_executable(runtime_test tests/runtime_test.cpp)
+target_include_directories(runtime_test PRIVATE include deps/json/single_include)
+target_compile_options(runtime_test PRIVATE /W4 /WX /EHsc /utf-8 /bigobj)
+add_test(NAME runtime COMMAND runtime_test)
+# Round 27: hand anchors for the damage sums at level 100 / 節點倍率 5 / every line (G1), the open's counts (G3), 熔斷's
+# formless fuse (G4) and a 24-target burst (B-small), on the real planners.
+add_executable(anchor_test tests/anchor_test.cpp)
+target_include_directories(anchor_test PRIVATE include deps/json/single_include)
+target_compile_options(anchor_test PRIVATE /W4 /WX /EHsc /utf-8 /bigobj)
+add_test(NAME anchors COMMAND anchor_test)

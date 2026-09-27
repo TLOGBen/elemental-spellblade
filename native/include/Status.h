@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <array>
+#include <vector>
 #include <cstdint>
 
 namespace essb {
@@ -210,12 +211,15 @@ struct StatusOp {
 };
 
 // Round 24 (N5): a hit, a burst or a death carries its reaction bodies and their range scans in the same plan.
-inline constexpr int kMaxStatusOps = 512;
+// Round 27 (B-small): the ops grow on the heap up to kMaxStatusOps (a 24-target burst with two marks each and every fusion
+// node needs a few thousand; 512 fixed slots made ~12 marked enemies fault the DLL). Past the cap an op is dropped and
+// `overflow` says so: the executor logs it and runs the rest -- a plan never faults the DLL.
+inline constexpr int kMaxStatusOps = 8192;
 
 struct StatusPlan {
-    std::array<StatusOp, kMaxStatusOps> ops{};
+    std::vector<StatusOp> ops;
     int count = 0;
-    bool overflow = false;  // more ops than fit: the handler faults rather than silently dropping one
+    bool overflow = false;  // more ops than fit: the rest was dropped (logged by the executor)
     bool consumeKillStreak = false;
     // Round 24 (N5): the crowd member the rules being run act on (Reactions.h Bodies::On); every op pushed while it is
     // set and has no `at` of its own is stamped with it.
@@ -227,7 +231,12 @@ struct StatusPlan {
             op.at = at;
         }
         if (count < kMaxStatusOps) {
-            ops[count++] = op;
+            if (count < static_cast<int>(ops.size())) {
+                ops[static_cast<std::size_t>(count)] = op;
+            } else {
+                ops.push_back(op);
+            }
+            ++count;
         } else {
             overflow = true;
         }
@@ -372,7 +381,7 @@ inline constexpr float kPoisonMax = 15.0f;          // 上限 15 秒
 inline constexpr int kMiasmaDoses = 5;              // 中毒 ≥5 劑時瘴氣（傳染門檻：1 劑）
 inline constexpr float kMiasmaRate = 0.5f;          // 瘴氣：每秒傳 0.5 劑給 3 公尺內的敵人（催毒時 1 劑）
 inline constexpr float kMiasmaRateCatalysed = 1.0f;
-inline constexpr float kMiasmaPerPoint = 0.05f;     // 持續專精主線：瘴氣每秒傳遞劑量 +0.05／點（×NodeScale）
+inline constexpr float kMiasmaPerPoint = 0.05f;     // 持續專精主線：瘴氣每秒傳遞劑量 +0.05／點（劑量：不吃節點倍率，round 27 G5）
 inline constexpr float kMiasmaRadius = 210.0f;      // 3 公尺
 inline constexpr float kSpreadFloor = 12.0f;        // 2.7 擴散一劑：d' = max(d - t, 12)
 inline constexpr float kCatalyze = 2.0f;            // 催毒：剩餘期間強度 ×2（潰爛 ×3）
@@ -509,6 +518,15 @@ constexpr float PerBleedLayer(const Config& c, const Tuning& t, const Nodes& nod
         per *= n3::kStanch;   // 止血：於套用血痕當下依你目前血位寫入強度
     }
     return per;
+}
+
+// Round 27b (review B N5): while catalysed the poison's M_mod is 1 + 每劑傷害 + 催毒期間中毒傷害 (one sum); the per-dose
+// strength carries 1 + 每劑, so the catalysed strength is that × (1 + 每劑 + 催毒) / (1 + 每劑).
+template <NodeReader Nodes>
+constexpr float CatalysedLine(const Tuning& t, const Nodes& nodes)
+{
+    const float dose = Pct(t, nodes.Rank(node::kPoisonDoseDamage), 0.02f);
+    return (1.0f + dose + Pct(t, nodes.Rank(node::kSignature[kPoison]), 0.03f)) / (1.0f + dose);
 }
 
 // Whole doses of the poison on `b`, counted in base doses: a catalysed poison's strength carries the 催毒 multiplier
@@ -950,7 +968,8 @@ constexpr float MiasmaDoses(const Board& source, const StatusInputs& in, const N
         return 0.0f;
     }
     const float rate = source.Has(StatusKind::kCatalyzed) ? n3::kMiasmaRateCatalysed : n3::kMiasmaRate;
-    return rate + Pct(*in.tuning, nodes.Rank(node::kPoisonMiasmaRate), n3::kMiasmaPerPoint);
+    // Round 27 (G5): a dose rate is a count (v0.4 3「層數…不吃這個倍率」; fix6-classification: unchanged) -- no NodeScale.
+    return rate + static_cast<float>(nodes.Rank(node::kPoisonMiasmaRate)) * n3::kMiasmaPerPoint;
 }
 
 // 瘟疫 (5.10 持續傳奇主線): at sync stage 3 a poisoned target spreads 1 dose to the nearest enemy within 3 m, 5% a
@@ -1724,8 +1743,11 @@ constexpr float WindSneakExtra(bool sneak, const Board& self, const Nodes& nodes
 // same hit cut (0 none): 血引 and 聖引 act on the open that follows their end.
 template <NodeReader Nodes, RandomSource Rng>
 constexpr void PlanOpenState(StatusPlan& plan, int element, float mult, int cutFrom, Board& target, Board& self,
-    const StatusInputs& in, const Nodes& nodes, Rng& rng)
+    const StatusInputs& in, const Nodes& nodes, Rng& rng, float stacks = -1.0f)
 {
+    if (stacks < 0.0f) {
+        stacks = mult;
+    }
     const Tuning& t = *in.tuning;
     const Config& c = *in.config;
     const Writer tw{ plan, target, Who::kTarget };
@@ -1764,7 +1786,7 @@ constexpr void PlanOpenState(StatusPlan& plan, int element, float mult, int cutF
                 rule::Freeze(plan, target, rule::FrozenSeconds(t, nodes), 1.0f, nodes);   // 絕霜
             }
         } else {
-            const float amount = static_cast<float>(n3::kFreezeOpen + nodes.Rank(node::kFrostOpenFreeze) / 3) * mult;
+            const float amount = static_cast<float>(n3::kFreezeOpen + nodes.Rank(node::kFrostOpenFreeze) / 3) * stacks;   // round 27 (G3)
             rule::AddFreeze(plan, target, amount, false, in, nodes, rng);   // 霜結：凍結 +3（開印凍結 +1／每 3 點）
         }
         // 霜結的減速 25% 3 秒 is the open body in Papyrus. 霜鎖：開印目標 3 秒內移速 -30%；已在減速上限時改為凍結 +1.
@@ -1793,7 +1815,7 @@ constexpr void PlanOpenState(StatusPlan& plan, int element, float mult, int cutF
             const int zone = BloodZone(in.self);   // 深血痕：高血區 +2、中血區 +1（吸血在 Papyrus 開印本體）
             layers += zone == 1 ? 2 : zone == 2 ? 1 : 0;
         }
-        rule::AddBleed(plan, target, RoundStochastic(static_cast<float>(layers) * mult, rng), in, nodes);
+        rule::AddBleed(plan, target, RoundStochastic(static_cast<float>(layers) * stacks, rng), in, nodes);   // round 27 (G3)
         break;
     }
     case kDivine: {
@@ -1803,7 +1825,7 @@ constexpr void PlanOpenState(StatusPlan& plan, int element, float mult, int cutF
             rule::SetHoly(plan, self, 2, in, nodes);
         }
         if (nodes.Has(node::kDivineMercy)) {   // 慈光：開印時懲戒 +2（不需要聖佑 II）
-            const int layers = std::min(n3::kPunishCap, self.Layers(StatusKind::kPunish) + n3::kMercy);
+            const int layers = std::min(res::PunishCap(nodes), self.Layers(StatusKind::kPunish) + n3::kMercy);   // round 27: 天誅 8
             Writer{ plan, self, Who::kPlayer }.Set(StatusKind::kPunish, static_cast<float>(layers), Scaled(t, n3::kPunish));
         }
         break;
@@ -1813,7 +1835,7 @@ constexpr void PlanOpenState(StatusPlan& plan, int element, float mult, int cutF
         if (nodes.Has(node::kPoisonToxicStart) && t.syncStage >= 3) {
             doses *= 2;   // 劇毒之始
         }
-        rule::AddDoses(plan, target, static_cast<float>(RoundStochastic(static_cast<float>(doses) * mult, rng)), in, nodes);
+        rule::AddDoses(plan, target, static_cast<float>(RoundStochastic(static_cast<float>(doses) * stacks, rng)), in, nodes);   // round 27 (G3)
         break;
     }
     case kWater: {
@@ -1826,7 +1848,7 @@ constexpr void PlanOpenState(StatusPlan& plan, int element, float mult, int cutF
         break;
     }
     case kDarkness:
-        rule::AddCurse(plan, target, RoundStochastic(static_cast<float>(n3::kCurseOpen + nodes.Rank(node::kDarkOpenCurse) / 5) * mult, rng), in, nodes);
+        rule::AddCurse(plan, target, RoundStochastic(static_cast<float>(n3::kCurseOpen + nodes.Rank(node::kDarkOpenCurse) / 5) * stacks, rng), in, nodes);   // round 27 (G3)
         if (nodes.Has(node::kDarkPhantom)) {
             // 幻影：開印後 3 秒目標對你的命中 30% 落空——目標帶幻影效果，你的 PERK（受到的傷害 ×0，條件：攻擊者帶幻影
             // 且 GetRandomPercent < 30）每一擊各擲一次（指揮官裁定 (c)）。
@@ -1869,16 +1891,24 @@ constexpr bool HasTakeoverLine(int element) noexcept
 //   blood      value1 bleed remaining (strength × seconds) the surge settles; the bleed is removed here
 //   divine     value1 聖佑 tier (judgment's holy bonus)
 // `allowed` is false inside the target's 1 s end cooldown: the mark still goes, nothing reacts.
-// 2.7 M_mod of an end: (1 + common 終焉 +1%／點 + 終焉再 +1%／點 [+ 同調三段時終焉 +1%／點 at sync 3]) × (1 + the
-// tree's 關閉新手主線 終焉 +2%／點), each ×NodeScale -- the same factors ESSBNodes.CommonEndMult × ESSBElem.EndMult use.
+// 2.7 M_mod of an end. Round 27 (G1, v0.4 2.7「M_mod＝1＋Σ」「所有加成合計後只乘一次」): the closing lines are ADDED --
+// 1 + common 終焉 +1%／點 + 終焉再 +1%／點 [+ 同調三段時終焉 +1%／點 at sync 3] + the tree's 關閉新手主線 終焉 +2%／點, each
+// ×NodeScale (was the product of the common part and the tree's part).
 template <NodeReader Nodes>
 constexpr float EndNodeMult(int element, const Tuning& t, const Nodes& nodes)
 {
-    float common = 1.0f + Pct(t, nodes.Rank(node::kCommonEnd), 0.01f) + Pct(t, nodes.Rank(node::kCommonEndAgain), 0.01f);
+    float lines = Pct(t, nodes.Rank(node::kCommonEnd), 0.01f) + Pct(t, nodes.Rank(node::kCommonEndAgain), 0.01f);
     if (t.syncStage >= 3) {
-        common += Pct(t, nodes.Rank(node::kCommonSyncEnd), 0.01f);
+        lines += Pct(t, nodes.Rank(node::kCommonSyncEnd), 0.01f);
     }
-    return common * (1.0f + Pct(t, nodes.Rank(node::kEndMain[element]), 0.02f));
+    return 1.0f + lines + Pct(t, nodes.Rank(node::kEndMain[element]), 0.02f);
+}
+
+// Round 27 (G1): an end move's own legend line (關閉傳奇主線：該元素終焉招式 +3%／點), a term of the same sum.
+template <NodeReader Nodes>
+constexpr float SignaturePct(int element, const Tuning& t, const Nodes& nodes)
+{
+    return IsNode(node::kSignature[element]) ? Pct(t, nodes.Rank(node::kSignature[element]), 0.03f) : 0.0f;
 }
 
 // Round 23 (N4): the self part of an end (after its event): the lightning charges it used (蓄餘 keeps them), 餘電、雷霆、
@@ -1936,8 +1966,11 @@ constexpr void PlanEndSelf(StatusPlan& plan, int element, EndReason reason, int 
 
 template <NodeReader Nodes, RandomSource Rng>
 constexpr void PlanEndBody(StatusPlan& plan, int element, EndReason reason, float mult, bool power, Board& target,
-    Board& self, const StatusInputs& in, const Nodes& nodes, Rng& rng, bool chain = false)
+    Board& self, const StatusInputs& in, const Nodes& nodes, Rng& rng, bool chain = false, float carried = 1.0f)
 {
+    // Round 27b (review B N1): a chain end's `mult` already carries the primary's M_mod (`carried`); a line of its own joins
+    // that sum ((carried + line) / carried), it never multiplies it again.
+    carried = carried > 0.0f ? carried : 1.0f;
     const Tuning& t = *in.tuning;
     const Writer tw{ plan, target, Who::kTarget };
     const Writer pw{ plan, self, Who::kPlayer };
@@ -2023,7 +2056,7 @@ constexpr void PlanEndBody(StatusPlan& plan, int element, EndReason reason, floa
     case kFrost:
         // 冰封融斷 (5.4, commander ruling): a fusion shatters a frozen target only with the branch.
         if (target.Has(StatusKind::kFrozen) && (reason != EndReason::kBurst || nodes.Has(node::kFrostBurstShatter))) {
-            rule::Shatter(plan, target, in, nodes, 2, settle);
+            rule::Shatter(plan, target, in, nodes, 2);   // round 27 (G1): % of max health -- only its own lines (銳碎、碎冰 +3%／點、冰晶)
             value[0] = 1.0f;
         }
         break;
@@ -2053,12 +2086,17 @@ constexpr void PlanEndBody(StatusPlan& plan, int element, EndReason reason, floa
             if (reason == EndReason::kBurst && nodes.Has(node::kPoisonSever)) {
                 factor = n3::kPoisonSever;   // round 24 (N5) 毒斷：融斷的催毒改為強度 ×4（取代 ×2／潰爛 ×3）
             }
-            factor *= 1.0f + Pct(t, nodes.Rank(node::kSignature[kPoison]), 0.03f);
+            // Round 27b (review B N5): ×2 (潰爛 ×3, 毒斷 ×4) exactly; 催毒期間中毒傷害 +3%／點 joins the poison's per-dose M_mod
+            // (1 + 每劑 + this line), it does not multiply on top.
+            factor *= CatalysedLine(t, nodes);
             const float remaining = target.poisonDot.Remaining() + (nodes.Has(node::kPoisonLinger) ? Scaled(t, n3::kPoisonLinger) : 0.0f);
-            // The marker keeps the whole multiplier on the base doses (a second catalysis multiplies it again).
-            const float whole = rule::PoisonFactor(target) * factor * settle;
+            // Round 27 (G1): the marker keeps the factor on the base doses; a second catalysis refreshes the time at the
+            // larger of the two factors -- it never multiplies again (was ×21 after a few ends, spread by 疫染); no end lines,
+            // guide or 協奏 (v0.4 2.7: m' = 2m).
+            const float base = target.poisonDot.magnitude / rule::PoisonFactor(target);
+            const float whole = std::max(rule::PoisonFactor(target), factor);
             tw.Set(StatusKind::kCatalyzed, whole, remaining);
-            const rule::Poison next{ target.poisonDot.magnitude * factor * settle, remaining };
+            const rule::Poison next{ base * whole, remaining };
             rule::SetPoison(plan, target, next, in, nodes);
         }
         break;
@@ -2082,7 +2120,10 @@ constexpr void PlanEndBody(StatusPlan& plan, int element, EndReason reason, floa
         break;
     case kDarkness: {
         // 死咒：3 秒引信（強度＝本次終焉倍率 × 死咒 +3%／點），到期結算（OnDeathCurseEnd）；冥印：暗印記被切時留 8 秒。
-        const float fuse = settle * (1.0f + Pct(t, nodes.Rank(node::kSignature[kDarkness]), 0.03f));
+        // Round 27 (G1): the fuse carries K × M_mod (1 + Σ, the 死咒 +3%／點 legend line added) for the B_max ×2.0 part; the
+        // lost-health part reads only its own line when it settles (OnDeathCurseEnd).
+        const float fuse = chain ? mult * (carried + SignaturePct(kDarkness, t, nodes)) / carried
+                                 : mult * (EndNodeMult(element, t, nodes) + SignaturePct(kDarkness, t, nodes));
         tw.Set(StatusKind::kDeathCurse, fuse, Scaled(t, n3::kDeathCurse));
         if (cut && nodes.Has(node::kDarkNether)) {
             tw.Set(StatusKind::kNether, 1.0f, Scaled(t, 8.0f));
@@ -2148,6 +2189,9 @@ constexpr HitStatus PlanStatusHit(StatusPlan& plan, int element, bool power, Boa
     const bool refresh = target.mark[element].has;
     bool linger = false;
     float openMult = 1.0f + Pct(t, nodes.Rank(node::kOpenEffect[element]), 0.03f);   // 開啟傳奇主線：開印效果 +3%／點
+    // Round 27 (G3, v0.4 3「時間、機率、範圍、層數…不吃這個倍率」): the layer / dose / freeze counts an open adds read the
+    // same line without NodeScale; only magnitudes (the soaked slow) take it.
+    float openStacks = 1.0f + static_cast<float>(nodes.Rank(node::kOpenEffect[element])) * 0.03f;
     if (!refresh) {
         const int others = target.MarkCount();
         const bool dual = nodes.Has(node::kCommonDualMark);
@@ -2159,6 +2203,7 @@ constexpr HitStatus PlanStatusHit(StatusPlan& plan, int element, bool power, Boa
             linger = old == kFrost && nodes.Has(node::kFrostLinger);           // 寒留
             if (old == kFire && nodes.Has(node::kFireEmber)) {
                 openMult *= n3::kEmber;                                        // 餘燼
+                openStacks *= n3::kEmber;
             }
             if (old == kWater && target.Has(StatusKind::kSoak) && target[StatusKind::kSoak].magnitude > 1.5f) {
                 tw.Set(StatusKind::kSoak, 1.0f, rule::SoakSeconds(t, nodes));
@@ -2168,8 +2213,8 @@ constexpr HitStatus PlanStatusHit(StatusPlan& plan, int element, bool power, Boa
     tw.Mark(element, rule::MarkSeconds(element, t, nodes, linger));
     if (!refresh && !target.Has(StatusKind::kOpenCooldown)) {
         tw.Set(StatusKind::kOpenCooldown, 1.0f, CooldownOf(t, n3::kReactionCooldown));
-        PlanOpenState(plan, element, openMult, result.cutFrom, target, self, in, nodes, rng);
-        plan.Push(MakeEvent(Event::kOpen, element, openMult, result.cutFrom, hitWork ? 1 : 0));
+        PlanOpenState(plan, element, openMult, result.cutFrom, target, self, in, nodes, rng, openStacks);
+        plan.Push(MakeEvent(Event::kOpen, element, openMult, result.cutFrom, hitWork ? 1 : 0, openStacks));   // 27b (B N2)
         result.opened = true;
     }
 
@@ -2248,13 +2293,17 @@ constexpr HitStatus PlanStatusHit(StatusPlan& plan, int element, bool power, Boa
         if (count >= needed) {
             tw.Clear(StatusKind::kJudge);
             float damage = 0.0f;
+            // Round 27 (G1, v0.4 2.7 D = … × M_mod × T): the tier's holy bonus (聖佑 I／II／III +10／20／35%) is T, a factor;
+            // the node lines are one sum -- 1 + 聖裁傷害 +2%／點 [+ 聖佑各階 +1%／點 × tier for the B_max part]. III is a
+            // percentage of max health and takes only its own line (聖裁傷害), not 聖佑各階.
+            const float judgeLine = Pct(t, nodes.Rank(node::kDivineJudgeDamage), 0.02f);   // 聖裁傷害 +2%／點
+            const float tierT = 1.0f + n3::kHolyProc[holy];
             if (holy >= 3) {
-                damage = in.body.healthMax * (in.body.vip ? n3::kJudgeTopVip : n3::kJudgeTop) * t.baseDamageMult;
+                damage = in.body.healthMax * (in.body.vip ? n3::kJudgeTopVip : n3::kJudgeTop) * t.baseDamageMult * tierT * (1.0f + judgeLine);
             } else {
-                damage = c.damage[kDivine][1] * n3::kJudgeBase * ReactionScale(kDivine, t, in.player, nodes);
+                damage = c.damage[kDivine][1] * n3::kJudgeBase * ReactionScale(kDivine, t, in.player, nodes) * tierT *
+                         (1.0f + Pct(t, nodes.Rank(node::kDivineHolyBonus), 0.01f) * static_cast<float>(holy) + judgeLine);
             }
-            damage *= 1.0f + n3::kHolyProc[holy] + Pct(t, nodes.Rank(node::kDivineHolyBonus), 0.01f) * static_cast<float>(holy);
-            damage *= 1.0f + Pct(t, nodes.Rank(node::kDivineJudgeDamage), 0.02f);   // 聖裁傷害 +2%／點
             const bool prey = in.body.undeadOrDaedra || (nodes.Has(node::kDivineStigma) && target.mark[kDivine].has);
             if (prey) {
                 damage *= n3::kPrey;
@@ -2367,7 +2416,12 @@ constexpr void OnDeathCurseEnd(StatusPlan& plan, float fuseMult, Board& target, 
         tw.Clear(StatusKind::kCurse);
     }
     const float lost = std::max(0.0f, in.body.healthMax - in.body.health);
-    const float damage = (bMax * n3::kDeathCurseBase * ReactionScale(kDarkness, t, in.player, nodes) + lost * ratio) * fuseMult;
+    // Round 27 (G1): the lost-health part (15%, +0.5%／點 死咒的已損失生命係數, 噬咒) takes only its own lines -- not the
+    // end lines, the guide or 協奏 the fuse carries for the B_max ×2.0 part.
+    const float vulnerability = ReactionVulnerability(target, self, t, nodes);
+    const float damage = bMax * n3::kDeathCurseBase * ReactionScale(kDarkness, t, in.player, nodes) * fuseMult + lost * ratio * vulnerability;
+    // B-small (round 27): 冥召／亡魂 read this marker at the death the settlement may cause (set before the damage, like 火葬).
+    Writer{ plan, target, Who::kTarget }.Set(StatusKind::kCurseKill, 1.0f, 1.0f);
     plan.Push(Amount(Op::kDamage, damage, kDarkness));
     if (nodes.Has(node::kDarkGlutton)) {
         plan.Push(Amount(Op::kHeal, bMax * t.multRecovery));
@@ -2387,11 +2441,35 @@ constexpr void OnHallucinationEnd(StatusPlan& plan, Board& target, const StatusI
 // The white-hot fuse (or 熔燒) ran out without a vent: 熔爐 turns white-hot into 熔燒 for 6 s more; otherwise overheat:
 // pay 10% of max health on the cost path (熔身: pay nothing, 10 s of 熔身 instead), heat to zero (熔心: 微熱). The
 // 15 m detonation of fire-marked targets is a range scan (N5).
+// 洩壓 at white-hot or above (leaving the fire form, the auto-vent, round 27 G4's fuse running out with no fire form): the
+// tier is recorded for the next detonation (爆燃照熱度算), 熔身 and 火浴 end, the heat goes to 餘壓's 灼熱 (the source for 2 s
+// more), 熔心's 微熱 or 0.
+template <NodeReader Nodes>
+constexpr void VentHeat(StatusPlan& plan, Board& self, int tier, const StatusInputs& in, const Nodes& nodes)
+{
+    const Writer pw{ plan, self, Who::kPlayer };
+    pw.Set(StatusKind::kVentedHeat, static_cast<float>(tier), Scaled(*in.tuning, 30.0f));
+    pw.Clear(StatusKind::kMoltenBody);
+    pw.Clear(StatusKind::kFireBath);
+    if (nodes.Has(node::kFireResidualPressure)) {
+        rule::SetHeat(plan, self, 2, in, nodes);
+        pw.Set(StatusKind::kSourceLinger, 1.0f, Scaled(*in.tuning, n3::kSourceLinger));
+    } else {
+        rule::SetHeat(plan, self, nodes.Has(node::kFireMoltenCore) ? 1 : 0, in, nodes);
+    }
+}
+
 template <NodeReader Nodes>
 constexpr void OnFuseEnd(StatusPlan& plan, int tier, Board& self, const StatusInputs& in, const Nodes& nodes)
 {
     const Writer pw{ plan, self, Who::kPlayer };
     self[HeatKind(tier)] = Slot{};
+    if (in.n4 && in.formElement != kFire) {
+        // Round 27 (G4): 熔斷 kept the heat past the form; its fuse running out with no fire form counts as a vent (洩壓:
+        // the next detonation reads the tier, no 過熱 and no 10% cost).
+        VentHeat(plan, self, tier, in, nodes);
+        return;
+    }
     if (tier == 3 && nodes.Has(node::kFireForge)) {
         rule::SetHeat(plan, self, 4, in, nodes);
         return;
@@ -2420,15 +2498,7 @@ constexpr void OnFormLeave(StatusPlan& plan, int element, bool burst, Board& sel
     } else if (element == kFire) {
         const int tier = HeatTier(self);
         if (tier >= 3) {
-            pw.Set(StatusKind::kVentedHeat, static_cast<float>(tier), Scaled(*in.tuning, 30.0f));
-            pw.Clear(StatusKind::kMoltenBody);
-            pw.Clear(StatusKind::kFireBath);
-            if (nodes.Has(node::kFireResidualPressure)) {
-                rule::SetHeat(plan, self, 2, in, nodes);
-                pw.Set(StatusKind::kSourceLinger, 1.0f, Scaled(*in.tuning, n3::kSourceLinger));
-            } else {
-                rule::SetHeat(plan, self, nodes.Has(node::kFireMoltenCore) ? 1 : 0, in, nodes);
-            }
+            VentHeat(plan, self, tier, in, nodes);
         } else {
             rule::SetHeat(plan, self, 0, in, nodes);
         }
@@ -2467,6 +2537,18 @@ struct FireSource {
     float perEnemy = 0.0f;   // damage override per enemy
     float cost = 0.0f;       // your health paid this second (the cost path)
 };
+
+// Round 27b (review B N3): the source burns in the fire form, or in 餘壓's 2 s after a vent (a close vents too); its
+// health cost is paid only in the fire form at 白熱.
+constexpr bool FireSourceBurns(bool fireForm, const Board& self) noexcept
+{
+    return fireForm || self.Has(StatusKind::kSourceLinger);
+}
+
+constexpr bool FireSourceCosts(bool fireForm, int tier) noexcept
+{
+    return fireForm && tier >= 3;
+}
 
 template <NodeReader Nodes>
 constexpr FireSource PlanFireSource(const Board& self, const StatusInputs& in, const Nodes& nodes)

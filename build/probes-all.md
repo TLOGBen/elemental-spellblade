@@ -1,4 +1,4 @@
-# 元素魔戰士（Elements Spellblade）整合測試卷 —— 探針 log 版（Round 26d，DLL 0.26.3）
+# 元素魔戰士（Elements Spellblade）整合測試卷 —— 探針 log 版（Round 27b，DLL 0.27.1）
 
 這一版的原則：**你只負責動手，不用看畫面、不用抄數字**。每個可以觀察的事件，DLL 都會寫一行進 log（MCM「除錯等級」**4：探針 log**）；你跑完把 log 交給指揮官，指揮官用 `build/probe-judge.py` 逐步判定。只有 log 真的看不到的東西（特效、NPC 逃跑、音效、UI 條、技能樹畫面、FPS）才留一句「目視」，請你回答「是／否」。
 
@@ -54,7 +54,7 @@
 ### 站 1：SETUP-1（DLL 版本與執行緒 X1）
 
 - **操作**：戶外晴天（`fw 81a`）。MCM →「查看 DLL 版本與狀態」按一次；按數字鍵區 1 開火焰、砍 NPC 一刀，用 Z（力量欄裝「【魔戰士】火焰形態」）關掉；讓 NPC 打你一下；讓一名會施法的 NPC 對你施一次法術；殺死一名 NPC；存檔再讀檔一次。
-- **log 判定**：`[ESSB][load] ElementsSpellblade 0.26.3`；`[T][pap] kind=mcm-button … version=0.26.3 active=True`；**全程不能出現 `[ESSB][OVERLAP]`**（兩個改引擎的工作同時在跑）或 `[ESSB][RNG]`（擲骰在 task 以外），出現＝FAIL；`[ESSB][X1]` 十種都在：`Papyrus native`、`queued native task`、`TESHitEvent`、`TESHitEvent (you are the target)`、`hurt task`（round 26 修好：它以前跟上一行共用旗標）、`TESActiveEffectApplyRemoveEvent`、`TESDeathEvent`、`timer task`、`TESSpellCastEvent`、`input sink`；缺任何一種＝FAIL，**整份停下**。
+- **log 判定**：`[ESSB][load] ElementsSpellblade 0.27.1`；`[T][pap] kind=mcm-button … version=0.27.1 active=True`；**全程不能出現 `[ESSB][OVERLAP]`**（兩個改引擎的工作同時在跑）、`[ESSB][OVERLAP-READ]`（round 27：有人在 task 外走效果清單）、`[ESSB][crash]`（round 27：DLL 裡發生不是自己存取違規的例外）或 `[ESSB][RNG]`（擲骰在 task 以外），出現＝FAIL；`[ESSB][X1]` 十種都在：`Papyrus native`、`queued native task`、`TESHitEvent`、`TESHitEvent (you are the target)`、`hurt task`（round 26 修好：它以前跟上一行共用旗標）、`TESActiveEffectApplyRemoveEvent`、`TESDeathEvent`、`timer task`、`TESSpellCastEvent`、`input sink`；缺任何一種＝FAIL，**整份停下**。
   **X2（round 26b，指揮官的執行緒裁定）**：每個 sink／task 每一條不同的呼叫鏈一行 `[ESSB][X2] <名稱> thread= window= same|DIFFERENT paused= havok= keys= frames=SkyrimSE.exe+0x…`。判定（round 26c）：命中 sink 只記下快照、不做任何引擎工作，它在哪條執行緒只記錄（這個載入順序裡 Precision／TDM 在視窗執行緒送命中事件）；**遊戲中（paused=0）** 所有 task（hit／timer／queued native／hurt／settle／death／spell-cast／input task）都要在 BSJobs 的 Post process（`post-process`）；輸入 sink＝`poll-controls`、UI task＝`ui-job`（或 `main-ui`）、Papyrus native＝`vm-job`；**暫停時（paused=1）** 都在視窗執行緒（`same`）或 `paused-*` 路徑。對不上＝FAIL；12 層內沒有認得的呼叫鏈＝EYES（判定器列出 frames 給指揮官）。X1 的 same／DIFFERENT 不再判定。
   另外：除錯等級 3 時，本模組造成的每一次擊殺、推力、跌倒、hazard 各記一行 `[ESSB][AB][L3] kind=kill|push|knock|hazard ref= tick= via= thread=`（給崩潰對照用，不判定）。
 - 目視：無（版本按鈕沒寫進 log 時才要看畫面）。
@@ -476,7 +476,7 @@
 | 4 | A-03 | 火焰樹上沒有「洩壓」、help 顯示已退役 | |
 | 20 | B-02 | 無元素重擊時你自己沒有受擊反應 | |
 | 28 | B-11 | 6 公尺外 speedmult 100、關冰霜後不再減速 | |
-| 40 | B-23 | 升段音效各一次、三段光暈 | |
+| 40 | B-23 | 升段音效各一次；武器光一段淡、二段中、三段亮（round 27：只有武器發光，身上沒有光暈） | |
 | 44 | B-26 | （可省）getav 數值 | |
 | 45 | B-27 | （可省）magicresist +10 | |
 | 48 | B-30 | 護甲術外觀消失、你的藥水還在 | |
@@ -489,8 +489,36 @@
 | 79 | D-16 | 5 秒內沒被發現 | |
 | 91 | E-13 | FPS 差不到 5%（兩組數字） | |
 
+### Round 27／27b 的目視題（在列出的站順便看，不用另外做）
+
+Round 27 把 v0.4 2.11／2.12 的視覺提示補回來；27b 依使用者決定把武器光換成**腳下的形態光圈**（完全不碰武器）。清單與沒做的項目在 `build/fix27_visuals.py` 的 INVENTORY。在這些站動手時順便看一眼：
+
+| 站 | ID | 目視題 | 是／否 |
+|---|---|---|---|
+| 1 | SETUP-1 | 開火焰：**腳下**出現火色光圈（武器上沒有任何光）；換冰霜：光圈即時換成冰色；關形態：光圈消失 | |
+| 1 | SETUP-1 | 同調 0／1／2／3 段各看一次：任何時候腳下只有**一個**光圈（原版每個學派只有一種光圈，四段目前長得一樣，只有升段時的一聲） | |
+| 1 | SETUP-1 | MCM「一般」頁「形態光圈」關掉：1 秒內光圈消失、形態照常；再打開：光圈回來 | |
+| 1 | SETUP-1 | 開著形態依序換成：有附魔的單手武器、法杖、弓、雙持、空手，各砍（射）一下：附魔照常生效、外觀沒有被改；收刀、換武器後光圈還在 | |
+| 1 | SETUP-1 | 光圈開著時存檔、讀檔：光圈還在，顏色正確 | |
+| 2 | A-01 | MCM「平衡」頁「冷卻」滑桿可以拉到 3.0 | |
+| 6 | A-05 | **關了馬上再開**：按一次熱鍵關形態，0.2 秒內再按一次開同一個形態（或另一個）：光圈回來；log 的 `[T][pap] kind=form-switch` 兩行 `turn=` 連號、第二行在第一行之後；有「永續／連斷」節點時同調保留照樣帶到新形態（`[T][switch]` 後的同調不是 0） | |
+| 12 | A-11 | 魔力歸零 2 秒關形態：畫面提示「魔力耗盡」，範圍內帶印記的目標照樣各炸一次（使用者 2026-09-27 決定：燃盡保留融斷） | |
+| 52 | B-33 | 開印那一下目標身上**閃一次**該元素的圖樣＋蓄力音；之後刷新印記**不再閃**；印記期間目標身上有持續的元素邊光 | |
+| 27 | B-10 | 凍結量表累積時目標身上有冰霜著色；冰晶每蓄一顆閃一下；碎冰時目標身上一次冰爆 | |
+| 41 | B-35 | 帶血痕的目標有血色著色；**每疊一層著色會重播一次**（已知：v0.4「0.5 秒內不重複套用」做不到，見 INVENTORY） | |
+| 48 | B-30 | 同一個目標同時帶兩種以上狀態時（例：浸濕＋水壓），兩種著色都看得到 | |
+| 49 | B-31 | 詛咒（暗）、催毒（毒）、死咒宣告（一次閃）的目標著色各看得到 | |
+| 30 | B-13 | 滿格重擊放電時目標身上一次雷爆（元素通用的爆炸） | |
+| 26 | B-08 | 過熱引爆時你身上一次火爆；白熱／熔燒時全身火焰 | |
+| 51 | B-32 | 帶星痕的目標身上有星霧著色 | |
+| 54 | B-37 | 融斷的最後一擊直接打死目標時，屍體上照樣有該元素的爆炸，**經驗值照樣給**（round 27 以前死掉就不放） | |
+| 81 | D-17 | 火域看得見火（油火，約 3 公尺）、冰原看得見冰面（原版冰面比 3 公尺小，已知） | |
+| 82 | D-18 | 聖域看得見治療光圈 | |
+| 84 | D-20 | 星域看得見光點、會照亮周圍；地裂、毒霧、死域只有放下時一次爆炸，之後看不見範圍（原版沒有合適的模型，已知未做） | |
+
 ## 回報方式
 
 1. 存檔、等 2 秒，把 `C:\Users\powde\OneDrive\Documents\My Games\Skyrim Special Edition\SKSE\ElementsSpellblade.log` 複製出來（不用截斷）。
+   如果同一個資料夾裡有**更新的** `ElementsSpellblade-<數字>.log`（上一個遊戲程序還沒結束時，DLL 改寫這個檔），請改交那一個。
 2. 上面「目視題」的答案。
 3. 中途當機或重做過哪些站，說一聲。

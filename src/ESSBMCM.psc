@@ -113,11 +113,14 @@ EndFunction
 Function ShowNativeStatus()
 	String version = ESSBNative.NativeVersion()
 	Bool active = ESSBNative.IsNativeHitActive()
+	String hint = ""
 	If version == ""
 		version = "未載入／版本拒絕"
+		; round 27 (G12)：原生函式沒綁上＝SKSE 在啟動時拒絕了這個 DLL（上一個遊戲程序還沒完全結束時最常見）。
+		hint = "\n請看 文件\\My Games\\Skyrim Special Edition\\SKSE\\skse64.log 裡 ElementsSpellblade 那一行有沒有 incompatible；\n並確認上一次的 SkyrimSE.exe 已完全結束（工作管理員裡沒有它）後再開遊戲。"
 	EndIf
 	If ESSBLog.Level() >= 4
 		ESSBNative.Trace("mcm-button", None, "button=ShowNativeStatus version=" + version + " active=" + active)   ; round 26：探針 log
 	EndIf
-	ShowMessage("ElementsSpellblade DLL：" + version + "\n命中附傷運作：" + active + "\n停用時不會退回 entry 51。", False, "確定", "")
+	ShowMessage("ElementsSpellblade DLL：" + version + "\n命中附傷運作：" + active + hint + "\n停用時不會退回 entry 51。", False, "確定", "")
 EndFunction

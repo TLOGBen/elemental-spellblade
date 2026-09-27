@@ -39,7 +39,7 @@ Function ToggleEnabled()
 EndFunction
 
 Function CycleDebugLevel()
-	DebugLevel.SetValueInt((DebugLevel.GetValueInt() + 1) % 4)
+	DebugLevel.SetValueInt((DebugLevel.GetValueInt() + 1) % 5)   ; round 27 (G15)：0～4（4 = 探針 log）
 	ESSBController ctl = GetController()
 	If ctl
 		ctl.RefreshRuntimeValues()

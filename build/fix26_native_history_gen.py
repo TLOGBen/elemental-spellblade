@@ -11,6 +11,9 @@ import hashlib, sys
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 SNAP = ROOT / '.codex/pre-fix26-snapshot'
+# Round 27: round 26 as shipped is the pre-fix27 snapshot; regenerating lists and hashes it (today's bytes are round 27's,
+# sealed by build/fix27_native_history.py).
+NOW = ROOT / '.codex/pre-fix27-snapshot'
 
 R26 = 'Round 26（探針 log）'
 B = '；Round 26b（指揮官的執行緒裁定，0.26.1）：'
@@ -122,18 +125,18 @@ VERIFIERS = ('fix6_verify.py', 'fix11_verify.py', 'fix16_verify.py', 'fix21_veri
 def covered():
     files = []
     for part in ('include', 'src', 'tests'):
-        files += sorted((ROOT / 'native' / part).glob('*.*'))
-    files += [ROOT / 'native/CMakeLists.txt', ROOT / 'native/build.py']
-    files += sorted(p for p in ROOT.glob('*.py'))
-    files += [ROOT / f'build/{n}' for n in ('fix19_native.py', 'fix21_records.py', 'fix22_records.py', 'fix22_reference.py',
+        files += sorted((NOW / 'native' / part).glob('*.*'))
+    files += [NOW / 'native/CMakeLists.txt', NOW / 'native/build.py']
+    files += sorted(p for p in NOW.glob('*.py'))
+    files += [NOW / f'build/{n}' for n in ('fix19_native.py', 'fix21_records.py', 'fix22_records.py', 'fix22_reference.py',
                                              'fix22_fixture.py', 'fix23_records.py', 'fix23_reference.py', 'fix23_fixture.py',
                                              'fix24_records.py', 'fix24_reference.py', 'fix24_fixture.py',
                                              'fix25_records.py', 'fix25_reference.py', 'fix25_fixture.py',
                                              'fix26_records.py', 'fix26_format.py', 'probe-judge.py')]
     # The verifiers too (a weakened check would otherwise pass unseen). This seal cannot hold itself;
     # build/fix26_native_history.py is regenerated last.
-    files += [ROOT / f'build/{n}' for n in VERIFIERS]
-    return [p.relative_to(ROOT).as_posix() for p in files]
+    files += [NOW / f'build/{n}' for n in VERIFIERS]
+    return [p.relative_to(NOW).as_posix() for p in files]
 
 
 def before_sha(rel):
@@ -144,7 +147,7 @@ def before_sha(rel):
 def main():
     rows = []
     for rel in covered():
-        now = hashlib.sha256((ROOT / rel).read_bytes()).hexdigest()
+        now = hashlib.sha256((NOW / rel).read_bytes()).hexdigest()
         before = before_sha(rel)
         if before == now:
             rows.append((rel, 'unchanged', now, ''))

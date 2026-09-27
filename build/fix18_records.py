@@ -59,7 +59,10 @@ def weapon_glows(b,add,fx_records,fxe):
                     v=bytes(v)
                 ss.append((k,v))
             add('EFSH',shader,f'ESSB_WeaponShader_{n}_{stage}',ss)
-            add('MGEF',WEAPON_EFFECT+i*3+stage,f'ESSB_SyncWeaponEffect_{n}_'+['Dim','Mid','Bright'][stage],[('FULL',Z(n+' weapon glow')),('DATA',b.mgef_data(b.MGEF_UTILITY_FLAGS|0x1000,1,casting=0,delivery=0,hit_shader=0,enchant_shader=b.own(shader)))])
+            # Round 27b (the user's decision 2026-09-27): the weapon glow is retired -- the form's feedback is the ring at your
+            # feet (build/fix27_records.py ESSB_FormRingEffect_<X>_<N>). These effects stay (FormIDs append-only) but are
+            # inert: no shader, no associated item, nothing on the weapon, and no form ability uses them.
+            add('MGEF',WEAPON_EFFECT+i*3+stage,f'ESSB_SyncWeaponEffect_{n}_'+['Dim','Mid','Bright'][stage],[('FULL',Z(n+' weapon glow (retired)')),('DATA',b.mgef_data(b.MGEF_UTILITY_FLAGS,1,casting=0,delivery=0))])
 
 
 def new_edids(b):

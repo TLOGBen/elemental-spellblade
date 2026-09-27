@@ -220,8 +220,9 @@ constexpr SelfResult PlanSelfHit(StatusPlan& plan, const SelfHit& hit, const Hit
         const bool full = before >= cap;
         int charges = before;
         bool discharged = false;
-        if (hit.power && full) {
+        if (hit.power && full && !repeat) {
             // 形態內滿格重擊放電 (2.1, 5.5): 必定暴擊 ×2.5、吃重擊倍率、清空電荷；雷印記不結束、不算終焉。
+            // Round 27 (G11): 風的多段觸發的重複不是一次重擊，永遠不算滿格重擊放電。
             plan.Push(res::Discharge(before, 1.0f, n4::kPower, n4::kPowerCrit));
             charges = 0;
             discharged = true;
@@ -415,6 +416,18 @@ template <NodeReader Nodes, RandomSource Rng>
 constexpr void PlanSelfOpen(StatusPlan& plan, int element, Board& target, Board& me, const StatusInputs& in, const Nodes& nodes, Rng& rng)
 {
     res::Blades(plan, res::OpenGains(plan, element, false, false, target, me, in, nodes, rng), 1.0f);
+}
+
+// Round 27b (review B N6): the killing blow's plan in corpse mode -- nothing of yours is spent on a corpse: no overload,
+// no 破式 (its resolve stays), no 滅法 silence (no resolve +1), and the echo marker waits for a living target.
+constexpr Plan CorpseHitPlan(Plan p) noexcept
+{
+    p.overloadAfter = -1.0f;
+    p.overloaded = false;
+    p.silenced = false;
+    p.breakUsed = false;
+    p.consumeEcho = false;
+    return p;
 }
 
 // A no-form hit (5.1): 戰意 (a no-form hit refreshes its 10 s; 滅法 silencing +1; 破式 uses all), the 超載 pool the plan

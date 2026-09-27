@@ -305,6 +305,12 @@ def check_guards(cpp):
         if not body or not (own or re.search(r'\b(Guard\(|IsActiveGuarded\(|SetWantedGuarded\(|return essb::nativeVersion)', body[1])):
             errors.append(f'ESSBNative.{name} runs outside Guard')
     guard = re.search(r'auto Guard\(.*?\n\}', cpp, re.S)
+    if guard and 'essb::rt::GuardRun(' in guard[0]:
+        # round 27 (T): the try / catch moved into native/include/Runtime.h GuardRun (runtime_test runs it); Guard hands it
+        # the SEH frame
+        runtime_h = (ROOT / 'native/include/Runtime.h').read_text(encoding='utf-8')
+        run = re.search(r'auto GuardRun\(.*?\n\}', runtime_h, re.S)
+        guard = [guard[0] + (run[0] if run and 'catch (...)' in run[0] else '')]
     if not guard or 'SehInvoke(' not in guard[0] or 'catch (...)' not in guard[0]:
         errors.append('Guard lacks the SEH frame or the C++ catch')
     return errors

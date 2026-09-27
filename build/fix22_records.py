@@ -108,6 +108,20 @@ AV_ATTACK_DAMAGE_MULT = 154  # RE::ActorValue::kAttackDamageMult (a multiplier, 
 AV_DAMAGE_RESIST = 39
 AV_MAGIC_RESIST = 44
 
+# Round 27 (G13): the status shadings (kind, the 2.11 record, persistent). build/fix27_visuals.py checks them in the ESP.
+STATUS_SHADERS = [
+    ('kFreeze', 'IceBloomNightmare.esl|_IP_FrostFXShader', True),
+    ('kCrystal', 'Natura.esp|DAR_WhiteMistFXS', False),
+    ('kBleed', 'Bloodmoon.esp|BLO_BleedingShader', True),
+    ('kCatalyzed', 'Venomancy.esp|_VENOM_RotfleshFXS', True),
+    ('kSoak', '{PMW}|ZZWaterloggedShader1', True),
+    ('kPressure', 'Natura.esp|DAR_BlueFXS', True),
+    ('kCurse', 'Necrom.esp|DAR_EldritchShadowMist', True),
+    ('kStar', 'Stellaris.esp|DAR_AstralSpellStarMistShader', True),
+    ('kDeathCurse', 'Abyss.esp|ABY_ShadowDamageImpactMist', False),
+]
+STATUS_VISUALS = {}
+
 DOT_MAX_SECONDS = 45          # 15 s poison / 10 s bleed x the MCM duration multiplier (up to 3)
 # (key, editor id suffix, label, element index, resist AV, description)
 DOT_KINDS = [
@@ -211,14 +225,23 @@ def add_records(b, add, fx, settings):
     wanted = 'vulcano.esp|dar_moltenfxshader'
     flames = next((fid for key, fid in fx.items() if key.lower() == wanted), 0) or fx[f'{b.FX_PLUGIN}|ZZShader_FireForm']
     shaders = {'kFrozen': fx[b.FX_STATUS_FROZEN], 'kHeat3': flames, 'kHeat4': flames, 'kMoltenBody': flames}
+    # Round 27 (G13, v0.4 2.11 / 2.12「元素狀態變化」): the target statuses the player must see carry the element's shading,
+    # from the records 2.11 names (already copied into the ESP by the FX front): persistent for the layered states
+    # (凍結、血痕、催毒、浸濕、水壓、詛咒、星痕), a one-off flash for 冰晶 (each crystal) and 死咒 (its declaration).
+    def pick(selector):
+        return next((fid for key, fid in fx.items() if key.casefold() == selector.casefold()), 0)
+    STATUS_VISUALS.clear()
+    for kind, selector, persist in STATUS_SHADERS:
+        STATUS_VISUALS[kind] = (pick(selector.replace('{PMW}', b.FX_PMW)), persist)
+        shaders[kind] = STATUS_VISUALS[kind][0]
     for kind, suffix, label, on_player, seconds, has_stub, text in KINDS:
         flags = SELF_FLAGS if on_player else TARGET_FLAGS
         if kind in ('kHeatDecay', 'kVentedHeat', 'kOpenBoost', 'kEndBoost', 'kBloodZone', 'kCrossCooldown',
                     'kFireDomainPlayer', 'kKillStreak', 'kHolyDecay', 'kSourceLinger'):
             flags = SELF_HIDDEN_FLAGS    # bookkeeping windows the player does not need to see
         shader = shaders.get(kind, 0)
-        if shader:
-            flags |= 0x1000               # FX persist: the shader stays for the effect's lifetime
+        if shader and STATUS_VISUALS.get(kind, (0, True))[1]:
+            flags |= 0x1000               # FX persist: the shader stays for the effect's lifetime (a flash plays once)
         delivery = 0 if on_player else 1
         ss = [stub] if has_stub else []
         ss += [('FULL', Z(label)),

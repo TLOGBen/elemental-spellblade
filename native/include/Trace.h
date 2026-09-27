@@ -14,6 +14,7 @@
 // With the level below 4 nothing here runs: every call site checks the level first (one float compare).
 // native/tests/trace_test.cpp runs the formatters, the buffer and the recording random source on the real planners.
 #include "Hurt.h"
+#include "Locks.h"
 #include "Status.h"
 #include "Timer.h"
 
@@ -150,6 +151,26 @@ inline std::string Cooldowns(const Board& board)
 
 // ---------------------------------------------------------------- one line
 
+// Round 27 (E12): the longest prefix of `s` no longer than `limit` bytes that does not end inside a UTF-8 character (a
+// name or a cut line never leaves half a character in the log).
+constexpr std::size_t Utf8Fit(std::string_view s, std::size_t limit) noexcept
+{
+    if (s.size() <= limit) {
+        return s.size();
+    }
+    // The kept bytes are s[0, limit); if the last character that starts in them needs more bytes than they hold, it goes.
+    std::size_t lead = limit;
+    for (int back = 0; back < 4 && lead > 0; ++back) {
+        --lead;
+        const auto u = static_cast<unsigned char>(s[lead]);
+        if ((u & 0xC0u) != 0x80u) {
+            const std::size_t need = u < 0x80u ? 1 : (u & 0xE0u) == 0xC0u ? 2 : (u & 0xF0u) == 0xE0u ? 3 : (u & 0xF8u) == 0xF0u ? 4 : 1;
+            return lead + need <= limit ? limit : lead;
+        }
+    }
+    return limit;
+}
+
 // The engine facts of one actor at the moment of the line: name(0xFormID)[h=cur/max m=cur/max s=cur/max].
 struct ActorFacts {
     bool has = false;
@@ -183,7 +204,8 @@ public:
             return *this;
         }
         if (n_ + static_cast<std::size_t>(wrote) > kMaxLine) {
-            n_ = kMaxLine;
+            n_ = Utf8Fit(std::string_view(buf_, kMaxLine + 1), kMaxLine);   // round 27 (E12): the kept part ends at a character edge
+            buf_[n_] = '\0';
             cut_ = true;
         } else {
             n_ += static_cast<std::size_t>(wrote);
@@ -199,10 +221,8 @@ public:
         }
         char name[64];
         std::size_t k = 0;
-        for (const char c : a.name) {
-            if (k + 1 >= sizeof(name)) {
-                break;
-            }
+        const std::size_t fit = Utf8Fit(a.name, sizeof(name) - 1);   // round 27 (E12): never half a character
+        for (const char c : a.name.substr(0, fit)) {
             const auto u = static_cast<unsigned char>(c);
             name[k++] = (u < 0x20 || c == '(' || c == ')' || c == '[' || c == ']' || c == '=') ? '_' : c;
         }
@@ -433,7 +453,7 @@ public:
             flushNow = true;
             return;
         }
-        Clean(line.substr(0, std::min<std::size_t>(line.size(), kMaxLine + 160)));
+        Clean(line.substr(0, Utf8Fit(line, kMaxLine + 160)));   // round 27 (E12)
         text_ += '\n';
         flushNow = text_.size() >= kFlushBytes;
     }
@@ -447,6 +467,20 @@ public:
         dropped = dropped_;
         dropped_ = 0;
         return out;
+    }
+
+    // Round 27 (E7): the exit's take -- never waits for the lock (a thread ExitProcess killed may hold it).
+    bool TryTake(std::string& out, std::uint64_t& dropped)
+    {
+        std::unique_lock lock(mutex_, std::try_to_lock);
+        if (!lock.owns_lock()) {
+            return false;
+        }
+        out.swap(text_);
+        text_.clear();
+        dropped = dropped_;
+        dropped_ = 0;
+        return true;
     }
 
     std::uint64_t Sequence() const
@@ -463,7 +497,7 @@ private:
         }
     }
 
-    mutable std::mutex mutex_;
+    mutable lk::Mutex mutex_;
     std::string text_;
     std::uint64_t seq_ = 0;
     std::uint64_t dropped_ = 0;

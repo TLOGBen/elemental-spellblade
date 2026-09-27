@@ -30,6 +30,15 @@
 
 namespace essb::engine {
 
+// Round 27b (review A N7, the order of G6): a killing blow's hit task runs after the death task (the death event comes
+// inside the damage, before the hit event). In corpse mode the hit task sends an event with the corpse as its subject
+// only for the cut end (its explosion, Papyrus's end effects); everything a death does -- 化灰, 亡者歸來, 連殺, a push,
+// a knockdown, a fear, a domain -- belongs to the death task, and an open on a corpse is nothing.
+constexpr bool CorpseSends(Event e) noexcept
+{
+    return e == Event::kEnd;
+}
+
 // One running effect as the engine adapter reports it.
 struct EffectView {
     std::uint32_t uid = 0;        // ActiveEffect::usUniqueID
@@ -151,19 +160,25 @@ void RunOp(E& engine, const StatusOp& op, const Tuning& tuning)
             traced = engine.TraceOp(op, l, on);
         }
     }
-    if (l.dispelSpell) {
+    // Round 27 (G6): a killing blow's corpse (the hit task found the target dead): nothing is dispelled from it or cast on it;
+    // the op's other parts (its event, costs on you, ops on the others) still run.
+    bool corpse = false;
+    if constexpr (requires { engine.IsCorpse(on); }) {
+        corpse = engine.IsCorpse(on);
+    }
+    if (l.dispelSpell && !corpse) {
         DispelWhere(engine, on, [&](const EffectView& v) { return v.spell == l.dispelSpell; });
     }
-    if (l.dispelEffect) {
+    if (l.dispelEffect && !corpse) {
         const int dispelled = DispelWhere(engine, on, [&](const EffectView& v) { return v.effect == l.dispelEffect; });
         if (op.op == Op::kBleedDot || op.op == Op::kPoisonDot) {
             engine.LogReapply(op, dispelled);   // probe N3-2: how many old DoT instances one re-apply took off (expect 1)
         }
     }
-    if (l.dispelEffect2) {
+    if (l.dispelEffect2 && !corpse) {
         DispelWhere(engine, on, [&](const EffectView& v) { return v.effect == l.dispelEffect2; });
     }
-    if (l.spell && !(op.op == Op::kDamage && engine.Dead(on))) {
+    if (l.spell && !corpse && !(op.op == Op::kDamage && engine.Dead(on))) {
         engine.Cast(on, l.spell, l.magnitude, l.effectiveness);
     }
     switch (op.op) {
@@ -192,6 +207,8 @@ void RunOp(E& engine, const StatusOp& op, const Tuning& tuning)
         }
         if (!BodyOnly(op.event)) {
             engine.Send(op);   // round 24: a body event left over (the body pass bounded) is never sent to Papyrus
+        } else if constexpr (requires { engine.BodyFx(op); }) {
+            engine.BodyFx(op);   // round 27 (G13): 碎冰、放電、過熱引爆 each place their element's burst (v0.4 2.12)
         }
         break;
     case Op::kSilence:

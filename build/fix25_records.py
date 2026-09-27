@@ -45,6 +45,11 @@ UNITS_PER_FOOT = 21.333333     # the engine's feet -> units (披風 radius = mag
 DOMAIN_RADIUS_UNITS = 210.0    # v0.4 2.9: 融斷後留下的領域 3 公尺
 DOMAIN_RADIUS_FEET = DOMAIN_RADIUS_UNITS / UNITS_PER_FOOT
 HAZARD_MODEL = 'Effects\\FXEmptyObject.nif'
+# Round 27 (G13) / 27b (the burning oil, larger than FXFire01New): the domains a vanilla hazard model fits are seen where they lie (fire, the frost plain, the holy ground,
+# the star field); the others keep the empty model (no vanilla hazard looks like them) and show the element's burst when
+# they are placed (Papyrus OnESSBDomain -> PlaceFx).
+HAZARD_MODELS = {1: 'Effects\\FXFireOilHazard.nif', 2: 'Magic\\IceHazard01.nif', 7: 'Magic\\HealingHazard.nif',
+                 11: 'Magic\\LightSpellHazard.nif'}
 HAZARD_FLAGS = 0x02 | 0x10     # Inherit Duration from Spawn Spell, Drop to Ground
 HAZARD_TARGET_INTERVAL = 0.3   # the vanilla hazards' interval
 HAZARD_LIMIT = 0               # 0 = the engine does not cap one hazard type (vanilla FireSpellHazard, IceHazard01)
@@ -231,7 +236,7 @@ def add_records(b, add):
         data = struct.pack('<IffffIIIII', HAZARD_LIMIT, DOMAIN_RADIUS_FEET, 5.0, 0.0, HAZARD_TARGET_INTERVAL, HAZARD_FLAGS,
                            own(hazard_spell_id(element)), 0, 0, 0)
         add('HAZD', hazard_id(element), hazard_edid(element), [
-            ('OBND', bytes(12)), ('FULL', Z(f'元素魔戰士：{label}')), ('MODL', Z(HAZARD_MODEL)), ('DATA', data)])
+            ('OBND', bytes(12)), ('FULL', Z(f'元素魔戰士：{label}')), ('MODL', Z(HAZARD_MODELS.get(element, HAZARD_MODEL))), ('DATA', data)])
         mgef = bytearray(b.mgef_data(SPAWN_FLAGS, ARCHETYPE_SPAWN_HAZARD, casting=1, delivery=1))
         struct.pack_into('<I', mgef, 8, own(hazard_id(element)))   # wbMGEFData: Assoc. Item at offset 8
         add('MGEF', spawn_effect_id(element), spawn_effect_edid(element), [
