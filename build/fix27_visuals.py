@@ -47,7 +47,9 @@ INVENTORY = [
      '未做：武器光已換成光圈；讓火的光圈在高熱度時變紅要另一個原版紅色光圈加熱度條件（熱度是你身上的效果，不是全域變數），不便宜；頂階一聲維持'),
     ('闇星期間暗色（武器光改暗）', '2.11 第 554 行；5.13 第 1467 行', '無', '從未做',
      '未做：武器光已換成光圈；闇星時星的光圈改暗要另一組光圈與闇星條件，列入下一輪'),
-    ('白熱／熔燒全身火焰', '2.12 第 574 行（你身上的資源唯一例外）', 'kHeat3／kHeat4／kMoltenBody 的 Vulcano DAR_MoltenFXShader', '沒掉', '保留'),
+    ('白熱／熔燒全身火焰', '2.12 第 574 行（你身上的資源唯一例外）', 'kHeat3／kHeat4／kMoltenBody 的 Vulcano DAR_MoltenFXShader 複本',
+     '0.27.3 實測看不到（複本的貼圖只在 Vulcano 的封存檔裡，外觀依賴別的模組）',
+     'round 27f：改用原版火焰斗篷——Skyrim.esm FireCloakFXShader（02ACD8）＋FXFireCloak01（02ACD7），FX Persist；建置檢查它不能再換成複本'),
     ('命中衝擊組、命中著色與音效', '2.12 第 568–569 行', '附傷 MGEF 的 Impact Data Set、Hit Shader、SNDD', '沒掉', '保留（build_v03 FX front）'),
     ('領域看得見範圍（火、冰、聖、星）', '不是 v0.4 的提示（v0.4 沒寫領域的視覺）；round 27 額外加的', 'HAZD 模型 FXEmptyObject（看不見）',
      'round 25 改用引擎 Hazard 時', 'round 27／27b：原版危險區模型——火 FXFireOilHazard（27b 換較大的油火）、冰 IceHazard01（原版沒有更大的冰地面模型，比 3 公尺小）、'

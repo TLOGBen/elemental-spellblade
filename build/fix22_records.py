@@ -108,12 +108,18 @@ AV_ATTACK_DAMAGE_MULT = 154  # RE::ActorValue::kAttackDamageMult (a multiplier, 
 AV_DAMAGE_RESIST = 39
 AV_MAGIC_RESIST = 44
 
+# Round 27f: the body fire of 白熱 / 熔燒 / 熔身 -- vanilla only (Skyrim.esm FireCloakFXShader and FXFireCloak01).
+HEAT_BODY_KINDS = ('kHeat3', 'kHeat4', 'kMoltenBody')
+HEAT_BODY_SHADER = 0x02ACD8
+HEAT_BODY_ART = 0x02ACD7
+
 # Round 27 (G13): the status shadings (kind, the 2.11 record, persistent). build/fix27_visuals.py checks them in the ESP.
 STATUS_SHADERS = [
     ('kFreeze', 'IceBloomNightmare.esl|_IP_FrostFXShader', True),
     ('kCrystal', 'Natura.esp|DAR_WhiteMistFXS', False),
     ('kBleed', 'Bloodmoon.esp|BLO_BleedingShader', True),
-    ('kCatalyzed', 'Venomancy.esp|_VENOM_RotfleshFXS', True),
+    # round 27f: _VENOM_RotfleshFXS names 'textures\\textures\\...' (broken in Venomancy itself) -- the poison mist instead
+    ('kCatalyzed', 'Venomancy.esp|_VENOM_PoisonMistFXShader', True),
     ('kSoak', '{PMW}|ZZWaterloggedShader1', True),
     ('kPressure', 'Natura.esp|DAR_BlueFXS', True),
     ('kCurse', 'Necrom.esp|DAR_EldritchShadowMist', True),
@@ -222,8 +228,10 @@ def add_records(b, add, fx, settings):
     stub = ('VMAD', b.vmad(STUB_SCRIPT, {}))
     # v0.4 2.11: 冰封 has its own pale film for its 3 seconds; 白熱／熔燒 show full-body flames (Vulcano, falling back
     # to Phenderix's fire form shader when Vulcano is not installed).
-    wanted = 'vulcano.esp|dar_moltenfxshader'
-    flames = next((fid for key, fid in fx.items() if key.lower() == wanted), 0) or fx[f'{b.FX_PLUGIN}|ZZShader_FireForm']
+    # Round 27f (0.27.5, the in-game report: no body fire at 白熱): the copy of Vulcano's DAR_MoltenFXShader named
+    # textures only Vulcano's archive has; the body fire of 白熱 / 熔燒 / 熔身 (v0.4 2.12: the one visual on you) is now
+    # the vanilla Flame Cloak's -- its shader (Skyrim.esm FireCloakFXShader) and its flame art (FXFireCloak01).
+    flames = b.ref('Skyrim.esm', HEAT_BODY_SHADER)
     shaders = {'kFrozen': fx[b.FX_STATUS_FROZEN], 'kHeat3': flames, 'kHeat4': flames, 'kMoltenBody': flames}
     # Round 27 (G13, v0.4 2.11 / 2.12「元素狀態變化」): the target statuses the player must see carry the element's shading,
     # from the records 2.11 names (already copied into the ESP by the FX front): persistent for the layered states
@@ -247,6 +255,9 @@ def add_records(b, add, fx, settings):
         ss += [('FULL', Z(label)),
                ('DATA', b.mgef_data(flags, 1, casting=1, delivery=delivery, hit_shader=shader)),
                ('DNAM', Z(text))]
+        if kind in HEAT_BODY_KINDS:
+            ss = [(k, b.mgef_data(flags, 1, casting=1, delivery=delivery, hit_shader=shader,
+                                  hit_effect_art=b.ref('Skyrim.esm', HEAT_BODY_ART))) if k == 'DATA' else (k, v) for k, v in ss]
         add('MGEF', effect_id(kind), edid_effect(suffix), ss)
         # Record magnitude 0: a cast without an override (override 0) leaves 0 layers, so 0 means 0.
         efit = [('EFID', I(own(effect_id(kind)))), ('EFIT', struct.pack('<fII', 0.0, 0, int(seconds)))]

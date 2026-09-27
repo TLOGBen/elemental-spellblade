@@ -15,7 +15,7 @@ NATIVE = {
     'native/include/Locks.h': R + '27b（審查 A N4）：新純標頭：lk::Mutex（自己計數的鎖）與 EnterEngineLock／LeaveEngineLock，SehFilter 在持鎖時不吞例外',
     'build/fix23_reference.py': R + 'G7：參考模型的護血跟著護血池走；27b：end_body 帶 carried（B N1）',
     'build/fix22_verify.py': R + 'T：Guard 的 try／catch 搬進 Runtime.h GuardRun，檢查跟著讀它',
-    'build/probe-judge.py': R + 'SETUP-1 判 0.27.0（VERSION 常數）；[ESSB][OVERLAP-READ]（E1）與 [ESSB][crash]（E2）出現＝FAIL；27b：VERSION 0.27.1；27c：VERSION 0.27.2、BADMAG＝FAIL、SETUP-1 的 X1 改要 input task（G8 之後站 1 不再排 queued native task）；27d：VERSION 0.27.3；27e：VERSION 0.27.4',
+    'build/probe-judge.py': R + 'SETUP-1 判 0.27.0（VERSION 常數）；[ESSB][OVERLAP-READ]（E1）與 [ESSB][crash]（E2）出現＝FAIL；27b：VERSION 0.27.1；27c：VERSION 0.27.2、BADMAG＝FAIL、SETUP-1 的 X1 改要 input task（G8 之後站 1 不再排 queued native task）；27d：VERSION 0.27.3；27e：VERSION 0.27.4；27f：VERSION 0.27.5',
     'build/fix26_verify.py': R + '檢查跟著新寫法：sink 經 QueueTask、重疊計數在 Runtime.h Scope、配接器的 Dispel 多了屍體與剛結算的記錄；版本改成「一個值、不早於 0.26.3」（0.27.0 由 fix27_verify 釘住）；27c：SETUP-1 樣本的 X1 用 input task',
     'build/fix25_verify.py': R + '檢查跟著新寫法：切換在 SwitchWork 送 ESSB_Switch（G8）、計時 task 經 QueueTask、GameStopped 讀 session；G13：火冰聖星領域的危險區模型；計時 task 的順序改由 PlanTick（tick.second）',
     'build/fix24_verify.py': R + '檢查跟著新寫法：task 經 QueueTask（帶 session 票的 AddTask）、死亡 sink 用 ReadMemberFrom、OnFormClosed 多了參數',
@@ -31,7 +31,7 @@ NATIVE = {
     'build_v03.py': R + 'G13：武器光改 Enhance Weapon＋ENCH、武器光的條件改讀自己的 ESSB_SyncStage＋ESSB_WeaponGlow、印記效果拿掉命中特效與音效'
                         '（開印改由閃現法術放）、MCM 武器光開關；G14：DLL 施放的法術加 No Absorb/Reflect（標記加 Ignore Resistance）；'
                         'G15：冷卻滑桿 0.25～3.0；全域變數 56 個；開印閃現是接觸施放；27b：形態能力改掛四個光圈、MCM「形態光圈」、送給別人的法術加 No Absorb；27e：perk 名稱與描述去掉規劃文件的註記（build/fix27_text.py）、退役節點描述不再寫版本號、除錯等級說明不寫檔名',
-    'build/fix22_records.py': R + 'G13：狀態的著色（凍結、冰晶閃、血痕、催毒、浸濕、水壓、詛咒、星痕、死咒閃），取自規劃 2.11 點名的紀錄',
+    'build/fix22_records.py': R + 'G13：狀態的著色（凍結、冰晶閃、血痕、催毒、浸濕、水壓、詛咒、星痕、死咒閃），取自規劃 2.11 點名的紀錄；27f：白熱／熔燒／熔身的全身火焰改用原版火焰斗篷（著色＋火焰 art）；催毒著色改 Venomancy 毒霧（Rotflesh 的貼圖路徑在原模組就壞了）',
     'build/fix22_reference.py': G1 + 'Python 參考模型跟著 Status.h：加法終結、碎冰、催化、暗蝕、死咒、聖裁 T、開印層數、慈光、瘴氣、洩熱；27b：參考模型跟著 C++（B N1 carried、B N2 開印事件的層數、B N5 催毒）',
     'build/fix22_fixture.py': R + 'G5：瘴氣錨點改 1.5（不乘 NodeScale）',
     'build/fix24_reference.py': G1 + '參考模型跟著 Reactions.h：簽名加法、BurstLines、終結本體、BurstMult 只剩 K、湧動 pct_scale、聖裁；錨點：霜終結 17.43、爆發 31.248；27b：參考模型跟著 C++（B N1 連鎖帶加總、B N2、B N4）',
@@ -47,7 +47,7 @@ NATIVE = {
     'native/include/StatusEngine.h': R + 'G6：RunOp 在引擎回報 IsCorpse 時不對屍體施放、驅散（事件、你身上的、其他人的照常）；27b：CorpseSends（A N7：屍體模式只送切掉的終焉事件）；27c：CheckOp／SaneValue——非有限、超過 ±1e7 或效力近 0 的操作整個丟掉',
     'native/include/Trace.h': E + 'E12：Utf8Fit（名字與被切斷的行不留半個字）；E7：Buffer::TryTake（結束時不等鎖）；27b：Buffer 用 lk::Mutex（A N4）',
     'native/include/TrueHud.h': E + 'E13：每次載入要求的 generation，舊的回呼作廢；關閉時舊要求的回答也作廢',
-    'native/include/ManifestData.h': '由 build/fix19_native.py 產生：' + R + '版本 0.27.0；G8：kEchoPendingSpell、kTwinWindowSpell、kTwinWindowRecordSeconds、node::kCommonTwin；27b：版本 0.27.1；27c：版本 0.27.2；27d：版本 0.27.3、kRingEffectFirst、kRingStages、glob::kWeaponGlow；27e：版本 0.27.4',
+    'native/include/ManifestData.h': '由 build/fix19_native.py 產生：' + R + '版本 0.27.0；G8：kEchoPendingSpell、kTwinWindowSpell、kTwinWindowRecordSeconds、node::kCommonTwin；27b：版本 0.27.1；27c：版本 0.27.2；27d：版本 0.27.3、kRingEffectFirst、kRingStages、glob::kWeaponGlow；27e：版本 0.27.4；27f：版本 0.27.5',
     'native/src/Plugin.cpp': R + 'E1–E13、G6–G12（見 build/native-verification.md Round 27）：登記表與 OVERLAP-READ 見證；SehFilter；QueueTask 帶 epoch；'
                              '受擊按幀與自己的生命帳；GateNow 不走 menuStack；EventText；ScanDomains 先收再做；null cell；ESL 拒載；'
                              '計時先走時鐘、關閉或故障時移除 TrueHUD 條；OpenLog 不丟例外、Query 先填 info；主選單結束 session；'
@@ -55,11 +55,11 @@ NATIVE = {
                              '形態切換由 DLL 在 task 裡做完（G8：SwitchWork、SwitchMarkers、CloseByMagicka、KeepSync）；T：DispelLive、Guard、TickCpp 的順序、BuildCrowd 的 engaged 讀取改用 Runtime.h；27b（DLL 0.27.1）：登記表的 handle 鍵、死亡第二事件與卸載 sink 的 Forget、世界時鐘、SEH 鎖深度與 stack overflow、遊戲就緒 task 的 sessionOnly、選單 sink 故障時仍結束 session、GetHandle 移到鎖外、自己的生命只記精確數值、屍體模式的事件過濾（A N2–N10）；火源條件（B N3）、屍體模式不花資源（B N6）、潛行紀錄（B N7）、過期終焉的剛結算印記（B N9）；27c（0.27.2）：Context 改用 Runtime.h 的版本；[ESSB][BADMAG]；27d（0.27.3）：RingWatch——除錯等級 ≥3 時光圈生效／失效各記一行 [ESSB][ring]；27d：SwitchWork 的節點讀取器改成具名變數（0.27.2 崩潰根因）、Executor 拒收暫存的 Tuning；27e（0.27.4）：NodeRank／NodeBranch／BranchesGained 原生函式（MCM 卡頓：技能樹階數不再靠 Papyrus 快取）、StatsMenu 開啟時記下分支、ESSB_Lethal 每秒最多一次',
     'native/tests/runtime_test.cpp': R + '新測試：task scope、session 與新遊戲、log 與 Query、SEH 判定、輸入閘門、事件文字與 UTF-8、登記表（兩條執行緒）、'
                                      '受擊佇列與自己的生命帳、屍體模式、剛結算的印記；T：驅散重找、原生守衛、計時順序、人群讀取；27b：Review27bChecks（A N2–N10、B N7、B N9）；27c：ContextChecks（回傳的複本讀自己的 tuning）；27d：RingChecks；27e：BranchChecks、LethalChecks',
-    'native/CMakeLists.txt': R + '版本 0.27.0；runtime_test（ctest runtime）、anchor_test（ctest anchors）；C4717 當錯誤；27b：版本 0.27.1；27c：版本 0.27.2；27d：版本 0.27.3；27d：Release 加 /Zi、/DEBUG:FULL /OPT:REF /OPT:ICF；27e：版本 0.27.4',
+    'native/CMakeLists.txt': R + '版本 0.27.0；runtime_test（ctest runtime）、anchor_test（ctest anchors）；C4717 當錯誤；27b：版本 0.27.1；27c：版本 0.27.2；27d：版本 0.27.3；27d：Release 加 /Zi、/DEBUG:FULL /OPT:REF /OPT:ICF；27e：版本 0.27.4；27f：版本 0.27.5',
     'native/build.py': R + 'runtime 與 anchors 測試的突變（E1、E2、E3、E4、G1、G3、G4、G6、G7、G9、G12、爆發溢位）、G15 的步驟鍵突變；'
                         '舊突變的原文跟著新寫法（對死者施放、濺射的 SurgeOn）；T 的 4 個突變（Runtime.h）；27b：A-N2／N3／N4／N7／N10、B-N1／N2／N3／N5／N6／N7／N9 突變；E2 突變原文跟著 locksHeld；27c：Context 與 SaneValue 的突變；27d：生命週期網（clang-cl -Werror=dangling* 檢查 Plugin.cpp 與所有測試、負向對照 lifetime_net.cpp 必須被抓到、asan_harness 在 AddressSanitizer 下跑）；27d：DLL 一律產生 PDB，GUID／age 對上 DLL 才複製到 build/pdb/（不出貨）',
     'build/fix19_native.py': R + 'NATIVE_VERSION 0.27.0；G8：manifest 的 spells 加 kEchoPendingSpell、kTwinWindowSpell，header 加 kTwinWindowRecordSeconds，'
-                             'ROUND27_NODES（雙生）；27b：NATIVE_VERSION 0.27.1；27c：NATIVE_VERSION 0.27.2；27d：NATIVE_VERSION 0.27.3、光圈效果編號、ESSB_WeaponGlow 進 manifest globals；27e：NATIVE_VERSION 0.27.4',
+                             'ROUND27_NODES（雙生）；27b：NATIVE_VERSION 0.27.1；27c：NATIVE_VERSION 0.27.2；27d：NATIVE_VERSION 0.27.3、光圈效果編號、ESSB_WeaponGlow 進 manifest globals；27e：NATIVE_VERSION 0.27.4；27f：NATIVE_VERSION 0.27.5',
     'build/fix26_format.py': R + 'G6：hit-late 行可帶 mode=corpse',
     'build/fix26_history.py': R + 'round 26 的 Papyrus 封印改讀 pre-fix27 快照（先過 round 27 的證明；由產生器重寫，表格不變）',
     'build/fix26_history_gen.py': R + '產生器讀 pre-fix27 快照的 src（round 26 出貨時的腳本）',
@@ -73,6 +73,6 @@ NATIVE = {
     'build/fix27_native_history_gen.py': R + 'round 27 原生封印產生器（新檔）',
     'build/fix27_native_history_template.py': R + 'round 27 原生封印樣板（新檔）',
     'build/fix27_reasons.py': R + '這份理由表（新檔）',
-    'build/fix27_verify.py': R + 'round 27 的驗證器（新檔）；27b：光圈的注入錯誤、版本 0.27.1、A-N2／B-N1／B-N2 突變必須存在；27c：版本 0.27.2、BADMAG 樣本、Context 與 BADMAG 的原始碼檢查；27d：版本 0.27.3；27d：包裡的 DLL 與 build/pdb 的 PDB 對得上、package/ 沒有 PDB；27e：版本 0.27.4、玩家文字不得含規劃文件的註記（perk 名稱／描述、CSF、MCM）',
-    'build/fix27_visuals.py': R + 'G13：視覺提示的盤點與建置檢查（新檔）；27b：光圈檢查、送給別人的法術檢查、INVENTORY 依審查 C 重寫；27d：光圈的 ARTO／模型檢查、不准再用 *CastBodyFX；INVENTORY 更新',
+    'build/fix27_verify.py': R + 'round 27 的驗證器（新檔）；27b：光圈的注入錯誤、版本 0.27.1、A-N2／B-N1／B-N2 突變必須存在；27c：版本 0.27.2、BADMAG 樣本、Context 與 BADMAG 的原始碼檢查；27d：版本 0.27.3；27d：包裡的 DLL 與 build/pdb 的 PDB 對得上、package/ 沒有 PDB；27e：版本 0.27.4、玩家文字不得含規劃文件的註記（perk 名稱／描述、CSF、MCM）；27f：版本 0.27.5；ASSETS：我們自己的視覺紀錄與身上的火要在原版封存檔裡、活效果用的複本要在已安裝的模組裡（兩個注入錯誤）',
+    'build/fix27_visuals.py': R + 'G13：視覺提示的盤點與建置檢查（新檔）；27b：光圈檢查、送給別人的法術檢查、INVENTORY 依審查 C 重寫；27d：光圈的 ARTO／模型檢查、不准再用 *CastBodyFX；INVENTORY 更新；27f：INVENTORY 的全身火焰一列',
 }

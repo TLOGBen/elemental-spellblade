@@ -1,4 +1,4 @@
-"""Round 27 / 27b / 27c (DLL 0.27.4): offline checks of what this round changed, each with injected faults.
+"""Round 27 / 27b / 27c (DLL 0.27.5): offline checks of what this round changed, each with injected faults.
 
   VISUALS    build/fix27_visuals.check on the written ESP (G13, G14; 27b): the form ring -- four constant self effects per
              element with a Skyrim.esm ring art, one per ESSB_SyncStage 0..3 under ESSB_WeaponGlow (形態光圈), no shader or
@@ -13,7 +13,7 @@
              noexcept; G8: the switch in SwitchWork (the burst on every close, also magicka empty -- the user's decision
              2026-09-27), OnFormOpened calls no FormEnter, KeepSync declared and registered; G15: a step key bound to a form
              is the hotkey only, CycleDebugLevel reaches 4. One fault each must fail.
-  VERSION    0.27.4 in CMakeLists, ManifestData.h, fix19_native, the packaged manifest and build/probe-judge.py VERSION.
+  VERSION    0.27.5 in CMakeLists, ManifestData.h, fix19_native, the packaged manifest and build/probe-judge.py VERSION.
   JUDGE      SETUP-1 fails on [ESSB][OVERLAP-READ], on [ESSB][crash] and on an older version (the round-26 hand sample).
   MUTANTS    the receipt: every runtime / anchor mutant failed its test, and the contract's mutations are there (G1, G6,
              G7, E1, E3, the burst's overflow, G15).
@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'build'), str(ROOT)]
 SNAPSHOT = ROOT / '.codex/pre-fix27-snapshot'
 SRC = ROOT / 'src'
-VERSION = '0.27.4'
+VERSION = '0.27.5'
 
 import fix27_visuals as vis
 
@@ -131,6 +131,70 @@ def check_visuals(b, records, ctl):
     ]
     missed = [label for label, errs in faults if not errs]
     return [f'visual fault not caught: {m}' for m in missed], [label for label, _ in faults]
+
+
+# ---------------------------------------------------------------- ASSETS (27f)
+
+RETIRED_VISUALS = ('ESSB_WeaponShader_', 'ESSB_SyncWeaponEffect_', 'ESSB_WeaponGlowEnch')   # round 27b: nothing uses them
+MGEF_VISUAL_FIELDS = (32, 36, 92, 96, 116)   # hit shader, enchant shader, casting art, hit effect art, enchant art
+
+
+def check_assets(b, records, vanilla, installed):
+    """Our own visual records resolve in the vanilla archives; the body fire is the vanilla Flame Cloak's; a copied
+    (ESSBFX_) visual that a live effect of ours uses resolves in the vanilla archives or the installed mods."""
+    import fix27_assets as fa
+    import fix22_records as hit22
+    errors = []
+    ours = {int(r.key.split('|')[1], 16): r for r in records if r.key.startswith(b.PLUGIN.casefold())}
+    for r in ours.values():
+        if r.sig not in ('EFSH', 'ARTO', 'HAZD', 'EXPL') or r.edid.startswith('ESSBFX_') or r.edid.startswith(RETIRED_VISUALS):
+            continue
+        for field, path in fa.record_paths(r):
+            if not vanilla.has(path):
+                errors.append(f'{r.edid} {field}: {path} is not in the vanilla archives')
+    used = set()
+    for r in ours.values():
+        if r.sig != 'MGEF' or r.edid.startswith(RETIRED_VISUALS):
+            continue
+        for off in MGEF_VISUAL_FIELDS:
+            fid = struct.unpack_from('<I', r.d['DATA'], off)[0]
+            if fid >> 24 == len(b.MASTERS) and (fid & 0xFFFFFF) in ours:
+                used.add(fid & 0xFFFFFF)
+    for local in sorted(used):
+        r = ours[local]
+        if not r.edid.startswith('ESSBFX_'):
+            continue
+        for field, path in fa.record_paths(r):
+            if vanilla.has(path):
+                continue
+            if installed is not None and not installed.has(path):
+                errors.append(f'{r.edid} {field}: {path} is in no installed archive or mod (a live effect of ours uses it)')
+    for kind in hit22.HEAT_BODY_KINDS:
+        suffix = next(s for k, s, *_ in hit22.KINDS if k == kind)
+        effect = next((r for r in ours.values() if r.edid == hit22.edid_effect(suffix)), None)
+        data = effect.d['DATA'] if effect else bytes(152)
+        shader, art = struct.unpack_from('<I', data, 32)[0], struct.unpack_from('<I', data, 96)[0]
+        if (shader, art) != (hit22.HEAT_BODY_SHADER, hit22.HEAT_BODY_ART) or not struct.unpack_from('<I', data, 0)[0] & 0x1000:
+            errors.append(f'{kind}: the body fire is not the vanilla Flame Cloak (Skyrim.esm 02ACD8 / 02ACD7, FX persist)')
+    return errors, len(used)
+
+
+def asset_faults(b, records, vanilla, installed):
+    """An ARTO of ours on a missing mesh, and the body fire back on a copied shader, must both fail."""
+    caught = []
+    import fix27_records as hit27
+    import fix22_records as hit22
+    ring = f'ESSB_FormRingArt_{hit27.ELEMENTS[0]}'
+    bad = _replace(records, ring, 'MODL', lambda v: b'Magic\\NoSuchRing.nif\x00')
+    if not check_assets(b, bad, vanilla, installed)[0]:
+        raise AssertionError('an ARTO on a missing mesh was not caught')
+    caught.append('an art object on a missing mesh')
+    heat = hit22.edid_effect(next(s for k, s, *_ in hit22.KINDS if k == 'kHeat3'))
+    bad = _replace(records, heat, 'DATA', _put(32, b.own(0x3000)))
+    if not check_assets(b, bad, vanilla, installed)[0]:
+        raise AssertionError('the body fire on a copied shader was not caught')
+    caught.append('the body fire on a copied shader')
+    return caught
 
 
 # ---------------------------------------------------------------- PLAYER TEXT (27e)
@@ -342,6 +406,17 @@ def run(b):
     records, _meta = b.read_plugin(b.OUT / b.PLUGIN)
     errors, visual_faults = check_visuals(b, records, sources['ESSBController.psc'])
     errors += check_player_text(b, records)
+    import fix27_assets
+    data_dir = ROOT.parents[1] / 'SkyrimSE/Data'
+    asset_rows = 0
+    asset_faults_caught = []
+    if data_dir.is_dir():
+        vanilla_files = fix27_assets.vanilla(data_dir)
+        installed_files = fix27_assets.installed(ROOT.parents[1])
+        asset_errors, asset_rows = check_assets(b, records, vanilla_files, installed_files)
+        errors += asset_errors
+        if not asset_errors:
+            asset_faults_caught = asset_faults(b, records, vanilla_files, installed_files)
     errors += check_sources(cpp, sources, sinks_h) + check_versions(b, j) + check_endings()
     judge_errors, judge_rows = check_judge(j)
     mutant_errors, mutants = check_mutants()
@@ -353,7 +428,8 @@ def run(b):
     history = fix27_history.self_check()
     import fix27_native_history
     native_history = fix27_native_history.self_check()
-    report = dict(visual_faults=visual_faults, source_faults=caught, text_faults=text_faults, judge=judge_rows, mutants=[m['name'] for m in mutants],
+    report = dict(visual_faults=visual_faults, source_faults=caught, text_faults=text_faults, asset_faults=asset_faults_caught,
+                  asset_copies_used=asset_rows, judge=judge_rows, mutants=[m['name'] for m in mutants],
                   history=history, native_history=native_history, inventory=[list(row) for row in vis.INVENTORY])
     (ROOT / 'build/fix27-check.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     print(f'FIX27 ok: visuals on the written ESP (the form ring: 4 vanilla-art effects per element, one per SyncStage, gated by 形態光圈, nothing on the weapon; '

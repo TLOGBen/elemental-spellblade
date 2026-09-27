@@ -530,3 +530,10 @@ TrueHUD 資源條的稽核（T1）找到的具體問題：
 - ESSB_Lethal 每秒最多一次（Runtime.h LethalDue；RealEngine::Send）。
 - fix21_identity：允許 NodeRank／NodeBranch／分支遮罩三行依座標讀（座標來自 ESSBNodes 依 v0.4 名稱的讀取）。
 - 建置：native/build.py exit 0（ctest 9/9、突變 98/98、LIFETIME NET ok、PDB ok：build/pdb/ElementsSpellblade-0.27.4.pdb）；build_v03.py exit 0。
+
+## Round 27f（DLL 0.27.5）：白熱的全身火焰與素材檢查
+
+- 查證（只讀）：ESSB_N3_Heat3Effect／Heat4Effect／MoltenBodyEffect 的 Hit Shader＝ESSBFX_DAR_MoltenFXShader（旗標 0x1C10，FX Persist 有）；它的 ICO2 Dareni\Effects\stardust2x4.dds、NAM8／NAM9 Dareni\gradients\gradash01.dds 不在原版 BSA，只在 MO2「新魔法-Vulcano」的 Vulcano - Textures.bsa（有啟用）。ESSBFX__VENOM_RotfleshFXS（催毒）的路徑是 textures	extures\effects\…（Venomancy 原檔就錯了，引擎前面再加 textures\ 找不到）。
+- 修正：fix22_records HEAT_BODY_KINDS 的 Hit Shader＝Skyrim.esm FireCloakFXShader（0x02ACD8，Effects\FXFireAtlas02.dds）、Hit Effect Art＝FXFireCloak01（0x02ACD7，Magic\FXFireCloak01.nif），FX Persist；kCatalyzed 改 _VENOM_PoisonMistFXShader。
+- build/fix27_assets.py：讀 BSA v104／v105 的名稱表（只讀標頭、資料夾紀錄與名稱區），原版＝SkyrimSE/Data 的 Skyrim - *.bsa（177,748 個檔）、已安裝＝MO2 normal 設定檔啟用的模組封存檔與散檔（只讀）。fix27_verify ASSETS：ESSB 自己的 EFSH／ARTO／HAZD／EXPL（退役的武器光除外）全部在原版；身上火焰必須是原版火焰斗篷；我們的 MGEF 用到的 ESSBFX_ 複本（51 個）在原版或已安裝的模組；注入錯誤：光圈 ARTO 指向不存在的模型、身上火焰換回複本，都被抓到。沒有 MO2 的機器只檢查原版那一半。
+- 建置：native/build.py exit 0（PDB ok：build/pdb/ElementsSpellblade-0.27.5.pdb）；build_v03.py exit 0。

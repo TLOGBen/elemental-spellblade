@@ -468,8 +468,8 @@ def x2_verdicts(log):
     return bad, eyes, rows
 
 
-# The DLL version this sheet judges (round 27e: 0.27.4). build/fix26_verify.py and build/fix27_verify.py build their samples with it.
-VERSION = '0.27.4'
+# The DLL version this sheet judges (round 27f: 0.27.5). build/fix26_verify.py and build/fix27_verify.py build their samples with it.
+VERSION = '0.27.5'
 
 
 @rule('SETUP-1')
