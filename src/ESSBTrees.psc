@@ -166,6 +166,8 @@ Function Setup()
 	EndIf
 	RefreshActive(CurrentTree())
 	CustomSkills_AliasExt.RegisterForCustomSkillIncrease(Self)
+	; round 27e：技能樹也可能從「Custom Skill Menu」直接開（不經過 OpenTree）；一直聽 StatsMenu 的關閉，好補扣分支的點數。
+	RegisterForMenu(MENU_NAME)
 	Ready = True
 	If Controller.CachedDebugLevel >= 1
 		Controller.LogEvent(1, "trees", "ready trees=" + TREE_COUNT + " api=" + CustomSkills.GetAPIVersion())
@@ -622,17 +624,26 @@ EndFunction
 
 ; 機制前線用：一次把「當前元素樹 + 無元素樹 + 通用樹」算進三個固定槽。
 ; 只在形態開／切／關與技能樹選單關閉時呼叫，不在命中路徑上。
+; round 27e：階數與分支改由 DLL 回答（ESSBController.Rank／Br → ESSBNative.NodeRank／NodeBranch），這裡只更新 13 棵樹的
+; 等級（G(L) 用），不再逐節點 HasPerk（以前一次最多約 3000 次原生呼叫，是 MCM 與技能樹選單變慢的主因）。
 Function RefreshActive(Int aiTree)
 	If !Controller || !Controller.IsCurrentController() || Controller.StateBroken
 		Return
 	EndIf
+	InitTables()
+	If Controller.StateBroken
+		Return
+	EndIf
 	Int i = 0
 	While i < TREE_COUNT
-		If !AllValid || !AllValid[i] || i == aiTree || i >= 11
-			RefreshTree(i)
-		EndIf
+		LevelCache[i] = TreeLevel(i)
 		i += 1
 	EndWhile
+	Controller.LevelMirror = LevelCache
+	Controller.NodeMirrorReady = True
+	If Controller.CachedDebugLevel >= 3
+		Controller.LogEvent(3, "trees", "levels refreshed (ranks are the DLL's)")
+	EndIf
 	Controller.RefreshSyncStage()
 EndFunction
 
@@ -827,12 +838,15 @@ Event OnMenuClose(String asMenuName)
 		EndIf
 		Return
 	EndIf
-	If asMenuName != MENU_NAME || PendingTree < 0
+	If asMenuName != MENU_NAME
+		Return
+	EndIf
+	If PendingTree < 0
+		ReconcileGained()   ; round 27e：從別處開的選單（Custom Skill Menu、原版技能選單）
 		Return
 	EndIf
 	OpeningMenu = False
 	SettingsBusy = True
-	UnregisterForMenu(MENU_NAME)
 	Int tree = PendingTree
 	PendingTree = -1
 	Reconcile(tree)
@@ -916,6 +930,65 @@ Function Reconcile(Int aiTree)
 	If Controller.CachedDebugLevel >= 1
 		Controller.LogEvent(1, "trees", "reconcile tree=" + aiTree + " branches=" + bought \
 			+ " refused=" + refused + " points=" + available)
+	EndIf
+EndFunction
+
+; round 27e：不是從 OpenTree 開的技能選單關閉時：DLL 在選單打開那一刻記下每棵樹每條路線已有的分支
+; （ESSBNative.BranchesGained 回傳之後新買的），每個新分支補扣 4 點，不夠就退回（跟 Reconcile 同一套規則）。
+Function ReconcileGained()
+	If !Controller || !Controller.IsCurrentController() || Controller.StateBroken
+		Return
+	EndIf
+	Actor player = ThePlayer()
+	If !player
+		Return
+	EndIf
+	Bool changed = False
+	Int tree = 0
+	While tree < TREE_COUNT
+		GlobalVariable points = PtsGlobals[tree]
+		Int route = 0
+		While route < 3 && points
+			Int gained = ESSBNative.BranchesGained(tree, route)
+			If gained != 0
+				Int available = points.GetValueInt()
+				Int tier = 0
+				While tier < TIER_COUNT
+					Int n = 0
+					While n < BRANCH_SLOTS
+						Int bit = Math.LeftShift(1, tier * 4 + n)
+						If Math.LogicalAnd(gained, bit) != 0
+							Perk branch = GetBranch(tree, route, tier, n)
+							If available >= BRANCH_COST - 1
+								available -= (BRANCH_COST - 1)
+							ElseIf branch
+								player.RemovePerk(branch)
+								available += 1
+								Debug.Notification("點數不足：" + TreeName(tree) + " 的分支已退回")
+							EndIf
+						EndIf
+						n += 1
+					EndWhile
+					tier += 1
+				EndWhile
+				If available < 0
+					available = 0
+				EndIf
+				points.SetValueInt(available)
+				changed = True
+			EndIf
+			route += 1
+		EndWhile
+		tree += 1
+	EndWhile
+	If changed
+		RefreshActive(CurrentTree())
+		If Controller.IsReadyUI()
+			Controller.RefreshAbilities()
+		EndIf
+		If Controller.CachedDebugLevel >= 1
+			Controller.LogEvent(1, "trees", "reconcile (menu opened elsewhere)")
+		EndIf
 	EndIf
 EndFunction
 

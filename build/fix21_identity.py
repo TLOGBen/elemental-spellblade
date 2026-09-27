@@ -641,6 +641,11 @@ CPP_ALLOWED = {
     ('hit_pipeline_test.cpp', 'essb::BranchId BranchOf(const json& slot)'): 'test: slot read from the generated wiring json',
     ('hit_pipeline_test.cpp', 'const essb::NodeId id = NodeOf(wiring.at("slots").at(name));'): 'test: generated slot',
     ('hit_pipeline_test.cpp', 'const essb::BranchId id = BranchOf(wiring.at("slots").at(name));'): 'test: generated slot',
+    # round 27e (0.27.4): Papyrus's generic node reader -- ESSBNative.NodeRank / NodeBranch / BranchesGained take the coordinates
+    # of ESSBNodes' reads, which this scan resolves by v0.4 name on the Papyrus side (ESSBController.Rank / Br forward them)
+    ('Plugin.cpp', 'if (nodes.Has(essb::BranchId{ tree, route, tier, index })) {'): 'the branch mask of a route (StatsMenu snapshot)',
+    ('Plugin.cpp', 'return MakeNodes(*player, FormIsActive()).Rank(essb::NodeId{ tree, route, tier });'): 'ESSBNative.NodeRank for ESSBNodes.Rank',
+    ('Plugin.cpp', 'return MakeNodes(*player, FormIsActive()).Has(essb::BranchId{ tree, route, tier, index });'): 'ESSBNative.NodeBranch for ESSBNodes.Br',
 }
 
 

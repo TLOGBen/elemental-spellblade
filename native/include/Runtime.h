@@ -414,6 +414,31 @@ inline std::string EventText(const std::array<float, 8>& a, bool push, std::int3
     }
 }
 
+// ---------------------------------------------------------------- (27e) branches bought in a skill menu (0.27.4)
+
+// One route's branches as bits (tier × 4 + index): the StatsMenu snapshot and the mask after it (a branch costs 5 points
+// and the Custom Skills Framework takes 1; ESSBTrees takes the other 4 for each bit gained).
+constexpr std::uint32_t BranchBit(int tier, int index) noexcept
+{
+    return (tier >= 0 && tier < 5 && index >= 0 && index < 4) ? (1u << (tier * 4 + index)) : 0u;
+}
+
+constexpr std::uint32_t Gained(std::uint32_t before, std::uint32_t now) noexcept
+{
+    return now & ~before;
+}
+
+// ---------------------------------------------------------------- (27e) the lethal event's pace (0.27.4)
+
+// A hit that leaves you at or below 0 without dying (god mode, an essential player, 神佑's deferred kill) sends ESSB_Lethal
+// at most once a second: every further hit in that second would only queue the same Papyrus event again.
+inline constexpr std::uint64_t kLethalEveryMs = 1000;
+
+constexpr bool LethalDue(std::uint64_t lastMs, std::uint64_t nowMs) noexcept
+{
+    return lastMs == 0 || nowMs < lastMs || nowMs - lastMs >= kLethalEveryMs;
+}
+
 // ---------------------------------------------------------------- (27d) the form ring's watch (0.27.3)
 
 // One of our effects by its local FormID: a form ring (ESSB_FormRingEffect_<X>_<stage>) or not.

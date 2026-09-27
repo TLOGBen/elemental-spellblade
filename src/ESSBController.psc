@@ -1203,44 +1203,20 @@ EndFunction
 
 ; ---------------------------------------------------------------- 節點框架的讀取入口
 
+; round 27e：階數與分支由 DLL 直接讀（ESSBNative.NodeRank／NodeBranch，一次原生呼叫）；以前要等 ESSBTrees 的快取
+; （每棵樹約 240 次原生呼叫，形態切換、MCM、選單關閉都重建一次）把 Papyrus 塞滿，MCM 與技能樹開很慢。
 Int Function Rank(Int aiTree, Int aiRoute, Int aiTier)
-	If StateBroken || !NodeMirrorReady || aiTree < 0 || aiTree > 12 || aiRoute < 0 || aiRoute > 2 || aiTier < 0 || aiTier > 4
+	If StateBroken || aiTree < 0 || aiTree > 12 || aiRoute < 0 || aiRoute > 2 || aiTier < 0 || aiTier > 4
 		Return 0
 	EndIf
-	If aiTree == 11 && aiRoute < 2 && FormActive.GetValueInt() == 1
-		Return 0
-	EndIf
-	Int i = aiTree * 15 + aiRoute * 5 + aiTier
-	If i < 120
-		Return RankCacheA[i]
-	EndIf
-	Return RankCacheB[i - 120]
+	Return ESSBNative.NodeRank(aiTree, aiRoute, aiTier)
 EndFunction
 
 Bool Function Br(Int aiTree, Int aiRoute, Int aiTier, Int aiIndex)
-	If StateBroken || !NodeMirrorReady || aiTree < 0 || aiTree > 12 || aiRoute < 0 || aiRoute > 2 || aiTier < 0 || aiTier > 4 || aiIndex < 0 || aiIndex > 3
+	If StateBroken || aiTree < 0 || aiTree > 12 || aiRoute < 0 || aiRoute > 2 || aiTier < 0 || aiTier > 4 || aiIndex < 0 || aiIndex > 3
 		Return False
 	EndIf
-	If aiTree == 11 && aiRoute < 2 && FormActive.GetValueInt() == 1
-		Return False
-	EndIf
-	Int i = aiTree * 15 + aiRoute * 5 + aiTier
-	Int bits = 0
-	If i < 120
-		bits = BranchCacheA[i]
-	Else
-		bits = BranchCacheB[i - 120]
-	EndIf
-	Int divisor = 1
-	If aiIndex == 1
-		divisor = 2
-	ElseIf aiIndex == 2
-		divisor = 4
-	ElseIf aiIndex == 3
-		divisor = 8
-	EndIf
-	Int quotient = bits / divisor
-	Return quotient % 2 == 1
+	Return ESSBNative.NodeBranch(aiTree, aiRoute, aiTier, aiIndex)
 EndFunction
 
 ; G(L) = 1 + 0.05 × 樹等級（規劃 2.7）。

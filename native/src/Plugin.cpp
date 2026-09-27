@@ -196,6 +196,10 @@ struct State {
     std::atomic<std::uint64_t> frame{};
     essb::rt::WorldClock world;   // round 27b (A N3): the game-world clock the effects' elapsed follows (the registry's)
     int ringSeen = -2;            // round 27d: the form ring the last watch logged (timer task only)
+    std::uint64_t lethalSentMs = 0;   // round 27e: the last ESSB_Lethal (tasks only)
+    // Round 27e: the branches owned when a StatsMenu opened (every tree, every route; a task writes, the natives read).
+    std::array<std::array<std::atomic<std::uint32_t>, 3>, 13> branchSnap{};
+    std::atomic_bool branchSnapReady{};
     essb::lk::Mutex overlapLock;
     std::vector<std::pair<const char*, const char*>> overlapsSeen;
     std::atomic_bool rngOutsideLogged{};
@@ -1659,6 +1663,14 @@ public:
                 }
             }
         }
+        // Round 27e (0.27.4): ESSB_Lethal at most once a second (a player who does not die would queue it on every hit).
+        if (op.event == essb::Event::kLethal) {
+            const std::uint64_t now = state.runningMs.load();
+            if (!essb::rt::LethalDue(state.lethalSentMs, now)) {
+                return;
+            }
+            state.lethalSentMs = now == 0 ? 1 : now;
+        }
         // Round 27b (A N7): in corpse mode only the cut end's event names the corpse (the death task does the rest).
         if (target_ && target_ == t_corpse && op.who == essb::Who::kTarget && op.at == 0 && !essb::engine::CorpseSends(op.event)) {
             if (TraceOn()) {
@@ -2878,6 +2890,8 @@ void HudReloadGuarded() noexcept
     }
 }
 
+void SnapshotBranches(bool live) noexcept;   // round 27e: below (the StatsMenu snapshot)
+
 // TrueHUD's menu (re)opening: its OnClose removed every custom widget, so the bars are loaded and added again.
 void OnMenuCpp(const RE::MenuOpenCloseEvent& ev) noexcept
 {
@@ -2892,6 +2906,9 @@ void OnMenuCpp(const RE::MenuOpenCloseEvent& ev) noexcept
         if (essb::rt::MenuEndsSession(ev.opening, ev.menuName == RE::MainMenu::MENU_NAME, state.session.inGame.load())) {
             EndSession(essb::rt::OnMessage(state.session, essb::rt::Msg::kMainMenu));
             Log("[ESSB][load] main menu: the session ended (inGame off; queued tasks of it do nothing)");
+        }
+        if (ev.opening && ev.menuName == RE::StatsMenu::MENU_NAME) {
+            QueueTask([](bool live) { SnapshotBranches(live); });   // round 27e: the branches before any purchase
         }
         if (ev.opening && ev.menuName == "TrueHUD") {
             QueueTask([](bool live) {
@@ -5566,6 +5583,79 @@ float ReadCode(const essb::Board& b, int code)
     }
 }
 
+// Round 27e (0.27.4, the MCM / menu lag): the node ranks Papyrus's rules read (ESSBController.Rank / Br), answered from
+// the player's perks here -- ESSBTrees used to rebuild a 13-tree cache with ~240 Papyrus natives per tree on every form
+// change, MCM change and menu close, saturating the VM. Read-only (answers with the master switch off); the same rule as
+// the DLL's own reads (PerkNodes: 無元素 routes 0 / 1 read 0 while a form is open).
+// Round 27e: one route's owned branches as bits (no 無元素 suppression: a purchase is a purchase).
+std::uint32_t BranchMaskNow(RE::PlayerCharacter& player, int tree, int route)
+{
+    const auto nodes = MakeNodes(player, false);
+    std::uint32_t mask = 0;
+    for (int tier = 0; tier < 5; ++tier) {
+        for (int index = 0; index < 4; ++index) {
+            if (nodes.Has(essb::BranchId{ tree, route, tier, index })) {
+                mask |= essb::rt::BranchBit(tier, index);
+            }
+        }
+    }
+    return mask;
+}
+
+// A StatsMenu opened (ours through MCM / the power, or Custom Skill Menu's, or the vanilla one): the branches owned now.
+void SnapshotBranches(bool live) noexcept
+{
+    try {
+        auto* player = RE::PlayerCharacter::GetSingleton();
+        if (!live || !player) {
+            return;
+        }
+        TaskScope scope("branch snapshot");
+        for (int tree = 0; tree < 13; ++tree) {
+            for (int route = 0; route < 3; ++route) {
+                state.branchSnap[tree][route] = BranchMaskNow(*player, tree, route);
+            }
+        }
+        state.branchSnapReady = true;
+    } catch (...) {
+    }
+}
+
+// Branches bought since the StatsMenu opened, for ESSBTrees' 5-point reconcile of a tree opened outside our own
+// OpenTree (Custom Skill Menu opens the tree through the framework directly). Read-only.
+std::int32_t PapyrusBranchesGained(RE::StaticFunctionTag*, std::int32_t tree, std::int32_t route)
+{
+    return Guard("BranchesGained", [&]() -> std::int32_t {
+        auto* player = RE::PlayerCharacter::GetSingleton();
+        if (!player || !state.branchSnapReady || tree < 0 || tree > 12 || route < 0 || route > 2) {
+            return 0;
+        }
+        return static_cast<std::int32_t>(essb::rt::Gained(state.branchSnap[tree][route], BranchMaskNow(*player, tree, route)));
+    }, 0, true);
+}
+
+std::int32_t PapyrusNodeRank(RE::StaticFunctionTag*, std::int32_t tree, std::int32_t route, std::int32_t tier)
+{
+    return Guard("NodeRank", [&]() -> std::int32_t {
+        auto* player = RE::PlayerCharacter::GetSingleton();
+        if (!player || tree < 0 || tree > 12 || route < 0 || route > 2 || tier < 0 || tier > 4) {
+            return 0;
+        }
+        return MakeNodes(*player, FormIsActive()).Rank(essb::NodeId{ tree, route, tier });
+    }, 0, true);
+}
+
+bool PapyrusNodeBranch(RE::StaticFunctionTag*, std::int32_t tree, std::int32_t route, std::int32_t tier, std::int32_t index)
+{
+    return Guard("NodeBranch", [&]() -> bool {
+        auto* player = RE::PlayerCharacter::GetSingleton();
+        if (!player || tree < 0 || tree > 12 || route < 0 || route > 2 || tier < 0 || tier > 4 || index < 0 || index > 3) {
+            return false;
+        }
+        return MakeNodes(*player, FormIsActive()).Has(essb::BranchId{ tree, route, tier, index });
+    }, false, true);
+}
+
 std::int32_t PapyrusGetStatus(RE::StaticFunctionTag*, RE::Actor* actor, std::int32_t code)
 {
     return Guard("GetStatus", [&]() -> std::int32_t { return actor ? static_cast<std::int32_t>(ReadCode(RegistryBoard(*actor), code) + 0.001f) : 0; }, 0, true);
@@ -6092,6 +6182,9 @@ bool RegisterPapyrus(RE::BSScript::IVirtualMachine* vm)
         vm->RegisterFunction("FormEnter", kClass, PapyrusFormEnter);
         vm->RegisterFunction("SetSync", kClass, PapyrusSetSync);
         vm->RegisterFunction("KeepSync", kClass, PapyrusKeepSync);   // round 27 (G8)
+        vm->RegisterFunction("NodeRank", kClass, PapyrusNodeRank, true);       // round 27e: the ranks without the Papyrus cache
+        vm->RegisterFunction("NodeBranch", kClass, PapyrusNodeBranch, true);
+        vm->RegisterFunction("BranchesGained", kClass, PapyrusBranchesGained, true);
         vm->RegisterFunction("Trace", kClass, PapyrusTrace);   // round 26: the probe log's Papyrus lines
         return true;
     } catch (...) {

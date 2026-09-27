@@ -56,6 +56,11 @@ Function FormEnter(Int aiElement) Global Native
 Function SetSync(Int aiCount) Global Native
 ; round 27 (G8)：切換／開形態時 DLL 已把同調歸零並加上新形態開啟的所得；這裡把 Papyrus 規則保留的份（承接、連斷、永續、三重奏）加上去（不算升段）。
 Function KeepSync(Int aiCount) Global Native
+; round 27e：技能樹節點的階數與分支（DLL 直接讀玩家的 perk；取代 ESSBTrees 的快取重建）。唯讀，總開關關著也回答。
+Int Function NodeRank(Int aiTree, Int aiRoute, Int aiTier) Global Native
+Bool Function NodeBranch(Int aiTree, Int aiRoute, Int aiTier, Int aiIndex) Global Native
+; round 27e：技能選單（StatsMenu）開啟後這條路線新買的分支（位元＝階 × 4 ＋ 第幾個）；ESSBTrees 補扣分支的另外 4 點。
+Int Function BranchesGained(Int aiTree, Int aiRoute) Global Native
 Function RequestSwitch(Int aiElement) Global Native
 ; round 25 審查修正：遊戲在跑的秒數（這次開遊戲以來；暫停、讀檔不算）。控制器的秒計時器用它。
 Float Function RunningSeconds() Global Native

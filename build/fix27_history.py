@@ -32,6 +32,7 @@ SNAPSHOT = ROOT / '.codex/pre-fix27-snapshot'
 import fix21_history as _h21
 
 CHANGED = {
+    ('ESSBController.psc', 'Br'): ('Round 27e（0.27.4，MCM 與技能樹選單卡頓）：分支改由 DLL 回答（ESSBNative.NodeBranch）', '3556fc0d67cc91a1', '37d710a26914182e'),
     ('ESSBController.psc', 'CloseForm'): ('Round 27（G8：形態切換由 DLL 在決定它的 task 裡做完）：abByDll（熱鍵、Z、魔力耗盡）時不寫全域變數、不拿餘響與護血（DLL 已做）；選單的關閉照舊', 'a2c1610fca1e6f95', '6917a7b167b11029'),
     ('ESSBController.psc', 'OnESSBEnd'): ('Round 27（G13：看得見的回饋）：目標被 DLL 自己的傷害打死時，終結的爆炸照樣放（原本 IsDead 就不放）', '143a4c83f5b668d4', '4cb51e88f236892c'),
     ('ESSBController.psc', 'OnESSBOpen'): ('Round 27（G13：看得見的回饋）：目標被 DLL 自己的傷害打死時，開印的特效照樣放（原本 IsDead 就不放）', '60f94f9adf7c5fc3', '2892f8bd4c257b7f'),
@@ -39,10 +40,14 @@ CHANGED = {
     ('ESSBController.psc', 'OnFormClosed'): ('Round 27（G8：形態切換由 DLL 在決定它的 task 裡做完）：DLL 的關閉不再呼叫 Burst、FormLeave、SetSync(0)（DLL 在同一個 task 做完）；同調與段數用 DLL 動手前的值', '50edecf49ddb0acf', 'dd6bf1f59c9f8c38'),
     ('ESSBController.psc', 'OnFormOpened'): ('Round 27（G8：形態切換由 DLL 在決定它的 task 裡做完）：不再呼叫 ESSBNative.FormEnter（DLL 的 FormEnterWork 在切換的 task 裡做）', '516d75e2260f01b1', '1cc5e8769ef90785'),
     ('ESSBController.psc', 'OnFormSwitched'): ('Round 27（G8：形態切換由 DLL 在決定它的 task 裡做完）：不再呼叫 ESSBNative.FormLeave、不再掛餘響與雙生的標記、不寫 ESSB_TwinElement（DLL 的 SwitchMarkers）', 'dc5201e5076f4c13', 'b133071fcba20031'),
+    ('ESSBController.psc', 'Rank'): ('Round 27e（0.27.4，MCM 與技能樹選單卡頓）：階數改由 DLL 回答（ESSBNative.NodeRank），不再讀 ESSBTrees 重建的快取', 'b9f7df29d94d6eac', '49a00e89a0e92f94'),
     ('ESSBController.psc', 'Setup'): ('Round 27（G13：看得見的回饋）：註冊 ESSB_Fx 事件', '9657c1070ea85763', 'ad20bb4a52f87a2d'),
     ('ESSBController.psc', 'SwitchForm'): ('Round 27（G8：形態切換由 DLL 在決定它的 task 裡做完）：依 ESSB_Switch 帶來的種類（1 開、2 切換、3 關）處理，不再看當下的全域變數（關了馬上又開也一定先關再開）；切換前的同調由 DLL 帶來；保留的份改用 ESSBNative.KeepSync 加在 DLL 歸零後的同調上（DLL 已加上新形態開啟的所得）；魔力耗盡（原因 1）顯示提示', '61cef548a93bb65e', '61a99c8480376473'),
     ('ESSBMCM.psc', 'ShowNativeStatus'): ('Round 27（G12：新遊戲時 DLL 被 SKSE 拒絕）：版本空白時說明去看 skse64.log 的 incompatible、確認上一個 SkyrimSE.exe 已結束', 'f63d245fbea115db', '61ef9015d59c465c'),
     ('ESSBSettingsEffect.psc', 'CycleDebugLevel'): ('Round 27（G15：除錯等級快捷鍵繞到 4＝探針 log；原本 % 4 永遠到不了 4）', '798fdcd08fa8908e', '4263555eb2baca22'),
+    ('ESSBTrees.psc', 'OnMenuClose'): ('Round 27e（0.27.4，MCM 與技能樹選單卡頓）：不是從 OpenTree 開的選單關閉時補扣分支點數（ReconcileGained）；不再取消 StatsMenu 的登記', '06b2f93a6bc0260f', 'cba5e453bc1976ab'),
+    ('ESSBTrees.psc', 'RefreshActive'): ('Round 27e（0.27.4，MCM 與技能樹選單卡頓）：只更新 13 棵樹的等級，不再逐節點 HasPerk（一次最多約 3000 次原生呼叫）', 'af51edfc2a21629f', 'bb877c3e922518ba'),
+    ('ESSBTrees.psc', 'Setup'): ('Round 27e（0.27.4，MCM 與技能樹選單卡頓）：一直聽 StatsMenu 的關閉（樹可能從 Custom Skill Menu 直接開）', '23b5cc0d008076b2', '663a58703b059534'),
 }
 
 REMOVED = {
@@ -50,7 +55,11 @@ REMOVED = {
 
 ADDED = {
     ('ESSBController.psc', 'OnESSBFx'): ('Round 27（G13：看得見的回饋，新事件）：DLL 自己結算的碎冰、放電、過熱引爆各放一次該元素的爆炸（規劃 2.12），只有畫面', '0b08098d8b14799d'),
+    ('ESSBNative.psc', 'BranchesGained'): ('Round 27e（0.27.4，MCM 與技能樹選單卡頓）：新原生函式宣告（技能選單開啟後新買的分支，給別處開的選單補扣點數）', 'c1072a0457d2c85a'),
     ('ESSBNative.psc', 'KeepSync'): ('Round 27（G8：形態切換由 DLL 在決定它的 task 裡做完）（新原生函式宣告：把保留的同調加上去，不算升段）', '0a7f55937d147dde'),
+    ('ESSBNative.psc', 'NodeBranch'): ('Round 27e（0.27.4，MCM 與技能樹選單卡頓）：新原生函式宣告（分支）', '0b692f8b93e961d2'),
+    ('ESSBNative.psc', 'NodeRank'): ('Round 27e（0.27.4，MCM 與技能樹選單卡頓）：新原生函式宣告（節點階數）', '91c53b5abda78f8e'),
+    ('ESSBTrees.psc', 'ReconcileGained'): ('Round 27e（0.27.4，MCM 與技能樹選單卡頓）：新函式：依 DLL 記下的選單開啟時分支，每個新分支補扣 4 點，不夠就退回', '40e61d01c43c64ea'),
 }
 
 PROPERTIES = {

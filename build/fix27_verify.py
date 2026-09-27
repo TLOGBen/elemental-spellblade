@@ -1,4 +1,4 @@
-"""Round 27 / 27b / 27c (DLL 0.27.3): offline checks of what this round changed, each with injected faults.
+"""Round 27 / 27b / 27c (DLL 0.27.4): offline checks of what this round changed, each with injected faults.
 
   VISUALS    build/fix27_visuals.check on the written ESP (G13, G14; 27b): the form ring -- four constant self effects per
              element with a Skyrim.esm ring art, one per ESSB_SyncStage 0..3 under ESSB_WeaponGlow (形態光圈), no shader or
@@ -13,7 +13,7 @@
              noexcept; G8: the switch in SwitchWork (the burst on every close, also magicka empty -- the user's decision
              2026-09-27), OnFormOpened calls no FormEnter, KeepSync declared and registered; G15: a step key bound to a form
              is the hotkey only, CycleDebugLevel reaches 4. One fault each must fail.
-  VERSION    0.27.3 in CMakeLists, ManifestData.h, fix19_native, the packaged manifest and build/probe-judge.py VERSION.
+  VERSION    0.27.4 in CMakeLists, ManifestData.h, fix19_native, the packaged manifest and build/probe-judge.py VERSION.
   JUDGE      SETUP-1 fails on [ESSB][OVERLAP-READ], on [ESSB][crash] and on an older version (the round-26 hand sample).
   MUTANTS    the receipt: every runtime / anchor mutant failed its test, and the contract's mutations are there (G1, G6,
              G7, E1, E3, the burst's overflow, G15).
@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'build'), str(ROOT)]
 SNAPSHOT = ROOT / '.codex/pre-fix27-snapshot'
 SRC = ROOT / 'src'
-VERSION = '0.27.3'
+VERSION = '0.27.4'
 
 import fix27_visuals as vis
 
@@ -131,6 +131,43 @@ def check_visuals(b, records, ctl):
     ]
     missed = [label for label, errs in faults if not errs]
     return [f'visual fault not caught: {m}' for m in missed], [label for label, _ in faults]
+
+
+# ---------------------------------------------------------------- PLAYER TEXT (27e)
+
+def check_player_text(b, records):
+    """No design-document note in any perk name / description, Custom Skills file or MCM string (build/fix27_text.py)."""
+    import fix27_text as txt
+    errors = []
+    for r in records:
+        if r.sig != 'PERK' or not r.key.startswith(b.PLUGIN.casefold()):
+            continue
+        for field in ('FULL', 'DESC'):
+            raw = r.d.get(field, b'')
+            text = raw.rstrip(b'\0').decode('utf-8', 'replace')
+            hit = txt.markers(text)
+            if hit:
+                errors.append(f'{r.edid} {field}: design note {hit} in the player text: {text[:80]}')
+    files = sorted((b.OUT / 'SKSE/Plugins/CustomSkills').glob('*.json')) + [b.OUT / 'MCM/Config/Elements Spellblade/config.json']
+    for path in files:
+        for where, hit, text in txt.scan_json(path):
+            errors.append(f'{path.name}{where}: design note {hit}: {text[:80]}')
+    return errors
+
+
+def player_text_faults():
+    """The stripper and the check each catch their fault."""
+    import fix27_text as txt
+    caught = []
+    sample = '餘壓：離開火形態（切換或融斷）後火源多留 2 秒（2026-09-27 依實作：本節點的獨有效果只剩「火源多留 2 秒」）'
+    if txt.player_text(sample) != '餘壓：離開火形態（切換或融斷）後火源多留 2 秒':
+        raise AssertionError(('player_text kept the note or cut the gameplay text', txt.player_text(sample)))
+    caught.append('a dated note stripped, the gameplay parenthesis kept')
+    for leak in ('見 實作紀錄.md', 'Round 27 起', 'v0.4 本文', '待決', '指揮官裁定'):
+        if not txt.markers('順風：命中回復耐力 ' + leak):
+            raise AssertionError(('a design marker not caught', leak))
+        caught.append(f'marker: {leak}')
+    return caught
 
 
 # ---------------------------------------------------------------- SOURCES
@@ -304,17 +341,19 @@ def run(b):
     sources = {p.name: p.read_text(encoding='utf-8-sig') for p in SRC.glob('*.psc')}
     records, _meta = b.read_plugin(b.OUT / b.PLUGIN)
     errors, visual_faults = check_visuals(b, records, sources['ESSBController.psc'])
+    errors += check_player_text(b, records)
     errors += check_sources(cpp, sources, sinks_h) + check_versions(b, j) + check_endings()
     judge_errors, judge_rows = check_judge(j)
     mutant_errors, mutants = check_mutants()
     errors += judge_errors + mutant_errors
     assert not errors, '\n  '.join(['FIX27 failed:'] + errors)
     caught = source_faults(cpp, sources, sinks_h)
+    text_faults = player_text_faults()
     import fix27_history
     history = fix27_history.self_check()
     import fix27_native_history
     native_history = fix27_native_history.self_check()
-    report = dict(visual_faults=visual_faults, source_faults=caught, judge=judge_rows, mutants=[m['name'] for m in mutants],
+    report = dict(visual_faults=visual_faults, source_faults=caught, text_faults=text_faults, judge=judge_rows, mutants=[m['name'] for m in mutants],
                   history=history, native_history=native_history, inventory=[list(row) for row in vis.INVENTORY])
     (ROOT / 'build/fix27-check.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     print(f'FIX27 ok: visuals on the written ESP (the form ring: 4 vanilla-art effects per element, one per SyncStage, gated by 形態光圈, nothing on the weapon; '

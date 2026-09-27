@@ -520,3 +520,13 @@ TrueHUD 資源條的稽核（T1）找到的具體問題：
   | Plugin.cpp 排隊的 lambda | — | 全部以值捕捉（handle、數值、snapshot），沒有 [&] 進 task |
 - 生命週期網（native/build.py）：clang-cl 21 以 `-Werror=dangling -Werror=dangling-gsl -Werror=return-stack-address -Werror=dangling-field -Werror=dangling-initializer-list`（/Zs、-fdelayed-template-parsing，CommonLib 需要）檢查 Plugin.cpp、11 個測試與 asan_harness：全部乾淨；負向對照 tests/lifetime_net.cpp（string_view 綁在暫存 string 上）必須報 dangling，否則建置失敗。AddressSanitizer：clang-cl 的 ASan 在這台工具鏈連最簡單的 throw／catch 都會中止（MSVC 的 ASan 元件沒有安裝），所以會丟例外的測試不在 ASan 下跑；改用不丟例外的 tests/asan_harness.cpp（Context 複製回傳、具名節點檢視、24 目標全節點融斷與本體、登記表雙執行緒、受擊佇列），乾淨。沒有 clang-cl 時 receipt 記 skipped。
 - 建置：native/build.py exit 0（ctest 9/9、突變 98/98、LIFETIME NET ok）；build_v03.py exit 0。
+
+## Round 27e（DLL 0.27.4）：玩家文字、選單卡頓、Custom Skill Menu
+
+- 玩家文字：build/fix27_text.py `player_text`（括號裡含日期、依實作、待決、指揮官、裁定、已決、v0.x、Round、檔名、探針、實作紀錄就整段拿掉，巢狀括號一起）與 `OVERRIDES`（土持續專精主線：拿掉註記會留下舊數字，改寫成實作的 3 × 點數 × G(L)）；build/fix27_verify.py `check_player_text`：ESP 的 PERK FULL／DESC、CustomSkills/*.json、MCM config.json 的顯示字串（表單參照與 ID 略過；除錯等級控制項允許「探針」與 ElementsSpellblade.log）。
+- 卡頓證據（只讀）：Papyrus.0.log 有 6 次 suspended stack 超過門檻，我們的 essbcontroller.OnUpdate（一次 10 個）、OnESSBOpen（8）、OnMenuClose、essbtrees.OnUpdate 在裡面；user log 有 357 行 `TREES refresh`，MCM 拖動節點倍率時連續 refresh 相隔 1.4～17 秒。ESSBTrees.RefreshTree 每棵樹 15 × (二分搜尋 4 次 GetFormFromFile＋HasPerk ＋ 4 次分支 HasPerk)，RefreshActive 最多 13 棵。修正：ESSBNative.NodeRank／NodeBranch（Guard 唯讀、callableFromTasklets，PerkNodes 同一套 無元素 規則）；ESSBController.Rank／Br 改用它們；RefreshActive 只更新樹等級。
+- Custom Skill Menu（metaSkillMenu，只讀 MO2）：它的 Papyrus 用 JContainers 列出 Data/NetScriptFramework/Plugins/*.txt，Lua 取 `Key = value`，要 Name，外掛取自 LevelFile（或 RatioFile），沒有 ShowMenuFile 時走 CSF API：`CustomSkills.OpenCustomSkillMenu(<檔名第二段>)`。CSF（1.5.97 版）本身會把 NetScriptFramework/Plugins 下 `CustomSkill.` 開頭的檔當舊格式技能讀，所以我們的檔名是 `ESSB_MSM.<id>.txt`（13 個，build_v03 write_msm）。VIGILANT 用舊式 ShowMenu 全域變數、Sets of Skills 用舊式 CustomSkill.*.config.txt，兩者都經這個清單。
+- 從 Custom Skill Menu 開的樹沒有 ESSBTrees.OpenTree 的分支快照：DLL 在 StatsMenu 開啟時（選單 sink → task）記下 13 × 3 條路線的分支位元，ESSBNative.BranchesGained 回傳之後新買的；ESSBTrees 一直聽 StatsMenu 關閉，`ReconcileGained` 每個新分支補扣 4 點、不夠就退回（與 Reconcile 同規則）。runtime_test BranchChecks。
+- ESSB_Lethal 每秒最多一次（Runtime.h LethalDue；RealEngine::Send）。
+- fix21_identity：允許 NodeRank／NodeBranch／分支遮罩三行依座標讀（座標來自 ESSBNodes 依 v0.4 名稱的讀取）。
+- 建置：native/build.py exit 0（ctest 9/9、突變 98/98、LIFETIME NET ok、PDB ok：build/pdb/ElementsSpellblade-0.27.4.pdb）；build_v03.py exit 0。

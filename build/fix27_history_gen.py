@@ -15,6 +15,7 @@ SNAP = ROOT / '.codex/pre-fix27-snapshot/src'
 SRC = ROOT / 'src'
 
 G13 = 'Round 27（G13：看得見的回饋'
+LAG = 'Round 27e（0.27.4，MCM 與技能樹選單卡頓）'
 G8 = 'Round 27（G8：形態切換由 DLL 在決定它的 task 裡做完）'
 REASONS = {
     'ESSBController.psc': {
@@ -27,12 +28,22 @@ REASONS = {
         'OnFormSwitched': G8 + '：不再呼叫 ESSBNative.FormLeave、不再掛餘響與雙生的標記、不寫 ESSB_TwinElement（DLL 的 SwitchMarkers）',
         'OnESSBSwitch': G8 + '：解析事件的種類、切換前的同調、段數、原因，交給 SwitchForm；27b（審查 B N8）：兩個全域變數當號碼牌，'
                         '切換事件一個接一個做完（關了馬上又開時不交錯），最多等 1 秒',
+        'Rank': LAG + '：階數改由 DLL 回答（ESSBNative.NodeRank），不再讀 ESSBTrees 重建的快取',
+        'Br': LAG + '：分支改由 DLL 回答（ESSBNative.NodeBranch）',
         'OnESSBEnd': G13 + '）：目標被 DLL 自己的傷害打死時，終結的爆炸照樣放（原本 IsDead 就不放）',
         'OnESSBOpen': G13 + '）：目標被 DLL 自己的傷害打死時，開印的特效照樣放（原本 IsDead 就不放）',
         'OnESSBFx': G13 + '，新事件）：DLL 自己結算的碎冰、放電、過熱引爆各放一次該元素的爆炸（規劃 2.12），只有畫面',
         'Setup': G13 + '）：註冊 ESSB_Fx 事件',
     },
-    'ESSBNative.psc': {'KeepSync': G8 + '（新原生函式宣告：把保留的同調加上去，不算升段）'},
+    'ESSBNative.psc': {'KeepSync': G8 + '（新原生函式宣告：把保留的同調加上去，不算升段）',
+                       'NodeRank': LAG + '：新原生函式宣告（節點階數）', 'NodeBranch': LAG + '：新原生函式宣告（分支）',
+                       'BranchesGained': LAG + '：新原生函式宣告（技能選單開啟後新買的分支，給別處開的選單補扣點數）'},
+    'ESSBTrees.psc': {
+        'RefreshActive': LAG + '：只更新 13 棵樹的等級，不再逐節點 HasPerk（一次最多約 3000 次原生呼叫）',
+        'Setup': LAG + '：一直聽 StatsMenu 的關閉（樹可能從 Custom Skill Menu 直接開）',
+        'OnMenuClose': LAG + '：不是從 OpenTree 開的選單關閉時補扣分支點數（ReconcileGained）；不再取消 StatsMenu 的登記',
+        'ReconcileGained': LAG + '：新函式：依 DLL 記下的選單開啟時分支，每個新分支補扣 4 點，不夠就退回',
+    },
     'ESSBSettingsEffect.psc': {
         'CycleDebugLevel': 'Round 27（G15：除錯等級快捷鍵繞到 4＝探針 log；原本 % 4 永遠到不了 4）',
     },

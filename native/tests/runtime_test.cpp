@@ -584,6 +584,21 @@ void RingChecks()
     Check(rt::RingOf(0x5D90 + 9, 0x5D90, 4).element == 3 && rt::RingOf(0x5D90 + 9, 0x5D90, 4).stage == 1, "ring: lightning stage 1");
 }
 
+void BranchChecks()
+{
+    const std::uint32_t before = rt::BranchBit(0, 1) | rt::BranchBit(4, 3);
+    const std::uint32_t now = before | rt::BranchBit(2, 0);
+    Check(rt::Gained(before, now) == rt::BranchBit(2, 0) && rt::BranchBit(4, 3) == (1u << 19) && rt::BranchBit(5, 0) == 0,
+        "branches: only the one bought after the snapshot counts");
+    Check(rt::Gained(now, before) == 0, "branches: a respec (fewer) gains nothing");
+}
+
+void LethalChecks()
+{
+    Check(rt::LethalDue(0, 500) && !rt::LethalDue(500, 1200) && rt::LethalDue(500, 1500) && rt::LethalDue(5000, 100),
+        "lethal: once a second (the first always; a new session's clock restarts it)");
+}
+
 void ContextChecks()
 {
     const rt::Context c = MakeCopied(1.5f);
@@ -795,6 +810,8 @@ int main()
         PluginRuleChecks();
         Review27bChecks();
         ContextChecks();
+        LethalChecks();
+        BranchChecks();
         RingChecks();
         std::printf("NATIVE RUNTIME ok: %d checks (task scopes, the session and new game, the log and Query, SEH, the input gate, "
                     "event text and UTF-8, the effect registry with two threads, the hurt queue and our own health, the corpse mode, the settled marks, "
