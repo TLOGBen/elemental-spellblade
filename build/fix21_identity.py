@@ -632,8 +632,9 @@ CPP_ALLOWED = {
     ('EngineFacts.h', 'return kBranchPerkBase + static_cast<std::uint32_t>(NodeIndex(id.tree, id.route, id.tier) * kBranchSlots + id.index);'): 'FormID of a generated BranchId',
     ('EngineFacts.h', 'auto& cached = ranks_[NodeIndex(id.tree, id.route, id.tier)];'): 'per-hit cache of a generated NodeId',
     ('EngineFacts.h', 'auto& cached = branches_[NodeIndex(id.tree, id.route, id.tier) * kBranchSlots + id.index];'): 'per-hit cache of a generated BranchId',
-    ('Plugin.cpp', 'f.mainPerks[i] = Resolve<RE::BGSPerk>(data, essb::kMainPerkBase + static_cast<std::uint32_t>(i), kPlugin, "main-line perk");'): 'load-time resolve of every main-line perk',
-    ('Plugin.cpp', 'f.branchPerks[i] = data.LookupForm<RE::BGSPerk>(essb::kBranchPerkBase + static_cast<std::uint32_t>(i), kPlugin);'): 'load-time resolve of every branch perk',
+    # round 25 hotfix: the load-time resolution moved from Plugin.cpp to Load.h (load_test runs it offline)
+    ('Load.h', 'f.mainPerks[i] = d.template Resolve<typename D::Perk>(kMainPerkBase + static_cast<std::uint32_t>(i), kPlugin, "main-line perk");'): 'load-time resolve of every main-line perk',
+    ('Load.h', 'f.branchPerks[i] = d.data().template Lookup<typename D::Perk>(kBranchPerkBase + static_cast<std::uint32_t>(i), kPlugin);'): 'load-time resolve of every branch perk',
     ('Plugin.cpp', 'perk = main[localId - essb::kMainPerkBase];'): 'HasPerk by a FormID computed from a generated id',
     ('Plugin.cpp', 'perk = branch[localId - essb::kBranchPerkBase];'): 'HasPerk by a FormID computed from a generated id',
     ('hit_pipeline_test.cpp', 'essb::NodeId NodeOf(const json& slot)'): 'test: slot read from the generated wiring json',

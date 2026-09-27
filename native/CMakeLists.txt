@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(ElementsSpellblade VERSION 0.25.0 LANGUAGES CXX)
+project(ElementsSpellblade VERSION 0.25.1 LANGUAGES CXX)
 if(NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   message(FATAL_ERROR "MSVC x64 is required")
 endif()
@@ -57,3 +57,8 @@ add_executable(timer_test tests/timer_test.cpp)
 target_include_directories(timer_test PRIVATE include deps/json/single_include)
 target_compile_options(timer_test PRIVATE /W4 /WX /EHsc /utf-8 /bigobj)
 add_test(NAME timer_domains_hotkeys COMMAND timer_test "${CMAKE_CURRENT_SOURCE_DIR}/../build/fix25-timer-table.json" "${CMAKE_CURRENT_SOURCE_DIR}/../build/fix25-wiring.json")
+# Round 25 hotfix: the DLL's data-load resolution (Load.h, what Plugin.cpp LoadManifest runs) on the written ESP and
+# manifest. Its input is read back from the ESP build_v03.py writes, so build/fix25_verify.py runs it (not CTest).
+add_executable(load_test tests/load_test.cpp)
+target_include_directories(load_test PRIVATE include deps/json/single_include)
+target_compile_options(load_test PRIVATE /W4 /WX /EHsc /utf-8 /bigobj)

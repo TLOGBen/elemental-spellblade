@@ -26,6 +26,13 @@ round changed, each with injected faults.
              slot, a clock beat, a spawn spell FormID, a round-25 kind's record seconds).
   ENDINGS    every file this round touched keeps its pre-round line endings and byte-order mark.
   MUTANTS    the C++ source mutations of native/build.py on Timer.h all failed (receipt), >= 5.
+  LOAD       (round 25 hotfix) the DLL's data-load resolution itself -- native/include/Load.h, the code Plugin.cpp
+             LoadManifest runs -- on the packaged manifest.json and the facts of the ESP just written plus Skyrim.esm
+             (build/fix25-load-forms.json: every record's local FormID and type, SPEL first-effect seconds, MGEF archetype
+             and associated item) through native load_test: every identity check, every lookup by record type, the
+             record seconds, the domains' Spawn Hazard effects, every TaggedEffects() / CastSpells() id registered in the
+             status tables. Injected faults in the facts / manifest must fail it with the FormID, EditorID and expected type
+             in the message, and the Load.h mutants native/build.py built (the 0.25.0 registration among them) must fail.
   HISTORY    build/fix25_history.py (Papyrus) and build/fix25_native_history.py (DLL, tests, generators, verifiers); the
              round-24 seals read the pre-fix25 snapshot only after these proofs.
 """
@@ -419,6 +426,110 @@ def check_mutants():
     return mutants, n6
 
 
+# ---------------------------------------------------------------- LOAD (round 25 hotfix)
+
+LOAD_FACTS = ROOT / 'build/fix25-load-forms.json'
+LOAD_LOG = ROOT / 'build/fix25-load-test.log'
+LOAD_EXE = ROOT / 'native/out/Release/load_test.exe'
+VANILLA_SIGS = {'KYWD', 'CLAS', 'FACT'}   # the Skyrim.esm record types the DLL resolves (Load.h ResolveEffects)
+
+
+def load_facts(b):
+    """What the fake TESDataHandler of load_test holds: the written ESP (every record) and Skyrim.esm's KYWD / CLAS / FACT."""
+    records, meta = b.read_plugin(b.OUT / b.PLUGIN)
+    ours = []
+    for r in records:
+        row = {'id': int(r.key.split('|')[1], 16), 'sig': r.sig}
+        if r.sig == 'SPEL':
+            efit = next((v for tag, v in r.ss if tag == 'EFIT'), None)
+            row['seconds'] = float(struct.unpack_from('<I', efit, 8)[0]) if efit else None
+        elif r.sig == 'MGEF':
+            data = r.d['DATA']
+            row['archetype'] = struct.unpack_from('<I', data, 64)[0]
+            row['associated'] = struct.unpack_from('<I', data, 8)[0]
+        ours.append(row)
+    vanilla, _ = b.read_plugin(b.ROOT / 'SkyrimSE/Data/Skyrim.esm', VANILLA_SIGS)
+    skyrim = [{'id': int(r.key.split('|')[1], 16), 'sig': r.sig} for r in vanilla if r.sig in VANILLA_SIGS]
+    return {'plugin': b.PLUGIN, 'masters': meta['masters'],
+            'records': {b.PLUGIN: sorted(ours, key=lambda x: x['id']), 'Skyrim.esm': sorted(skyrim, key=lambda x: x['id'])}}
+
+
+def run_load_test(manifest, facts, exe=LOAD_EXE):
+    with tempfile.TemporaryDirectory() as tmp:
+        m, f = Path(tmp) / 'm.json', Path(tmp) / 'f.json'
+        m.write_text(json.dumps(manifest, ensure_ascii=False), encoding='utf-8')
+        f.write_text(json.dumps(facts), encoding='utf-8')
+        r = subprocess.run([str(exe), str(m), str(f)], capture_output=True, text=True, encoding='utf-8', errors='replace')
+        return r.returncode, r.stdout + r.stderr
+
+
+def check_load(b):
+    manifest_path = b.OUT / 'SKSE/Plugins/ElementsSpellblade/manifest.json'
+    manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    facts = load_facts(b)
+    LOAD_FACTS.write_text(json.dumps(facts, separators=(',', ':')) + '\n', encoding='utf-8')
+    code, out = run_load_test(manifest, facts)
+    LOAD_LOG.write_text(out, encoding='utf-8')
+    assert code == 0, 'LOAD: the DLL would fault at data load:\n' + out
+    summary = next(line for line in out.splitlines() if line.startswith('[ESSB][load] resolved '))
+    edid_id = {v[0]: int(k, 16) for k, v in manifest['records'].items()}
+
+    def find(f, fid, file=None):
+        return next(r for r in f['records'][file or b.PLUGIN] if r['id'] == fid)
+    faults = []
+
+    def fault(label, needle, mutate_facts=None, mutate_manifest=None):
+        f, m = copy.deepcopy(facts), copy.deepcopy(manifest)
+        if mutate_facts:
+            mutate_facts(f)
+        if mutate_manifest:
+            mutate_manifest(m)
+        rc, text = run_load_test(m, f)
+        assert rc != 0, f'LOAD: injected fault not caught: {label}'
+        assert needle in text, (f'LOAD: {label}: the failure does not say what failed', needle, text[-800:])
+        faults.append(label)
+
+    guard = edid_id['ESSB_BloodGuardEffect']
+    fault('the 護血 pool effect missing from the ESP',
+          f'record missing: kBloodGuard: 0x{guard:06X} (runtime 0x01{guard:06X}) ESSB_BloodGuardEffect in {b.PLUGIN} '
+          f'expected MGEF, no such record',
+          lambda f: f['records'][b.PLUGIN].remove(find(f, guard)))
+    hush = edid_id['ESSB_HushEffect']
+    fault('寂 retyped (a SPEL where the MGEF should be)',
+          f'0x{hush:06X} (runtime 0x01{hush:06X}) ESSB_HushEffect in {b.PLUGIN} expected MGEF, the record there is a SPEL',
+          lambda f: find(f, hush).update(sig='SPEL'))
+    kind = manifest['status']['kinds'][0]
+    fault('a status spell of another duration', f'status spell: 0x{kind["spell"]:06X}',
+          lambda f: find(f, kind['spell']).update(seconds=find(f, kind['spell'])['seconds'] + 1))
+    domain = manifest['status']['domains'][0]
+    fault('a domain spawn effect placing no hazard', 'domain spawn effect places its hazard',
+          lambda f: find(f, domain['spawn_effect']).update(associated=0))
+    fault('a manifest from another build (a global id)', 'ESSB_Enabled: 0x',
+          mutate_manifest=lambda m: m['globals'].update(ESSB_Enabled=m['globals']['ESSB_Enabled'] + 1))
+    undead = manifest['vanilla']['kUndeadKeyword']['form_id']
+    fault('ActorTypeUndead missing from Skyrim.esm',
+          f'ActorTypeUndead: 0x{undead:06X} (runtime 0x{undead:08X}) kUndeadKeyword in Skyrim.esm expected KYWD',
+          lambda f: f['records']['Skyrim.esm'].remove(find(f, undead, 'Skyrim.esm')))
+    fear = manifest['status']['fear']['effect']
+    fault('a TaggedEffects id whose record is gone', f'tagged effect resolved: 0x{fear:06X}',
+          lambda f: f['records'][b.PLUGIN].remove(find(f, fear)))
+    bleed_tick = edid_id['ESSB_Util_BleedTick']
+    fault('a CastSpells spell missing (ESSB_Util_BleedTick)', f'cast spell: 0x{bleed_tick:06X}',
+          lambda f: f['records'][b.PLUGIN].remove(find(f, bleed_tick)))
+    # the Load.h mutants native/build.py built: each must fail on the real inputs (the 0.25.0 registration first)
+    receipt = json.loads((ROOT / 'native/out/build-receipt.json').read_text(encoding='utf-8'))
+    deferred = [m for m in receipt.get('mutants') or [] if m['test'] == 'load']
+    assert len(deferred) >= 3, ('LOAD: fewer than 3 Load.h mutants in the receipt', len(deferred))
+    mutants = []
+    for m in deferred:
+        rc, text = run_load_test(manifest, facts, ROOT / m['exe'])
+        assert rc != 0, f'LOAD: Load.h mutant survived: {m["name"]}'
+        first = next((line for line in text.splitlines() if line.startswith('[ESSB][fault]')), text.strip()[-200:])
+        mutants.append((m['name'], first))
+    assert 'tagged effect resolved' in mutants[0][1], ('LOAD: the 0.25.0 registration does not fail on the tagged effects', mutants[0])
+    return summary, faults, mutants
+
+
 # ---------------------------------------------------------------- self test of the source checks
 
 def self_test(sources, cpp, status_h, reactions, engine_h, timer_h, b):
@@ -480,8 +591,10 @@ def run(b):
     import fix25_native_history
     native_history = fix25_native_history.self_check()
     mutants, n6 = check_mutants()
+    load_summary, load_faults, load_mutants = check_load(b)   # round 25 hotfix: the loader itself, on the written ESP
     report = dict(contract=counts, kinds=kinds, spawn_spells=spawns, resolved=resolved, plan_rows=rows, source_faults=caught,
-                  native_faults=faults, history=history, native_history=native_history, native_mutants=[m['name'] for m in n6])
+                  native_faults=faults, history=history, native_history=native_history, native_mutants=[m['name'] for m in n6],
+                  load=dict(summary=load_summary, faults=load_faults, mutants=[dict(name=n, fault=l) for n, l in load_mutants]))
     (ROOT / 'build/fix25-check.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     print(f'FIX25 ok: {counts["natives"]} natives declared = registered (RequestSwitch queued; ExtendFuse / WashBuffs gone); '
           f'{counts["n6_events"]} round-25 ModEvents sent and handled (ESSB_Switch -> SwitchForm, ESSB_Close -> CloseForm); '
@@ -495,3 +608,7 @@ def run(b):
           f'{history["files"]} whole scripts declared, {len(history["silent_edits_caught"])} silent edits caught; native seal: '
           f'{native_history["changed"]} changed / {native_history["added"]} added / {native_history["unchanged"]} unchanged, '
           f'{len(native_history["silent_edits_caught"])} silent edits caught; {len(n6)} round-25 C++ mutants failed ({len(mutants)} in all)')
+    print(f'FIX25 LOAD ok: the DLL data-load resolution (Load.h) passes on the written ESP + manifest '
+          f'({load_summary[len("[ESSB][load] resolved "):]}); {len(load_faults)}/{len(load_faults)} injected ESP / manifest faults '
+          f'fail it naming the FormID, EditorID and type; {len(load_mutants)}/{len(load_mutants)} Load.h mutants fail '
+          f'(the 0.25.0 registration: {load_mutants[0][1]})')

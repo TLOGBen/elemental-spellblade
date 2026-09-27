@@ -29,6 +29,7 @@
 #include "EngineFacts.h"
 #include "HitPipeline.h"
 #include "Hurt.h"
+#include "Load.h"
 #include "ManifestData.h"
 #include "Reactions.h"
 #include "Selection.h"
@@ -81,70 +82,63 @@ static_assert(std::size(essb::kStatusRecords) == essb::kStatusKindCount);
 
 // ---------------------------------------------------------------- the only mutable state
 
-// The status layer's records, resolved (round 22). What each one stands for is Status.h's (TagOf, Lower); here only
-// the local FormID <-> form pointer tables, sorted for lookup.
-struct StatusForms {
-    std::vector<std::pair<const RE::EffectSetting*, std::uint32_t>> effectIds;  // sorted by pointer
-    std::vector<std::pair<std::uint32_t, RE::EffectSetting*>> effects;          // sorted by local id
-    std::vector<std::pair<std::uint32_t, RE::SpellItem*>> spells;               // sorted by local id
-    std::vector<std::pair<const RE::MagicItem*, std::uint32_t>> spellIds;        // sorted by pointer
+void Log(std::string_view line) noexcept;
+
+// The form source Load.h resolves against (round 25 hotfix): the game's TESDataHandler. The resolution itself -- every
+// record, every identity check, the status tables -- is Load.h's, so native/tests/load_test.cpp runs the same code on
+// the written ESP and manifest.
+struct GameForms {
+    using Global = RE::TESGlobal;
+    using Spell = RE::SpellItem;
+    using Magic = RE::MagicItem;
+    using Effect = RE::EffectSetting;
+    using Keyword = RE::BGSKeyword;
+    using Class = RE::TESClass;
+    using Faction = RE::TESFaction;
+    using Perk = RE::BGSPerk;
+    using Hazard = RE::BGSHazard;
+    using File = RE::TESFile;
+
+    RE::TESDataHandler& data;
+
+    template <class T>
+    T* Lookup(std::uint32_t id, const char* file)
+    {
+        return data.LookupForm<T>(id, file);
+    }
+    std::string KindOf(std::uint32_t id, const char* file)
+    {
+        const RE::TESForm* form = data.LookupForm(id, file);
+        return form ? std::string(RE::FormTypeToString(form->GetFormType())) : std::string();
+    }
+    std::optional<std::uint32_t> RuntimeId(std::uint32_t id, const char* file)
+    {
+        const RE::TESFile* mod = data.LookupModByName(file);
+        if (!mod) {
+            return std::nullopt;
+        }
+        return mod->IsLight() ? (0xFE000000u | (static_cast<std::uint32_t>(mod->GetSmallFileCompileIndex()) << 12) | (id & 0xFFFu))
+                              : ((static_cast<std::uint32_t>(mod->GetCompileIndex()) << 24) | (id & 0xFFFFFFu));
+    }
+    const File* Mod(const char* file) { return data.LookupModByName(file); }
+    std::optional<float> FirstSeconds(const Spell* spell)
+    {
+        if (!spell || spell->effects.empty() || !spell->effects[0]) {
+            return std::nullopt;
+        }
+        return static_cast<float>(spell->effects[0]->effectItem.duration);
+    }
+    bool SpawnsHazard(const Effect* effect, const Hazard* hazard)
+    {
+        return effect->GetArchetype() == RE::EffectSetting::Archetype::kSpawnHazard && effect->data.associatedForm == hazard;
+    }
+    void Report(const std::string& line) { Log("[ESSB][load] FAILED " + line); }
 };
 
-struct Forms {
-    RE::TESGlobal* enabled{};
-    RE::TESGlobal* formActive{};
-    RE::TESGlobal* element{};
-    RE::TESGlobal* debug{};
-    RE::TESGlobal* nativeHit{};
-    RE::TESGlobal* wanted{};
-    std::vector<std::pair<std::uint32_t, RE::TESGlobal*>> globals;  // every GLOB the tuning reads, by local id
-    std::array<RE::SpellItem*, 2 * (essb::kElementCount + 1)> procs{};  // [element * 2 + power]
-    std::vector<std::pair<std::uint32_t, RE::SpellItem*>> spells;     // cast spells, by local id
-    RE::EffectSetting* bloodMark{};
-    RE::EffectSetting* silence{};
-    RE::EffectSetting* bloodGuard{};
-    RE::EffectSetting* echoPending{};
-    RE::EffectSetting* twinWindow{};
-    RE::EffectSetting* riposteWindow{};
-    RE::EffectSetting* hush{};
-    RE::EffectSetting* hushSpent{};
-    RE::EffectSetting* manaBreak{};           // round 23: 反咒 (the caster carries your 滅法印)
-    std::array<RE::BGSKeyword*, 3> destructive{};   // MagicDamageFire / Frost / Shock: the pools' spell half
-    // Round 23: the mirrors of your resources the PERK conditions and Papyrus read (the DLL is their only writer).
-    RE::TESGlobal* mirrorSync{};
-    RE::TESGlobal* mirrorStage{};
-    RE::TESGlobal* mirrorCharge{};
-    RE::TESGlobal* mirrorResolve{};
-    RE::TESGlobal* mirrorIceShield{};
-    RE::TESGlobal* mirrorRock{};
-    RE::TESGlobal* mirrorWind{};
-    RE::TESGlobal* mirrorBracing{};
-    RE::BGSKeyword* undead{};
-    RE::BGSKeyword* daedra{};
-    RE::BGSKeyword* armorSpell{};
-    RE::BGSKeyword* cloak{};
-    RE::BGSKeyword* dragon{};        // round 24: ActorTypeDragon (never knocked, raised or turned to ash)
-    RE::EffectSetting* engaged{};    // round 24: 2.9 你主動攻擊過的目標 (ESSB_EngagedEffect, 30 s)
-    RE::EffectSetting* reanimate{};  // round 24: your raised servant (ESSB_ReanimateEffect; 亡衛)
-    // Round 25 (N6): the domains (build/fix25_records.py): [element] -> the HAZD and its Spawn Hazard effect (null: none).
-    std::array<RE::BGSHazard*, essb::kElementCount + 1> domainHazards{};
-    std::array<RE::EffectSetting*, essb::kElementCount + 1> domainSpawn{};
-    // Round 25: the globals the timer and the hotkeys write or read (the DLL is the only writer of the first four).
-    RE::TESGlobal* envWet{};
-    RE::TESGlobal* envStormy{};   // 暴風雪 (the hit path's 凍結累積 ×2)
-    RE::TESGlobal* envThunder{};  // 審查修正: 雷雨 (the storm charge)
-    RE::TESGlobal* envNight{};
-    RE::TESGlobal* freeOpen{};             // ESSB_FreeOpen: 免門檻 (Papyrus sets it after a burst; opening uses it up)
-    RE::TESGlobal* hotkeysEnabled{};
-    RE::TESGlobal* formNotify{};
-    std::array<RE::TESGlobal*, essb::kElementCount> hotkeys{};
-    RE::TESClass* necroClass{};
-    RE::TESFaction* necroFaction{};
-    std::vector<RE::BGSPerk*> mainPerks;    // [localId - kMainPerkBase]
-    std::vector<RE::BGSPerk*> branchPerks;  // [localId - kBranchPerkBase]
-    StatusForms status{};
-    const RE::TESFile* file{};  // our plugin (the wash never strips our own effects)
-};
+// The status layer's records (round 22) and every other resolved record: Load.h's tables, over the game's types.
+using StatusForms = essb::load::StatusForms<GameForms>;
+using Forms = essb::load::Forms<GameForms>;
+static_assert(std::string_view(essb::load::kPlugin) == kPlugin && std::string_view(essb::load::kSkyrim) == kSkyrim);
 
 struct State {
     std::atomic_bool ready{};     // manifest resolved and sinks registered
@@ -754,16 +748,7 @@ void WriteMirrors(RE::PlayerCharacter& player, const essb::Board& me, const Node
 
 RE::SpellItem* SpellOf(const essb::CastStep& step)
 {
-    if (step.cast == essb::Cast::kProc) {
-        return state.forms.procs[step.element * 2 + (step.power ? 1 : 0)];
-    }
-    const std::uint32_t id = essb::SpellFor(step);
-    for (const auto& [localId, spell] : state.forms.spells) {
-        if (localId == id) {
-            return spell;
-        }
-    }
-    return nullptr;
+    return essb::load::SpellOf(state.forms, step);
 }
 
 RE::MagicCaster& CasterOf(RE::PlayerCharacter& player)
@@ -2854,307 +2839,6 @@ InputSink inputSink;
 
 // ---------------------------------------------------------------- data load
 
-std::uint32_t LocalId(const nlohmann::json& row)
-{
-    return row.at("local_id").get<std::uint32_t>();
-}
-
-template <class T>
-T* Resolve(RE::TESDataHandler& data, std::uint32_t id, const char* file, const char* what)
-{
-    auto* form = data.LookupForm<T>(id, file);
-    if (!form) {
-        throw std::runtime_error(std::string(what) + " missing from its plugin");
-    }
-    return form;
-}
-
-void CheckIdentity(bool same, const char* what)
-{
-    if (!same) {
-        throw std::runtime_error(std::string("manifest identity mismatch: ") + what);
-    }
-}
-
-void ResolveGlobals(RE::TESDataHandler& data, const nlohmann::json& manifest)
-{
-    auto& f = state.forms;
-    const auto& globals = manifest.at("globals");
-    auto one = [&](const char* name, std::uint32_t id) {
-        CheckIdentity(globals.at(name).get<std::uint32_t>() == id, name);
-        return Resolve<RE::TESGlobal>(data, id, kPlugin, name);
-    };
-    f.enabled = one("ESSB_Enabled", essb::glob::kEnabled);
-    f.formActive = one("ESSB_FormActive", essb::glob::kFormActive);
-    f.element = one("ESSB_CurrentElement", essb::glob::kCurrentElement);
-    f.debug = one("ESSB_DebugLevel", essb::glob::kDebugLevel);
-    f.nativeHit = one("ESSB_NativeHit", essb::glob::kNativeHit);
-    f.wanted = one("ESSB_NativeWanted", essb::glob::kNativeWanted);
-    // The tuning globals: the manifest lists them by editor ID; every id ReadTuning asks for must be among them.
-    f.globals.clear();
-    for (const auto& [name, id] : globals.items()) {
-        const auto localId = id.get<std::uint32_t>();
-        f.globals.emplace_back(localId, Resolve<RE::TESGlobal>(data, localId, kPlugin, "tuning global"));
-    }
-    auto known = [&](std::uint32_t id) {
-        return std::any_of(f.globals.begin(), f.globals.end(), [id](const auto& g) { return g.first == id; });
-    };
-    bool complete = true;
-    essb::ReadTuning([&](std::uint32_t id) {
-        complete = complete && known(id);
-        return 0.0f;
-    });
-    CheckIdentity(complete, "tuning globals");
-    // Round 23: the mirrors the DLL writes (v0.4 2.3), by the manifest's editor IDs.
-    f.mirrorSync = one("ESSB_Sync", essb::glob::kSync);
-    f.mirrorStage = one("ESSB_SyncStage", essb::glob::kSyncStage);
-    f.mirrorCharge = one("ESSB_Charge", essb::glob::kCharge);
-    f.mirrorResolve = one("ESSB_Resolve", essb::glob::kResolve);
-    f.mirrorIceShield = one("ESSB_IceShield", essb::glob::kIceShield);
-    f.mirrorRock = one("ESSB_RockArmor", essb::glob::kRockArmor);
-    f.mirrorWind = one("ESSB_Wind", essb::glob::kWind);
-    f.mirrorBracing = one("ESSB_Bracing", essb::glob::kBracing);
-    // Round 25 (N6): the environment (the DLL writes it; 審查修正: ESSB_EnvThunder), 免門檻, the hotkeys and the tuning the
-    // timer reads.
-    f.envWet = one("ESSB_EnvWet", essb::glob::kEnvWet);
-    f.envStormy = one("ESSB_EnvStormy", essb::glob::kEnvStormy);
-    f.envThunder = one("ESSB_EnvThunder", essb::glob::kEnvThunder);
-    f.envNight = one("ESSB_EnvNight", essb::glob::kEnvNight);
-    f.freeOpen = one("ESSB_FreeOpen", essb::glob::kFreeOpen);
-    f.hotkeysEnabled = one("ESSB_HotkeysEnabled", essb::glob::kHotkeysEnabled);
-    f.formNotify = one("ESSB_FormNotify", essb::glob::kFormNotify);
-    static constexpr const char* kHotkeyNames[essb::kElementCount] = { "ESSB_Hotkey_Fire", "ESSB_Hotkey_Frost", "ESSB_Hotkey_Lightning",
-        "ESSB_Hotkey_Earth", "ESSB_Hotkey_Wind", "ESSB_Hotkey_Blood", "ESSB_Hotkey_Divine", "ESSB_Hotkey_Poison", "ESSB_Hotkey_Water",
-        "ESSB_Hotkey_Darkness", "ESSB_Hotkey_Astral" };
-    for (int i = 0; i < essb::kElementCount; ++i) {
-        f.hotkeys[i] = one(kHotkeyNames[i], essb::glob::kHotkey[i]);
-    }
-    bool timer = true;
-    essb::ReadTimerTuning([&](std::uint32_t id) {
-        timer = timer && known(id);
-        return 0.0f;
-    });
-    CheckIdentity(timer, "timer tuning globals");
-}
-
-// Round 25 (N6): the domains' HAZDs and Spawn Hazard effects by element, checked against the manifest (the spawn spells
-// resolve with the other cast spells: StatusEngine.h CastSpells).
-void ResolveDomains(RE::TESDataHandler& data, const nlohmann::json& manifest)
-{
-    auto& f = state.forms;
-    f.domainHazards.fill(nullptr);
-    f.domainSpawn.fill(nullptr);
-    int count = 0;
-    for (const auto& row : manifest.at("status").at("domains")) {
-        const int e = row.at("element").get<int>();
-        CheckIdentity(essb::IsElement(e) && row.at("hazard").get<std::uint32_t>() == essb::status::kDomainHazard[e] &&
-                          row.at("spawn_effect").get<std::uint32_t>() == essb::status::kDomainSpawnEffect[e],
-            "domain record");
-        const auto& spawn = row.at("spawn");
-        CheckIdentity(spawn.size() == static_cast<std::size_t>(essb::kDomainMaxSeconds), "domain spawn spells");
-        for (int s = 0; s < essb::kDomainMaxSeconds; ++s) {
-            CheckIdentity(spawn.at(s).get<std::uint32_t>() == essb::status::kDomainSpawn[e][s], "domain spawn spell");
-        }
-        f.domainHazards[e] = Resolve<RE::BGSHazard>(data, essb::status::kDomainHazard[e], kPlugin, "domain hazard");
-        f.domainSpawn[e] = Resolve<RE::EffectSetting>(data, essb::status::kDomainSpawnEffect[e], kPlugin, "domain spawn effect");
-        CheckIdentity(f.domainSpawn[e]->GetArchetype() == RE::EffectSetting::Archetype::kSpawnHazard &&
-                          f.domainSpawn[e]->data.associatedForm == f.domainHazards[e],
-            "domain spawn effect places its hazard");
-        ++count;
-    }
-    int compiled = 0;
-    for (int e = essb::kFire; e <= essb::kAstral; ++e) {
-        compiled += essb::status::kDomainHazard[e] ? 1 : 0;
-    }
-    CheckIdentity(count == compiled, "domain count");
-}
-
-void ResolveSpells(RE::TESDataHandler& data, const nlohmann::json& manifest)
-{
-    auto& f = state.forms;
-    f.procs.fill(nullptr);
-    std::size_t procs = 0;
-    for (const auto& row : manifest.at("proc_spells")) {
-        const int element = row.at("element").get<int>();
-        const int power = row.at("power").get<int>();
-        const essb::ProcRow* compiled = essb::FindProc(element, power != 0);
-        CheckIdentity(compiled && compiled->id == LocalId(row) && !f.procs[element * 2 + power], "proc spell");
-        f.procs[element * 2 + power] = Resolve<RE::SpellItem>(data, LocalId(row), kPlugin, "proc spell");
-        ++procs;
-    }
-    CheckIdentity(procs == std::size(essb::procRows), "proc spell count");
-    f.spells.clear();
-    for (const auto& [name, row] : manifest.at("spells").items()) {
-        f.spells.emplace_back(LocalId(row), Resolve<RE::SpellItem>(data, LocalId(row), kPlugin, "cast spell"));
-    }
-    // Every spell a plan can ask for must be resolved (one per whole second for silence and the soaked slow).
-    for (int cast = 0; cast <= static_cast<int>(essb::Cast::kBloodGuard); ++cast) {
-        essb::CastStep step{ static_cast<essb::Cast>(cast) };
-        const int variants = essb::DurationVariants(step.cast);
-        for (int v = 1; v <= variants; ++v) {
-            step.seconds = v;
-            step.element = essb::kFire;
-            CheckIdentity(SpellOf(step) != nullptr, "cast spell coverage");
-        }
-    }
-}
-
-void ResolveEffects(RE::TESDataHandler& data, const nlohmann::json& manifest)
-{
-    auto& f = state.forms;
-    const auto& effects = manifest.at("effects");
-    auto one = [&](const char* name, std::uint32_t id) {
-        CheckIdentity(LocalId(effects.at(name)) == id, name);
-        return Resolve<RE::EffectSetting>(data, id, kPlugin, name);
-    };
-    f.bloodMark = one("kBloodMark", essb::effect::kBloodMark);
-    f.silence = one("kSilence", essb::effect::kSilence);
-    f.bloodGuard = one("kBloodGuard", essb::effect::kBloodGuard);
-    f.echoPending = one("kEchoPending", essb::effect::kEchoPending);
-    f.twinWindow = one("kTwinWindow", essb::effect::kTwinWindow);
-    f.riposteWindow = one("kRiposteWindow", essb::effect::kRiposteWindow);
-    f.hush = one("kHush", essb::effect::kHush);
-    f.hushSpent = one("kHushSpent", essb::effect::kHushSpent);
-    f.manaBreak = one("kManaBreak", essb::effect::kManaBreak);
-    f.engaged = one("kEngaged", essb::effect::kEngaged);
-    f.reanimate = one("kReanimate", essb::effect::kReanimate);
-
-    const auto& vanilla = manifest.at("vanilla");
-    auto id = [&](const char* name, std::uint32_t compiled) {
-        CheckIdentity(vanilla.at(name).at("form_id").get<std::uint32_t>() == compiled, name);
-        return compiled;
-    };
-    f.undead = Resolve<RE::BGSKeyword>(data, id("kUndeadKeyword", essb::vanilla::kUndeadKeyword), kSkyrim, "ActorTypeUndead");
-    f.daedra = Resolve<RE::BGSKeyword>(data, id("kDaedraKeyword", essb::vanilla::kDaedraKeyword), kSkyrim, "ActorTypeDaedra");
-    f.armorSpell = Resolve<RE::BGSKeyword>(data, id("kArmorSpellKeyword", essb::vanilla::kArmorSpellKeyword), kSkyrim, "MagicArmorSpell");
-    f.cloak = Resolve<RE::BGSKeyword>(data, id("kCloakKeyword", essb::vanilla::kCloakKeyword), kSkyrim, "MagicCloak");
-    f.dragon = Resolve<RE::BGSKeyword>(data, id("kDragonKeyword", essb::vanilla::kDragonKeyword), kSkyrim, "ActorTypeDragon");
-    f.necroClass = Resolve<RE::TESClass>(data, id("kNecroClass", essb::vanilla::kNecroClass), kSkyrim, "necromancer class");
-    f.necroFaction = Resolve<RE::TESFaction>(data, id("kNecroFaction", essb::vanilla::kNecroFaction), kSkyrim, "necromancer faction");
-    f.destructive = { Resolve<RE::BGSKeyword>(data, id("kDamageFireKeyword", essb::vanilla::kDamageFireKeyword), kSkyrim, "MagicDamageFire"),
-        Resolve<RE::BGSKeyword>(data, id("kDamageFrostKeyword", essb::vanilla::kDamageFrostKeyword), kSkyrim, "MagicDamageFrost"),
-        Resolve<RE::BGSKeyword>(data, id("kDamageShockKeyword", essb::vanilla::kDamageShockKeyword), kSkyrim, "MagicDamageShock") };
-}
-
-// The record duration of a spell's first effect: effectiveness = wanted / this (ledger D1), so it must be the number
-// Status.h was compiled with.
-float RecordSeconds(const RE::SpellItem* spell)
-{
-    if (!spell || spell->effects.empty() || !spell->effects[0]) {
-        throw std::runtime_error("status spell without an effect");
-    }
-    return static_cast<float>(spell->effects[0]->effectItem.duration);
-}
-
-// Round 22: every status-layer record by local FormID, checked against the manifest and the compiled table.
-void ResolveStatus(RE::TESDataHandler& data, const nlohmann::json& manifest)
-{
-    auto& s = state.forms.status;
-    s = StatusForms{};
-    const auto& status = manifest.at("status");
-    auto effect = [&](std::uint32_t id, const char* what) {
-        auto* form = Resolve<RE::EffectSetting>(data, id, kPlugin, what);
-        CheckIdentity(essb::TagOf(id).kind != essb::TagKind::kNone, what);
-        s.effects.emplace_back(id, form);
-        s.effectIds.emplace_back(form, id);
-    };
-    auto spell = [&](std::uint32_t id, const char* what, float seconds) {
-        auto* form = Resolve<RE::SpellItem>(data, id, kPlugin, what);
-        if (seconds > 0.0f) {
-            CheckIdentity(RecordSeconds(form) == seconds, what);
-        }
-        s.spells.emplace_back(id, form);
-    };
-    const auto& kinds = status.at("kinds");
-    CheckIdentity(kinds.size() == static_cast<std::size_t>(essb::kStatusKindCount), "status kind count");
-    for (int k = 0; k < essb::kStatusKindCount; ++k) {
-        const auto& row = kinds.at(k);
-        const auto& compiled = essb::kStatusRecords[k];
-        CheckIdentity(row.at("effect").get<std::uint32_t>() == compiled.effect && row.at("spell").get<std::uint32_t>() == compiled.spell &&
-                          row.at("editor_id").get<std::string>() == compiled.editorId,
-            "status record");
-        effect(compiled.effect, "status effect");
-        spell(compiled.spell, "status spell", compiled.seconds);
-    }
-    for (int e = essb::kFire; e <= essb::kAstral; ++e) {
-        const auto& mark = status.at("marks").at(e - 1);
-        CheckIdentity(mark.at("effect").get<std::uint32_t>() == essb::status::kMarkEffect[e] &&
-                          mark.at("spell").get<std::uint32_t>() == essb::status::kMarkSpell[e],
-            "mark record");
-        effect(essb::status::kMarkEffect[e], "mark effect");
-        spell(essb::status::kMarkSpell[e], "mark spell", essb::status::kMarkRecordSeconds);
-        CheckIdentity(status.at("react").at(e - 1).at("spell").get<std::uint32_t>() == essb::status::kReactSpell[e], "reaction spell");
-        spell(essb::status::kReactSpell[e], "reaction spell", 0.0f);
-    }
-    const auto& dots = status.at("dots");
-    CheckIdentity(dots.at("bleed").at("effect").get<std::uint32_t>() == essb::status::kBleedDotEffect &&
-                      dots.at("poison").at("effect").get<std::uint32_t>() == essb::status::kPoisonDotEffect,
-        "DoT effects");
-    effect(essb::status::kBleedDotEffect, "bleed DoT");
-    effect(essb::status::kPoisonDotEffect, "poison DoT");
-    for (int i = 0; i < essb::status::kDotMaxSeconds; ++i) {
-        CheckIdentity(dots.at("bleed").at("spells").at(i).get<std::uint32_t>() == essb::status::kBleedDot[i] &&
-                          dots.at("poison").at("spells").at(i).get<std::uint32_t>() == essb::status::kPoisonDot[i],
-            "DoT spells");
-        spell(essb::status::kBleedDot[i], "bleed DoT spell", static_cast<float>(i + 1));
-        spell(essb::status::kPoisonDot[i], "poison DoT spell", static_cast<float>(i + 1));
-    }
-    CheckIdentity(status.at("fear").at("effect").get<std::uint32_t>() == essb::status::kFearEffect &&
-                      status.at("frenzy").at("effect").get<std::uint32_t>() == essb::status::kFrenzyEffect &&
-                      status.at("slow").at("effect").get<std::uint32_t>() == essb::status::kSlowEffect,
-        "fear / frenzy / slow effects");
-    effect(essb::status::kFearEffect, "fear effect");
-    effect(essb::status::kFrenzyEffect, "frenzy effect");
-    effect(essb::status::kSlowEffect, "slow effect");
-    // The other spells Status.h Lower can name. The list is StatusEngine.h CastSpells() -- the native tests lower every
-    // op and require each spell it names to be on that list (review: ESSB_Util_BleedTick was missing here, so the first
-    // 放血 tick would have faulted the DLL).
-    const auto have = [](const auto& table, std::uint32_t id) {
-        return std::any_of(table.begin(), table.end(), [id](const auto& row) { return row.first == id; });
-    };
-    for (const std::uint32_t id : essb::engine::CastSpells()) {
-        if (!have(s.spells, id)) {
-            spell(id, "cast spell", 0.0f);
-        }
-    }
-    for (const std::uint32_t id : essb::engine::TaggedEffects()) {
-        CheckIdentity(have(s.effects, id), "tagged effect resolved");
-    }
-    std::sort(s.effectIds.begin(), s.effectIds.end());
-    std::sort(s.effects.begin(), s.effects.end());
-    std::sort(s.spells.begin(), s.spells.end());
-    s.spells.erase(std::unique(s.spells.begin(), s.spells.end()), s.spells.end());
-    for (const auto& [id, form] : s.spells) {
-        s.spellIds.emplace_back(static_cast<const RE::MagicItem*>(form), id);
-    }
-    std::sort(s.spellIds.begin(), s.spellIds.end());
-    const auto same = [](const auto& a, const auto& b) { return a.first == b.first; };
-    CheckIdentity(std::adjacent_find(s.effectIds.begin(), s.effectIds.end(), same) == s.effectIds.end(), "status effects are distinct forms");
-    CheckIdentity(std::adjacent_find(s.spells.begin(), s.spells.end(), same) == s.spells.end(), "status spells are distinct ids");
-    state.forms.file = data.LookupModByName(kPlugin);
-    CheckIdentity(state.forms.file != nullptr, "plugin file");
-}
-
-// Every rank of every main line and every branch slot; missing branch slots stay null (HasPerk false).
-void ResolvePerks(RE::TESDataHandler& data, const nlohmann::json& manifest)
-{
-    const auto& perks = manifest.at("perks");
-    CheckIdentity(perks.at("main_base").get<std::uint32_t>() == essb::kMainPerkBase &&
-                      perks.at("branch_base").get<std::uint32_t>() == essb::kBranchPerkBase &&
-                      perks.at("main_max_rank").get<int>() == essb::kMainMaxRank &&
-                      perks.at("branch_slots").get<int>() == essb::kBranchSlots,
-        "perk layout");
-    auto& f = state.forms;
-    f.mainPerks.assign(static_cast<std::size_t>(essb::kNodeCount * essb::kMainMaxRank), nullptr);
-    f.branchPerks.assign(static_cast<std::size_t>(essb::kNodeCount * essb::kBranchSlots), nullptr);
-    for (std::size_t i = 0; i < f.mainPerks.size(); ++i) {
-        f.mainPerks[i] = Resolve<RE::BGSPerk>(data, essb::kMainPerkBase + static_cast<std::uint32_t>(i), kPlugin, "main-line perk");
-    }
-    for (std::size_t i = 0; i < f.branchPerks.size(); ++i) {
-        f.branchPerks[i] = data.LookupForm<RE::BGSPerk>(essb::kBranchPerkBase + static_cast<std::uint32_t>(i), kPlugin);
-    }
-}
-
 void LoadManifest()
 {
     auto* data = RE::TESDataHandler::GetSingleton();
@@ -3170,17 +2854,11 @@ void LoadManifest()
     }
     nlohmann::json manifest;
     file >> manifest;
-    const bool matches = manifest.at("schema") == 2 && manifest.at("plugin") == kPlugin &&
-                         manifest.at("native_version") == essb::nativeVersion && manifest.at("runtime") == "1.5.97.0";
-    if (!matches) {
-        throw std::runtime_error("manifest version does not match this DLL");
-    }
-    ResolveGlobals(*data, manifest);
-    ResolveSpells(*data, manifest);
-    ResolveEffects(*data, manifest);
-    ResolvePerks(*data, manifest);
-    ResolveStatus(*data, manifest);
-    ResolveDomains(*data, manifest);   // round 25 (N6)
+    // Round 25 hotfix: the whole resolution is Load.h's (load_test runs it on the written ESP). Every failure is logged
+    // as "[ESSB][load] FAILED ..." with the FormID, EditorID, expected type and check; the first one is the fault.
+    GameForms game{ *data };
+    const essb::load::Summary resolved = essb::load::LoadForms(game, manifest, state.forms);
+    Log("[ESSB][load] resolved " + essb::load::Describe(resolved));
 
     LARGE_INTEGER counter{};
     QueryPerformanceCounter(&counter);

@@ -34,7 +34,7 @@ import fix23_reference as _ref23
 import fix24_reference as _ref24
 import fix25_reference as _ref25
 NATIVE = ROOT / 'native'
-NATIVE_VERSION = '0.25.0'
+NATIVE_VERSION = '0.25.1'
 NATIVE_HIT = 0x52d1
 NATIVE_WANTED = 0x52d2
 NATIVE_GLOBALS = {'ESSB_NativeHit', 'ESSB_NativeWanted'}      # round 19: the MCM shows both
@@ -623,7 +623,15 @@ def manifest(b):
             'proc_spells': [{'local_id': v['id'], 'editor_id': v['edid'], 'element': v['e'], 'power': v['p']} for v in proc_rows(b)],
             'spells': spells(b), 'effects': effects(b), 'vanilla': vanilla(b), 'status': status_ids(b),
             'perks': {'main_base': b.ID_MAIN_PERK, 'branch_base': b.ID_BRANCH_PERK,
-                      'main_max_rank': b.plan_trees.MAIN_MAX_RANK, 'branch_slots': b.plan_trees.MAX_BRANCH}}
+                      'main_max_rank': b.plan_trees.MAIN_MAX_RANK, 'branch_slots': b.plan_trees.MAX_BRANCH},
+            # round 25 hotfix: local id -> [EditorID, record type] of every record the ESP has (the one build_esp just
+            # wrote), so a failed load check in the game names the record (Load.h Diag); nothing is checked against it.
+            'records': written_records()}
+
+
+def written_records():
+    written = json.loads((ROOT / 'build/v03-formids.json').read_text(encoding='utf-8'))['records']
+    return {row['id']: [edid, row['type']] for edid, row in sorted(written.items(), key=lambda kv: kv[1]['id'])}
 
 
 def package(b):

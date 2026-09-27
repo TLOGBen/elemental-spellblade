@@ -176,7 +176,20 @@ MUTANTS = [
      'if (f.form == kLightning && f.thunder && !me.Has(K::kStormCooldown)) {', 'if (f.form == kLightning && f.thunder) {'),
     ('the domain spell overrides the hazard magnitude', 'StatusEngine.h', 'timer',
      'engine.Cast(Who::kTarget, spawn, 0.0f, 1.0f);', 'engine.Cast(Who::kTarget, spawn, 1.0f, 1.0f);'),
+    # Round 25 hotfix: mutations of the data-load resolution (Load.h). load_test needs the ESP build_v03.py writes, so
+    # these are only BUILT here; build/fix25_verify.py runs each on the written ESP and requires it to fail (LOAD_DEFERRED).
+    ('the 0.25.0 registration: the 護血 pool and 寂 not in the status effect table', 'Load.h', 'load',
+     '''    effect(essb::effect::kBloodGuard, "blood guard pool");
+    effect(essb::effect::kHush, "hush");
+''', ''),
+    ('the loader skips the spells CastSpells names', 'Load.h', 'load',
+     '''        if (!have(s.spells, id)) {
+            spell(id, "cast spell", 0.0f);
+        }''', '''        (void)id;'''),
+    ('the status effect table left unsorted (EffectById is a binary search)', 'Load.h', 'load',
+     '    std::sort(s.effects.begin(), s.effects.end());\n', ''),
 ]
+LOAD_DEFERRED = 'load'   # the mutants of this test run in build/fix25_verify.py (check_load), on the written ESP
 
 
 def run_mutants(log):
@@ -202,7 +215,7 @@ def run_mutants(log):
                 (folder / other.name).write_bytes(other.read_bytes())
         (folder / header).write_text(text.replace(old, new), encoding='utf-8', newline='\n')
         source = n.NATIVE / 'tests' / {'status': 'status_test.cpp', 'engine': 'engine_test.cpp', 'self': 'self_test.cpp',
-                                       'reaction': 'reaction_test.cpp', 'timer': 'timer_test.cpp'}[test]
+                                       'reaction': 'reaction_test.cpp', 'timer': 'timer_test.cpp', 'load': 'load_test.cpp'}[test]
         lines += [f'add_executable(m{i} "{source.as_posix()}")',
                   f'target_include_directories(m{i} PRIVATE "{folder.as_posix()}" "{inc.as_posix()}" "{js.as_posix()}")',
                   f'target_compile_options(m{i} PRIVATE /EHsc /utf-8 /bigobj)']
@@ -212,6 +225,11 @@ def run_mutants(log):
     results = []
     for i, (name, header, test, *_rest) in enumerate(MUTANTS):
         exe = root / 'build' / 'Release' / f'm{i}.exe'
+        if test == LOAD_DEFERRED:
+            assert exe.is_file(), ('load mutant not built', name)
+            results.append(dict(name=name, header=header, test=test, exit=None, exe=exe.relative_to(ROOT).as_posix(),
+                                first_line='built here; run by build/fix25_verify.py on the written ESP (must fail)'))
+            continue
         tables = {'status': ['build/fix22-status-table.json', 'build/fix22-wiring.json'],
                   'self': ['build/fix23-self-table.json', 'build/fix23-wiring.json'],
                   'reaction': ['build/fix24-body-table.json', 'build/fix24-wiring.json'],
@@ -265,7 +283,9 @@ def main():
     by = {}
     for m in mutants:
         by[m['header']] = by.get(m['header'], 0) + 1
-    print(f'NATIVE MUTANTS ok: {len(mutants)}/{len(mutants)} source mutations make the tests fail '
+    ran = [m for m in mutants if m['exit'] is not None]
+    print(f'NATIVE MUTANTS ok: {len(ran)}/{len(ran)} source mutations make the tests fail '
+          f'(+{len(mutants) - len(ran)} Load.h mutants built for build/fix25_verify.py) '
           f'({", ".join(f"{h} {k}" for h, k in by.items())})')
     print(f'Native build ok: cl {cl_version}, cmake {cmake_version}, SDK {sdk}; ctest {summary[3]} test(s), 0 failed; receipt written.')
 

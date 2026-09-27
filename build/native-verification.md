@@ -302,3 +302,20 @@ snapshot 的 74 段中，R5→R1 priority 遞減；按 smoke 證實的最低 pri
 - 等待、睡覺、快速旅行時計時器是否停住（選單暫停遊戲、快速旅行是讀檔）；對話照走。
 - 按住熱鍵是否只切換一次（只看 IsDown）、手把鍵；死亡、倒地、騎馬時按熱鍵的行為（沒有擋，記錄）。
 - 同一元素 5 個領域與讀檔後 `domains=` 不重複；冰原減速吃 MCM 上限 30；五種天氣的 `[env]`；FPS。
+
+## Round 25 hotfix（0.25.1，2026-09-27）：資料載入時 DLL 自我停用
+
+實機 log：`[ESSB][fault] manifest identity mismatch: tagged effect resolved; native hit OFF until the game restarts`。
+
+| 項目 | 內容 |
+|---|---|
+| 根因 | `StatusEngine.h TaggedEffects()` 列了 `effect::kBloodGuard`（0x005303 `ESSB_BloodGuardEffect`，round 23 加入，TagKind::kGuardPool）與 `effect::kHush`（0x005340 `ESSB_HushEffect`，round 24 加入，TagKind::kHush）。兩個 MGEF 都在 ESP 裡（`build/fix21_records.py` 建的），也在 `ResolveEffects` 解析成 `Forms::bloodGuard／hush`，但 `ResolveStatus` 從沒用 `effect(...)` 把它們登記進狀態效果表 `s.effects`，所以載入尾端的檢查必然失敗。從 round 23 起的每一版 DLL 在遊戲裡都會在 kDataLoaded 故障。 |
+| 為什麼離線沒抓到 | engine_test／reaction_test 只檢查「id 在 TaggedEffects() 清單上」，沒有任何測試跑載入函式本身（它寫死在 Plugin.cpp、綁 CommonLib）。清單和解析器是兩份東西，沒人比對。 |
+| 修正 | 載入解析整段（ResolveGlobals／Spells／Effects／Perks／Status／Domains 與版本檢查）搬到 `native/include/Load.h`，對抽象表單來源寫成樣板；Plugin.cpp 只剩 `GameForms` 轉接（TESDataHandler）並呼叫 `essb::load::LoadForms`。ResolveStatus 補登記 `ESSB_BloodGuardEffect`、`ESSB_HushEffect`；TaggedEffects 檢查原樣保留。 |
+| 失敗訊息 | 每個失敗記一行 `[ESSB][load] FAILED ...`：哪一項檢查、本地 FormID、執行期 FormID（依外掛實際載入序號，ESL 也算）、EditorID（manifest 新增 `records`：本地 id → [EditorID, 類型]）、預期記錄類型，以及實際情況（沒有這筆／那裡是別的類型／解析得到但沒登記／秒數不同）。會繼續檢查到底，一次列完，最後才故障（行為不變：native OFF 到重開遊戲）。成功時記一行摘要：外掛前綴、globals、proc／命中路徑法術、具名效果、狀態效果表、狀態法術表、領域 hazard／放置效果、主線／分支天賦、Skyrim.esm 表單的數量。 |
+| 離線檢查 | 新 `native/tests/load_test.cpp`：用假 TESDataHandler 跑 **同一份** `Load.h`。輸入是 `build/fix25_verify.py` 從剛寫出的 ESP 讀回的事實（每筆記錄的本地 id 與類型、SPEL 第一個效果秒數、MGEF archetype 與 associated item）加 Skyrim.esm 的 KYWD／CLAS／FACT（`build/fix25-load-forms.json`），以及打包的 manifest.json。之後再照 Plugin.cpp 的查法（排序表二分搜尋）查每個 TaggedEffects、CastSpells、命中路徑施放與領域。fix25_verify 另注入 8 個錯誤（ESP 少一筆、類型錯、秒數錯、spawn 效果不指向 hazard、manifest 來自別的建置、Skyrim.esm 少關鍵字、TaggedEffects 記錄不見、CastSpells 法術不見），每個都要失敗且訊息要含 FormID／EditorID／類型。 |
+| 舊碼證明 | `native/build.py` 新增 3 個 Load.h 突變（只建置，由 fix25_verify 在寫出的 ESP 上跑，必須失敗）：第一個就是 0.25.0 的登記（拿掉兩行）。在已部署的 0.25.0 ESP 上它輸出 `tagged effect resolved: 0x005303 (runtime 0x01005303) ... expected MGEF, the record resolves, but ResolveStatus never put it in the status effect table` 與 0x005340 同樣一行，和實機 log 同一個檢查；修正版在同一份 ESP 上通過。另兩個（跳過 CastSpells 登記、狀態效果表不排序）也失敗。 |
+| 其他載入檢查 | 盤點 LoadManifest 裡全部 CheckIdentity／Resolve：manifest 對編譯常數、每筆記錄的類型、狀態法術秒數、領域 Spawn Hazard archetype 與 associated item、proc／施放覆蓋、tuning／timer globals、天賦版面、Skyrim.esm 關鍵字／職業／派系、外掛檔。以前離線只比對 manifest 與 ESP 的 EditorID，這些在 Load.h 裡現在全部離線跑過；目前全部通過，沒有第二個會在遊戲裡炸的點。唯一無法離線的是 CommonLib 本身的行為（LookupForm 的類型判斷、TESFile 載入序號），轉接層只做一對一轉呼叫。 |
+| 版本 | DLL 0.25.1（manifest 的 native_version 跟著變；log 開頭的版本可確認換上的是熱修版）。state schema 不變（14，控制器成員沒動）。 |
+
+建置：`python -B native/build.py` exit 0（ctest 6/6，突變 47/47＋3 個 Load.h 突變）；`python build_v03.py` exit 0（`FIX25 LOAD ok`：8/8 注入錯誤、3/3 突變）。

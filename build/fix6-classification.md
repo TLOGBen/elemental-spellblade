@@ -186,7 +186,7 @@
 | common | 持續 | 熟練 | ×3：純百分比傷害主線（規劃 3） | 同調二段時附傷 +1%／點 | 同調二段時附傷 +3%／點 | src/ESSBNodes.psc:CommonHitMult；native/include/HitMath.h:kCommonStage2 |
 | common | 持續 | 專精 | ×3：純百分比傷害主線（規劃 3） | 同調三段時終焉 +1%／點 | 同調三段時終焉 +3%／點 | native/include/Status.h:kCommonSyncEnd |
 | common | 持續 | 大師 | ×3：純百分比傷害主線（規劃 3） | 同調三段時重擊附傷 +2%／點 | 同調三段時重擊附傷 +6%／點 | src/ESSBNodes.psc:CommonHitMult；native/include/HitMath.h:kCommonStage3Power |
-| common | 持續 | 傳奇 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 化身，同調三段時 30 秒冷卻（-1 秒／點）完成後的下一次命中，自動觸發當前元素的持續傳奇效果；若該效果屬於被動數值（如絕對零度、深淵），化身改為讓你在接下來 10 秒內視同已取得該效果 | 化身，同調三段時 30 秒冷卻（-1 秒／點）完成後的下一次命中，自動觸發當前元素的持續傳奇效果；若該效果屬於被動數值（如絕對零度、深淵），化身改為讓你在接下來 10 秒內視同已取得該效果 | DLL native/include/SelfLayer.h（node::kCommonAvatar） |
+| common | 持續 | 傳奇 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 化身，同調三段時 30 秒冷卻（-1 秒／點）完成後的下一次命中，觸發當前元素的持續傳奇主線：10 秒內視同已點滿該主線（被動數值如絕對零度、深淵直接生效）；若該元素的傳奇主線是範圍型主動效果（天雷、血海、天啟），化身額外以滿級各觸發一次（放電你的電荷、一次血潮、一次裁決） | 化身，同調三段時 30 秒冷卻（-1 秒／點）完成後的下一次命中，觸發當前元素的持續傳奇主線：10 秒內視同已點滿該主線（被動數值如絕對零度、深淵直接生效）；若該元素的傳奇主線是範圍型主動效果（天雷、血海、天啟），化身額外以滿級各觸發一次（放電你的電荷、一次血潮、一次裁決） | DLL native/include/SelfLayer.h（node::kCommonAvatar） |
 | common | 開啟 | 新手 | ×3：純百分比傷害主線（規劃 3） | 所有元素附傷 +1%／點 | 所有元素附傷 +3%／點 | src/ESSBNodes.psc:CommonHitMult；native/include/HitMath.h:kCommonAll1 |
 | common | 開啟 | 熟練 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 印記持續 +0.2 秒／點 | 印記持續 +0.2 秒／點 | DLL native/include/Status.h（node::kCommonMarkDuration） |
 | common | 開啟 | 專精 | 不改：不是「+X%／點」的百分比主線（時長／層數／範圍／固定值／係數） | 開印時 +1 同調／每 5 點 | 開印時 +1 同調／每 5 點 | DLL native/include/SelfLayer.h res::OpenGains（node::kCommonOpenSync） |

@@ -62,6 +62,23 @@ REASONS = {
 }
 # Verifiers that later edits in this round may touch are added to REASONS as they change (the gen refuses otherwise).
 EXTRA = {}
+# Round 25 hotfix (0.25.1): 0.25.0 faulted in the game at data load ("tagged effect resolved": the 護血 pool and 寂 were
+# never put in the status effect table). The loader moved to Load.h so load_test runs it on the written ESP.
+HOTFIX = '；round 25 hotfix（0.25.1）：'
+HOTFIX_REASONS = {
+    'native/include/Load.h': HOTFIX + '資料載入解析（原 Plugin.cpp ResolveGlobals..ResolveDomains）搬成對抽象表單來源的樣板，'
+                             'load_test 跑同一份程式；護血池（ESSB_BloodGuardEffect）與寂（ESSB_HushEffect）登記進狀態效果表；'
+                             '每個失敗都記 FormID（本地與執行期）、EditorID、預期記錄類型與哪一項檢查，一次列完再故障（新檔）',
+    'native/tests/load_test.cpp': HOTFIX + 'Load.h 在寫出的 ESP＋manifest 上跑（假 TESDataHandler），再查執行期查表（新檔）',
+    'native/src/Plugin.cpp': HOTFIX + '載入改呼叫 Load.h（GameForms 轉接）、逐項 FAILED 記錄與一行解析摘要；SpellOf 走 Load.h',
+    'native/include/ManifestData.h': HOTFIX + '版本 0.25.1',
+    'native/CMakeLists.txt': HOTFIX + 'load_test；版本 0.25.1',
+    'native/build.py': HOTFIX + '3 個 Load.h 突變（0.25.0 的登記、跳過 CastSpells、狀態效果表不排序），只建置，由 fix25_verify 在寫出的 ESP 上跑',
+    'build/fix19_native.py': HOTFIX + 'NATIVE_VERSION 0.25.1；manifest 加 records（本地 id → EditorID、類型），只用來在失敗訊息裡指名記錄',
+    'build/fix21_identity.py': HOTFIX + '主線／分支天賦的載入解析行搬到 Load.h（允許清單跟著換檔名）',
+    'build/fix25_verify.py': HOTFIX + 'LOAD：Load.h 在寫出的 ESP＋Skyrim.esm＋manifest 上跑、8 個注入錯誤（訊息要指名 FormID／EditorID／類型）、Load.h 突變要失敗',
+    'build/fix25_native_history_gen.py': HOTFIX + '熱修理由',
+}
 
 VERIFIERS = ('fix6_verify.py', 'fix11_verify.py', 'fix16_verify.py', 'fix21_verify.py', 'fix22_verify.py', 'fix23_verify.py',
              'fix24_verify.py', 'fix25_verify.py', 'fix21_identity.py',
@@ -104,6 +121,8 @@ def main():
             rows.append((rel, 'unchanged', now, ''))
             continue
         why = REASONS.get(rel) or EXTRA.get(rel)
+        if rel in HOTFIX_REASONS:
+            why = (why or '') + HOTFIX_REASONS[rel]
         assert why, (rel, 'changed in round 25 but no reason is written in build/fix25_native_history_gen.py')
         rows.append((rel, 'added' if before is None else 'changed', now, why))
     body = ''.join(f'    {rel!r}: ({state!r}, {sha!r}, {why!r}),\n' for rel, state, sha, why in rows)
