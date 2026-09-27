@@ -14,6 +14,7 @@
 //             offline test (build/fix26_verify.py renumbers the stations to the sheet's)
 #include "EngineFacts.h"
 #include "Selection.h"
+#include "Sinks.h"
 #include "StatusEngine.h"
 #include "Trace.h"
 
@@ -474,6 +475,83 @@ void NameChecks()
     Check(tr::Cooldowns(essb::Board{}) == "-", "names: no cooldown = -");
 }
 
+// ---------------------------------------------------------------- round 26b: the sinks read only their own event
+
+struct FakeActor {
+    int id = 0;
+    essb::Board board;
+    bool servant = false;
+    int ours = 0;
+};
+
+// Every read the death sink makes, by actor; the world has no way to write anything.
+struct SinkWorld {
+    std::vector<int> reads;
+    bool Servant(const FakeActor* a) { reads.push_back(a->id); return a->servant; }
+    int CountOurs(const FakeActor* a) { reads.push_back(a->id); return a->ours; }
+    const essb::Board& ReadCorpse(const FakeActor* a) { reads.push_back(a->id); return a->board; }
+};
+
+void SinkChecks()
+{
+    FakeActor corpse{ 1 };
+    FakeActor killer{ 2 };
+    FakeActor you{ 3 };
+    corpse.board.mark[essb::kFire] = essb::Slot{ true, 0.0f, 1.0f, 8.0f };
+    corpse.ours = 2;
+    // dead = false, killed by you: the corpse is read, the killer and you only compared
+    SinkWorld w;
+    essb::sink::DeathSeen s = essb::sink::DeathSink(w, &corpse, &you, &you, false, true);
+    Check(s.killerYou && s.snapshot && s.ours == 2 && !s.dyingIsYou, "death sink: your kill of a marked corpse is planned");
+    Check(!w.reads.empty() && std::all_of(w.reads.begin(), w.reads.end(), [](int id) { return id == 1; }),
+        "death sink: only the corpse is read (never the killer, never you)");
+    // killed by someone else: still only the corpse
+    SinkWorld w2;
+    s = essb::sink::DeathSink(w2, &corpse, &killer, &you, false, false);
+    Check(!s.killerYou && s.snapshot && std::all_of(w2.reads.begin(), w2.reads.end(), [](int id) { return id == 1; }),
+        "death sink: another killer is never read");
+    // the dead = true event: counted for the log, never planned
+    SinkWorld w3;
+    s = essb::sink::DeathSink(w3, &corpse, &killer, &you, true, true);
+    Check(!s.snapshot && s.ours == 2, "death sink: dead = true is only logged");
+    // your own death: nothing is read
+    SinkWorld w4;
+    s = essb::sink::DeathSink(w4, &you, &killer, &you, false, true);
+    Check(s.dyingIsYou && w4.reads.empty(), "death sink: your own death reads nothing");
+    // a clean corpse killed by someone else: nothing to plan
+    FakeActor clean{ 4 };
+    SinkWorld w5;
+    Check(!essb::sink::DeathSink(w5, &clean, &killer, &you, false, false).snapshot, "death sink: nothing of ours, not your kill");
+
+    // PlanInput: pure; blocked hotkeys come back not accepted, step keys only with the probe log and an open gate
+    essb::sink::InputFacts f;
+    f.active = f.enabled = f.hotkeys = true;
+    f.keys = { 79, 80, 81, 75, 76, 77, 71, 72, 73, 82, 83 };
+    f.stepNext = tr::kStepKeyNext;
+    f.stepBack = tr::kStepKeyBack;
+    const std::vector<essb::sink::Press> presses{ { essb::Device::kKeyboard, 79, true }, { essb::Device::kKeyboard, 80, false },
+        { essb::Device::kKeyboard, static_cast<std::uint32_t>(tr::kStepKeyNext), true }, { essb::Device::kKeyboard, 30, true } };
+    auto a = essb::sink::PlanInput(presses, f);
+    Check(a.size() == 1 && a[0].kind == essb::sink::ActionKind::kSwitch && a[0].element == essb::kFire && a[0].accepted,
+        "input: a pressed hotkey becomes one accepted switch (the released key, the unbound key and the step key without the log do nothing)");
+    f.trace = true;
+    a = essb::sink::PlanInput(presses, f);
+    Check(a.size() == 2 && a[1].kind == essb::sink::ActionKind::kStep && a[1].delta == 1, "input: the step key with the probe log");
+    f.gate.console = true;
+    a = essb::sink::PlanInput(presses, f);
+    Check(a.size() == 1 && !a[0].accepted, "input: a closed gate blocks the hotkey (logged, not run) and drops the step key");
+    f.gate.console = false;
+    f.enabled = false;
+    a = essb::sink::PlanInput(presses, f);
+    Check(a.size() == 1 && a[0].kind == essb::sink::ActionKind::kStep, "input: the master switch off keeps the step key only");
+    // the X2 chain keys: unique offsets, the ones the commander named
+    std::set<std::uintptr_t> offsets;
+    for (const auto& k : tr::kChainKeys) {
+        offsets.insert(k.offset);
+    }
+    Check(offsets.size() == std::size(tr::kChainKeys) && offsets.contains(0x640E67) && offsets.contains(0x5B36AD), "X2: chain keys");
+}
+
 // ---------------------------------------------------------------- the offline sample for build/probe-judge.py
 
 // The real planners in the fake world, one station per scenario (markers 9001..; build/fix26_verify.py renumbers them to
@@ -683,6 +761,7 @@ int main(int argc, char** argv)
         EngineChecks(buffer);
         CrowdChecks();
         NameChecks();
+        SinkChecks();
         const std::string sample = Sample();
         SampleChecks(sample);
         if (argc >= 3) {

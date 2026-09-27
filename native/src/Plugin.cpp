@@ -36,6 +36,7 @@
 #include "ManifestData.h"
 #include "Reactions.h"
 #include "Selection.h"
+#include "Sinks.h"
 #include "SelfLayer.h"
 #include "Status.h"
 #include "StatusEngine.h"
@@ -45,6 +46,7 @@
 
 #include <Windows.h>
 #include <bcrypt.h>
+#include <intrin.h>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -180,6 +182,11 @@ struct State {
     DWORD dataThread = 0;
     std::atomic_bool uiWitnessQueued{};   // round 26: one UI witness task at a time
     std::array<std::array<std::atomic<DWORD>, 4>, 16> threadSeen{};
+    // Round 26b (X2): the call chains each sink / task was seen with (RtlCaptureStackBackTrace's hash), the executable's
+    // and this DLL's address ranges, and the address of the Havok TLS index (REL::ID 528600), for the witness lines.
+    std::array<std::array<std::atomic<ULONG>, 8>, 16> chainSeen{};
+    std::uintptr_t exeBase = 0, exeEnd = 0, dllBase = 0, dllEnd = 0;
+    std::uintptr_t havokTlsIndex = 0;
     // Round 23: the hits you took this frame, between the hit sink (before the damage) and the one task that reads the
     // damage (native-verification-2 s15). Plumbing between two calls of the same frame, not design state.
     std::mutex hurtLock;
@@ -344,6 +351,7 @@ enum class Probe
     kCastTask,     // round 26: the spell-cast task (反咒, 逼近)
     kUiTask,       // round 26 (threading witness): an SKSE UI task (AddUITask, drained in UI::ProcessMessages)
     kInputFrame,   // round 26 (threading witness): the input sink on every call (PollInputDevices sends every frame)
+    kInputTask,    // round 26b: a hotkey / step action the input sink queued
     kCount,
 };
 static_assert(static_cast<std::size_t>(Probe::kCount) <= 16);
@@ -356,8 +364,93 @@ const char* Compare(DWORD thread, DWORD reference) noexcept
 // Round 26 rework: every sink / task logs each new thread it runs on (at most 4 per probe), with the raw ids and whether
 // the thread is the input sink's (the main loop's), the latest SKSE task's and the game window's -- one in-game run
 // settles where each of them runs. A few atomic reads per event; no lock.
-void LogThreadOnce(Probe which, const char* name) noexcept
+const char* Compare(DWORD thread, DWORD reference) noexcept;
+
+// Round 26b (X2): the Havok TLS word of this thread (the job system's bit mask at TLS[*ID 528600] + 0x688), read-only.
+bool ReadHavokTls(std::uintptr_t indexAddress, std::uint32_t& out) noexcept
 {
+    __try {
+        const std::uint32_t index = *reinterpret_cast<const std::uint32_t*>(indexAddress);
+        auto** tls = reinterpret_cast<std::uint8_t**>(__readgsqword(0x58));
+        out = *reinterpret_cast<const std::uint32_t*>(tls[index] + 0x688);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+constexpr bool IsTaskProbe(Probe p) noexcept
+{
+    return p == Probe::kTick || p == Probe::kNativeTask || p == Probe::kHurtTask || p == Probe::kSettleTask || p == Probe::kDeathTask ||
+           p == Probe::kCastTask || p == Probe::kUiTask || p == Probe::kInputTask;
+}
+
+// Round 26b (X2): the first time each distinct call chain reaches a sink or a task, its return addresses (12 frames above
+// the sink / task) as SkyrimSE.exe+0x… (ESSB+0x… for this DLL), the chain keys they contain (Trace.h kChainKeys), the
+// window-thread comparison and, in a task, the Havok TLS word. Never inlined: the frames it skips are its own and
+// LogThreadOnce's.
+__declspec(noinline) void LogChainOnce(Probe which, const char* name) noexcept
+{
+    void* frames[12]{};
+    ULONG hash = 0;
+    const USHORT n = RtlCaptureStackBackTrace(2, 12, frames, &hash);
+    hash |= 1u;
+    auto& seen = state.chainSeen[static_cast<int>(which)];
+    bool fresh = false;
+    for (auto& slot : seen) {
+        ULONG known = slot.load();
+        if (known == hash) {
+            return;
+        }
+        if (known == 0) {
+            fresh = slot.compare_exchange_strong(known, hash);
+            if (!fresh && known == hash) {
+                return;
+            }
+            if (fresh) {
+                break;
+            }
+        }
+    }
+    if (!fresh) {
+        return;   // eight chains seen already
+    }
+    char text[900];
+    int at = 0;
+    char keys[160] = "-";
+    int keyAt = 0;
+    for (USHORT i = 0; i < n && at < 820; ++i) {
+        const auto address = reinterpret_cast<std::uintptr_t>(frames[i]);
+        if (address >= state.exeBase && address < state.exeEnd) {
+            const auto offset = address - state.exeBase;
+            at += std::snprintf(text + at, sizeof(text) - at, "%sSkyrimSE.exe+0x%llX", i ? "," : "", static_cast<unsigned long long>(offset));
+            for (const auto& key : essb::trace::kChainKeys) {
+                if (key.offset == offset && keyAt < 140) {
+                    keyAt += std::snprintf(keys + keyAt, sizeof(keys) - keyAt, "%s%s", keyAt ? "," : "", key.name);
+                }
+            }
+        } else if (address >= state.dllBase && address < state.dllEnd) {
+            at += std::snprintf(text + at, sizeof(text) - at, "%sESSB+0x%llX", i ? "," : "", static_cast<unsigned long long>(address - state.dllBase));
+        } else {
+            at += std::snprintf(text + at, sizeof(text) - at, "%s0x%llX", i ? "," : "", static_cast<unsigned long long>(address));
+        }
+    }
+    text[(std::min)(at, static_cast<int>(sizeof(text)) - 1)] = '\0';
+    char havok[16] = "-";
+    std::uint32_t word = 0;
+    if (IsTaskProbe(which) && state.havokTlsIndex && ReadHavokTls(state.havokTlsIndex, word)) {
+        std::snprintf(havok, sizeof(havok), "0x%08X", word);
+    }
+    const DWORD thread = GetCurrentThreadId();
+    const DWORD window = state.windowThread.load();
+    auto* ui = RE::UI::GetSingleton();
+    Logf("[ESSB][X2] %s thread=%lu window=%lu %s paused=%d havok=%s keys=%s frames=%s", name, thread, window, Compare(thread, window),
+        ui && ui->GameIsPaused() ? 1 : 0, havok, keys, text);
+}
+
+__declspec(noinline) void LogThreadOnce(Probe which, const char* name) noexcept
+{
+    LogChainOnce(which, name);   // round 26b (X2)
     const DWORD thread = GetCurrentThreadId();
     auto& seen = state.threadSeen[static_cast<int>(which)];
     for (std::size_t k = 0; k < seen.size(); ++k) {
@@ -856,6 +949,20 @@ essb::Board ReadBoard(RE::Actor& actor)
     return essb::engine::ReadBoard(lists, essb::Who::kPlayer);
 }
 
+// Round 26b: the body of an actor without the player (the death sink reads the corpse only; the task adds the distance).
+essb::Body ReadBodyOnly(RE::Actor& target, const essb::TargetFacts& facts)
+{
+    essb::Body body;
+    auto* values = target.AsActorValueOwner();
+    body.health = values->GetActorValue(RE::ActorValue::kHealth);
+    body.healthMax = MaxOf(target, RE::ActorValue::kHealth);
+    body.stamina = values->GetActorValue(RE::ActorValue::kStamina);
+    body.staminaMax = MaxOf(target, RE::ActorValue::kStamina);
+    body.vip = facts.vip;
+    body.undeadOrDaedra = facts.undeadOrDaedra;
+    return body;
+}
+
 essb::Body ReadBody(RE::Actor& target, RE::PlayerCharacter& player, const essb::TargetFacts& facts)
 {
     essb::Body body;
@@ -953,9 +1060,24 @@ RE::MagicCaster& CasterOf(RE::PlayerCharacter& player)
     return *caster;
 }
 
+// Round 26b (L3, the crash A/B): one line for every kill, push, knock and hazard this DLL causes.
+void LogCaused(const char* kind, const RE::TESObjectREFR* ref, const char* via) noexcept
+{
+    if (state.forms.debug && state.forms.debug->value >= 3.0f) {
+        Logf("[ESSB][AB][L3] kind=%s ref=%08X tick=%llu via=%s thread=%lu", kind, ref ? ref->GetFormID() : 0u,
+            static_cast<unsigned long long>(GetTickCount64()), via, GetCurrentThreadId());
+    }
+}
+
+bool CausedLogging() noexcept
+{
+    return state.forms.debug && state.forms.debug->value >= 3.0f;
+}
+
 void Apply(RE::PlayerCharacter& player, RE::Actor& target, const essb::Plan& plan)
 {
     auto& caster = CasterOf(player);
+    const bool watch = CausedLogging() && !target.IsDead();   // round 26b
     for (int i = 0; i < plan.count; ++i) {
         const essb::CastStep& step = plan.steps[i];
         RE::SpellItem* spell = SpellOf(step);
@@ -966,6 +1088,9 @@ void Apply(RE::PlayerCharacter& player, RE::Actor& target, const essb::Plan& pla
         RE::TESObjectREFR* on = essb::CastsOnPlayer(step.cast) ? static_cast<RE::TESObjectREFR*>(&player) : &target;
         // Every hit re-applies, like entry 51 did (no same-spell gate; see native-verification.md).
         caster.CastSpellImmediate(spell, false, on, kEffectiveness, false, magnitude, &player);
+    }
+    if (watch && target.IsDead()) {
+        LogCaused("kill", &target, "proc");
     }
 }
 
@@ -1117,7 +1242,20 @@ public:
 
     void Cast(essb::Who who, std::uint32_t spell, float magnitude, float effectiveness)
     {
-        caster_.CastSpellImmediate(SpellById(spell), false, &On(who), effectiveness, false, magnitude, &playerCharacter_);
+        RE::Actor& on = On(who);
+        const bool watch = CausedLogging() && !on.IsDead();   // round 26b (L3 A/B)
+        caster_.CastSpellImmediate(SpellById(spell), false, &on, effectiveness, false, magnitude, &playerCharacter_);
+        if (CausedLogging()) {
+            for (const auto& row : essb::status::kDomainSpawn) {
+                if (std::find(std::begin(row), std::end(row), spell) != std::end(row) && spell != 0) {
+                    LogCaused("hazard", &on, state.traceCtx);
+                    break;
+                }
+            }
+            if (watch && on.IsDead()) {
+                LogCaused("kill", &on, state.traceCtx);
+            }
+        }
     }
 
     bool Dead(essb::Who who) { return On(who).IsDead(); }
@@ -1147,6 +1285,9 @@ public:
             centre = member == 0 ? primary_ : (crowd_ && member < crowd_->size() ? (*crowd_)[member] : nullptr);
         }
         SendEvent(op, target_, centre);
+        if (op.event == essb::Event::kPush || op.event == essb::Event::kKnock) {
+            LogCaused(op.event == essb::Event::kPush ? "push" : "knock", target_, state.traceCtx);   // round 26b (L3 A/B)
+        }
     }
 
     // Round 23 review: the part of a hit the pools could not take. The same actor-value path as the console's
@@ -1155,7 +1296,11 @@ public:
     void HurtHealth(float amount)
     {
         if (amount > 0.0f) {
+            const bool watch = CausedLogging() && !playerCharacter_.IsDead();
             playerCharacter_.AsActorValueOwner()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -amount);
+            if (watch && playerCharacter_.IsDead()) {
+                LogCaused("kill", &playerCharacter_, state.traceCtx);   // round 26b (L3 A/B)
+            }
         }
     }
 
@@ -1349,6 +1494,29 @@ bool EssentialOf(RE::Actor& actor)
 }
 
 // Everything a body reads about one actor (Reactions.h Member).
+// Round 26b: everything a body reads about one actor except its distance to you (the death sink's corpse read).
+void ReadMemberSelf(essb::Member& m, RE::Actor& actor, bool ally)
+{
+    const essb::TargetFacts facts = TargetFactsOf(actor);
+    m = essb::Member{};
+    m.has = true;
+    m.ally = ally;
+    m.board = ReadBoard(actor);
+    m.body = ReadBodyOnly(actor, facts);
+    m.pos = PosOf(actor);
+    m.level = actor.GetLevel();
+    m.dragon = state.forms.dragon && actor.HasKeyword(state.forms.dragon);
+    m.essential = EssentialOf(actor);
+    m.spellUser = facts.spellUser;
+    auto* v = actor.AsActorValueOwner();
+    m.armor = v->GetActorValue(RE::ActorValue::kDamageResist);
+    m.resist = { v->GetActorValue(RE::ActorValue::kResistFire), v->GetActorValue(RE::ActorValue::kResistFrost),
+        v->GetActorValue(RE::ActorValue::kResistShock), v->GetActorValue(RE::ActorValue::kPoisonResist),
+        v->GetActorValue(RE::ActorValue::kResistMagic) };
+    m.magicka = v->GetActorValue(RE::ActorValue::kMagicka);
+    m.magickaMax = MaxOf(actor, RE::ActorValue::kMagicka);
+}
+
 void ReadMember(essb::Member& m, RE::Actor& actor, RE::PlayerCharacter& player, bool ally)
 {
     const essb::TargetFacts facts = TargetFactsOf(actor);
@@ -2430,7 +2598,11 @@ struct DeathSnapshot {
     RE::ActorHandle actor{};
     essb::Member corpse{};
     essb::DeathFacts facts{};
-    RE::ActorHandle killer{};   // round 26: only the probe log reads it
+    // Round 26b: the killer as the event gave it (a reference, never read in the sink); the task resolves it.
+    RE::NiPointer<RE::TESObjectREFR> killer{};
+    bool dead = false;
+    bool handled = false;            // DeathCounts: plan it (else the task only logs)
+    essb::sink::DeathSeen seen{};
 };
 
 void DeathCpp(const DeathSnapshot& snapshot) noexcept
@@ -2448,6 +2620,27 @@ void DeathCpp(const DeathSnapshot& snapshot) noexcept
         if (!player || !corpse) {
             return;
         }
+        // Round 26b: everything about the killer and the player is read here, in the task (the sink read the corpse only).
+        RE::Actor* killer = snapshot.killer ? snapshot.killer->As<RE::Actor>() : nullptr;
+        if (state.forms.debug->value >= 3.0f) {   // probe N5-1: both death events, the killer, our effects still on it
+            Logf("[ESSB][N5-1][L3] %08X dead=%d killer=%08X you=%d ours=%d", corpse->GetFormID(), snapshot.dead ? 1 : 0,
+                killer ? killer->GetFormID() : 0u, snapshot.seen.killerYou ? 1 : 0, snapshot.seen.ours);
+        }
+        if (TraceOn()) {   // round 26: both death events
+            essb::trace::Line line("death-event");
+            line.Actor("corpse", FactsOf(corpse));
+            line.Actor("killer", FactsOf(killer));
+            line.F(" dead=%d killerYou=%d servant=%d ours=%d", snapshot.dead ? 1 : 0, snapshot.seen.killerYou ? 1 : 0,
+                snapshot.seen.servant ? 1 : 0, snapshot.seen.ours);
+            Emit(line);
+        }
+        if (!snapshot.handled) {
+            return;
+        }
+        essb::DeathFacts deathFacts = snapshot.facts;
+        // 狂宴 (5.12; v0.4 10.3 P4): the killer is an NPC under your frenzy (our frenzy effect on it), not you.
+        deathFacts.killerFrenzied = killer && killer != player && !killer->IsDead() &&
+                                    HasOurEffect(*killer, Lookup(state.forms.status.effects, essb::status::kFrenzyEffect));
         const auto perks = MakeNodes(*player, FormIsActive());
         Context c = MakeContext(*player, false);
         essb::Board selfBoard = ReadBoard(*player);
@@ -2459,11 +2652,12 @@ void DeathCpp(const DeathSnapshot& snapshot) noexcept
         m0 = snapshot.corpse;   // the facts read in the sink (the position is the corpse's now)
         m0.board = board;
         m0.pos = PosOf(*corpse);
+        m0.body.distanceToPlayer = corpse->GetPosition().GetDistance(player->GetPosition());   // round 26b: read here
         c.in.body = m0.body;
         const essb::BodyInputs bin = BodyInputsOf(*player, c, false);
         auto planPtr = std::make_unique<essb::StatusPlan>();
         essb::StatusPlan& plan = *planPtr;
-        essb::DeathFacts facts = snapshot.facts;
+        essb::DeathFacts facts = deathFacts;
         facts.curseCap = essb::CurseCap(c.tuning, nodes);
         const bool tracing = TraceOn();   // round 26
         if (tracing) {
@@ -2471,10 +2665,9 @@ void DeathCpp(const DeathSnapshot& snapshot) noexcept
         }
         essb::PlanDeath(plan, *crowd.crowd, selfBoard, bin, facts, nodes, *state.rng);
         if (tracing) {
-            auto killerPtr = snapshot.killer.get();
             essb::trace::Line line("death");
             line.Actor("corpse", FactsOf(corpse));
-            line.Actor("killer", FactsOf(killerPtr.get()));
+            line.Actor("killer", FactsOf(killer));
             line.F(" killerYou=%d frenzied=%d servant=%d marks=%d curse=%d poison=%d bleed=%d frozen=%d hush=%d essential=%d level=%d curseCap=%d crowd=%d ops=%d",
                 facts.killerYou ? 1 : 0, facts.killerFrenzied ? 1 : 0, facts.servant ? 1 : 0, board.MarkCount(),
                 board.Layers(essb::StatusKind::kCurse), board.poisonDot.has ? 1 : 0, board.bleedDot.has ? 1 : 0,
@@ -2509,6 +2702,20 @@ void DeathGuarded(const DeathSnapshot& snapshot) noexcept
     }
 }
 
+// Round 26b: the corpse's reads for essb::sink::DeathSink (the corpse only; the snapshot keeps the full member).
+struct CorpseWorld {
+    essb::Member* member;
+    bool Servant(RE::Actor* corpse) { return HasOurEffect(*corpse, state.forms.reanimate); }
+    int CountOurs(RE::Actor* corpse) { return CountOurEffects(*corpse); }
+    const essb::Board& ReadCorpse(RE::Actor* corpse)
+    {
+        ReadMemberSelf(*member, *corpse, false);   // read-only, in the sink: the effects are all still there
+        return member->board;
+    }
+};
+
+// Round 26b (the commander's threading ruling): the sink reads the corpse only -- the killer and the player are compared
+// by identity (Sinks.h DeathSink); the killer's frenzy, the player, the crowd, the logs and every write run in the task.
 void OnDeathCpp(const RE::TESDeathEvent& ev) noexcept
 {
     try {
@@ -2516,45 +2723,27 @@ void OnDeathCpp(const RE::TESDeathEvent& ev) noexcept
             return;
         }
         auto* actor = ev.actorDying->As<RE::Actor>();
-        auto* player = RE::PlayerCharacter::GetSingleton();
+        const void* player = RE::PlayerCharacter::GetSingleton();
         if (!actor || !player) {
             return;
         }
         LogThreadOnce(Probe::kDeath, "TESDeathEvent");
-        auto killerRef = ev.actorKiller;
-        RE::Actor* killer = killerRef ? killerRef->As<RE::Actor>() : nullptr;
-        essb::engine::DeathEvent e;
-        e.dead = ev.dead;
-        e.dyingIsYou = actor == player;
-        e.killerYou = killer == player;
-        e.servant = !e.dyingIsYou && HasOurEffect(*actor, state.forms.reanimate);
-        if (state.forms.debug->value >= 3.0f) {   // probe N5-1: both death events, the killer, our effects still on it
-            Logf("[ESSB][N5-1][L3] %08X dead=%d killer=%08X you=%d ours=%d", actor->GetFormID(), ev.dead ? 1 : 0,
-                killer ? killer->GetFormID() : 0u, e.killerYou ? 1 : 0, CountOurEffects(*actor));
-        }
-        if (TraceOn()) {   // round 26: both death events
-            essb::trace::Line line("death-event");
-            line.Actor("corpse", FactsOf(actor));
-            line.Actor("killer", FactsOf(killer));
-            line.F(" dead=%d killerYou=%d servant=%d ours=%d", ev.dead ? 1 : 0, e.killerYou ? 1 : 0, e.servant ? 1 : 0,
-                e.dyingIsYou ? 0 : CountOurEffects(*actor));
-            Emit(line);
-        }
-        if (e.dead || e.dyingIsYou) {
-            return;
-        }
         DeathSnapshot snapshot;
-        snapshot.actor = actor->GetHandle();
-        ReadMember(snapshot.corpse, *actor, *player, false);   // read-only, in the sink: the effects are all still there
-        if (!essb::engine::DeathCounts(e, snapshot.corpse.board)) {
+        CorpseWorld world{ &snapshot.corpse };
+        const bool logging = state.forms.debug->value >= 3.0f || TraceOn();
+        snapshot.seen = essb::sink::DeathSink(world, actor, static_cast<const void*>(ev.actorKiller.get()), player, ev.dead, logging);
+        if (snapshot.seen.dyingIsYou) {
             return;
         }
-        snapshot.facts.killerYou = e.killerYou;
-        snapshot.facts.servant = e.servant;
-        snapshot.killer = killer ? killer->GetHandle() : RE::ActorHandle{};
-        // 狂宴 (5.12; v0.4 10.3 P4): the killer is an NPC under your frenzy (our frenzy effect on it), not you.
-        snapshot.facts.killerFrenzied = killer && killer != player && killer->IsDead() == false &&
-                                        HasOurEffect(*killer, Lookup(state.forms.status.effects, essb::status::kFrenzyEffect));
+        snapshot.handled = snapshot.seen.snapshot;
+        if (!snapshot.handled && !logging) {
+            return;
+        }
+        snapshot.actor = actor->GetHandle();
+        snapshot.killer = ev.actorKiller;
+        snapshot.dead = ev.dead;
+        snapshot.facts.killerYou = snapshot.seen.killerYou;
+        snapshot.facts.servant = snapshot.seen.servant;
         if (const auto* tasks = SKSE::GetTaskInterface()) {
             tasks->AddTask([snapshot]() { DeathGuarded(snapshot); });
         }
@@ -3644,78 +3833,103 @@ essb::Device DeviceOf(RE::INPUT_DEVICE device) noexcept
 
 // Round 26: the step marker's keys (numpad + / -), while the probe log is on and the game takes input. Before the master
 // switch: the probe sheet marks its steps with the switch off too.
-void ProbeKeys(RE::InputEvent* first)
+// Round 26b: one action of the input sink, run in a task (the sink itself switches nothing; a hotkey may be one frame late).
+void InputActionCpp(const essb::sink::Action& a) noexcept
 {
-    for (RE::InputEvent* e = first; e; e = e->next) {
-        if (e->GetEventType() != RE::INPUT_EVENT_TYPE::kButton || DeviceOf(e->GetDevice()) != essb::Device::kKeyboard) {
-            continue;
+    try {
+        LogThreadOnce(Probe::kInputTask, "input task");
+        NoteTaskThread();
+        if (a.kind == essb::sink::ActionKind::kStep) {
+            if (Active() && TraceOn()) {
+                StepKey(a.delta);
+            }
+            return;
         }
-        const auto* button = e->AsButtonEvent();
-        if (!button || !button->IsDown()) {
-            continue;
+        if (!Enabled()) {
+            return;
         }
-        const auto code = static_cast<int>(button->GetIDCode());
-        if (code != essb::trace::kStepKeyNext && code != essb::trace::kStepKeyBack) {
-            continue;
-        }
-        if (essb::InputOpen(GateNow())) {
-            StepKey(code == essb::trace::kStepKeyNext ? 1 : -1);
-        }
+        RequestSwitch(a.element, "hotkey");
+    } catch (const std::exception& e) {
+        Fault(e.what());
+    } catch (...) {
+        Fault("unknown C++ exception in the input task");
     }
 }
 
+void InputActionGuarded(const essb::sink::Action& a) noexcept
+{
+    __try {
+        InputActionCpp(a);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        Fault("access violation in the input task");
+    }
+}
+
+// Round 26b (the commander's threading ruling): the sink reads the event's buttons and the globals, snapshots the input
+// gate once, lets Sinks.h PlanInput map keys to actions, logs, and queues each accepted action with AddTask.
 void InputCpp(RE::InputEvent* first) noexcept
 {
     try {
         if (!first) {
             return;
         }
-        if (Active() && TraceOn()) {
-            ProbeKeys(first);   // round 26
-        }
-        if (!Enabled()) {
-            return;
-        }
         auto& f = state.forms;
-        const bool enabled = f.hotkeysEnabled && f.hotkeysEnabled->value == 1.0f;
-        if (!enabled) {
+        essb::sink::InputFacts facts;
+        facts.active = Active();
+        if (!facts.active) {
             return;
         }
-        std::array<int, essb::kElementCount> keys{};
-        for (int i = 0; i < essb::kElementCount; ++i) {
-            keys[i] = f.hotkeys[i] ? static_cast<int>(f.hotkeys[i]->value) : 0;
+        facts.trace = TraceOn();
+        facts.enabled = Enabled();
+        facts.hotkeys = f.hotkeysEnabled && f.hotkeysEnabled->value == 1.0f;
+        if (!facts.trace && !(facts.enabled && facts.hotkeys)) {
+            return;
         }
+        std::vector<essb::sink::Press> presses;
         for (RE::InputEvent* e = first; e; e = e->next) {
             if (e->GetEventType() != RE::INPUT_EVENT_TYPE::kButton) {
                 continue;
             }
             const auto* button = e->AsButtonEvent();
-            if (!button || !button->IsDown()) {
-                continue;
+            if (button && button->IsDown()) {
+                presses.push_back(essb::sink::Press{ DeviceOf(e->GetDevice()), button->GetIDCode(), true });
             }
-            const int code = essb::KeyCodeOf(DeviceOf(e->GetDevice()), button->GetIDCode());
-            const int element = essb::HotkeyElement(code, enabled, keys);
-            if (element == 0) {
-                continue;
-            }
-            LogThreadOnce(Probe::kInput, "input sink");
-            const essb::InputGate gate = GateNow();
-            if (TraceOn()) {   // round 26
-                essb::trace::Line line("key");
-                essb::trace::KeyLine(line, code, element, gate, GetCurrentThreadId());
-                Emit(line);
-            }
-            if (!essb::InputOpen(gate)) {
-                if (f.debug->value >= 3.0f) {   // probe N6-2: a hotkey pressed where gameplay does not get it
-                    Logf("[ESSB][N6-2][L3] key=%d element=%d blocked paused=%d menu=%d console=%d text=%d loading=%d", code, element,
-                        gate.paused ? 1 : 0, gate.menu ? 1 : 0, gate.console ? 1 : 0, gate.textEntry ? 1 : 0, gate.loading ? 1 : 0);
+        }
+        if (presses.empty()) {
+            return;
+        }
+        for (int i = 0; i < essb::kElementCount; ++i) {
+            facts.keys[i] = f.hotkeys[i] ? static_cast<int>(f.hotkeys[i]->value) : 0;
+        }
+        facts.stepNext = essb::trace::kStepKeyNext;
+        facts.stepBack = essb::trace::kStepKeyBack;
+        facts.gate = GateNow();   // one snapshot for the whole event
+        const auto actions = essb::sink::PlanInput(presses, facts);
+        const essb::InputGate& gate = facts.gate;
+        const bool open = essb::InputOpen(gate);   // PlanInput decided on the same snapshot; nothing runs past a closed gate
+        for (const essb::sink::Action& a : actions) {
+            if (a.kind == essb::sink::ActionKind::kSwitch) {
+                LogThreadOnce(Probe::kInput, "input sink");
+                if (TraceOn()) {   // round 26
+                    essb::trace::Line line("key");
+                    essb::trace::KeyLine(line, a.code, a.element, gate, GetCurrentThreadId());
+                    Emit(line);
                 }
+                if (f.debug->value >= 3.0f) {   // probe N6-2
+                    if (!a.accepted) {
+                        Logf("[ESSB][N6-2][L3] key=%d element=%d blocked paused=%d menu=%d console=%d text=%d loading=%d", a.code, a.element,
+                            gate.paused ? 1 : 0, gate.menu ? 1 : 0, gate.console ? 1 : 0, gate.textEntry ? 1 : 0, gate.loading ? 1 : 0);
+                    } else {
+                        Logf("[ESSB][N6-2][L3] key=%d element=%d accepted thread=%lu", a.code, a.element, GetCurrentThreadId());
+                    }
+                }
+            }
+            if (!a.accepted || !open) {
                 continue;
             }
-            if (f.debug->value >= 3.0f) {
-                Logf("[ESSB][N6-2][L3] key=%d element=%d accepted thread=%lu", code, element, GetCurrentThreadId());
+            if (const auto* tasks = SKSE::GetTaskInterface()) {
+                tasks->AddTask([a]() { InputActionGuarded(a); });
             }
-            RequestSwitch(element, "hotkey");
         }
     } catch (const std::exception& e) {
         Fault(e.what());
@@ -3809,6 +4023,20 @@ void LoadManifest()
     // Round 26 fix: kDataLoaded is sent from the game's InitTESThread, not the main loop; the X1 reference is the first
     // SKSE task's thread (queued here, it runs in Main::Update at the main menu).
     state.dataThread = GetCurrentThreadId();
+    // Round 26b (X2): the address ranges the witness lines name frames by, and the Havok TLS index (REL::ID 528600).
+    auto moduleRange = [](HMODULE module, std::uintptr_t& base, std::uintptr_t& end) {
+        base = reinterpret_cast<std::uintptr_t>(module);
+        const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(module);
+        const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(base + dos->e_lfanew);
+        end = base + nt->OptionalHeader.SizeOfImage;
+    };
+    moduleRange(GetModuleHandleW(nullptr), state.exeBase, state.exeEnd);
+    HMODULE self = nullptr;
+    if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            reinterpret_cast<LPCWSTR>(&LogChainOnce), &self) && self) {
+        moduleRange(self, state.dllBase, state.dllEnd);
+    }
+    state.havokTlsIndex = REL::ID(528600).address();
     Logf("[ESSB][X1] kDataLoaded thread=%lu (InitTESThread: SKSE sends kDataLoaded from the data-load thread, not the main loop)",
         state.dataThread);
     if (const auto* tasks = SKSE::GetTaskInterface()) {

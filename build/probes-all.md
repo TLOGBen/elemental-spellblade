@@ -1,4 +1,4 @@
-# 元素魔戰士（Elements Spellblade）整合測試卷 —— 探針 log 版（Round 26，DLL 0.26.0）
+# 元素魔戰士（Elements Spellblade）整合測試卷 —— 探針 log 版（Round 26b，DLL 0.26.1）
 
 這一版的原則：**你只負責動手，不用看畫面、不用抄數字**。每個可以觀察的事件，DLL 都會寫一行進 log（MCM「除錯等級」**4：探針 log**）；你跑完把 log 交給指揮官，指揮官用 `build/probe-judge.py` 逐步判定。只有 log 真的看不到的東西（特效、NPC 逃跑、音效、UI 條、技能樹畫面、FPS）才留一句「目視」，請你回答「是／否」。
 
@@ -21,7 +21,7 @@
    - **數字鍵區 `-`**：退回上一站（也會寫一個標記）。
    - **主控台 `set ESSB_ProbeStep to N`**：直接跳到第 N 站（例如 `set ESSB_ProbeStep to 25`）。
    - **某一站做錯要重做**：按一次 `-` 再按一次 `+`（重新標記這一站），然後重做。判定器只看**每一站最後一次**標記之後的內容。
-   - 這兩個鍵只在除錯等級 4、遊戲畫面（不在選單、主控台）時有作用。
+   - 這兩個鍵只在除錯等級 4、遊戲畫面（不在選單、主控台）時有作用；round 26b 起熱鍵與站標記在下一個 task 執行（最多晚一幀）。
 6. **基準**：本卷數字都假設**技能樹等級 1（G＝1.05）、傷害倍率 1、節點倍率 3、持續時間 1、白天、戶外、目標沒有抗性**。測試檔不要有「順轉」「免門檻」類節點。
 7. **主控台小提醒**：`setav` 改的是基礎值（上限跟著變）；想改「當下的值」用 `damageav`／`restoreav`。`player.addperk XX……` 加的節點，DLL 每秒會記一行 `[ESSB][T][node] change=+ id=……`，不用另外確認。
 8. **跑完之後**：把 log 交給指揮官。指揮官執行 `python -B build/probe-judge.py <log 路徑>`，每一步印出 PASS／FAIL／EYES（要你回答目視那一句）／RECORD（只記錄）／NO-DATA（那一站沒標記或沒做到），並附上證據行（`#序號`）。
@@ -54,7 +54,9 @@
 ### 站 1：SETUP-1（DLL 版本與執行緒 X1）
 
 - **操作**：戶外晴天（`fw 81a`）。MCM →「查看 DLL 版本與狀態」按一次；按數字鍵區 1 開火焰、砍 NPC 一刀，用 Z（力量欄裝「【魔戰士】火焰形態」）關掉；讓 NPC 打你一下；讓一名會施法的 NPC 對你施一次法術；殺死一名 NPC；存檔再讀檔一次。
-- **log 判定**：`[ESSB][load] ElementsSpellblade 0.26.0`；`[T][pap] kind=mcm-button … version=0.26.0 active=True`；`[ESSB][X1]` 十種都在：`Papyrus native`、`queued native task`、`TESHitEvent`、`TESHitEvent (you are the target)`、`hurt task`（round 26 修好：它以前跟上一行共用旗標，只會寫一行）、`TESActiveEffectApplyRemoveEvent`、`TESDeathEvent`、`timer task`、`TESSpellCastEvent`、`input sink`。另有兩條執行緒見證（不判 PASS／FAIL，給指揮官選主執行緒的消化點）：`SKSE UI task`（每秒一個 AddUITask）與 `input sink (every frame)`（輸入 sink 每一次被呼叫）。每一行列出原始 thread、是否等於輸入 sink（主迴圈）、是否等於最近一次 SKSE task、是否等於遊戲視窗執行緒、當下是否暫停——**這一站不以 same／DIFFERENT 判 FAIL**，判定器把執行緒表整理給指揮官（見 `.codex/impl-fix-round26.html` 的主執行緒查證）。缺任何一種＝FAIL，**整份停下**。
+- **log 判定**：`[ESSB][load] ElementsSpellblade 0.26.1`；`[T][pap] kind=mcm-button … version=0.26.1 active=True`；`[ESSB][X1]` 十種都在：`Papyrus native`、`queued native task`、`TESHitEvent`、`TESHitEvent (you are the target)`、`hurt task`（round 26 修好：它以前跟上一行共用旗標）、`TESActiveEffectApplyRemoveEvent`、`TESDeathEvent`、`timer task`、`TESSpellCastEvent`、`input sink`；缺任何一種＝FAIL，**整份停下**。
+  **X2（round 26b，指揮官的執行緒裁定）**：每個 sink／task 每一條不同的呼叫鏈一行 `[ESSB][X2] <名稱> thread= window= same|DIFFERENT paused= havok= keys= frames=SkyrimSE.exe+0x…`。判定：**遊戲中（paused=0）** 命中 sink（`keys` 有 `post-process`、`hit-task` 或 `hit-frame`）與所有 task（timer／queued native／hurt／settle／death／spell-cast／input task：`post-process`）都在 BSJobs 的 Post process；輸入 sink＝`poll-controls`、UI task＝`ui-job`（或 `main-ui`）、Papyrus native＝`vm-job`；**暫停時（paused=1）** 都在視窗執行緒（`same`）或 `paused-*` 路徑。對不上＝FAIL；12 層內沒有認得的呼叫鏈＝EYES（判定器列出 frames 給指揮官）。X1 的 same／DIFFERENT 不再判定。
+  另外：除錯等級 3 時，本模組造成的每一次擊殺、推力、跌倒、hazard 各記一行 `[ESSB][AB][L3] kind=kill|push|knock|hazard ref= tick= via= thread=`（給崩潰對照用，不判定）。
 - 目視：無（版本按鈕沒寫進 log 時才要看畫面）。
 
 ---

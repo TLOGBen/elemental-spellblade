@@ -76,7 +76,7 @@ def event_names(cpp, status_h):
     return dict(zip(kinds, names))
 
 
-def check_contract(sources, cpp, status_h, reactions):
+def check_contract(sources, cpp, status_h, reactions, sinks_h=None):
     errors, counts = v23.check_contract(sources, cpp, status_h)
     sent = v22.events_sent(cpp, status_h + ''.join((ROOT / 'native/include' / h).read_text(encoding='utf-8')
                                                    for h in ('SelfLayer.h', 'Hurt.h')))
@@ -104,10 +104,25 @@ def check_contract(sources, cpp, status_h, reactions):
         errors.append('no death sink (OnDeathCpp)')
     else:
         body = death[1]
-        for needle, why in (('if (e.dead || e.dyingIsYou) {', 'handles only dead = false and never your own death'),
-                            ('essb::engine::DeathCounts(e,', 'goes through DeathCounts'),
-                            ('AddTask(', 'hands the plan to a task (no scan in the sink)'),
-                            ('ReadMember(snapshot.corpse', 'reads the corpse in the sink, while its effects are there')):
+        needles = (('if (e.dead || e.dyingIsYou) {', 'handles only dead = false and never your own death'),
+                   ('essb::engine::DeathCounts(e,', 'goes through DeathCounts'),
+                   ('AddTask(', 'hands the plan to a task (no scan in the sink)'),
+                   ('ReadMember(snapshot.corpse', 'reads the corpse in the sink, while its effects are there'))
+        if 'essb::sink::DeathSink(' in body:
+            # Round 26b (the commander's threading ruling): the sink's decisions moved to native/include/Sinks.h DeathSink
+            # (the corpse only; the plan only when the task is asked to) -- the same four rules, read there.
+            if sinks_h is None:
+                sinks_h = (ROOT / 'native/include/Sinks.h').read_text(encoding='utf-8')
+            sink = re.search(r'DeathSeen DeathSink\(.*?\n\}', sinks_h, re.S)
+            corpse = re.search(r'struct CorpseWorld \{.*?\n\};', cpp, re.S)
+            body = body + (sink[0] if sink else '') + (corpse[0] if corpse else '')
+            needles = (('if (s.dyingIsYou) {', 'never reads your own death'),
+                       ('if (dead) {', 'handles only dead = false'),
+                       ('engine::DeathCounts(e,', 'goes through DeathCounts'),
+                       ('AddTask(', 'hands the plan to a task (no scan in the sink)'),
+                       ('ReadMemberSelf(*member, *corpse', 'reads the corpse in the sink, while its effects are there'),
+                       ('snapshot.handled = snapshot.seen.snapshot;', 'plans only what DeathCounts accepts'))
+        for needle, why in needles:
             if needle not in body:
                 errors.append(f'the death sink no longer {why}')
         if 'ProcessLists' in body or 'BuildCrowd' in body:
@@ -359,8 +374,10 @@ def self_test(sources, cpp, status_h, reactions, b):
     expect('a native casting on the VM thread', check_contract(sources, cpp.replace('return QueueNative("Burst", [element]() {',
                                                                                 'return [element]() {', 1), status_h, reactions)[0],
            'outside a queued task')
+    sinks_h = (ROOT / 'native/include/Sinks.h').read_text(encoding='utf-8')   # round 26b: the rule lives in Sinks.h DeathSink
     expect('the death sink handles dead = true', check_contract(sources, cpp.replace('if (e.dead || e.dyingIsYou) {', 'if (e.dyingIsYou) {', 1),
-                                                                   status_h, reactions)[0], 'handles only dead = false')
+                                                                   status_h, reactions, sinks_h.replace('    if (dead) {', '    if (false) {', 1))[0],
+           'handles only dead = false')
     s = dict(sources)
     s['ESSBController.psc'] = s['ESSBController.psc'].replace('ESSBNative.Burst(aiIndex)', 'ESSBNative.Burst(0)', 1)
     expect('the burst without the closing element', check_contract(s, cpp, status_h, reactions)[0], 'ESSBNative.Burst(aiIndex)')

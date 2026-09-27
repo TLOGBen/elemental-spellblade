@@ -35,7 +35,7 @@ import fix23_reference as _ref23
 import fix24_reference as _ref24
 import fix25_reference as _ref25
 NATIVE = ROOT / 'native'
-NATIVE_VERSION = '0.26.0'
+NATIVE_VERSION = '0.26.1'
 NATIVE_HIT = 0x52d1
 NATIVE_WANTED = 0x52d2
 NATIVE_GLOBALS = {'ESSB_NativeHit', 'ESSB_NativeWanted'}      # round 19: the MCM shows both

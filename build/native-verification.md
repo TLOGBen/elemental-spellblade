@@ -352,3 +352,18 @@ snapshot 的 74 段中，R5→R1 priority 遞減；按 smoke 證實的最低 pri
 結論：遊戲進行中 SKSE task、命中與死亡事件都在工作執行緒（Post process 等），不是主迴圈；10:34 那一版「同一情境、不必改」作廢。提案（**等指揮官定案才改，本輪沒有改任何執行緒行為**）：自有 FIFO，所有 sink 只記快照再入列，在主執行緒點消化——首選 SKSE `AddUITask`（UI::ProcessMessages ID 79945，Main::Update `0x1405B35BA` 呼叫），備選輸入 sink 的每幀呼叫。為了讓下一次實機定案，X1 再加兩個見證：每秒一個 `SKSE UI task`、`input sink (every frame)`，都對照遊戲視窗擁有者（WinMain）與最近一次 SKSE task 的執行緒。
 
 建置：見 `.codex/impl-fix-round26.html` 最後一段（`python -B native/build.py`、`python build_v03.py` 的 exit code 與檢查數）。
+
+
+## Round 26b（指揮官的執行緒裁定，DLL 0.26.1）
+
+裁定（獨立反組譯查證後）：遊戲進行中沒有「做遊戲邏輯的主執行緒」；引擎自己把命中結算、傷害、附魔施放、擊殺都延到 BSJobs 的「Post process」工作，SKSE `AddTask` 緊接在它後面消化——那是引擎自己的序列化點，也是不用 hook 最安全的情境。Post process 所在的工作清單與 Havok 步進（清單 4）之間有硬性屏障、不會重疊（Post process 在清單 6），而且登記 Havok 的 TLS 位元。遊戲中 `AddUITask` 在清單 4 的「UI」工作（更差）；輸入 sink 在「Poll controls」工作，與 Post process 並行；6300 只是工作執行緒。第三次崩潰判定不是本模組（別的模組生物的布娃娃約束缺第二個剛體；載入順序也顯示 DynamicGrip 的指標損壞）。我 11:22 的「改在 AddUITask 消化」提案被否決。
+
+| 改動 | 內容 |
+|---|---|
+| 死亡 sink | 只讀屍體本身（我們的復生標記、我們的效果數、屍體的狀態與事實），兇手與你只比對身分（`native/include/Sinks.h DeathSink`）；兇手的狂宴判定、N5-1 與 death-event 行、屍體到你的距離、群體掃描與所有寫入都在死亡 task。 |
+| 輸入 sink | 只讀事件的按鍵、全域變數與一次輸入閘門快照（`GateNow`），由純函式 `PlanInput` 對應成動作；`RequestSwitch` 與站標記改用 `AddTask` 執行（熱鍵最多晚一幀）。 |
+| 不變 | 命中 sink 照舊同步；受擊／到期結算／施法／原生函式／計時器照舊走 `AddTask`；100 ms 計時執行緒只 AddTask；唯讀原生函式直接回答。每秒的 `AddUITask` 只當見證，不在那裡做任何事。 |
+| X2 見證 | 每個 sink／task 每一條不同的呼叫鏈（`RtlCaptureStackBackTrace` 的雜湊）第一次出現時記一行：`[ESSB][X2] <名稱> thread= window= same|DIFFERENT paused= havok= keys= frames=SkyrimSE.exe+0x…`（12 層回傳位址減執行檔基址；本 DLL 的寫 `ESSB+0x…`）。`keys` 依 `Trace.h kChainKeys` 認：+0x640E67 Post process、+0x5B36AD 暫停路徑、+0x5C770C 命中 task 36016、+0x7211EF HitFrameHandler、+0x63FCC9 UI 工作、+0x5B35BF 主 ProcessMessages、+0x5B3F48 Poll controls、+0x5B33B5 暫停輸入、+0x640623 VM 更新工作、+0x5B3381 暫停 VM。task 另記 Havok TLS 字（`TLS[*ID 528600] + 0x688`，唯讀）。 |
+| L3 對照 | 除錯等級 3 起，本模組造成的每一次擊殺、推力、跌倒、hazard 記一行 `[ESSB][AB][L3] kind= ref= tick=GetTickCount64 via= thread=`，給崩潰 A/B 對照。 |
+| 判定 | `build/probe-judge.py` 的 SETUP-1：遊戲中命中 sink 與所有 task 要在 Post process（命中 sink 也接受命中 task／HitFrameHandler）、輸入／UI／VM 在各自的工作、暫停時在視窗執行緒；對不上 FAIL，12 層內沒有認得的鍵 EYES。 |
+| 測試 | trace_test 的假世界：死亡 sink 只讀屍體（兇手、你從不被讀）、你的死亡什麼都不讀、`dead = true` 只記錄；`PlanInput` 被擋的熱鍵不執行、站標記要等級 4。2 個 Sinks.h 突變（死亡 sink 讀兇手、被擋的熱鍵照樣執行）都讓測試失敗。fix26_verify 另有 2 個 X2 錯誤樣本（遊戲中 task 在 UI 工作、暫停時 task 不在視窗執行緒）必須 FAIL。 |

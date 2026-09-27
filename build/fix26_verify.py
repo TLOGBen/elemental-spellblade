@@ -13,7 +13,7 @@
              every Papyrus call of ESSBNative.Trace sits behind a level-4 check (CachedDebugLevel >= 4 / Level() >= 4 or
              the gated Probe / LogEvent / LogThrottled / ESSBLog.Log); the timer thread flushes once a second; the step
              keys run only with the level on; ESSBNative.Trace is declared and registered through Guard (read-only); the
-             MCM debug enum has 4：探針 log; DLL version 0.26.0 everywhere.
+             MCM debug enum has 4：探針 log; DLL version 0.26.1 everywhere (round 26b).
   RECORDS    ESSB_ProbeStep is a GLOB at 0x005C00 in the written ESP and in the manifest's globals (Load.h resolves it:
              build/fix25_verify LOAD runs the loader on this ESP).
   MUTANTS    the Trace.h / StatusEngine.h probe-log mutants of native/build.py all failed trace_test (receipt), >= 4.
@@ -68,7 +68,7 @@ def check_judge(j, sheet_text):
             errors.append(f'station {n}: no 操作')
         if '**log 判定**' not in block:
             errors.append(f'station {n}: no log 判定')
-    for need in ('4：探針 log', r'C:\Users\powde\OneDrive\Documents\My Games\Skyrim Special Edition\SKSE\ElementsSpellblade.log',
+    for need in ('4：探針 log', 'X2', 'Post process', r'C:\Users\powde\OneDrive\Documents\My Games\Skyrim Special Edition\SKSE\ElementsSpellblade.log',
                  '數字鍵區 `+`', 'set ESSB_ProbeStep to N', '複製'):
         if need not in sheet_text:
             errors.append(f'the sheet does not say {need!r}')
@@ -118,15 +118,20 @@ def op(ctx, name, who='target', kind='-', el='none', mag=0.0, sec=0.0, on=None, 
 
 def s_setup(fault):
     L = Log()
-    L.raw('[ESSB][load] ElementsSpellblade 0.26.0; SE 1.5.97 + SKSE 2.0.20 only; no entry-51 fallback')
+    L.raw('[ESSB][load] ElementsSpellblade 0.26.1; SE 1.5.97 + SKSE 2.0.20 only; no entry-51 fallback')
     L.step(1)
-    L.t('pap', ' kind=mcm-button who=- button=ShowNativeStatus version=0.26.0 active=True')
+    L.t('pap', ' kind=mcm-button who=- button=ShowNativeStatus version=0.26.1 active=True')
     probes = ['Papyrus native', 'queued native task', 'TESHitEvent', 'TESHitEvent (you are the target)', 'hurt task',
               'TESActiveEffectApplyRemoveEvent', 'TESDeathEvent', 'timer task', 'TESSpellCastEvent', 'input sink']
     for p in probes:
         if fault and p == 'hurt task':
             continue
         L.raw(f'[ESSB][X1] {p} thread=15464 n=1 input=18188 DIFFERENT task=15464 same window=18188 DIFFERENT dataLoaded=2744 paused=0')
+    for name, keys in (('TESHitEvent', 'hit-task'), ('timer task', 'post-process'), ('queued native task', 'post-process'),
+                       ('input sink (every frame)', 'poll-controls'), ('SKSE UI task', 'ui-job'), ('Papyrus native', 'vm-job')):
+        L.raw(f'[ESSB][X2] {name} thread=15464 window=18188 DIFFERENT paused=0 havok=0x00000004 keys={keys} '
+              'frames=ESSB+0x1A2B,SkyrimSE.exe+0x640E67')
+    L.raw('[ESSB][X2] timer task thread=18188 window=18188 same paused=1 havok=0x00000001 keys=paused-tasks frames=SkyrimSE.exe+0x5B36AD')
     return L
 
 
@@ -358,6 +363,17 @@ def check_samples(j):
         if fv.status != 'FAIL':
             errors.append(f'hand sample {step} with its fault: {fv.status} (should be FAIL) {fv.reason}')
         rows.append((step, 'hand', v.status, fv.status))
+    # round 26b: an AddTask chain on the UI job during gameplay, and a paused task off the window thread, must FAIL SETUP-1
+    good = s_setup(False).text()
+    for label, bad in (('task on the UI job', good.replace('[ESSB][X2] timer task thread=15464 window=18188 DIFFERENT paused=0 havok=0x00000004 keys=post-process',
+                                                           '[ESSB][X2] timer task thread=15464 window=18188 DIFFERENT paused=0 havok=0x00000004 keys=ui-job', 1)),
+                       ('paused task off the window thread', good.replace('timer task thread=18188 window=18188 same paused=1',
+                                                                         'timer task thread=15464 window=18188 DIFFERENT paused=1', 1).replace('keys=paused-tasks', 'keys=-', 1))):
+        assert bad != good, label
+        fv, _ = verdict_of(j, bad, 'SETUP-1')
+        if fv.status != 'FAIL':
+            errors.append(f'X2 fault ({label}): {fv.status} (should be FAIL)')
+        rows.append(('SETUP-1 X2 ' + label, 'hand', 'PASS', fv.status))
     return errors, rows
 
 
@@ -380,12 +396,26 @@ def check_trace(cpp, sources, trace_h, config_text):
     for name in X1_NAMES:
         if f', {name});' not in cpp:
             errors.append(f'X1 probe {name} missing')
+    keys = {int(o, 16): n for o, n in re.findall(r'\{ 0x([0-9A-F]+), "([a-z-]+)" \}', trace_h)}
+    if not keys:
+        errors.append('Trace.h kChainKeys not found')
+    elif keys != judge_module().CHAIN_KEYS:
+        errors.append('probe-judge CHAIN_KEYS differ from Trace.h kChainKeys')
+    # round 26b: the death sink reads the corpse only, the input sink runs nothing itself
+    death = cpp[cpp.index('void OnDeathCpp('):cpp.index('class DeathSink final')]
+    if 'essb::sink::DeathSink(' not in death or 'HasOurEffect(*killer' in death or 'ReadMember(' in death:
+        errors.append('the death sink reads more than the corpse (round 26b)')
+    inp = cpp[cpp.index('void InputCpp('):cpp.index('// The input sink (native-verification-3 s13')]
+    if 'RequestSwitch(' in inp or 'StepKey(' in inp or 'essb::sink::PlanInput(' not in inp or 'AddTask(' not in inp:
+        errors.append('the input sink runs a switch itself (round 26b: PlanInput, then AddTask)')
+    if '[ESSB][X2]' not in cpp or 'RtlCaptureStackBackTrace(2, 12' not in cpp or 'REL::ID(528600)' not in cpp:
+        errors.append('the X2 witness (call chains, the Havok TLS word) is missing')
     if 'inline constexpr float kLevel = 4.0f;' not in trace_h:
         errors.append('Trace.h kLevel is not 4')
     loop = cpp[cpp.index('void TimerLoop() noexcept'):cpp.index('// ---------------------------------------------------------------- round 25 (N6): hotkeys')]
     if 'GetTickCount64() - state.lastFlush.load() >= 1000' not in loop or 'FlushTrace();' not in loop:
         errors.append('the timer thread does not flush the probe log once a second')
-    if 'if (Active() && TraceOn()) {\n            ProbeKeys(first);' not in cpp:
+    if 'if (Active() && TraceOn()) {\n                StepKey(a.delta);' not in cpp or 'facts.trace = TraceOn();' not in cpp:
         errors.append('the step keys are not gated on the probe log level')
     if 'vm->RegisterFunction("Trace", kClass, PapyrusTrace);' not in cpp or '}, false, true);' not in cpp[cpp.index('void PapyrusTrace'):]:
         errors.append('ESSBNative.Trace is not registered through Guard (read-only)')
@@ -411,11 +441,11 @@ def check_versions(b):
     cmake = (ROOT / 'native/CMakeLists.txt').read_text(encoding='utf-8')
     header = (ROOT / 'native/include/ManifestData.h').read_text(encoding='utf-8')
     import fix19_native as n
-    if 'VERSION 0.26.0' not in cmake or 'nativeVersion[] = "0.26.0"' not in header or n.NATIVE_VERSION != '0.26.0':
-        errors.append('the DLL version is not 0.26.0 in CMakeLists / ManifestData.h / fix19_native')
+    if 'VERSION 0.26.1' not in cmake or 'nativeVersion[] = "0.26.1"' not in header or n.NATIVE_VERSION != '0.26.1':
+        errors.append('the DLL version is not 0.26.1 in CMakeLists / ManifestData.h / fix19_native')
     manifest = json.loads((b.OUT / 'SKSE/Plugins/ElementsSpellblade/manifest.json').read_text(encoding='utf-8'))
-    if manifest.get('native_version') != '0.26.0':
-        errors.append('the packaged manifest is not 0.26.0')
+    if manifest.get('native_version') != '0.26.1':
+        errors.append('the packaged manifest is not 0.26.1')
     if manifest.get('globals', {}).get('ESSB_ProbeStep') != 0x5C00:
         errors.append('ESSB_ProbeStep is not in the manifest globals at 0x005C00')
     return errors
@@ -490,8 +520,12 @@ def self_test(j, cpp, sources, trace_h, config_text, sheet_text):
     s = dict(sources)
     s['ESSBController.psc'] = s['ESSBController.psc'].replace('\tIf CachedDebugLevel >= 4\n\t\tProbe("knock"', '\tIf True\n\t\tProbe("knock"', 1)
     expect('an ungated Papyrus probe', check_trace(cpp, s, trace_h, config_text))
-    expect('the step keys without the level', check_trace(cpp.replace('if (Active() && TraceOn()) {\n            ProbeKeys(first);',
-                                                                     'if (Active()) {\n            ProbeKeys(first);', 1), sources, trace_h, config_text))
+    expect('the step keys without the level', check_trace(cpp.replace('if (Active() && TraceOn()) {\n                StepKey(a.delta);',
+                                                                     'if (Active()) {\n                StepKey(a.delta);', 1), sources, trace_h, config_text))
+    expect('the death sink reading the killer', check_trace(cpp.replace('snapshot.seen = essb::sink::DeathSink(',
+        'HasOurEffect(*killer, nullptr); snapshot.seen = essb::sink::DeathSink(', 1), sources, trace_h, config_text))
+    expect('the input sink switching itself', check_trace(cpp.replace('const auto actions = essb::sink::PlanInput(presses, facts);',
+        'const auto actions = essb::sink::PlanInput(presses, facts); RequestSwitch(1, "x");', 1), sources, trace_h, config_text))
     expect('a station moved in the sheet', check_judge(j, sheet_text.replace('### 站 25：B-07', '### 站 25：B-08', 1))[0])
     expect('a station without log 判定', check_judge(j, sheet_text.replace('**log 判定**', '**判定**', 1))[0])
     return caught
@@ -524,7 +558,7 @@ def run(b):
     print(f'FIX26 ok: probe-judge judges all {judge_counts["steps"]} steps at {judge_counts["stations"]} stations = build/probes-all.md; '
           f'native sample (real planners) {len(native)} steps PASS and FAIL with one fault each ({", ".join(r[0] for r in native)}); '
           f'hand samples {len(hand)} steps PASS / FAIL ({", ".join(r[0] for r in hand)}); hurt task on its own X1 flag, 13 X1 probes, '
-          f'level 4, 1 s flush, gated step keys and Papyrus probes, ESSBNative.Trace guarded; ESSB_ProbeStep GLOB 0x005C00; 0.26.0; '
+          f'level 4, 1 s flush, gated step keys and Papyrus probes, ESSBNative.Trace guarded; ESSB_ProbeStep GLOB 0x005C00; 0.26.1; 26b sinks (death reads the corpse only, input queues) and X2 witness; '
           f'line endings kept; {len(caught)}/{len(caught)} source faults caught; {len(trace_mutants)} trace mutants failed; '
           f'history: {history["changed"]} changed / {history["added"]} added functions, {len(history["silent_edits_caught"])} silent '
           f'edits caught; native seal {native_history["changed"]} changed / {native_history["added"]} added / '

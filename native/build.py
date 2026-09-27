@@ -197,6 +197,11 @@ MUTANTS = [
     ('op-done after every apply', 'StatusEngine.h', 'trace',
      'return op == Op::kDamage || op == Op::kHeal', 'return op == Op::kApply || op == Op::kDamage || op == Op::kHeal'),
     ('a far actor reported as a neutral', 'StatusEngine.h', 'trace', 'why(i, Pick::kFar);', 'why(i, Pick::kNeutral);'),
+    # Round 26b: the sinks read only their own event (Sinks.h).
+    ('the death sink reads the killer', 'Sinks.h', 'trace',
+     '    s.servant = world.Servant(corpse);', '    s.servant = world.Servant(corpse) || (killer && world.Servant(static_cast<Ref>(const_cast<void*>(killer))));'),
+    ('a blocked hotkey is still run', 'Sinks.h', 'trace',
+     'out.push_back(Action{ ActionKind::kSwitch, element, 0, code, open });', 'out.push_back(Action{ ActionKind::kSwitch, element, 0, code, true });'),
 ]
 LOAD_DEFERRED = 'load'   # the mutants of this test run in build/fix25_verify.py (check_load), on the written ESP
 

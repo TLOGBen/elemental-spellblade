@@ -426,6 +426,43 @@ X1_PROBES = ['Papyrus native', 'queued native task', 'TESHitEvent', 'TESHitEvent
 _X1 = re.compile(r'^\[ESSB\]\[X1\] (.+?) thread=(\d+) n=(\d+) input=(\d+) (\w+) task=(\d+) (\w+) window=(\d+) (\w+) dataLoaded=(\d+) paused=(\d)')
 
 
+_X2 = re.compile(r'^\[ESSB\]\[X2\] (.+?) thread=(\d+) window=(\d+) (\w+) paused=(\d) havok=(\S+) keys=(\S+) frames=(\S*)$')
+# The chain keys (native/include/Trace.h kChainKeys; build/fix26_verify.py checks the two agree).
+CHAIN_KEYS = {0x640E67: 'post-process', 0x5B36AD: 'paused-tasks', 0x5C770C: 'hit-task', 0x7211EF: 'hit-frame', 0x63FCC9: 'ui-job',
+              0x5B35BF: 'main-ui', 0x5B3F48: 'poll-controls', 0x5B33B5: 'paused-input', 0x640623: 'vm-job', 0x5B3381: 'paused-vm'}
+X2_TASKS = {'timer task', 'queued native task', 'hurt task', 'settle task', 'death task', 'spell-cast task', 'input task'}
+X2_HIT = {'TESHitEvent', 'TESHitEvent (you are the target)'}
+# during gameplay: the context each probe must show (the commander's ruling, round 26b); a name not listed is only recorded
+X2_WANT = {**{n: {'post-process'} for n in X2_TASKS}, **{n: {'post-process', 'hit-task', 'hit-frame'} for n in X2_HIT},
+           'input sink': {'poll-controls'}, 'input sink (every frame)': {'poll-controls'}, 'SKSE UI task': {'ui-job', 'main-ui'},
+           'Papyrus native': {'vm-job'}}
+
+
+def x2_verdicts(log):
+    """(bad, eyes, rows) over every [ESSB][X2] line."""
+    bad, eyes, rows = [], [], []
+    for x in log:
+        if x.kind != 'raw':
+            continue
+        m = _X2.match(x.text)
+        if not m:
+            continue
+        name, paused, window_same, keys = m.group(1), m.group(5) == '1', m.group(4) == 'same', set(m.group(7).split(',')) - {'-'}
+        rows.append((x, name, paused, keys))
+        if paused:
+            if not window_same and not any(k.startswith('paused') for k in keys):
+                bad.append((x, f'{name}: 暫停時不在視窗執行緒、也沒有 paused 路徑'))
+            continue
+        want = X2_WANT.get(name)
+        if want is None or keys & want:
+            continue
+        if keys:
+            bad.append((x, f'{name}: 遊戲中是 {",".join(sorted(keys))}（應 {"／".join(sorted(want))}）'))
+        else:
+            eyes.append((x, f'{name}: 12 層內沒有認得的呼叫鏈'))
+    return bad, eyes, rows
+
+
 @rule('SETUP-1')
 def r_setup(seg, ctx):
     log = ctx.all
@@ -433,8 +470,8 @@ def r_setup(seg, ctx):
     button = [x for x in log.of('pap') if x['kind'] == 'mcm-button' and 'ShowNativeStatus' in x.text]
     if not version:
         return NODATA('log 裡沒有 [ESSB][load] ElementsSpellblade 版本行（不是這一版的 log？）')
-    if '0.26.0' not in version[0].text:
-        return FAIL('DLL 版本不是 0.26.0', version[0])
+    if '0.26.1' not in version[0].text:
+        return FAIL('DLL 版本不是 0.26.1', version[0])
     seen = defaultdict(list)
     for x in log:
         if x.kind == 'raw':
@@ -442,17 +479,23 @@ def r_setup(seg, ctx):
             if m:
                 seen[m.group(1)].append((x, m))
     missing = [p for p in X1_PROBES if p not in seen]
-    table = []
-    for p in X1_PROBES + sorted(set(seen) - set(X1_PROBES)):
-        for x, m in seen.get(p, []):
-            table.append(f'{p}: thread={m.group(2)} input:{m.group(5)} task:{m.group(7)} window:{m.group(9)} paused={m.group(11)}')
+    bad, eyes, rows = x2_verdicts(log)
+    chains = '；'.join(f'{n}{"（暫停）" if p else ""}: {",".join(sorted(k)) or "?"}' for x, n, p, k in rows[:24])
     evidence = [version[0]] + ([button[-1]] if button else []) + [x for p in X1_PROBES for x, _ in seen.get(p, [])[:1]]
-    ok_button = bool(button) and 'version=0.26.0' in button[-1].text and 'active=True' in button[-1].text
     if missing:
-        return FAIL('X1 缺：' + '、'.join(missing) + '；執行緒表：' + '；'.join(table), *evidence)
-    if not ok_button:
-        return EYES('X1 十種都在（執行緒表：' + '；'.join(table) + '）；MCM 版本按鈕沒寫進 log 或不是 0.26.0／True，請看畫面', *evidence)
-    return PASS('版本 0.26.0、命中附傷 True；X1 十種都在。執行緒表（給指揮官判讀）：' + '；'.join(table), *evidence)
+        return FAIL('X1 缺：' + '、'.join(missing), *evidence)
+    x2_names = {n for x, n, p, k in rows}
+    if not (x2_names & X2_HIT) or 'timer task' not in x2_names:
+        return FAIL('X2 缺命中 sink 或計時器 task 的呼叫鏈', *evidence)
+    if bad:
+        return FAIL('X2：' + '；'.join(r for x, r in bad[:4]), *[x for x, r in bad[:6]])
+    ok_button = bool(button) and 'version=0.26.1' in button[-1].text and 'active=True' in button[-1].text
+    if eyes or not ok_button:
+        why = ('；'.join(r for x, r in eyes[:4]) + '；') if eyes else ''
+        return EYES(why + ('MCM 版本按鈕沒寫進 log 或不是 0.26.1／True，請看畫面；' if not ok_button else '') + '呼叫鏈：' + chains,
+                    *(evidence + [x for x, r in eyes[:3]]))
+    return PASS('版本 0.26.1；X1 十種都在；X2：遊戲中命中 sink 與所有 task 在 Post process、輸入／UI／VM 在各自的 job、暫停時在視窗執行緒。'
+                '呼叫鏈：' + chains, *(evidence + [x for x, n, p, k in rows[:4]]))
 
 
 # ---------------------------------------------------------------- A

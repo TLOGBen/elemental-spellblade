@@ -36,6 +36,18 @@ inline constexpr int kTape = 24;                      // random draws one tape k
 inline constexpr int kStepKeyNext = 78;               // DIK numpad +: the next probe station
 inline constexpr int kStepKeyBack = 74;               // DIK numpad -: the previous probe station (marks it again)
 
+// Round 26b (X2): the return addresses (SkyrimSE.exe offsets) that name the context a sink or a task runs in (the
+// commander's disassembly): the BSJobs "Post process" job and its task queue, the paused path of Main::Update, the hit
+// task (ID 36016) and the hit frame handler, the UI job and the main-thread ProcessMessages, the "Poll controls" job and
+// the paused input poll, the VM update job and the paused VM update. build/probe-judge.py reads the same table.
+struct ChainKey {
+    std::uintptr_t offset;
+    const char* name;
+};
+inline constexpr ChainKey kChainKeys[] = { { 0x640E67, "post-process" }, { 0x5B36AD, "paused-tasks" }, { 0x5C770C, "hit-task" },
+    { 0x7211EF, "hit-frame" }, { 0x63FCC9, "ui-job" }, { 0x5B35BF, "main-ui" }, { 0x5B3F48, "poll-controls" },
+    { 0x5B33B5, "paused-input" }, { 0x640623, "vm-job" }, { 0x5B3381, "paused-vm" } };
+
 constexpr bool On(float level) noexcept
 {
     return level >= kLevel;

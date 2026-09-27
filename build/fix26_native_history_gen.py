@@ -13,7 +13,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SNAP = ROOT / '.codex/pre-fix26-snapshot'
 
 R26 = 'Round 26（探針 log）'
+B = '；Round 26b（指揮官的執行緒裁定，0.26.1）：'
 REASONS = {
+    'native/include/Sinks.h': 'Round 26b：死亡 sink 只讀屍體（DeathSink：兇手與你只比對身分）、輸入 sink 的按鍵對應（PlanInput，純函式；切換與站標記在 task）（新檔）',
     'native/include/Trace.h': R26 + '：探針 log 的純標頭（新檔）：行格式 [ESSB][T][種類] #序號 g= r=、Line（480 位元組截斷記號 ~）、'
                               'Buffer（序號在鎖內給、每秒由計時執行緒寫檔）、TraceRng（跟 SplitMix64 同一串擲骰，另記錄）、'
                               '各種行的產生函式（op、op-done、proc、hit-end、remove、hurt、second、env、switch、key）、名稱表、數字鍵區 +／- 的代碼',
@@ -47,6 +49,25 @@ REASONS = {
     'build/fix26_native_history_gen.py': R26 + '：round 26 原生封印產生器（新檔）',
     'build/fix26_native_history_template.py': R26 + '：round 26 原生封印樣板（新檔）',
 }
+
+B26 = {
+    'build/fix24_verify.py': '',
+    'native/src/Plugin.cpp': B + '死亡 sink 只讀屍體、兇手與你的讀取（狂宴、N5-1、death-event 行、距離）搬進死亡 task；輸入 sink 只讀按鍵與輸入閘門快照，'
+                             'RequestSwitch 與站標記改由 AddTask 執行；X2 見證（每條呼叫鏈的回傳位址、Havok TLS 字）；L3 的擊殺／推力／跌倒／hazard 行；版本 0.26.1',
+    'native/include/Trace.h': B + 'kChainKeys（X2 的呼叫鏈鍵）',
+    'native/tests/trace_test.cpp': B + '假世界：死亡 sink 只讀屍體、輸入 sink 的 PlanInput（被擋的熱鍵不執行、站標記要等級 4）',
+    'native/build.py': B + '2 個 Sinks.h 突變（死亡 sink 讀兇手、被擋的熱鍵照樣執行）',
+    'native/CMakeLists.txt': B + '版本 0.26.1',
+    'native/include/ManifestData.h': B + '版本 0.26.1',
+    'build/fix19_native.py': B + 'NATIVE_VERSION 0.26.1',
+    'build/probe-judge.py': B + 'SETUP-1 讀 X2：遊戲中命中 sink 與 task 在 Post process、輸入／UI／VM 在各自的 job、暫停時在視窗執行緒',
+    'build/fix26_verify.py': B + '0.26.1、sink 的靜態檢查、X2 鍵與判定器一致、X2 的兩個錯誤樣本',
+}
+REASONS['build/fix24_verify.py'] = ('Round 26b（指揮官的執行緒裁定）：死亡 sink 的四條規則（只處理 dead = false、不處理你的死亡、經 DeathCounts、'
+                                    '在 sink 讀屍體再交 task）改到 native/include/Sinks.h DeathSink 與 CorpseWorld 裡檢查（同樣的規則，加一條只規劃 '
+                                    'DeathCounts 接受的）；對應的注入錯誤改在 Sinks.h 上做')
+for _k, _v in B26.items():
+    REASONS[_k] = REASONS.get(_k, '') + _v
 
 VERIFIERS = ('fix6_verify.py', 'fix11_verify.py', 'fix16_verify.py', 'fix21_verify.py', 'fix22_verify.py', 'fix23_verify.py',
              'fix24_verify.py', 'fix25_verify.py', 'fix26_verify.py', 'fix21_identity.py',
