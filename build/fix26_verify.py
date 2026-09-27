@@ -122,7 +122,8 @@ def s_setup(fault):
     L.raw(f'[ESSB][load] ElementsSpellblade {judge_module().VERSION}; SE 1.5.97 + SKSE 2.0.20 only; no entry-51 fallback')   # round 27: the judged version
     L.step(1)
     L.t('pap', f' kind=mcm-button who=- button=ShowNativeStatus version={judge_module().VERSION} active=True')
-    probes = ['Papyrus native', 'queued native task', 'TESHitEvent', 'TESHitEvent (you are the target)', 'hurt task',
+    # round 27c: the switch runs in the input task (G8), so the sample carries it instead of the queued native task
+    probes = ['Papyrus native', 'input task', 'TESHitEvent', 'TESHitEvent (you are the target)', 'hurt task',
               'TESActiveEffectApplyRemoveEvent', 'TESDeathEvent', 'timer task', 'TESSpellCastEvent', 'input sink']
     for p in probes:
         if fault and p == 'hurt task':

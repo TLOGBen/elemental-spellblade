@@ -414,6 +414,30 @@ inline std::string EventText(const std::array<float, 8>& a, bool push, std::int3
     }
 }
 
+// ---------------------------------------------------------------- (27c) the planner's context (0.27.2)
+
+// What a planner needs besides the boards (Plugin.cpp MakeContext fills it). `in.tuning` points at this object's own
+// `tuning`. MakeContext returns it by value; in 0.27.1 MSVC copied it (NRVO is not guaranteed) and the copy's pointer still
+// named MakeContext's dead local -- a burst or an expiry settle, whose crowd scan then reused that stack, read garbage
+// tunings (ESSB_MultDrain ~4e22, a cooldown of ~0 s: effectiveness 0, a fire damage of inf). Every copy and assignment
+// now points at its own tuning. The offline tests never copied such a struct (they build StatusInputs in place).
+struct Context {
+    Tuning tuning{};
+    PlayerFacts player{};
+    StatusInputs in{};
+
+    Context() = default;
+    Context(const Context& other) : tuning(other.tuning), player(other.player), in(other.in) { in.tuning = &tuning; }
+    Context& operator=(const Context& other)
+    {
+        tuning = other.tuning;
+        player = other.player;
+        in = other.in;
+        in.tuning = &tuning;
+        return *this;
+    }
+};
+
 // ---------------------------------------------------------------- (27b) the registry's clock (review A N3)
 
 // The game-world clock the effects' own elapsed time follows (the engine's world-time frame delta: 0 while paused, slowed by

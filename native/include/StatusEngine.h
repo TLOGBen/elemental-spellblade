@@ -148,11 +148,49 @@ constexpr bool ChangesValue(Op op) noexcept
            op == Op::kHurtHealth || op == Op::kDrainMagicka || op == Op::kHealTarget || op == Op::kSilence || op == Op::kStaminaTarget;
 }
 
+// Round 27c (0.27.2): the executor's hard guard. A magnitude, a duration or a cast effectiveness that is not finite, is
+// beyond ±1e7, or an effectiveness of (almost) 0 on a cast (< 1e-8; round 19b: a zero-length effect) never reaches the engine.
+inline constexpr float kMaxMagnitude = 1.0e7f;
+
+constexpr bool SaneValue(float x) noexcept
+{
+    return x == x && x <= kMaxMagnitude && x >= -kMaxMagnitude;   // NaN fails x == x; ±inf fails the bounds
+}
+
+struct BadValue {
+    bool bad = false;
+    const char* field = "";
+    float value = 0.0f;
+};
+
+constexpr BadValue CheckOp(const StatusOp& op, const Lowered& l) noexcept
+{
+    if (!SaneValue(op.magnitude)) {
+        return BadValue{ true, "magnitude", op.magnitude };
+    }
+    if (!SaneValue(op.seconds)) {
+        return BadValue{ true, "seconds", op.seconds };
+    }
+    if (l.spell && !SaneValue(l.magnitude)) {
+        return BadValue{ true, "cast magnitude", l.magnitude };
+    }
+    if (l.spell && (!SaneValue(l.effectiveness) || l.effectiveness < 1.0e-8f)) {   // 0.01 s of a 1-day record is 1.2e-7
+        return BadValue{ true, "effectiveness", l.effectiveness };
+    }
+    return BadValue{};
+}
+
 template <class E>
 void RunOp(E& engine, const StatusOp& op, const Tuning& tuning)
 {
     engine.Select(op.at);   // round 24: the crowd member this op acts on (0 = the plan's own target)
     const Lowered l = Lower(op, tuning.slowCapPct);
+    if (const BadValue bad = CheckOp(op, l); bad.bad) {
+        if constexpr (requires { engine.BadMagnitude(op, bad); }) {
+            engine.BadMagnitude(op, bad);
+        }
+        return;   // round 27c: dropped whole -- no dispel, no cast, no event
+    }
     const Who on = l.onPlayer ? Who::kPlayer : Who::kTarget;
     std::uint64_t traced = 0;   // round 26: the probe log's line of this op (0 = not tracing)
     if constexpr (requires { engine.Tracing(); }) {

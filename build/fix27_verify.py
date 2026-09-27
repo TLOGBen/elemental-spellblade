@@ -1,4 +1,4 @@
-"""Round 27 / 27b (DLL 0.27.1): offline checks of what this round changed, each with injected faults.
+"""Round 27 / 27b / 27c (DLL 0.27.2): offline checks of what this round changed, each with injected faults.
 
   VISUALS    build/fix27_visuals.check on the written ESP (G13, G14; 27b): the form ring -- four constant self effects per
              element with a Skyrim.esm ring art, one per ESSB_SyncStage 0..3 under ESSB_WeaponGlow (形態光圈), no shader or
@@ -13,7 +13,7 @@
              noexcept; G8: the switch in SwitchWork (the burst on every close, also magicka empty -- the user's decision
              2026-09-27), OnFormOpened calls no FormEnter, KeepSync declared and registered; G15: a step key bound to a form
              is the hotkey only, CycleDebugLevel reaches 4. One fault each must fail.
-  VERSION    0.27.1 in CMakeLists, ManifestData.h, fix19_native, the packaged manifest and build/probe-judge.py VERSION.
+  VERSION    0.27.2 in CMakeLists, ManifestData.h, fix19_native, the packaged manifest and build/probe-judge.py VERSION.
   JUDGE      SETUP-1 fails on [ESSB][OVERLAP-READ], on [ESSB][crash] and on an older version (the round-26 hand sample).
   MUTANTS    the receipt: every runtime / anchor mutant failed its test, and the contract's mutations are there (G1, G6,
              G7, E1, E3, the burst's overflow, G15).
@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'build'), str(ROOT)]
 SNAPSHOT = ROOT / '.codex/pre-fix27-snapshot'
 SRC = ROOT / 'src'
-VERSION = '0.27.1'
+VERSION = '0.27.2'
 
 import fix27_visuals as vis
 
@@ -172,6 +172,11 @@ def check_sources(cpp, sources, sinks_h):
     if 'const bool hotkey = f.enabled && f.hotkeys && HotkeyElement(KeyCodeOf(p.device, p.id), true, f.keys) != 0;' not in sinks_h \
             or 'if (!hotkey && f.active && f.trace' not in sinks_h:
         errors.append('G15: a step key bound to a form is still a step')
+    # round 27c (0.27.2): the planner's context re-points its tuning on every copy; the executor drops bad values
+    if 'using Context = essb::rt::Context;' not in cpp or 'struct Context {' in cpp:
+        errors.append('27c: Plugin.cpp keeps its own Context (the copy that pointed at a dead tuning)')
+    if 'void BadMagnitude(const essb::StatusOp& op, const essb::engine::BadValue& bad)' not in cpp or '[ESSB][BADMAG]' not in cpp:
+        errors.append('27c: no [ESSB][BADMAG] log for a dropped op')
     if '(DebugLevel.GetValueInt() + 1) % 5' not in sources['ESSBSettingsEffect.psc']:
         errors.append('G15: CycleDebugLevel does not reach 4')
     return errors
@@ -232,6 +237,7 @@ def check_judge(j):
     if v.status != 'PASS':
         errors.append(f'SETUP-1 sample: {v.status} {v.reason}')
     for label, bad in (('an OVERLAP-READ', good + '[ESSB][OVERLAP-READ] ctx=TESDeathEvent thread=18188 (an effect list walked outside a task)\n'),
+                       ('a dropped bad magnitude', good + '[ESSB][BADMAG] op=Damage ctx=burst field=magnitude value=inf kind=24 el=1 (dropped, not applied)\n'),
                        ('a crash passed on', good + '[ESSB][crash] hit task: exception 0xC0000005 at 0x7FF600001000 (SkyrimSE.exe) -- not this DLL\'s access violation; passed on to the game\n'),
                        ('an older DLL', good.replace(f'ElementsSpellblade {VERSION};', 'ElementsSpellblade 0.26.3;', 1))):
         assert bad != good, label

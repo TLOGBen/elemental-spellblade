@@ -480,3 +480,13 @@ TrueHUD 資源條的稽核（T1）找到的具體問題：
 | C | 所有 SPIT delivery 為接觸／瞄準的我們的法術加 0x200000；形態光圈；火領域 FXFireOilHazard；INVENTORY 重寫 | fix27_verify：15 個視覺注入錯誤 |
 
 建置：`python -B native/build.py` exit 0（ctest 9/9，runtime 141 項、anchors 30 項，突變 96/96）；`python -B build_v03.py` exit 0（FIX22～FIX27、FIX25 LOAD 全 ok）。v0.4 由指揮官回寫（35986e5）後，fix8 的規劃檔檢查通過，產生的樹描述已用新文字（順風、土削耐）。
+
+## Round 27c（DLL 0.27.2）：融斷的 inf 傷害
+
+- 證據：0.27.1 的探針 log（#1551–#1558）：ctx=burst 的 `Apply N3_EndCooldown sec≈0 eff=0.0000`、`DrainMagicka mag=4.36e22`（= 最大魔力 12.5 × 寂的燒魔 × ESSB_MultDrain）、`Damage fire mag=inf`；#2561–#2563 ctx=settle 的 `sec=4.86e30`、`Damage divine 1.55e27`。兩條路的共同點：`Context c = MakeContext(...)` 之後做了很深的呼叫（BuildCrowd）。hit ctx 的 Apply 都是 eff=1。
+- 根因：`Context::in.tuning = &Context::tuning`（指向自己）；MakeContext 傳值回傳，MSVC 沒有做 NRVO 時複本的 `in.tuning` 指著 MakeContext 已結束的區域變數；之後的呼叫把那塊堆疊蓋掉。所有經 `bin.in->tuning`／`in.tuning` 讀的值（multDrain、multCooldown、baseDamageMult…）都變亂碼。
+- 離線沒抓到：Context 只在 Plugin.cpp；測試的 StatusInputs 都是原地建立、不曾複製。
+- 修正：`essb::rt::Context`（Runtime.h）的複製建構與指派都把 `in.tuning` 指回自己的 `tuning`；Plugin.cpp `using Context = essb::rt::Context`。runtime_test `ContextChecks`（noinline 函式裡強制複製後回傳）；突變「a copied context points at the dead local's tuning」。
+- 防護：StatusEngine.h `CheckOp`／`SaneValue`：op 的 magnitude、seconds、施放的 magnitude 不是有限數或 |x| > 1e7、或施放效力 < 1e-8，整個 op 丟掉（不驅散、不施放、不送事件），Plugin.cpp 記 `[ESSB][BADMAG] op= ctx= field= value=`；engine_test 用 inf、NaN、4.36e22、效力 ~0 驗證丟掉；突變「a non-finite magnitude reaches the engine」；probe-judge 的 SETUP-1 遇到 BADMAG＝FAIL。
+- SETUP-1：X1 必需清單的 `queued native task` 換成 `input task`（G8 之後站 1 的動作不再排 ESSBNative 的 task）。
+- 建置：`python -B native/build.py` exit 0（ctest 9/9、突變 98/98）；`python -B build_v03.py` exit 0。

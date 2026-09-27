@@ -1620,6 +1620,14 @@ public:
         }
     }
 
+    // Round 27c (0.27.2): an op whose magnitude, seconds or effectiveness is not finite or absurd is dropped (StatusEngine.h
+    // CheckOp) -- logged always, never applied.
+    void BadMagnitude(const essb::StatusOp& op, const essb::engine::BadValue& bad)
+    {
+        Logf("[ESSB][BADMAG] op=%s ctx=%s field=%s value=%g kind=%d el=%d (dropped, not applied)", essb::trace::OpName(op.op),
+            t_traceCtx ? t_traceCtx : "-", bad.field, static_cast<double>(bad.value), static_cast<int>(op.kind), op.element);
+    }
+
     // Round 27 (G13): the body events the DLL settles itself place their element's burst through Papyrus's PlaceFx
     // ("ESSB_Fx": 碎冰 frost, 放電 lightning, 過熱引爆 fire at you) -- v0.4 2.12 各一次專屬爆炸; visual only.
     void BodyFx(const essb::StatusOp& op)
@@ -1810,12 +1818,9 @@ private:
     const essb::Tuning& tuning_;
 };
 
-// What a planner needs besides the boards, for the player and (optionally) a target.
-struct Context {
-    essb::Tuning tuning{};
-    essb::PlayerFacts player{};
-    essb::StatusInputs in{};
-};
+// What a planner needs besides the boards, for the player and (optionally) a target. Round 27c (0.27.2): Runtime.h
+// essb::rt::Context -- every copy points `in.tuning` at its own tuning (the in-game ∞ burst: see there).
+using Context = essb::rt::Context;
 
 Context MakeContext(RE::PlayerCharacter& player, bool iceArmor)
 {

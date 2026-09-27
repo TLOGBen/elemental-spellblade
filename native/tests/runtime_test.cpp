@@ -564,6 +564,31 @@ struct FakeEffect {
 
 // ---------------------------------------------------------------- round 27b: review A
 
+// 0.27.2: a Context returned by value (a forced copy) points at its own tuning, never at the dead local's.
+__declspec(noinline) rt::Context MakeCopied(float drain)
+{
+    rt::Context local;
+    local.tuning.multDrain = drain;
+    local.in.tuning = &local.tuning;
+    rt::Context copy = local;   // a real copy, as MSVC made when it did not construct in place
+    return copy;
+}
+
+void ContextChecks()
+{
+    const rt::Context c = MakeCopied(1.5f);
+    Check(c.in.tuning == &c.tuning && c.in.tuning->multDrain == 1.5f, "context: a returned copy reads its own tuning");
+    rt::Context a;
+    a.tuning.multDrain = 2.0f;
+    a.in.tuning = &a.tuning;
+    rt::Context b;
+    b = a;
+    a.tuning.multDrain = 9.0f;
+    Check(b.in.tuning == &b.tuning && b.in.tuning->multDrain == 2.0f, "context: an assigned copy reads its own tuning");
+    const rt::Context d = b;
+    Check(d.in.tuning == &d.tuning, "context: a copied context reads its own tuning");
+}
+
 void Review27bChecks()
 {
     namespace rt = essb::rt;
@@ -759,6 +784,7 @@ int main()
         SettledChecks();
         PluginRuleChecks();
         Review27bChecks();
+        ContextChecks();
         std::printf("NATIVE RUNTIME ok: %d checks (task scopes, the session and new game, the log and Query, SEH, the input gate, "
                     "event text and UTF-8, the effect registry with two threads, the hurt queue and our own health, the corpse mode, the settled marks, "
                     "the dispel re-find, the native guard, the tick order, the crowd read)\n",

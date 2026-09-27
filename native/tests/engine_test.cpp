@@ -18,6 +18,7 @@
 //             -> RunPlan: the follower and the neutral NPC are never cast on
 #include "StatusEngine.h"
 
+#include <limits>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -223,6 +224,23 @@ void Run()
         "run: the ModEvent goes to the engine");
     Check(std::find(g.log.begin(), g.log.end(), "event " + std::to_string(static_cast<int>(essb::Event::kFrozen))) == g.log.end(),
         "run: a body-only event (冰封) stays in the DLL");
+    // Round 27c (0.27.2): a NaN / inf / absurd magnitude, and a cast with effectiveness 0, are dropped whole (never cast).
+    {
+        Fake bad;
+        bad.Add(Who::kTarget, Ours(Rec(StatusKind::kCurse).effect, Rec(StatusKind::kCurse).spell, 2.0f, 5.0f, 8.0f));
+        essb::StatusPlan p;
+        p.Push(essb::Amount(essb::Op::kDamage, std::numeric_limits<float>::infinity(), essb::kFire));
+        p.Push(essb::Amount(essb::Op::kDrainMagicka, std::numeric_limits<float>::quiet_NaN()));
+        p.Push(essb::Amount(essb::Op::kDamage, 4.36e22f, essb::kFire));
+        essb::Board badTarget;
+        essb::Writer{ p, badTarget, Who::kTarget }.Set(StatusKind::kCurse, 3.0f, 1.0e-30f);   // effectiveness ~0
+        essb::engine::RunPlan(bad, p, t);
+        Check(bad.log.empty(), "run: non-finite / absurd magnitudes and a zero effectiveness are dropped (" +
+                                   (bad.log.empty() ? std::string("-") : bad.log[0]) + ")");
+        Check(!essb::engine::SaneValue(std::numeric_limits<float>::infinity()) && !essb::engine::SaneValue(std::numeric_limits<float>::quiet_NaN()) &&
+                  !essb::engine::SaneValue(2.0e7f) && essb::engine::SaneValue(1.0e6f) && essb::engine::SaneValue(-5.0f),
+            "run: the sanity bound (finite, |x| <= 1e7)");
+    }
     // Probe N3-2's count: re-applying the poison DoT over one running instance takes exactly that one off first.
     Fake h;
     h.Add(Who::kTarget, Ours(essb::status::kPoisonDotEffect, essb::status::kPoisonDot[9], 4.0f, 2.0f, 10.0f));

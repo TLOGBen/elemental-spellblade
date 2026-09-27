@@ -217,6 +217,12 @@ MUTANTS = [
      '    p.hudOff = !enabled;', '    p.hudOff = false;'),
     ('T: the crowd walks a follower\'s effect list', 'Runtime.h', 'runtime',
      '    return !hostile && !teammate && !dead &&', '    return !hostile && !dead &&'),
+    # Round 27c (0.27.2): the planner's context and the executor's hard guard.
+    ('27c: a copied context points at the dead local\'s tuning', 'Runtime.h', 'runtime',
+     '    Context(const Context& other) : tuning(other.tuning), player(other.player), in(other.in) { in.tuning = &tuning; }',
+     '    Context(const Context& other) : tuning(other.tuning), player(other.player), in(other.in) {}'),
+    ('27c: a non-finite magnitude reaches the engine', 'StatusEngine.h', 'engine',
+     '    return x == x && x <= kMaxMagnitude && x >= -kMaxMagnitude;', '    return true;'),
     # Round 27b: review B.
     ('B-N1: a chained end multiplies the modded body by its line again', 'Reactions.h', 'anchor',
      '        const ModScope scope(*this, chain ? CarriedMod() : mod);', '        const ModScope scope(*this, mod);'),

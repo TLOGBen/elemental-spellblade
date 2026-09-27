@@ -421,7 +421,10 @@ def by_target(procs):
 
 # ---------------------------------------------------------------- SETUP
 
-X1_PROBES = ['Papyrus native', 'queued native task', 'TESHitEvent', 'TESHitEvent (you are the target)', 'hurt task',
+# Round 27c (0.27.2): since G8 (round 27) the hotkey switch, the close and the fusion run in the input task, so station 1's
+# actions queue no ESSBNative task any more -- the input task is required instead ("queued native task" still counts
+# when it appears; the menu's respec and the MCM close do queue one).
+X1_PROBES = ['Papyrus native', 'input task', 'TESHitEvent', 'TESHitEvent (you are the target)', 'hurt task',
              'TESActiveEffectApplyRemoveEvent', 'TESDeathEvent', 'timer task', 'TESSpellCastEvent', 'input sink']
 _X1 = re.compile(r'^\[ESSB\]\[X1\] (.+?) thread=(\d+) n=(\d+) input=(\d+) (\w+) task=(\d+) (\w+) window=(\d+) (\w+) dataLoaded=(\d+) paused=(\d)')
 
@@ -465,8 +468,8 @@ def x2_verdicts(log):
     return bad, eyes, rows
 
 
-# The DLL version this sheet judges (round 27b: 0.27.1). build/fix26_verify.py and build/fix27_verify.py build their samples with it.
-VERSION = '0.27.1'
+# The DLL version this sheet judges (round 27c: 0.27.2). build/fix26_verify.py and build/fix27_verify.py build their samples with it.
+VERSION = '0.27.2'
 
 
 @rule('SETUP-1')
@@ -486,6 +489,10 @@ def r_setup(seg, ctx):
     if overlap:
         return FAIL('出現 [ESSB][OVERLAP]：兩個改引擎的工作同時在跑（round 26c 規定永遠不能出現）', *overlap[:4])
     # round 27 (E2): an exception the DLL did not swallow (not its own access violation) is logged before the game sees it
+    # round 27c (0.27.2): an op with a non-finite or absurd value was dropped by the executor's guard
+    badmag = [x for x in log if x.kind == 'raw' and x.text.startswith('[ESSB][BADMAG]')]
+    if badmag:
+        return FAIL('出現 [ESSB][BADMAG]：有操作的數值不是有限數或大得離譜（已丟掉沒套用，但算錯了）', *badmag[:4])
     crash = [x for x in log if x.kind == 'raw' and x.text.startswith('[ESSB][crash]')]
     if crash:
         return FAIL('出現 [ESSB][crash]：DLL 裡發生了不是自己存取違規的例外（已交還遊戲）', *crash[:2])
@@ -514,7 +521,7 @@ def r_setup(seg, ctx):
         why = ('；'.join(r for x, r in eyes[:4]) + '；') if eyes else ''
         return EYES(why + (f'MCM 版本按鈕沒寫進 log 或不是 {VERSION}／True，請看畫面；' if not ok_button else '') + '呼叫鏈：' + chains,
                     *(evidence + [x for x, r in eyes[:3]]))
-    return PASS(f'版本 {VERSION}；X1 十種都在；沒有 OVERLAP、OVERLAP-READ、crash；X2：遊戲中所有 task（含命中 task）在 Post process、輸入／UI／VM 在各自的 job、暫停時在視窗執行緒（命中 sink 只記錄）。'
+    return PASS(f'版本 {VERSION}；X1 十種都在；沒有 OVERLAP、OVERLAP-READ、crash、BADMAG；X2：遊戲中所有 task（含命中 task）在 Post process、輸入／UI／VM 在各自的 job、暫停時在視窗執行緒（命中 sink 只記錄）。'
                 '呼叫鏈：' + chains, *(evidence + [x for x, n, p, k in rows[:4]]))
 
 
