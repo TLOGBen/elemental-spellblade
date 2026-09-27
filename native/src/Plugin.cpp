@@ -195,6 +195,7 @@ struct State {
     essb::rt::HealthLedger ownHealth;
     std::atomic<std::uint64_t> frame{};
     essb::rt::WorldClock world;   // round 27b (A N3): the game-world clock the effects' elapsed follows (the registry's)
+    int ringSeen = -2;            // round 27d: the form ring the last watch logged (timer task only)
     essb::lk::Mutex overlapLock;
     std::vector<std::pair<const char*, const char*>> overlapsSeen;
     std::atomic_bool rngOutsideLogged{};
@@ -1802,6 +1803,8 @@ public:
     Executor(RE::PlayerCharacter& player, RE::Actor* target, const essb::Tuning& tuning, const std::vector<RE::Actor*>* crowd = nullptr) :
         engine_(player, target, crowd), tuning_(tuning)
     {}
+    // Round 27d (0.27.3): the executor keeps a reference to the tuning -- never to a temporary one.
+    Executor(RE::PlayerCharacter&, RE::Actor*, essb::Tuning&&, const std::vector<RE::Actor*>* = nullptr) = delete;
 
     void Run(const essb::StatusPlan& plan)
     {
@@ -4375,6 +4378,58 @@ bool GameStopped(RE::UI* ui)
 
 void CloseByMagicka(RE::PlayerCharacter& player);   // round 27 (G8): below
 
+float GlobalById(std::uint32_t localId) noexcept
+{
+    for (const auto& [id, global] : state.forms.globals) {
+        if (id == localId && global) {
+            return global->value;
+        }
+    }
+    return -1.0f;
+}
+
+// Round 27d (0.27.3, the in-game report: no ring at all): at debug level 3 and up, one line whenever the form ring on you
+// changes -- which ring is ACTIVE (its conditions hold: ESSB_SyncStage == its stage, 形態光圈 on) and how many are there
+// but INACTIVE -- so the next run shows whether the effect runs even when nothing is seen. The timer task, once a second.
+void RingWatch(RE::PlayerCharacter& player)
+{
+    if (!state.forms.debug || state.forms.debug->value < 3.0f) {
+        return;
+    }
+    auto* list = player.AsMagicTarget()->GetActiveEffectList();
+    if (!list) {
+        return;
+    }
+    int active = 0;
+    int present = 0;
+    int inactive = 0;
+    for (RE::ActiveEffect* effect : *list) {
+        RE::EffectSetting* base = effect ? effect->GetBaseObject() : nullptr;
+        const RE::TESFile* file = base ? base->GetFile(0) : nullptr;
+        if (!file || _stricmp(file->GetFilename().data(), kPlugin) != 0) {
+            continue;
+        }
+        const essb::rt::Ring r = essb::rt::RingOf(base->GetLocalFormID(), essb::spell::kRingEffectFirst, essb::spell::kRingStages);
+        if (!r.ring) {
+            continue;
+        }
+        ++present;
+        if (effect->flags.any(RE::ActiveEffect::Flag::kInactive, RE::ActiveEffect::Flag::kDispelled)) {
+            ++inactive;
+        } else {
+            active = r.element * 10 + r.stage;
+        }
+    }
+    const int key = active * 1000 + present * 10 + inactive;
+    if (key == state.ringSeen) {
+        return;
+    }
+    state.ringSeen = key;
+    Logf("[ESSB][ring][L3] active=%s stage=%d present=%d inactive=%d syncStage=%.0f toggle=%.0f form=%.0f/%.0f", active ? essb::trace::ElementName(active / 10) : "none",
+        active ? active % 10 : -1, present, inactive, state.forms.mirrorStage ? state.forms.mirrorStage->value : -1.0f,
+        GlobalById(essb::glob::kWeaponGlow), state.forms.formActive ? state.forms.formActive->value : -1.0f, state.forms.element ? state.forms.element->value : -1.0f);
+}
+
 void TickCpp() noexcept
 {
     try {
@@ -4467,6 +4522,9 @@ void TickCpp() noexcept
             TraceSecond(*player, second, c.in.formElement);   // round 26
         }
         WriteMirrors(*player, selfBoard, nodes);   // an effect that ran out takes its mirror to 0
+        if (beat.second) {
+            RingWatch(*player);   // round 27d: is a form ring running on you (level >= 3)
+        }
         if (second.closing) {
             CloseByMagicka(*player);   // round 27 (G8)
         }
@@ -4615,7 +4673,12 @@ void SwitchWork(RE::PlayerCharacter& player, essb::SwitchKind kind, int from, in
     auto& f = state.forms;
     using K = essb::StatusKind;
     const essb::Board before = ReadBoard(player);
-    const auto nodes = essb::WithAvatar(MakeNodes(player, true), before);
+    // Round 27d (0.27.3, the 0.27.2 crash): AvatarNodes keeps a REFERENCE to the node reader -- 0.27.2 handed it a
+    // temporary (MakeNodes(...) inline), the next temporary (ReadTuning's Tuning: 1.0f, 3.0f) overwrote the reader's
+    // player pointer and Actor::HasPerk (ID 36690) read through 0x404000003F800000. The reader is a named local now, and
+    // WithAvatar refuses a temporary (SelfLayer.h).
+    const auto perks = MakeNodes(player, true);
+    const auto nodes = essb::WithAvatar(perks, before);
     const int syncBefore = before.Layers(K::kSync);
     const int stageBefore = essb::res::StageOf(syncBefore, essb::res::Thresholds(essb::ReadTuning(Global), before, nodes));
     if (kind == essb::SwitchKind::kClose) {

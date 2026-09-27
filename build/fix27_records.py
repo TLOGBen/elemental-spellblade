@@ -39,7 +39,8 @@ FLASH_SPELL = BASE + 0x80      # 11
 RING_EFFECT = BASE + 0x90      # 44: element × sync stage 0..3 (round 27b)
 SWITCH_TICKET = BASE + 0xC0    # round 27b (review B N8): the form switches' ticket and turn (ESSBController.OnESSBSwitch)
 SWITCH_TURN = BASE + 0xC1
-LAST = SWITCH_TURN
+RING_ARTO = BASE + 0xC2        # 11: round 27d, our own art objects on vanilla ground models (the ring)
+LAST = RING_ARTO + 10
 assert LAST <= 0x5DFF, hex(LAST)
 
 # ENCH ENIT (36 bytes, vanilla VoiceEnchElementalFury): cost 0, flags 0, cast type 1 (fire and forget), charge 0,
@@ -66,23 +67,27 @@ def ench_id(element_index, stage):
     return ENCH + element_index * 3 + stage
 
 
-# Round 27b: the ring art per element (Skyrim.esm ARTO, the master spells' cast-body rings; build/fix27_visuals.py
-# INVENTORY). The four sync stages use one art each: vanilla has one ring per school, no brighter / tinted variant, so
-# the stages differ only through which effect is on (the ring's colour and presence); the table takes a stage variant
-# when one is found.
-RING_ART = {
-    'Fire': 0x080E32,       # FireStormCastBodyFX
-    'Frost': 0x0B92CC,      # BlizzardCastBodyFX
-    'Lightning': 0x0592D6,  # LightningStormCastBodyFX
-    'Earth': 0x031049,      # ParalyzeMassCastBodyFX
-    'Wind': 0x0E7559,       # BaneUndeadCastBodyFX
-    'Blood': 0x022471,      # IllusionMassRedCastBodyFX
-    'Divine': 0x10CDCB,     # HealRitualCastBodyFX
-    'Poison': 0x0225B9,     # IllusionMassGreenCastBodyFX
-    'Water': 0x10E3D0,      # ShieldRitualCastBodyFX
-    'Darkness': 0x10F7A2,   # ReanimateRitualCastBodyFX
-    'Astral': 0x044F57,     # SummonMassCastBodyFX
+# Round 27d (the in-game report: no ring at all on 0.27.1): round 27b used the master spells' *CastBodyFX art objects --
+# casting art for the ritual charge (hand / body nodes while the caster charges), not a ground ring, and nothing showed.
+# The ring is now our own art object (a Magic Hit Effect ARTO, DNAM 1) on a vanilla GROUND model: the rune spells'
+# projectile glyphs (Skyrim.esm fire / frost / lightning; Dragonborn's poison / frenzy / ash runes -- their meshes are in
+# the SE base archives, no master needed) and the restoration circles (Circle of Protection, Guardian Circle). The
+# model's origin is the ground plane, so on the actor it lies at the feet. Earth, wind, water and astral have no vanilla
+# rune of their colour: they reuse the nearest circle (documented in build/fix27_visuals.py INVENTORY).
+RING_MODELS = {
+    'Fire': 'Magic\\RuneFireProjectile01.nif',
+    'Frost': 'Magic\\RuneFrostProjectile01.nif',
+    'Lightning': 'Magic\\RuneLightningProjectile01.nif',
+    'Earth': 'DLC02\\Effects\\RuneAshProjectile.nif',
+    'Wind': 'Magic\\HealingHazard.nif',
+    'Blood': 'DLC02\\Effects\\RuneFrenzyProjectile.nif',
+    'Divine': 'Magic\\TurnUndeadHazard.nif',
+    'Poison': 'DLC02\\Effects\\RunePoisonProjectile.nif',
+    'Water': 'Magic\\HealingHazard.nif',
+    'Darkness': 'DLC02\\Effects\\RuneAshProjectile.nif',
+    'Astral': 'Magic\\TurnUndeadHazard.nif',
 }
+ARTO_MAGIC_HIT = 1
 RING_STAGES = 4
 RING_FLAGS = 0x00009200   # vanilla FX*BodyHolder: 0x8000 hide in UI, 0x1000 FX persist, 0x200 no duration
 
@@ -91,8 +96,13 @@ def ring_effect_id(element_index, stage):
     return RING_EFFECT + element_index * RING_STAGES + stage
 
 
+def ring_arto_id(element_index):
+    return RING_ARTO + element_index
+
+
 def ring_art(name, stage):
-    return RING_ART[name]
+    """The local id of the ring's art object (ours) for an element and stage (one art for all four stages)."""
+    return ring_arto_id(ELEMENTS.index(name))
 
 
 def flash_effect_id(element_index):
@@ -123,10 +133,13 @@ def add_records(b, add, fx_ph):
                 ('ENIT', ENIT),
                 ('EFID', I(own(ench_effect_id(ix, stage)))), ('EFIT', struct.pack('<fII', 0.0, 0, 0)),
             ])
+        add('ARTO', ring_arto_id(ix), f'ESSB_FormRingArt_{name}', [
+            ('OBND', bytes(12)), ('MODL', Z(RING_MODELS[name])), ('DNAM', I(ARTO_MAGIC_HIT)),
+        ])
         for stage in range(RING_STAGES):
             add('MGEF', ring_effect_id(ix, stage), f'ESSB_FormRingEffect_{name}_{stage}', [
                 ('FULL', Z(f'{b.ZH[ix]}形態光圈')),
-                ('DATA', b.mgef_data(RING_FLAGS, 1, casting=0, delivery=0, hit_effect_art=b.ref('Skyrim.esm', ring_art(name, stage)))),
+                ('DATA', b.mgef_data(RING_FLAGS, 1, casting=0, delivery=0, hit_effect_art=own(ring_art(name, stage)))),
             ])
         add('MGEF', flash_effect_id(ix), f'ESSB_MarkFlashEffect_{name}', [
             ('FULL', Z(f'{b.ZH[ix]}開印')),
@@ -156,6 +169,7 @@ def new_edids():
         names |= {f'ESSB_WeaponGlowEnch_{name}_{t}' for t in STAGES}
         names |= {f'ESSB_MarkFlashEffect_{name}', f'ESSB_MarkFlash_{name}'}
         names |= {f'ESSB_FormRingEffect_{name}_{s}' for s in range(RING_STAGES)}
+        names.add(f'ESSB_FormRingArt_{name}')
     return names
 
 

@@ -46,6 +46,11 @@ constexpr AvatarNodes<Inner> WithAvatar(const Inner& nodes, const Board& me) noe
     return AvatarNodes<Inner>{ nodes, me.Has(StatusKind::kAvatar) ? me.Layers(StatusKind::kAvatar) : 0 };
 }
 
+// Round 27d (0.27.3): AvatarNodes keeps a reference -- a temporary reader would dangle after the full expression (the
+// 0.27.2 crash in Plugin.cpp SwitchWork). Handing one in does not compile.
+template <NodeReader Inner>
+AvatarNodes<Inner> WithAvatar(const Inner&& nodes, const Board& me) = delete;
+
 // What the hit handler knows besides the two boards.
 struct SelfHit {
     int element = 0;             // the element of this hit's effects (雙生's left hand: the twin element)

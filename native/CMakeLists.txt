@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(ElementsSpellblade VERSION 0.27.2 LANGUAGES CXX)
+project(ElementsSpellblade VERSION 0.27.3 LANGUAGES CXX)
 if(NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   message(FATAL_ERROR "MSVC x64 is required")
 endif()
@@ -23,6 +23,11 @@ add_library(ElementsSpellblade SHARED src/Plugin.cpp)
 target_include_directories(ElementsSpellblade PRIVATE include deps/json/single_include)
 target_link_libraries(ElementsSpellblade PRIVATE CommonLibSSE::CommonLibSSE bcrypt version)
 target_compile_options(ElementsSpellblade PRIVATE /W4 /we4717 /EHsc /utf-8)
+# Round 27d (0.27.3): the release DLL always has its PDB (crash logs can be symbolized); /OPT:REF /OPT:ICF stay as in a
+# release link (/DEBUG would otherwise turn them off). native/build.py copies the PDB to build/pdb/ (never shipped) and
+# checks its GUID / age against the DLL's CodeView record.
+target_compile_options(ElementsSpellblade PRIVATE $<$<CONFIG:Release>:/Zi>)
+target_link_options(ElementsSpellblade PRIVATE $<$<CONFIG:Release>:/DEBUG:FULL /OPT:REF /OPT:ICF>)
 target_precompile_headers(ElementsSpellblade PRIVATE <RE/Skyrim.h> <SKSE/SKSE.h>)
 enable_testing()
 add_executable(hit_pipeline_test tests/hit_pipeline_test.cpp)

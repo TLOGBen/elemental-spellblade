@@ -574,6 +574,16 @@ __declspec(noinline) rt::Context MakeCopied(float drain)
     return copy;
 }
 
+void RingChecks()
+{
+    const auto a = rt::RingOf(0x5D90, 0x5D90, 4);
+    Check(a.ring && a.element == 1 && a.stage == 0, "ring: the first is fire stage 0");
+    const auto b = rt::RingOf(0x5D90 + 43, 0x5D90, 4);
+    Check(b.ring && b.element == 11 && b.stage == 3, "ring: the last is astral stage 3");
+    Check(!rt::RingOf(0x5D90 + 44, 0x5D90, 4).ring && !rt::RingOf(0x5D8F, 0x5D90, 4).ring, "ring: outside the range is not a ring");
+    Check(rt::RingOf(0x5D90 + 9, 0x5D90, 4).element == 3 && rt::RingOf(0x5D90 + 9, 0x5D90, 4).stage == 1, "ring: lightning stage 1");
+}
+
 void ContextChecks()
 {
     const rt::Context c = MakeCopied(1.5f);
@@ -785,6 +795,7 @@ int main()
         PluginRuleChecks();
         Review27bChecks();
         ContextChecks();
+        RingChecks();
         std::printf("NATIVE RUNTIME ok: %d checks (task scopes, the session and new game, the log and Query, SEH, the input gate, "
                     "event text and UTF-8, the effect registry with two threads, the hurt queue and our own health, the corpse mode, the settled marks, "
                     "the dispel re-find, the native guard, the tick order, the crowd read)\n",

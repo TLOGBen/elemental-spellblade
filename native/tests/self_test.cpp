@@ -592,6 +592,14 @@ int GroupX()
 
 }  // namespace
 
+// Round 27d (0.27.3): WithAvatar takes only a named node reader (a temporary would dangle: the 0.27.2 crash in SwitchWork).
+template <class N>
+constexpr bool AcceptsTemporary = requires(const essb::Board& b) { essb::WithAvatar(N{}, b); };
+template <class N>
+constexpr bool AcceptsNamed = requires(const N& n, const essb::Board& b) { essb::WithAvatar(n, b); };
+static_assert(!AcceptsTemporary<MapNodes>, "WithAvatar must refuse a temporary node reader (it keeps a reference)");
+static_assert(AcceptsNamed<MapNodes>, "WithAvatar takes a named node reader");
+
 int main(int argc, char** argv)
 {
     try {

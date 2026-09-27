@@ -54,6 +54,8 @@ inline constexpr std::uint32_t kTwinWindowSpell = 0x5308;  // ESSB_TwinWindow
 inline constexpr std::uint32_t kSilence[8] = {0x5310, 0x5311, 0x5312, 0x5313, 0x5314, 0x5315, 0x5316, 0x5317};  // ESSB_Native_Silence_1..8
 inline constexpr std::uint32_t kSoak[30] = {0x5320, 0x5321, 0x5322, 0x5323, 0x5324, 0x5325, 0x5326, 0x5327, 0x5328, 0x5302, 0x5329, 0x532a, 0x532b, 0x532c, 0x532d, 0x532e, 0x532f, 0x5330, 0x5331, 0x5332, 0x5333, 0x5334, 0x5335, 0x5336, 0x5337, 0x5338, 0x5339, 0x533a, 0x533b, 0x533c};  // soaked slow of 1..30 s: ESSB_Native_Soak_<s>, 10 s = ESSB_Native_SoakSlow
 inline constexpr float kTwinWindowRecordSeconds = 30.0f;  // ESSB_TwinWindow as written (the DLL scales it)
+inline constexpr std::uint32_t kRingEffectFirst = 0x5d90;  // ESSB_FormRingEffect_Fire_0 (round 27d)
+inline constexpr int kRingStages = 4;  // [element - 1][stage]: kRingEffectFirst + (element - 1) * kRingStages + stage
 inline constexpr std::uint32_t kMarkFlash[12] = {0x0, 0x5d80, 0x5d81, 0x5d82, 0x5d83, 0x5d84, 0x5d85, 0x5d86, 0x5d87, 0x5d88, 0x5d89, 0x5d8a};  // [element]: ESSB_MarkFlash_<X>, the open's flash (round 27, G13)
 }  // namespace spell
 
@@ -116,6 +118,7 @@ inline constexpr std::uint32_t kWaterFlowPerRankPct = 0x5162;  // ESSB_WaterFlow
 inline constexpr std::uint32_t kEnvThunder = 0x5907;  // ESSB_EnvThunder
 inline constexpr std::uint32_t kProbeStep = 0x5c00;  // ESSB_ProbeStep
 inline constexpr std::uint32_t kTrueHudBars = 0x5c01;  // ESSB_TrueHudBars
+inline constexpr std::uint32_t kWeaponGlow = 0x5d00;  // ESSB_WeaponGlow
 inline constexpr std::uint32_t kFreeOpen = 0x5011;  // ESSB_FreeOpen
 inline constexpr std::uint32_t kHotkeysEnabled = 0x520f;  // ESSB_HotkeysEnabled
 inline constexpr std::uint32_t kFormNotify = 0x520d;  // ESSB_FormNotify
@@ -875,6 +878,6 @@ inline constexpr float kUpkeepBasePct = 1.0f;
 inline constexpr float kUpkeepDarkPct = 2.0f;
 inline constexpr float kUpkeepLevelRelief = 0.7f;
 inline constexpr std::string_view elementNames[12] = {"無元素", "火焰", "冰霜", "雷電", "大地", "風", "鮮血", "神聖", "毒素", "水", "黑暗", "星界"};
-inline constexpr char nativeVersion[] = "0.27.2";
+inline constexpr char nativeVersion[] = "0.27.3";
 inline constexpr char addressHash[] = "1d7530d001139ca58f462ea0210a8055868159057ba8b5ebc624fc5e9c4f5e9a";
 }  // namespace essb

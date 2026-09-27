@@ -1,4 +1,4 @@
-"""Round 27 / 27b / 27c (DLL 0.27.2): offline checks of what this round changed, each with injected faults.
+"""Round 27 / 27b / 27c (DLL 0.27.3): offline checks of what this round changed, each with injected faults.
 
   VISUALS    build/fix27_visuals.check on the written ESP (G13, G14; 27b): the form ring -- four constant self effects per
              element with a Skyrim.esm ring art, one per ESSB_SyncStage 0..3 under ESSB_WeaponGlow (形態光圈), no shader or
@@ -13,7 +13,7 @@
              noexcept; G8: the switch in SwitchWork (the burst on every close, also magicka empty -- the user's decision
              2026-09-27), OnFormOpened calls no FormEnter, KeepSync declared and registered; G15: a step key bound to a form
              is the hotkey only, CycleDebugLevel reaches 4. One fault each must fail.
-  VERSION    0.27.2 in CMakeLists, ManifestData.h, fix19_native, the packaged manifest and build/probe-judge.py VERSION.
+  VERSION    0.27.3 in CMakeLists, ManifestData.h, fix19_native, the packaged manifest and build/probe-judge.py VERSION.
   JUDGE      SETUP-1 fails on [ESSB][OVERLAP-READ], on [ESSB][crash] and on an older version (the round-26 hand sample).
   MUTANTS    the receipt: every runtime / anchor mutant failed its test, and the contract's mutations are there (G1, G6,
              G7, E1, E3, the burst's overflow, G15).
@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'build'), str(ROOT)]
 SNAPSHOT = ROOT / '.codex/pre-fix27-snapshot'
 SRC = ROOT / 'src'
-VERSION = '0.27.2'
+VERSION = '0.27.3'
 
 import fix27_visuals as vis
 
@@ -224,6 +224,17 @@ def check_versions(b, j):
     manifest = json.loads((b.OUT / 'SKSE/Plugins/ElementsSpellblade/manifest.json').read_text(encoding='utf-8'))
     if manifest.get('native_version') != VERSION:
         errors.append(f'the packaged manifest is not {VERSION}')
+    # round 27d: the shipped DLL has a kept PDB (build/pdb/, same CodeView GUID / age), and no PDB is shipped
+    import fix27_pdb
+    dll = b.OUT / 'SKSE/Plugins/ElementsSpellblade.dll'
+    kept = ROOT / f'build/pdb/ElementsSpellblade-{VERSION}.pdb'
+    try:
+        if not kept.is_file() or fix27_pdb.dll_codeview(dll)[:2] != fix27_pdb.pdb_info(kept):
+            errors.append(f'the packaged DLL does not match {kept.relative_to(ROOT).as_posix()} (GUID / age)')
+    except (ValueError, AssertionError) as e:
+        errors.append(f'the DLL / PDB could not be read: {e}')
+    if any(b.OUT.rglob('*.pdb')):
+        errors.append('a PDB is in package/ (it is kept in build/pdb/ only)')
     if j.VERSION != VERSION:
         errors.append(f'build/probe-judge.py judges {j.VERSION}, not {VERSION}')
     return errors

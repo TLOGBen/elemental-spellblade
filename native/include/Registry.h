@@ -51,6 +51,7 @@ public:
     using Handle = std::size_t;
 
     SnapshotView(const Snapshot& s, float advance) noexcept : s_(s), advance_(advance) {}
+    SnapshotView(Snapshot&&, float) = delete;   // round 27d: the view keeps a reference -- never to a temporary
 
     template <class Fn>
     void ForEach(Who, Fn&& fn) const

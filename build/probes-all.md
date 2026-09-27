@@ -1,4 +1,4 @@
-# 元素魔戰士（Elements Spellblade）整合測試卷 —— 探針 log 版（Round 27c，DLL 0.27.2）
+# 元素魔戰士（Elements Spellblade）整合測試卷 —— 探針 log 版（Round 27d，DLL 0.27.3）
 
 這一版的原則：**你只負責動手，不用看畫面、不用抄數字**。每個可以觀察的事件，DLL 都會寫一行進 log（MCM「除錯等級」**4：探針 log**）；你跑完把 log 交給指揮官，指揮官用 `build/probe-judge.py` 逐步判定。只有 log 真的看不到的東西（特效、NPC 逃跑、音效、UI 條、技能樹畫面、FPS）才留一句「目視」，請你回答「是／否」。
 
@@ -54,7 +54,7 @@
 ### 站 1：SETUP-1（DLL 版本與執行緒 X1）
 
 - **操作**：戶外晴天（`fw 81a`）。MCM →「查看 DLL 版本與狀態」按一次；按數字鍵區 1 開火焰、砍 NPC 一刀，用 Z（力量欄裝「【魔戰士】火焰形態」）關掉；讓 NPC 打你一下；讓一名會施法的 NPC 對你施一次法術；殺死一名 NPC；存檔再讀檔一次。
-- **log 判定**：`[ESSB][load] ElementsSpellblade 0.27.2`；`[T][pap] kind=mcm-button … version=0.27.2 active=True`；**全程不能出現 `[ESSB][BADMAG]`**（round 27c：一個操作的數值不是有限數或大得離譜，已丟掉沒套用）、**`[ESSB][OVERLAP]`**（兩個改引擎的工作同時在跑）、`[ESSB][OVERLAP-READ]`（round 27：有人在 task 外走效果清單）、`[ESSB][crash]`（round 27：DLL 裡發生不是自己存取違規的例外）或 `[ESSB][RNG]`（擲骰在 task 以外），出現＝FAIL；`[ESSB][X1]` 十種都在：`Papyrus native`、`input task`（round 27 起熱鍵的切換、關閉、融斷都在輸入 task 裡做，不再經過 `queued native task`；它出現也算數）、`TESHitEvent`、`TESHitEvent (you are the target)`、`hurt task`（round 26 修好：它以前跟上一行共用旗標）、`TESActiveEffectApplyRemoveEvent`、`TESDeathEvent`、`timer task`、`TESSpellCastEvent`、`input sink`；缺任何一種＝FAIL，**整份停下**。
+- **log 判定**：`[ESSB][load] ElementsSpellblade 0.27.3`；`[T][pap] kind=mcm-button … version=0.27.3 active=True`；**全程不能出現 `[ESSB][BADMAG]`**（round 27c：一個操作的數值不是有限數或大得離譜，已丟掉沒套用）、**`[ESSB][OVERLAP]`**（兩個改引擎的工作同時在跑）、`[ESSB][OVERLAP-READ]`（round 27：有人在 task 外走效果清單）、`[ESSB][crash]`（round 27：DLL 裡發生不是自己存取違規的例外）或 `[ESSB][RNG]`（擲骰在 task 以外），出現＝FAIL；`[ESSB][X1]` 十種都在：`Papyrus native`、`input task`（round 27 起熱鍵的切換、關閉、融斷都在輸入 task 裡做，不再經過 `queued native task`；它出現也算數）、`TESHitEvent`、`TESHitEvent (you are the target)`、`hurt task`（round 26 修好：它以前跟上一行共用旗標）、`TESActiveEffectApplyRemoveEvent`、`TESDeathEvent`、`timer task`、`TESSpellCastEvent`、`input sink`；缺任何一種＝FAIL，**整份停下**。
   **X2（round 26b，指揮官的執行緒裁定）**：每個 sink／task 每一條不同的呼叫鏈一行 `[ESSB][X2] <名稱> thread= window= same|DIFFERENT paused= havok= keys= frames=SkyrimSE.exe+0x…`。判定（round 26c）：命中 sink 只記下快照、不做任何引擎工作，它在哪條執行緒只記錄（這個載入順序裡 Precision／TDM 在視窗執行緒送命中事件）；**遊戲中（paused=0）** 所有 task（hit／timer／queued native／hurt／settle／death／spell-cast／input task）都要在 BSJobs 的 Post process（`post-process`）；輸入 sink＝`poll-controls`、UI task＝`ui-job`（或 `main-ui`）、Papyrus native＝`vm-job`；**暫停時（paused=1）** 都在視窗執行緒（`same`）或 `paused-*` 路徑。對不上＝FAIL；12 層內沒有認得的呼叫鏈＝EYES（判定器列出 frames 給指揮官）。X1 的 same／DIFFERENT 不再判定。
   另外：除錯等級 3 時，本模組造成的每一次擊殺、推力、跌倒、hazard 各記一行 `[ESSB][AB][L3] kind=kill|push|knock|hazard ref= tick= via= thread=`（給崩潰對照用，不判定）。
 - 目視：無（版本按鈕沒寫進 log 時才要看畫面）。
@@ -495,7 +495,7 @@ Round 27 把 v0.4 2.11／2.12 的視覺提示補回來；27b 依使用者決定�
 
 | 站 | ID | 目視題 | 是／否 |
 |---|---|---|---|
-| 1 | SETUP-1 | 開火焰：**腳下**出現火色光圈（武器上沒有任何光）；換冰霜：光圈即時換成冰色；關形態：光圈消失 | |
+| 1 | SETUP-1 | 開火焰：**腳下**出現火色的符文圈（武器上沒有任何光）；換冰霜：即時換成冰色符文；關形態：消失。除錯等級 ≥3 時 log 每次變化記一行 `[ESSB][ring][L3] active=火 stage=0 present=4 inactive=3 …`——看不到光圈時請看這一行：active=none 表示效果沒在跑（條件不成立），active=元素 表示效果在跑、只是畫面沒顯示 | |
 | 1 | SETUP-1 | 同調 0／1／2／3 段各看一次：任何時候腳下只有**一個**光圈（原版每個學派只有一種光圈，四段目前長得一樣，只有升段時的一聲） | |
 | 1 | SETUP-1 | MCM「一般」頁「形態光圈」關掉：1 秒內光圈消失、形態照常；再打開：光圈回來 | |
 | 1 | SETUP-1 | 開著形態依序換成：有附魔的單手武器、法杖、弓、雙持、空手，各砍（射）一下：附魔照常生效、外觀沒有被改；收刀、換武器後光圈還在 | |

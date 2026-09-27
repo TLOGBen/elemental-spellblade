@@ -490,3 +490,33 @@ TrueHUD 資源條的稽核（T1）找到的具體問題：
 - 防護：StatusEngine.h `CheckOp`／`SaneValue`：op 的 magnitude、seconds、施放的 magnitude 不是有限數或 |x| > 1e7、或施放效力 < 1e-8，整個 op 丟掉（不驅散、不施放、不送事件），Plugin.cpp 記 `[ESSB][BADMAG] op= ctx= field= value=`；engine_test 用 inf、NaN、4.36e22、效力 ~0 驗證丟掉；突變「a non-finite magnitude reaches the engine」；probe-judge 的 SETUP-1 遇到 BADMAG＝FAIL。
 - SETUP-1：X1 必需清單的 `queued native task` 換成 `input task`（G8 之後站 1 的動作不再排 ESSBNative 的 task）。
 - 建置：`python -B native/build.py` exit 0（ctest 9/9、突變 98/98）；`python -B build_v03.py` exit 0。
+
+## Round 27d（DLL 0.27.3）：形態光圈看不到
+
+- 查證（MO2／SkyrimSE 只讀）：27b 的 RING_ART 是 Skyrim.esm 的 *CastBodyFX（FireStormCastBodyFX 等）；原版只有 Ab*CastBodyFX 能力（大師法術蓄力時由腳本加上）用它們，是施法蓄力的特效，不是地面圈。條件：ESSB_SyncStage 由 DLL WriteMirrors 鏡射 0～3、ESSB_WeaponGlow 是新 GLOB（預設 1，存檔沒有舊值）、GetGlobalValue 與執行對象無關——都成立。
+- 修正：ESSB_FormRingArt_<X>（ARTO，0x5DC2 起，DNAM 1）指向原版地面模型：Magic\RuneFireProjectile01.nif、RuneFrostProjectile01、RuneLightningProjectile01（Meshes1.bsa）；DLC02\Effects\RunePoisonProjectile、RuneFrenzyProjectile、RuneAshProjectile（Meshes0.bsa）；Magic\TurnUndeadHazard.nif、Magic\HealingHazard.nif。光圈 MGEF 維持原版 FX*BodyHolder 的做法（archetype 1、常駐自身、旗標 0x9200、Hit Effect Art）。
+- 觀察：RingWatch（計時 task，每秒，除錯等級 ≥3）掃你身上我們的效果，依本地 FormID（kRingEffectFirst、kRingStages）認出光圈，變化時記 `[ESSB][ring][L3] active= stage= present= inactive= syncStage= toggle= form=`；ESSB_WeaponGlow 加進 manifest globals（glob::kWeaponGlow）。runtime_test RingChecks。fix27_visuals 檢查光圈的 ARTO、模型、類型，並擋掉 *CastBodyFX。
+- 建置：native/build.py exit 0（ctest 9/9、突變 98/98）；build_v03.py exit 0。
+
+## Round 27d 補充（DLL 0.27.3）：0.27.2 的崩潰與生命週期掃描
+
+- 崩潰：crash-2026-09-27-11-10-29.log：SkyrimSE.exe+05F9E34（36690＝Actor::HasPerk）`mov rax,[rcx+0xF0]`，RCX＝0x404000003F800000（= 3.0f:1.0f），RDX＝BGSPerk「專一」；堆疊 ElementsSpellblade.dll → skse64 task → 35582 Post process；本模組 log 最後一行是 RequestSwitch 的 switch 行。根因：Plugin.cpp SwitchWork（round 27 G8）`const auto nodes = essb::WithAvatar(MakeNodes(player, true), before);`——AvatarNodes 存 `const Inner& inner`，MakeNodes 的暫存在這一行結束就解構；下一行 `essb::ReadTuning(Global)` 的暫存 Tuning（baseDamageMult 1.0、nodeScale 3.0）落在同一塊堆疊，蓋掉 PerkNodes 裡捕捉的玩家參考；Thresholds → nodes.Rank → HasPerk(0x404000003F800000)。0.27.2 沒有 PDB，DLL 位移沒有符號化；以暫存器內容與原始碼對上。
+- 修正：具名的 `perks`；SelfLayer.h `WithAvatar(const Inner&&, const Board&) = delete`；Registry.h `SnapshotView(Snapshot&&, float) = delete`；Plugin.cpp `Executor(..., essb::Tuning&&, ...) = delete`；self_test `static_assert`（暫存不收、具名可收）。
+- 全樹掃描（存參考或指標的型別）：
+  | 型別 | 存什麼 | 處理 |
+  |---|---|---|
+  | SelfLayer.h AvatarNodes | 節點讀取器的參考 | 右值多載刪除；Plugin.cpp 9 處都改成具名讀取器 |
+  | Registry.h SnapshotView | Snapshot 的參考 | 右值建構刪除（唯一使用處是具名的區域 Snapshot） |
+  | Plugin.cpp Executor | Tuning 的參考 | 右值建構刪除；所有呼叫都是在同一個完整運算式內用完 |
+  | Runtime.h Context（27c） | 指向自己的 tuning | 複製／指派重新指向自己 |
+  | Status.h StatusInputs | config／tuning 指標 | 來源是 Context（活到計畫做完）或測試的區域變數 |
+  | Reactions.h BodyInputs | StatusInputs 指標 | 由 BodyInputsOf(c) 指向呼叫端活著的 Context |
+  | Reactions.h Bodies | plan、crowd、self、bin、nodes、rng 的參考 | 只在函式內建立、用完即丟（RunBodies、PlanHitBodies、PlanBurst…），不回傳 |
+  | Status.h Writer | plan、board 的參考 | 聚合的暫存，在同一個運算式或區塊內用完 |
+  | Reactions.h ModScope、Runtime.h Scope | 參考 | RAII，範圍內 |
+  | Load.h Diag | data、summary 的參考 | 載入函式內的區域 |
+  | ManifestData.h ProcRow | string_view | 指向字串常值（靜態） |
+  | EngineFacts.h PerkNodes | 查 perk 的 lambda（值） | lambda 捕捉玩家參考（單例，永遠活著） |
+  | Plugin.cpp 排隊的 lambda | — | 全部以值捕捉（handle、數值、snapshot），沒有 [&] 進 task |
+- 生命週期網（native/build.py）：clang-cl 21 以 `-Werror=dangling -Werror=dangling-gsl -Werror=return-stack-address -Werror=dangling-field -Werror=dangling-initializer-list`（/Zs、-fdelayed-template-parsing，CommonLib 需要）檢查 Plugin.cpp、11 個測試與 asan_harness：全部乾淨；負向對照 tests/lifetime_net.cpp（string_view 綁在暫存 string 上）必須報 dangling，否則建置失敗。AddressSanitizer：clang-cl 的 ASan 在這台工具鏈連最簡單的 throw／catch 都會中止（MSVC 的 ASan 元件沒有安裝），所以會丟例外的測試不在 ASan 下跑；改用不丟例外的 tests/asan_harness.cpp（Context 複製回傳、具名節點檢視、24 目標全節點融斷與本體、登記表雙執行緒、受擊佇列），乾淨。沒有 clang-cl 時 receipt 記 skipped。
+- 建置：native/build.py exit 0（ctest 9/9、突變 98/98、LIFETIME NET ok）；build_v03.py exit 0。

@@ -36,7 +36,7 @@ import fix23_reference as _ref23
 import fix24_reference as _ref24
 import fix25_reference as _ref25
 NATIVE = ROOT / 'native'
-NATIVE_VERSION = '0.27.2'
+NATIVE_VERSION = '0.27.3'
 NATIVE_HIT = 0x52d1
 NATIVE_WANTED = 0x52d2
 NATIVE_GLOBALS = {'ESSB_NativeHit', 'ESSB_NativeWanted'}      # round 19: the MCM shows both
@@ -258,6 +258,7 @@ def globals_(b):
     ids[hit25.THUNDER_GLOBAL] = hit25.thunder_global_id()
     ids[hit26.PROBE_STEP_GLOBAL] = hit26.probe_step_id()   # round 26: the probe log's step marker
     ids[hit26.TRUEHUD_GLOBAL] = hit26.truehud_id()          # round 26c: the TrueHUD bars switch
+    ids[hit27.WEAPON_GLOW_GLOBAL] = hit27.glow_id()          # round 27d: 形態光圈 (the ring watch logs it)
     ids['ESSB_FreeOpen'] = b.ID_MECH_GLOB + mech.index('ESSB_FreeOpen')
     ids['ESSB_HotkeysEnabled'] = b.hit18.KEY_ENABLE
     ids['ESSB_FormNotify'] = b.hit18.NOTIFY
@@ -382,6 +383,8 @@ def header_text(b):
              + ', '.join(hex(sp[f'kSoak{i}']['local_id']) for i in range(1, hit21.SOAK_MAX_SECONDS + 1))
              + '};  // soaked slow of 1..30 s: ESSB_Native_Soak_<s>, 10 s = ESSB_Native_SoakSlow')
     L.append(f'inline constexpr float kTwinWindowRecordSeconds = {float(hit20.TWIN_SECONDS)}f;  // ESSB_TwinWindow as written (the DLL scales it)')
+    L.append(f'inline constexpr std::uint32_t kRingEffectFirst = {hex(hit27.ring_effect_id(0, 0))};  // ESSB_FormRingEffect_Fire_0 (round 27d)')
+    L.append(f'inline constexpr int kRingStages = {hit27.RING_STAGES};  // [element - 1][stage]: kRingEffectFirst + (element - 1) * kRingStages + stage')
     L.append('inline constexpr std::uint32_t kMarkFlash[12] = {0x0, ' + ', '.join(hex(sp[f'kMarkFlash{i}']['local_id']) for i in range(1, 12))
              + '};  // [element]: ESSB_MarkFlash_<X>, the open\'s flash (round 27, G13)')
     L += ['}  // namespace spell', '', '// Effects the DLL looks for on the target or the player.', 'namespace effect {']

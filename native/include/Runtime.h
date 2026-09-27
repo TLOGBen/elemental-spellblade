@@ -414,6 +414,24 @@ inline std::string EventText(const std::array<float, 8>& a, bool push, std::int3
     }
 }
 
+// ---------------------------------------------------------------- (27d) the form ring's watch (0.27.3)
+
+// One of our effects by its local FormID: a form ring (ESSB_FormRingEffect_<X>_<stage>) or not.
+struct Ring {
+    bool ring = false;
+    int element = 0;   // 1..11
+    int stage = 0;     // 0..stages-1
+};
+
+constexpr Ring RingOf(std::uint32_t local, std::uint32_t first, int stages) noexcept
+{
+    if (stages <= 0 || local < first || local >= first + static_cast<std::uint32_t>(11 * stages)) {
+        return Ring{};
+    }
+    const int offset = static_cast<int>(local - first);
+    return Ring{ true, 1 + offset / stages, offset % stages };
+}
+
 // ---------------------------------------------------------------- (27c) the planner's context (0.27.2)
 
 // What a planner needs besides the boards (Plugin.cpp MakeContext fills it). `in.tuning` points at this object's own

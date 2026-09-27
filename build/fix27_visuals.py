@@ -19,10 +19,11 @@ INVENTORY = [
     ('形態光圈（開形態亮起、切換即時換色、關形態消失、同調 0／1／2／3 四檔）',
      '使用者 2026-09-27 決定取代 2.12 第 565–567、573 行的「武器光」（v0.4 由指揮官改寫）',
      '無（round 18 的武器光 ESSB_SyncWeaponEffect_<X>_<S> 從沒顯示；round 27 的 Enhance Weapon＋ENCH 已退役）',
-     '—',
-     'round 27b：ESSB_FormRingEffect_<X>_<0..3>，原版大師法術蓄力光圈（Skyrim.esm *CastBodyFX，FX*BodyHolder 的做法），'
-     '依 ESSB_SyncStage == 段 四選一，MCM「形態光圈」。部分：原版每個學派只有一種光圈、沒有亮度或染色變體，四檔目前是同一個光圈'
-     '（RING_ART 可逐段換），所以段數看不出亮度差；升段仍有 Charge_X 一聲'),
+     'round 27b（0.27.1）用的是大師法術蓄力的施法光圈（*CastBodyFX），實測完全看不到',
+     'round 27d：ESSB_FormRingEffect_<X>_<0..3> 的 Hit Effect Art 改為我們自己的 ESSB_FormRingArt_<X>（ARTO 類型 1），模型是原版的地面符文'
+     '（火／冰／雷的符文投射物；毒、瘋狂（血）、灰燼（土、暗）的龍裔符文）與恢復系的地面圈（護身圈：聖、星；守護圈：風、水）；'
+     '依 ESSB_SyncStage == 段 四選一，MCM「形態光圈」；除錯等級 ≥3 時 log 記光圈生效／失效（[ESSB][ring]）。部分：原版沒有亮度或染色變體，'
+     '四檔同一個光圈；土／風／水／星沒有自己顏色的原版符文，借用最接近的圈'),
     ('開印：ZZArt_X 閃現＋Charge_X', '2.12 第 570 行（刷新版不播）',
      'ESSB_MarkEffect_<X> 的 Hit Effect Art＋SNDD（8／10 秒掛滿、每次刷新重播）', '設計錯位（放在持續的印記效果上）',
      'round 27：DLL 在開印（kOpen）時施放 ESSB_MarkFlash_<X>（1 秒、ZZArt_X、Charge_X）；印記效果只留持續的邊緣光'),
@@ -98,8 +99,14 @@ def check(records, b) -> list[str]:
             art = _u32(data, 96)
             if _u32(data, 64) != 1 or _u32(data, 80) != 0 or _u32(data, 84) != 0 or _u32(data, 0) != hit27.RING_FLAGS:
                 errors.append(f'{effect.edid}: not the vanilla holder pattern (archetype 1, constant, self, flags 0x9200)')
-            if art >> 24 != 0 or _local(art) != hit27.ring_art(name, stage):
-                errors.append(f'{effect.edid}: the Hit Effect Art is not the Skyrim.esm ring {hit27.ring_art(name, stage):06X}')
+            arto = by_local.get(_local(art)) if art >> 24 == len(b.MASTERS) else None
+            if not arto or arto.sig != 'ARTO' or _local(art) != hit27.ring_art(name, stage):
+                errors.append(f'{effect.edid}: the Hit Effect Art is not our ring art {hit27.ring_art(name, stage):06X}')
+            elif arto.d.get('MODL', b'').rstrip(b'\0').decode('ascii', 'replace') != hit27.RING_MODELS[name] or \
+                    _u32(arto.d.get('DNAM', bytes(4)), 0) != hit27.ARTO_MAGIC_HIT:
+                errors.append(f'{arto.edid}: not a Magic Hit Effect art on the vanilla ground model {hit27.RING_MODELS[name]}')
+            elif 'CastBodyFX' in arto.d.get('MODL', b'').decode('ascii', 'replace'):
+                errors.append(f'{arto.edid}: a casting-charge art again (it never showed in game, round 27d)')
             if _u32(data, 8) or _u32(data, 32) or _u32(data, 36) or _u32(data, 116) or _u32(data, 124):
                 errors.append(f'{effect.edid}: carries a shader, an enchantment or an enchant art (nothing may touch the weapon)')
             rings.append(int(effect.key.split('|')[1], 16))

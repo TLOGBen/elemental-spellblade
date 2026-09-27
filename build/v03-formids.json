@@ -4,7 +4,7 @@
     "Skyrim.esm"
   ],
   "esl_flagged": false,
-  "record_count": 5164,
+  "record_count": 5175,
   "next_object_id": "00601A",
   "allocation": [
     {
@@ -6780,6 +6780,11 @@
       "formid": "01005D42",
       "type": "ENCH"
     },
+    "ESSB_FormRingArt_Fire": {
+      "id": "005DC2",
+      "formid": "01005DC2",
+      "type": "ARTO"
+    },
     "ESSB_FormRingEffect_Fire_0": {
       "id": "005D90",
       "formid": "01005D90",
@@ -6839,6 +6844,11 @@
       "id": "005D45",
       "formid": "01005D45",
       "type": "ENCH"
+    },
+    "ESSB_FormRingArt_Frost": {
+      "id": "005DC3",
+      "formid": "01005DC3",
+      "type": "ARTO"
     },
     "ESSB_FormRingEffect_Frost_0": {
       "id": "005D94",
@@ -6900,6 +6910,11 @@
       "formid": "01005D48",
       "type": "ENCH"
     },
+    "ESSB_FormRingArt_Lightning": {
+      "id": "005DC4",
+      "formid": "01005DC4",
+      "type": "ARTO"
+    },
     "ESSB_FormRingEffect_Lightning_0": {
       "id": "005D98",
       "formid": "01005D98",
@@ -6959,6 +6974,11 @@
       "id": "005D4B",
       "formid": "01005D4B",
       "type": "ENCH"
+    },
+    "ESSB_FormRingArt_Earth": {
+      "id": "005DC5",
+      "formid": "01005DC5",
+      "type": "ARTO"
     },
     "ESSB_FormRingEffect_Earth_0": {
       "id": "005D9C",
@@ -7020,6 +7040,11 @@
       "formid": "01005D4E",
       "type": "ENCH"
     },
+    "ESSB_FormRingArt_Wind": {
+      "id": "005DC6",
+      "formid": "01005DC6",
+      "type": "ARTO"
+    },
     "ESSB_FormRingEffect_Wind_0": {
       "id": "005DA0",
       "formid": "01005DA0",
@@ -7079,6 +7104,11 @@
       "id": "005D51",
       "formid": "01005D51",
       "type": "ENCH"
+    },
+    "ESSB_FormRingArt_Blood": {
+      "id": "005DC7",
+      "formid": "01005DC7",
+      "type": "ARTO"
     },
     "ESSB_FormRingEffect_Blood_0": {
       "id": "005DA4",
@@ -7140,6 +7170,11 @@
       "formid": "01005D54",
       "type": "ENCH"
     },
+    "ESSB_FormRingArt_Divine": {
+      "id": "005DC8",
+      "formid": "01005DC8",
+      "type": "ARTO"
+    },
     "ESSB_FormRingEffect_Divine_0": {
       "id": "005DA8",
       "formid": "01005DA8",
@@ -7199,6 +7234,11 @@
       "id": "005D57",
       "formid": "01005D57",
       "type": "ENCH"
+    },
+    "ESSB_FormRingArt_Poison": {
+      "id": "005DC9",
+      "formid": "01005DC9",
+      "type": "ARTO"
     },
     "ESSB_FormRingEffect_Poison_0": {
       "id": "005DAC",
@@ -7260,6 +7300,11 @@
       "formid": "01005D5A",
       "type": "ENCH"
     },
+    "ESSB_FormRingArt_Water": {
+      "id": "005DCA",
+      "formid": "01005DCA",
+      "type": "ARTO"
+    },
     "ESSB_FormRingEffect_Water_0": {
       "id": "005DB0",
       "formid": "01005DB0",
@@ -7320,6 +7365,11 @@
       "formid": "01005D5D",
       "type": "ENCH"
     },
+    "ESSB_FormRingArt_Darkness": {
+      "id": "005DCB",
+      "formid": "01005DCB",
+      "type": "ARTO"
+    },
     "ESSB_FormRingEffect_Darkness_0": {
       "id": "005DB4",
       "formid": "01005DB4",
@@ -7379,6 +7429,11 @@
       "id": "005D60",
       "formid": "01005D60",
       "type": "ENCH"
+    },
+    "ESSB_FormRingArt_Astral": {
+      "id": "005DCC",
+      "formid": "01005DCC",
+      "type": "ARTO"
     },
     "ESSB_FormRingEffect_Astral_0": {
       "id": "005DB8",

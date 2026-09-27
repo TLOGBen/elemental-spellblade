@@ -4,7 +4,7 @@ The receipt (native/out/build-receipt.json) records what was actually used, read
 build itself: CMake version, the compiler CMake detected, the Windows SDK, and the CTest result.
 """
 from pathlib import Path
-import sys, subprocess, json, re, shutil
+import os, sys, subprocess, json, re, shutil
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / 'build')]
@@ -363,6 +363,92 @@ def run_mutants(log):
     return results
 
 
+# Round 27d (0.27.3): the lifetime net. Two lifetime bugs in a row (0.27.1's self-pointing Context copy, 0.27.2's node
+# view bound to a temporary) were invisible to the MSVC build and the tests. When clang-cl is installed (LLVM), the DLL
+# source and every test are compiled once more, syntax only, with clang's lifetime warnings as errors; a negative control
+# (tests/lifetime_net.cpp) must fail, or the net is not armed. tests/asan_harness.cpp then runs under AddressSanitizer
+# (clang-cl's ASan on this toolchain aborts on any throw, so the throwing tests stay on MSVC). Without clang-cl the receipt says "skipped" (the MSVC build still decides).
+CLANG = Path(r'C:\Program Files\LLVM\bin\clang-cl.exe')
+VCVARS = Path(r'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat')
+LIFETIME_FLAGS = ['/nologo', '/std:c++latest', '/EHsc', '/utf-8', '-fdelayed-template-parsing', '-Wno-everything',
+                  '-Werror=dangling', '-Werror=dangling-gsl', '-Werror=return-stack-address', '-Werror=dangling-field',
+                  '-Werror=dangling-initializer-list', '/DWIN32', '/D_WINDOWS', '/DWINVER=0x0601', '/D_WIN32_WINNT=0x0601',
+                  '/DENABLE_SKYRIM_SE=1', '/DHAS_SKYRIM_MULTI_TARGETING=1', '/DSPDLOG_COMPILED_LIB']
+ASAN_TESTS = ['asan_harness']   # the runtime / engine tests throw to check; clang-cl's ASan here cannot run a throw
+
+
+def in_vcvars(args, log):
+    line = 'call "' + str(VCVARS) + '" >nul 2>nul && ' + subprocess.list2cmdline([str(a) for a in args])
+    # one string: cmd.exe does not understand the backslash-escaped quotes a list argument would get
+    result = subprocess.run('cmd /d /s /c "' + line + '"', capture_output=True, text=True, encoding='utf-8', errors='replace')
+    log.write(f'$ {line}\n{result.stdout}{result.stderr}\n')
+    return result
+
+
+def lifetime_net(log):
+    if not CLANG.is_file() or not VCVARS.is_file():
+        return {'status': 'skipped', 'reason': 'clang-cl or vcvars64.bat not installed'}
+    native = n.NATIVE
+    includes = []
+    for d in ['include', 'deps/json/single_include', 'deps/CommonLibSSE-NG/include', 'deps/spdlog/include']:
+        includes += ['/I', str(native / d)]
+    checked = []
+    control = in_vcvars([CLANG, *LIFETIME_FLAGS, '/Zs', *includes, native / 'tests/lifetime_net.cpp'], log)
+    if control.returncode == 0 or 'dangling' not in (control.stdout + control.stderr):
+        raise RuntimeError('LIFETIME NET not armed: tests/lifetime_net.cpp (a view on a temporary) compiled cleanly')
+    sources = [native / 'src/Plugin.cpp'] + sorted(p for p in (native / 'tests').glob('*_test.cpp')) + [native / 'tests/asan_harness.cpp']
+    for src in sources:
+        r = in_vcvars([CLANG, *LIFETIME_FLAGS, '/Zs', *includes, src], log)
+        if r.returncode != 0:
+            raise RuntimeError(f'LIFETIME NET: {src.name} has a dangling reference / pointer (clang-cl); see build/fix20-msvc.log')
+        checked.append(src.name)
+    asan_dir = OUT / 'asan'
+    asan_dir.mkdir(exist_ok=True)
+    runtime_lib = next(iter(sorted((CLANG.parent.parent / 'lib/clang').glob('*/lib/windows'))), None)
+    ran = []
+    for test in ASAN_TESTS:
+        exe = asan_dir / f'{test}.exe'
+        r = in_vcvars([CLANG, '/nologo', '/std:c++latest', '/EHsc', '/utf-8', '/O1', '/Zi', '/MD', '-fsanitize=address',
+                       '/D_DISABLE_STL_ANNOTATION', *includes, native / f'tests/{test}.cpp', f'/Fe:{exe}', f'/Fo:{asan_dir}\\',
+                       '/link', '/NODEFAULTLIB:stl_asan.lib', f'/LIBPATH:{runtime_lib}'], log)
+        if r.returncode != 0:
+            raise RuntimeError(f'ASAN build of {test} failed; see build/fix20-msvc.log')
+        env = dict(os.environ, PATH=f'{runtime_lib};' + os.environ.get('PATH', ''))
+        run_r = subprocess.run([str(exe)], capture_output=True, text=True, encoding='utf-8', errors='replace', env=env, cwd=str(asan_dir))
+        log.write(f'$ {exe}\n{run_r.stdout}{run_r.stderr}\n')
+        if run_r.returncode != 0 or 'AddressSanitizer' in run_r.stderr:
+            raise RuntimeError(f'ASAN: {test} failed under AddressSanitizer; see build/fix20-msvc.log')
+        ran.append(test)
+    return {'status': 'ok', 'clang': str(CLANG), 'checked': checked, 'control': 'caught', 'asan': ran}
+
+
+# Round 27d (0.27.3): the DLL's PDB, kept for symbolizing crash logs (build/pdb/, never in package/), and proved to be the
+# PDB of the DLL: the DLL's CodeView (RSDS) GUID and age equal the PDB info stream's.
+import shutil as _shutil
+import struct as _struct
+
+
+from fix27_pdb import dll_codeview, pdb_info   # build/fix27_pdb.py (fix27_verify reads the same)
+
+
+def keep_pdb():
+    dll = OUT / 'Release/ElementsSpellblade.dll'
+    pdb = OUT / 'Release/ElementsSpellblade.pdb'
+    if not pdb.is_file():
+        raise RuntimeError('the release build wrote no ElementsSpellblade.pdb (CMakeLists /Zi /DEBUG:FULL)')
+    guid, age, _name = dll_codeview(dll)
+    pguid, page = pdb_info(pdb)
+    if (guid, age) != (pguid, page):
+        raise RuntimeError(f'PDB mismatch: DLL {guid.hex()} age {age} vs PDB {pguid.hex()} age {page}')
+    target = ROOT / f'build/pdb/ElementsSpellblade-{n.NATIVE_VERSION}.pdb'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    _shutil.copy2(pdb, target)
+    kept_guid, kept_age = pdb_info(target)
+    if (kept_guid, kept_age) != (guid, age):
+        raise RuntimeError('the kept PDB copy does not match the DLL')
+    return {'path': str(target.relative_to(ROOT)).replace('\\', '/'), 'guid': guid.hex(), 'age': age, 'sha256': n.sha(target)}
+
+
 def main():
     n.check_deps()
     n.generate_header(b)
@@ -380,7 +466,9 @@ def main():
         run([CMAKE, '--build', OUT, '--config', 'Release', '--parallel', '8'], log)
         ctest = run([CMAKE.with_name('ctest.exe'), '--test-dir', OUT, '-C', 'Release', '--output-on-failure', '-V'], log)
         mutants = run_mutants(log)
+        lifetime = lifetime_net(log)
     assert n.inputs() == before, 'Sources changed during compile; rebuild'
+    pdb = keep_pdb()
     cl_version, cl_path = compiler()
     sdk = windows_sdk()
     drift = (cl_version, cmake_version, sdk) != (LOCK['cl_version'], LOCK['cmake'], LOCK['windows_sdk'])
@@ -401,6 +489,8 @@ def main():
         'ctest': {'passed_percent': int(summary[1]), 'failed': int(summary[2]), 'tests': int(summary[3]), 'lines': totals},
         'magnitude_scenarios': cases,
         'mutants': mutants,
+        'lifetime_net': lifetime,
+        'pdb': pdb,
     }, indent=2, ensure_ascii=False) + '\n', encoding='utf8')
     by = {}
     for m in mutants:
@@ -409,6 +499,12 @@ def main():
     print(f'NATIVE MUTANTS ok: {len(ran)}/{len(ran)} source mutations make the tests fail '
           f'(+{len(mutants) - len(ran)} Load.h mutants built for build/fix25_verify.py) '
           f'({", ".join(f"{h} {k}" for h, k in by.items())})')
+    if lifetime['status'] == 'ok':
+        print(f"LIFETIME NET ok: clang-cl dangling checks clean on {len(lifetime['checked'])} sources (the negative control caught); "
+              f"AddressSanitizer clean on {', '.join(lifetime['asan'])}")
+    else:
+        print(f"LIFETIME NET skipped: {lifetime['reason']}")
+    print(f"PDB ok: {pdb['path']} matches the DLL (CodeView GUID {pdb['guid']} age {pdb['age']}); not shipped")
     print(f'Native build ok: cl {cl_version}, cmake {cmake_version}, SDK {sdk}; ctest {summary[3]} test(s), 0 failed; receipt written.')
 
 
