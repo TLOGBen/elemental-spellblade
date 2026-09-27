@@ -208,6 +208,9 @@ MUTANTS = [
      '    if (insideHitTask) {\n        return HitRoute::kNested;', '    if (false) {\n        return HitRoute::kNested;'),
     ('a blocked hotkey is still run', 'Sinks.h', 'trace',
      'out.push_back(Action{ ActionKind::kSwitch, element, 0, code, open });', 'out.push_back(Action{ ActionKind::kSwitch, element, 0, code, true });'),
+    # Round 26d (0.26.3): Rng() calling itself again (the 0.26.2 freeze); trace_test's watchdog must end it with a failure.
+    ('Rng() calls itself (the 0.26.2 freeze)', 'Trace.h', 'trace',
+     '    return *rng;\n}', '    return TaskRng(rng, inTask, outsideReported, onOutside);\n}'),
 ]
 LOAD_DEFERRED = 'load'   # the mutants of this test run in build/fix25_verify.py (check_load), on the written ESP
 

@@ -870,6 +870,6 @@ inline constexpr float kUpkeepBasePct = 1.0f;
 inline constexpr float kUpkeepDarkPct = 2.0f;
 inline constexpr float kUpkeepLevelRelief = 0.7f;
 inline constexpr std::string_view elementNames[12] = {"無元素", "火焰", "冰霜", "雷電", "大地", "風", "鮮血", "神聖", "毒素", "水", "黑暗", "星界"};
-inline constexpr char nativeVersion[] = "0.26.2";
+inline constexpr char nativeVersion[] = "0.26.3";
 inline constexpr char addressHash[] = "1d7530d001139ca58f462ea0210a8055868159057ba8b5ebc624fc5e9c4f5e9a";
 }  // namespace essb

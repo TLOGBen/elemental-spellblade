@@ -23,7 +23,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <chrono>
+#include <cstdlib>
 #include <fstream>
+#include <future>
 #include <iostream>
 #include <map>
 #include <regex>
@@ -852,6 +855,37 @@ void SampleChecks(const std::string& text)
 
 }  // namespace
 
+// Round 26d (0.26.3): Plugin.cpp's Rng() returns through TaskRng. 0.26.2's body called itself and spun forever at the
+// first draw (the in-game freeze after closing a form with a burst). Each call here runs under a 3 s watchdog: a hang ends
+// the test with a failure instead of hanging ctest.
+void TaskRngChecks()
+{
+    auto watched = [](const char* what, auto body) {
+        auto job = std::async(std::launch::async, body);
+        if (job.wait_for(std::chrono::seconds(3)) != std::future_status::ready) {
+            std::cout << "NATIVE TRACE FAILED: task rng: " << what << " never returned (a self-call spins: the 0.26.2 freeze)\n";
+            std::cout.flush();
+            std::_Exit(3);
+        }
+        return job.get();
+    };
+    std::optional<tr::TraceRng> rng;
+    rng.emplace(99);
+    std::atomic_bool reported{ false };
+    int outside = 0;
+    tr::TraceRng* inTask = watched("a draw inside a task", [&] { return &tr::TaskRng(rng, true, reported, [&] { ++outside; }); });
+    Check(inTask == &*rng && outside == 0 && !reported, "task rng: inside a task, the seeded source and no report");
+    tr::TaskRng(rng, true, reported, [&] { ++outside; }).Record(true);   // the burst's first call (burst-start)
+    const int roll = watched("a roll inside a task", [&] { return tr::TaskRng(rng, true, reported, [&] { ++outside; }).Int(1, 25); });
+    Check(roll >= 1 && roll <= 25 && rng->Count() == 1, "task rng: the draw lands on the tape");
+    watched("a draw outside a task", [&] { return &tr::TaskRng(rng, false, reported, [&] { ++outside; }); });
+    watched("a second draw outside a task", [&] { return &tr::TaskRng(rng, false, reported, [&] { ++outside; }); });
+    Check(outside == 1 && reported, "task rng: a draw outside a task is reported once");
+    std::optional<tr::TraceRng> unseeded;
+    tr::TraceRng* seeded = watched("an unseeded source", [&] { return &tr::TaskRng(unseeded, true, reported, [] {}); });
+    Check(unseeded.has_value() && seeded == &*unseeded, "task rng: an unseeded source is seeded, never read empty");
+}
+
 int main(int argc, char** argv)
 {
     try {
@@ -861,6 +895,7 @@ int main(int argc, char** argv)
         LoadFormats(argv[1]);
         BufferChecks();
         RngChecks();
+        TaskRngChecks();
         tr::Buffer buffer;
         EngineChecks(buffer);
         CrowdChecks();

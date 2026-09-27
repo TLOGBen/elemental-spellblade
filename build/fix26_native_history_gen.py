@@ -89,6 +89,20 @@ B26C = {
 }
 for _k, _v in B26C.items():
     B26[_k] = B26.get(_k, '') + _v
+D = '；Round 26d（凍結修正，0.26.3）：'
+B26D = {
+    'native/src/Plugin.cpp': D + 'Rng() 改經 Trace.h TaskRng 回傳（0.26.2 的本體自己呼叫自己，MSVC 編成原地打轉，第一次擲骰就凍結）',
+    'native/include/Trace.h': D + 'TaskRng（Rng() 的本體，trace_test 在看門狗下跑）',
+    'native/tests/trace_test.cpp': D + 'TaskRngChecks（task 內外各抽、未播種、3 秒看門狗：自我呼叫會以失敗結束而不是卡住）',
+    'native/build.py': D + '突變：Rng() 自己呼叫自己（0.26.2 的凍結）',
+    'native/CMakeLists.txt': D + '版本 0.26.3；DLL 以 /we4717 把「所有路徑都呼叫自己」列為錯誤',
+    'native/include/ManifestData.h': D + '版本 0.26.3',
+    'build/fix19_native.py': D + 'NATIVE_VERSION 0.26.3',
+    'build/probe-judge.py': D + '版本 0.26.3',
+    'build/fix26_verify.py': D + '0.26.3、check_26d（Rng() 經 TaskRng、不能呼叫自己、/we4717）與兩個注入錯誤、突變必須存在',
+}
+for _k, _v in B26D.items():
+    B26[_k] = B26.get(_k, '') + _v
 for _k, _v in B26.items():
     REASONS[_k] = REASONS.get(_k, '') + _v
 

@@ -13,7 +13,8 @@
              every Papyrus call of ESSBNative.Trace sits behind a level-4 check (CachedDebugLevel >= 4 / Level() >= 4 or
              the gated Probe / LogEvent / LogThrottled / ESSBLog.Log); the timer thread flushes once a second; the step
              keys run only with the level on; ESSBNative.Trace is declared and registered through Guard (read-only); the
-             MCM debug enum has 4：探針 log; DLL version 0.26.2 everywhere (round 26c).
+             MCM debug enum has 4：探針 log; DLL version 0.26.3 everywhere (round 26d); C4717 is an error in the DLL build; Rng() returns
+             through Trace.h TaskRng and never calls itself (the 0.26.2 freeze).
   RECORDS    ESSB_ProbeStep is a GLOB at 0x005C00 in the written ESP and in the manifest's globals (Load.h resolves it:
              build/fix25_verify LOAD runs the loader on this ESP).
   MUTANTS    the Trace.h / StatusEngine.h probe-log mutants of native/build.py all failed trace_test (receipt), >= 4.
@@ -118,9 +119,9 @@ def op(ctx, name, who='target', kind='-', el='none', mag=0.0, sec=0.0, on=None, 
 
 def s_setup(fault):
     L = Log()
-    L.raw('[ESSB][load] ElementsSpellblade 0.26.2; SE 1.5.97 + SKSE 2.0.20 only; no entry-51 fallback')
+    L.raw('[ESSB][load] ElementsSpellblade 0.26.3; SE 1.5.97 + SKSE 2.0.20 only; no entry-51 fallback')
     L.step(1)
-    L.t('pap', ' kind=mcm-button who=- button=ShowNativeStatus version=0.26.2 active=True')
+    L.t('pap', ' kind=mcm-button who=- button=ShowNativeStatus version=0.26.3 active=True')
     probes = ['Papyrus native', 'queued native task', 'TESHitEvent', 'TESHitEvent (you are the target)', 'hurt task',
               'TESActiveEffectApplyRemoveEvent', 'TESDeathEvent', 'timer task', 'TESSpellCastEvent', 'input sink']
     for p in probes:
@@ -412,6 +413,7 @@ def check_trace(cpp, sources, trace_h, config_text):
     if '[ESSB][X2]' not in cpp or 'RtlCaptureStackBackTrace(2, 12' not in cpp or 'REL::ID(528600)' not in cpp:
         errors.append('the X2 witness (call chains, the Havok TLS word) is missing')
     errors += check_26c(cpp)
+    errors += check_26d(cpp, trace_h)
     if 'inline constexpr float kLevel = 4.0f;' not in trace_h:
         errors.append('Trace.h kLevel is not 4')
     loop = cpp[cpp.index('void TimerLoop() noexcept'):cpp.index('// ---------------------------------------------------------------- round 25 (N6): hotkeys')]
@@ -491,16 +493,36 @@ def check_26c(cpp):
     return errors
 
 
+def check_26d(cpp, trace_h):
+    """Round 26d (0.26.3): 0.26.2's Rng() was "return Rng();" -- a self-call MSVC compiled into a spin loop (the freeze
+    after closing a form with a burst: hang.dmp, thread 39376 at ElementsSpellblade.dll+0x59E46). Rng() must return through
+    Trace.h TaskRng (run by trace_test under a watchdog) and its body may not name itself."""
+    errors = []
+    head = 'essb::trace::TraceRng& Rng() noexcept\n{'
+    body = fn_text(cpp, head, '\n}\n')
+    inner = body[len(head):]
+    if not body or 'essb::trace::TaskRng(state.rng, t_inTask, state.rngOutsideLogged' not in inner:
+        errors.append('Rng() does not return through Trace.h TaskRng (round 26d)')
+    if re.search(r'\bRng\(\)', inner):
+        errors.append('Rng() calls itself (the 0.26.2 freeze, round 26d)')
+    if 'TraceRng& TaskRng(std::optional<TraceRng>& rng, bool inTask, std::atomic_bool& outsideReported' not in trace_h \
+            or '    return *rng;\n}' not in trace_h:
+        errors.append('Trace.h TaskRng is missing or does not return the source (round 26d)')
+    return errors
+
+
 def check_versions(b):
     errors = []
     cmake = (ROOT / 'native/CMakeLists.txt').read_text(encoding='utf-8')
     header = (ROOT / 'native/include/ManifestData.h').read_text(encoding='utf-8')
     import fix19_native as n
-    if 'VERSION 0.26.2' not in cmake or 'nativeVersion[] = "0.26.2"' not in header or n.NATIVE_VERSION != '0.26.2':
-        errors.append('the DLL version is not 0.26.2 in CMakeLists / ManifestData.h / fix19_native')
+    if 'VERSION 0.26.3' not in cmake or 'nativeVersion[] = "0.26.3"' not in header or n.NATIVE_VERSION != '0.26.3':
+        errors.append('the DLL version is not 0.26.3 in CMakeLists / ManifestData.h / fix19_native')
+    if 'target_compile_options(ElementsSpellblade PRIVATE /W4 /we4717' not in cmake:
+        errors.append('the DLL build does not make C4717 (a function that calls itself on every path) an error (round 26d)')
     manifest = json.loads((b.OUT / 'SKSE/Plugins/ElementsSpellblade/manifest.json').read_text(encoding='utf-8'))
-    if manifest.get('native_version') != '0.26.2':
-        errors.append('the packaged manifest is not 0.26.2')
+    if manifest.get('native_version') != '0.26.3':
+        errors.append('the packaged manifest is not 0.26.3')
     if manifest.get('globals', {}).get('ESSB_TrueHudBars') != 0x5C01:
         errors.append('ESSB_TrueHudBars is not in the manifest globals at 0x005C01 (round 26c T2)')
     if manifest.get('globals', {}).get('ESSB_ProbeStep') != 0x5C00:
@@ -531,6 +553,7 @@ def check_mutants():
     mutants = receipt.get('mutants') or []
     trace = [m for m in mutants if m['test'] == 'trace']
     assert len(trace) >= 4 and all(m['exit'] not in (0, None) for m in trace), ('round-26 trace mutants', trace)
+    assert any(m['name'] == 'Rng() calls itself (the 0.26.2 freeze)' for m in trace), ('round-26d: the Rng self-call mutant', trace)
     return trace
 
 
@@ -589,6 +612,10 @@ def self_test(j, cpp, sources, trace_h, config_text, sheet_text):
     expect('a task body without its scope', check_trace(cpp.replace('TaskScope scope("settle task");', '', 1), sources, trace_h, config_text))
     expect('the hurt sink reading your board', check_trace(cpp.replace('    f.guardBefore = state.mirrorGuard.load();',
         '    f.guardBefore = ReadBoard(player).guardPool.magnitude;', 1), sources, trace_h, config_text))
+    expect('Rng() calling itself (the 0.26.2 freeze)', check_26d(cpp.replace(
+        'return essb::trace::TaskRng(state.rng, t_inTask, state.rngOutsideLogged,',
+        'return Rng(); (void)essb::trace::TaskRng(state.rng, t_inTask, state.rngOutsideLogged,', 1), trace_h))
+    expect('Rng() drawing past TaskRng', check_26d(cpp.replace('return essb::trace::TaskRng(state.rng,', 'return *state.rng; (state.rng,', 1), trace_h))
     expect('a station moved in the sheet', check_judge(j, sheet_text.replace('### 站 25：B-07', '### 站 25：B-08', 1))[0])
     expect('a station without log 判定', check_judge(j, sheet_text.replace('**log 判定**', '**判定**', 1))[0])
     return caught
@@ -621,7 +648,7 @@ def run(b):
     print(f'FIX26 ok: probe-judge judges all {judge_counts["steps"]} steps at {judge_counts["stations"]} stations = build/probes-all.md; '
           f'native sample (real planners) {len(native)} steps PASS and FAIL with one fault each ({", ".join(r[0] for r in native)}); '
           f'hand samples {len(hand)} steps PASS / FAIL ({", ".join(r[0] for r in hand)}); hurt task on its own X1 flag, 13 X1 probes, '
-          f'level 4, 1 s flush, gated step keys and Papyrus probes, ESSBNative.Trace guarded; ESSB_ProbeStep GLOB 0x005C00; 0.26.2; 26c: sinks snapshot only, task scopes, re-find dispels; 26b sinks (death reads the corpse only, input queues) and X2 witness; '
+          f'level 4, 1 s flush, gated step keys and Papyrus probes, ESSBNative.Trace guarded; ESSB_ProbeStep GLOB 0x005C00; 0.26.3; 26d: Rng() through TaskRng, C4717 an error; 26c: sinks snapshot only, task scopes, re-find dispels; 26b sinks (death reads the corpse only, input queues) and X2 witness; '
           f'line endings kept; {len(caught)}/{len(caught)} source faults caught; {len(trace_mutants)} trace mutants failed; '
           f'history: {history["changed"]} changed / {history["added"]} added functions, {len(history["silent_edits_caught"])} silent '
           f'edits caught; native seal {native_history["changed"]} changed / {native_history["added"]} added / '

@@ -580,12 +580,12 @@ struct InHitTask {
 
 // Round 26c (P3): the damage rolls are drawn only inside tasks (one context, one after another); a draw anywhere else is
 // logged once (it would race with the tasks).
+// Round 26d (0.26.3): 0.26.2 returned "Rng()" here -- a self-call MSVC compiled into a spin loop that froze the game at
+// the first draw. The body is Trace.h's TaskRng (run by trace_test); /we4717 makes any self-recursion a build error.
 essb::trace::TraceRng& Rng() noexcept
 {
-    if (!t_inTask && !state.rngOutsideLogged.exchange(true)) {
-        Logf("[ESSB][RNG] a draw outside a task thread=%lu", GetCurrentThreadId());
-    }
-    return Rng();
+    return essb::trace::TaskRng(state.rng, t_inTask, state.rngOutsideLogged,
+        [] { Logf("[ESSB][RNG] a draw outside a task thread=%lu", GetCurrentThreadId()); });
 }
 
 // Debug.Notification equivalent: RE::DebugNotification (CommonLib-NG Misc.h), run on the main thread

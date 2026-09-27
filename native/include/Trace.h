@@ -19,10 +19,12 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -558,5 +560,22 @@ private:
     int more_ = 0;
     std::array<Draw, kTape> tape_{};
 };
+
+// Round 26d (DLL 0.26.3): the one accessor Plugin.cpp's Rng() returns through. 0.26.2 wrote Rng()'s body as
+// "return Rng();" -- MSVC turned the self-call into a jump, so the first draw of any task (a hit's proc, the burst's
+// Record) spun forever and froze the game. The body lives here so trace_test runs it (inside and outside a task, under a
+// watchdog): a draw outside a task is reported once through onOutside, an unseeded source is seeded, and the source is
+// always returned.
+template <class OnOutside>
+TraceRng& TaskRng(std::optional<TraceRng>& rng, bool inTask, std::atomic_bool& outsideReported, OnOutside&& onOutside) noexcept
+{
+    if (!inTask && !outsideReported.exchange(true)) {
+        onOutside();
+    }
+    if (!rng) {
+        rng.emplace(0x9E3779B97F4A7C15ull);
+    }
+    return *rng;
+}
 
 }  // namespace essb::trace

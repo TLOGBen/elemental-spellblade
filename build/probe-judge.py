@@ -472,8 +472,8 @@ def r_setup(seg, ctx):
     button = [x for x in log.of('pap') if x['kind'] == 'mcm-button' and 'ShowNativeStatus' in x.text]
     if not version:
         return NODATA('log 裡沒有 [ESSB][load] ElementsSpellblade 版本行（不是這一版的 log？）')
-    if '0.26.2' not in version[0].text:
-        return FAIL('DLL 版本不是 0.26.2', version[0])
+    if '0.26.3' not in version[0].text:
+        return FAIL('DLL 版本不是 0.26.3', version[0])
     overlap = [x for x in log if x.kind == 'raw' and x.text.startswith('[ESSB][OVERLAP]')]
     if overlap:
         return FAIL('出現 [ESSB][OVERLAP]：兩個改引擎的工作同時在跑（round 26c 規定永遠不能出現）', *overlap[:4])
@@ -497,12 +497,12 @@ def r_setup(seg, ctx):
         return FAIL('X2 缺命中 task 或計時器 task 的呼叫鏈', *evidence)
     if bad:
         return FAIL('X2：' + '；'.join(r for x, r in bad[:4]), *[x for x, r in bad[:6]])
-    ok_button = bool(button) and 'version=0.26.2' in button[-1].text and 'active=True' in button[-1].text
+    ok_button = bool(button) and 'version=0.26.3' in button[-1].text and 'active=True' in button[-1].text
     if eyes or not ok_button:
         why = ('；'.join(r for x, r in eyes[:4]) + '；') if eyes else ''
-        return EYES(why + ('MCM 版本按鈕沒寫進 log 或不是 0.26.2／True，請看畫面；' if not ok_button else '') + '呼叫鏈：' + chains,
+        return EYES(why + ('MCM 版本按鈕沒寫進 log 或不是 0.26.3／True，請看畫面；' if not ok_button else '') + '呼叫鏈：' + chains,
                     *(evidence + [x for x, r in eyes[:3]]))
-    return PASS('版本 0.26.2；X1 十種都在；沒有 OVERLAP；X2：遊戲中所有 task（含命中 task）在 Post process、輸入／UI／VM 在各自的 job、暫停時在視窗執行緒（命中 sink 只記錄）。'
+    return PASS('版本 0.26.3；X1 十種都在；沒有 OVERLAP；X2：遊戲中所有 task（含命中 task）在 Post process、輸入／UI／VM 在各自的 job、暫停時在視窗執行緒（命中 sink 只記錄）。'
                 '呼叫鏈：' + chains, *(evidence + [x for x, n, p, k in rows[:4]]))
 
 

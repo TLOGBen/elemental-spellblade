@@ -395,3 +395,14 @@ TrueHUD 資源條的稽核（T1）找到的具體問題：
 測試：trace_test 加 tape 邊界（順序 100 次＋四條執行緒同時抽、第五條不停重設錄製，後方的保護值不變）、依 id 重找的驅散（假清單在 Dispel 時會位移）、`RouteHit`；3 個新突變（tape 寫出邊界、驅散用舊 handle、巢狀命中又排隊）都讓測試失敗（tape 那個會讓程式直接崩，build.py 已能記下沒有輸出的失敗）。fix26_verify 加靜態檢查：命中／受擊 sink 內沒有任何引擎工作或效果清單讀取、每個 task 本體有 TaskScope、thread_local、`__finally`、TimerStopper、`Rng()`；SETUP-1 出現 OVERLAP 必須 FAIL。
 
 另一次崩潰（`crash-2026-09-27-05-12-16`，TrueHUD 已停用，長時間遊玩後開新遊戲時）：主迴圈 35565 → 34862／34872（SKSE 掛勾處）→ 34677 → 34735／34736 → 34745 → 13148／13147 → 13277／13278／13276 → 20026 → 20087 → 19000 → 18568 `call [rax+0x120]`，讀到 0xFFFFFFFFFFFFFFFF：對一個 vtable 已是垃圾的物件做虛擬呼叫＝物件已被釋放或覆寫。本 DLL 不在堆疊。這是「同一個 process 前面已經發生的堆積損壞，到清理／重建世界時才爆」的樣子，跟 TrueHUD 無關、跟 P1 的並行寫入一致；所以主修正仍是 P1～P7，TrueHUD（T1～T3）是另一個確認過的問題。
+
+## Round 26d（DLL 0.26.3）：關形態＋融斷後凍結
+
+- **現象**（使用者 0.26.2）：水 → 熱鍵冰（切換）→ 再按冰（關閉）→ `[T][pap] kind=Form who=- close 2` → `queued native task thread=39376` → `[T][burst-start] #230 …` 之後 log 完全停住，遊戲「沒有回應」（不是崩潰）。
+- **傾印分析**（指揮官抓的 hang.dmp，自寫的 minidump 解析：ThreadList／ModuleList／Memory64List，堆疊掃回傳位址）：只有一條執行緒停在本 DLL 裡——39376（就是 log 最後那個 queued native task），`RIP = ElementsSpellblade.dll+0x59E46`。反組譯 0.26.2 的 DLL：
+  `0x180059E43 cmpb $0x0,(%rbx)`（`t_inTask`）／`0x180059E46 jne 0x180059E43`；為假時 `xchgb` `rngOutsideLogged` 後 `jne` 也跳回 `0x180059E43`＝原地打轉。
+- **根因**：Round 26c 把所有 `*state.rng` 換成 `Rng()` 時，連 `Rng()` 自己的本體也被換成 `return Rng();`——無限自我呼叫。MSVC 把尾端呼叫最佳化成跳回開頭，所以不是 stack overflow 崩潰，而是 100% CPU 的死迴圈。任何擲骰（命中附傷、融斷、化身、形態開啟的臨…）第一次呼叫就凍結；這次剛好第一次擲骰是融斷的 `Rng().Record(true)`（該 session 還沒有任何命中）。編譯器其實有發 C4717（「所有路徑都遞迴」），但 DLL 目標沒把警告當錯誤，沒人看到。
+- **為什麼離線測試沒抓到**：`Rng()` 只存在 Plugin.cpp；Plugin.cpp 只編進 DLL，7 個測試程式都只編 `native/include/*.h`，沒有任何測試執行 Plugin.cpp 的程式碼。fix26_verify 的靜態檢查只查「沒有人繞過 Rng()」，沒查 Rng() 本體。
+- **修法**：`Rng()` 的本體搬進 Trace.h `TaskRng(rng, inTask, outsideReported, onOutside)`（task 外的擲骰只報一次、未播種就播種、一律回傳來源）；Plugin.cpp 的 `Rng()` 只呼叫它。DLL 目標加 `/we4717`：任何「所有路徑都呼叫自己」的函式直接編譯失敗。
+- **檢查**：① trace_test `TaskRngChecks`：task 內、task 外（只報一次）、先 Record 再擲、未播種，每次都在 3 秒看門狗下跑，卡住就以失敗結束（不會把 ctest 卡死）。② native/build.py 突變「Rng() calls itself (the 0.26.2 freeze)」：把 TaskRng 改回自我呼叫，trace_test 以 exit 3「never returned」失敗——離線重現了凍結。③ fix26_verify `check_26d`：Rng() 本體必須經 TaskRng、不能出現 `Rng()`、CMakeLists 有 `/we4717`；兩個注入錯誤（本體改回 `return Rng();`、繞過 TaskRng）都被抓到。新 DLL 反組譯：沒有原地打轉的迴圈。
+- 版本 0.26.3（CMakeLists、ManifestData.h、fix19_native、manifest、probe-judge、測試卷）。玩法不變。
