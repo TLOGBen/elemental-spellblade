@@ -45,7 +45,9 @@ CHANGED = {
     ('ESSBController.psc', 'SwitchForm'): ('Round 27（G8：形態切換由 DLL 在決定它的 task 裡做完）：依 ESSB_Switch 帶來的種類（1 開、2 切換、3 關）處理，不再看當下的全域變數（關了馬上又開也一定先關再開）；切換前的同調由 DLL 帶來；保留的份改用 ESSBNative.KeepSync 加在 DLL 歸零後的同調上（DLL 已加上新形態開啟的所得）；魔力耗盡（原因 1）顯示提示', '61cef548a93bb65e', '61a99c8480376473'),
     ('ESSBMCM.psc', 'ShowNativeStatus'): ('Round 27（G12：新遊戲時 DLL 被 SKSE 拒絕）：版本空白時說明去看 skse64.log 的 incompatible、確認上一個 SkyrimSE.exe 已結束', 'f63d245fbea115db', '61ef9015d59c465c'),
     ('ESSBSettingsEffect.psc', 'CycleDebugLevel'): ('Round 27（G15：除錯等級快捷鍵繞到 4＝探針 log；原本 % 4 永遠到不了 4）', '798fdcd08fa8908e', '4263555eb2baca22'),
+    ('ESSBState.psc', 'RestoreTunableDefaults'): ('Round 27g（0.27.6，使用者決定整體傷害降 20%）：MCM「還原預設」的傷害倍率改成 0.8（由 build_v03.py 從 settings.json 產生）', '6e29b73e5aed63b2', 'a8d14eb037e6791b'),
     ('ESSBTrees.psc', 'OnMenuClose'): ('Round 27e（0.27.4，MCM 與技能樹選單卡頓）：不是從 OpenTree 開的選單關閉時補扣分支點數（ReconcileGained）；不再取消 StatsMenu 的登記', '06b2f93a6bc0260f', 'cba5e453bc1976ab'),
+    ('ESSBTrees.psc', 'Reconcile'): ('Round 27g（0.27.6，分支退回訊息）：每個新分支交給 SettleBranch 結算（規則在 DLL 的 rt::SettleBranch，有單元測試）；不再只說「有 N 個分支已退回」', 'a6b0c9d27b39ba45', 'cf2354fc63f4d68b'),
     ('ESSBTrees.psc', 'RefreshActive'): ('Round 27e（0.27.4，MCM 與技能樹選單卡頓）：只更新 13 棵樹的等級，不再逐節點 HasPerk（一次最多約 3000 次原生呼叫）', 'af51edfc2a21629f', 'bb877c3e922518ba'),
     ('ESSBTrees.psc', 'Setup'): ('Round 27e（0.27.4，MCM 與技能樹選單卡頓）：一直聽 StatsMenu 的關閉（樹可能從 Custom Skill Menu 直接開）', '23b5cc0d008076b2', '663a58703b059534'),
 }
@@ -59,7 +61,9 @@ ADDED = {
     ('ESSBNative.psc', 'KeepSync'): ('Round 27（G8：形態切換由 DLL 在決定它的 task 裡做完）（新原生函式宣告：把保留的同調加上去，不算升段）', '0a7f55937d147dde'),
     ('ESSBNative.psc', 'NodeBranch'): ('Round 27e（0.27.4，MCM 與技能樹選單卡頓）：新原生函式宣告（分支）', '0b692f8b93e961d2'),
     ('ESSBNative.psc', 'NodeRank'): ('Round 27e（0.27.4，MCM 與技能樹選單卡頓）：新原生函式宣告（節點階數）', '91c53b5abda78f8e'),
-    ('ESSBTrees.psc', 'ReconcileGained'): ('Round 27e（0.27.4，MCM 與技能樹選單卡頓）：新函式：依 DLL 記下的選單開啟時分支，每個新分支補扣 4 點，不夠就退回', '40e61d01c43c64ea'),
+    ('ESSBNative.psc', 'SettleBranch'): ('Round 27g（0.27.6，分支退回訊息）：新原生函式宣告（一個新分支結算後的點數）', '332455455eb46544'),
+    ('ESSBTrees.psc', 'ReconcileGained'): ('Round 27e（0.27.4，MCM 與技能樹選單卡頓）：新函式：依 DLL 記下的選單開啟時分支，每個新分支補扣 4 點，不夠就退回；Round 27g（0.27.6，分支退回訊息）：每個分支交給 SettleBranch 結算（訊息寫出分支名、需要幾點、樹剩幾點）', '494caf9e11f9015b'),
+    ('ESSBTrees.psc', 'SettleBranch'): ('Round 27g（0.27.6，分支退回訊息）：新函式：一個分支的結算——夠 4 點就扣，不夠就退回並把 CSF 扣的 1 點加回；通知寫出樹、分支名、需要 5 點、樹剩幾點；除錯等級 3 以上每個決定都記一行', 'ba656395d7b8c2e2'),
 }
 
 PROPERTIES = {

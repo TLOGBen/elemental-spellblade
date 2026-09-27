@@ -361,7 +361,7 @@ def plan_noform(s):
     if mp > 0 and not s.power:                                           # 小滅法 (D12: your magicka after the siphon)
         burn = min(5 * g * bonus * s.mult_drain, t_mp)
         if burn > 0:
-            dmg = burn * rate * true_mult
+            dmg = burn * rate * true_mult * s.base_damage_mult             # round 27g: x MCM mult (no G)
             casts.append(('kDrainMagicka', burn, 0, False, 0))
             casts.append(('kTrueDamage', dmg, 0, False, 0))
             total += dmg
@@ -375,7 +375,7 @@ def plan_noform(s):
             spend = x
             y = min(t_mp, x * multiple * bonus * s.mult_drain)
         hush_break = has(s, NODES['kNoFormHushBreak']) and s.hush >= 3 and not s.hush_spent   # 寂滅 (N2 half)
-        dmg = (spend + y) * (rate + (0.5 if hush_break else 0.0)) * true_mult
+        dmg = (spend + y) * (rate + (0.5 if hush_break else 0.0)) * true_mult * s.base_damage_mult   # 27g: x MCM mult
         casts.append(('kSpendMagicka', spend, 0, False, 0))
         if y > 0:
             casts.append(('kDrainMagicka', y, 0, False, 0))

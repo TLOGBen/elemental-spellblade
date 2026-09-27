@@ -591,6 +591,34 @@ void BranchChecks()
     Check(rt::Gained(before, now) == rt::BranchBit(2, 0) && rt::BranchBit(4, 3) == (1u << 19) && rt::BranchBit(5, 0) == 0,
         "branches: only the one bought after the snapshot counts");
     Check(rt::Gained(now, before) == 0, "branches: a respec (fewer) gains nothing");
+
+    // (27g) enough: 10 points, 1 main-line rank and 1 branch bought in one menu -> the framework leaves 8, the branch
+    // takes 4 more and 4 are left.
+    const rt::BranchVerdict enough = rt::SettleBranch(10 - 1 - 1);
+    Check(enough.kept && enough.after == 4 && enough.had == 9, "branches: enough points keep the branch (5 in all)");
+    Check(rt::SettleBranch(4).kept && rt::SettleBranch(4).after == 0 && !rt::SettleBranch(3).kept,
+        "branches: exactly 4 left after the framework's 1 is enough, 3 is not");
+    // not enough: the 0.27.5 report -- fire points 10, 6 main-line ranks and 4 branches in one Custom Skill Menu visit.
+    // The framework took all 10; every branch goes back with its 1 point, so 4 are left for later.
+    const rt::BranchVerdict none = rt::SettleBranch(0);
+    Check(!none.kept && none.after == 1 && none.had == 1, "branches: 0 left -> refunded, the framework's 1 comes back");
+    const rt::BranchRun report = rt::SettleBranches(10 - 6 - 4, 4);
+    Check(report.kept == 0 && report.refunded == 4 && report.left == 4, "branches: the 0.27.5 report refunds all four");
+    // several branches, some kept: 10 points, 2 branches -> 8 left: the first stays (4 left), the second stays (0 left).
+    const rt::BranchRun two = rt::SettleBranches(10 - 2, 2);
+    Check(two.kept == 2 && two.left == 0, "branches: 10 points buy two branches");
+    // 10 points, 3 branches -> 7 left: the first stays (3), the second goes back (4), the third stays (0): 2 of 3,
+    // the most 10 points can pay for (2 x 5 = 10).
+    const rt::BranchRun three = rt::SettleBranches(10 - 3, 3);
+    Check(three.kept == 2 && three.refunded == 1 && three.left == 0, "branches: 10 points keep two of three branches");
+    for (int points = 0; points <= 40; ++points) {
+        for (int count = 0; count * rt::kBranchFrameworkCost <= points && count <= 8; ++count) {
+            const rt::BranchRun run = rt::SettleBranches(points - count, count);
+            Check(run.kept == (count < points / rt::kBranchCost ? count : points / rt::kBranchCost) && run.left >= 0
+                      && run.left == points - run.kept * rt::kBranchCost,
+                "branches: a menu keeps as many branches as its points pay for, and nothing is lost");
+        }
+    }
 }
 
 void LethalChecks()

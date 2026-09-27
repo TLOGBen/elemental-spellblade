@@ -1,4 +1,4 @@
-"""Round 27 / 27b / 27c (DLL 0.27.5): offline checks of what this round changed, each with injected faults.
+"""Round 27 / 27b / 27c (DLL 0.27.6): offline checks of what this round changed, each with injected faults.
 
   VISUALS    build/fix27_visuals.check on the written ESP (G13, G14; 27b): the form ring -- four constant self effects per
              element with a Skyrim.esm ring art, one per ESSB_SyncStage 0..3 under ESSB_WeaponGlow (形態光圈), no shader or
@@ -13,7 +13,7 @@
              noexcept; G8: the switch in SwitchWork (the burst on every close, also magicka empty -- the user's decision
              2026-09-27), OnFormOpened calls no FormEnter, KeepSync declared and registered; G15: a step key bound to a form
              is the hotkey only, CycleDebugLevel reaches 4. One fault each must fail.
-  VERSION    0.27.5 in CMakeLists, ManifestData.h, fix19_native, the packaged manifest and build/probe-judge.py VERSION.
+  VERSION    0.27.6 in CMakeLists, ManifestData.h, fix19_native, the packaged manifest and build/probe-judge.py VERSION.
   JUDGE      SETUP-1 fails on [ESSB][OVERLAP-READ], on [ESSB][crash] and on an older version (the round-26 hand sample).
   MUTANTS    the receipt: every runtime / anchor mutant failed its test, and the contract's mutations are there (G1, G6,
              G7, E1, E3, the burst's overflow, G15).
@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'build'), str(ROOT)]
 SNAPSHOT = ROOT / '.codex/pre-fix27-snapshot'
 SRC = ROOT / 'src'
-VERSION = '0.27.5'
+VERSION = '0.27.6'
 
 import fix27_visuals as vis
 
@@ -357,6 +357,19 @@ def check_judge(j):
         if fv.status != 'FAIL':
             errors.append(f'SETUP-1 with {label}: {fv.status} (should be FAIL)')
         rows.append(label)
+    # 27g (0.27.6): damage numbers are compared at 傷害倍率 1.0 -- divided by the multiplier the log says was in force.
+    text = ['[ESSB][T][op] #7 g=0 r=1 ctx=burst op=Damage who=target at=0 kind=- el=fire mag=12.60',
+            '[ESSB][T][mcm-state] #8 g=0 r=2 ESSB_BaseDamageMult=0.800 ESSB_BleedDotK=0.114',
+            '[ESSB][T][op] #9 g=1 r=3 ctx=burst op=Damage who=target at=0 kind=- el=fire mag=10.08',
+            '[ESSB][T][mcm] #10 g=2 r=4 global=ESSB_BaseDamageMult old=0.800 new=1.500',
+            '[ESSB][T][op] #11 g=3 r=5 ctx=burst op=Damage who=target at=0 kind=- el=fire mag=18.90']
+    lines = [j.parse_line(n, t) for n, t in enumerate(text, 1)]
+    j.mark_damage_mult(lines)
+    ops = [x for x in lines if x.kind == 'op']
+    got = [round(x.d('mag'), 3) for x in ops]
+    if got != [12.6, 12.6, 12.6] or [x.dm for x in ops] != [1.0, 0.8, 1.5]:
+        errors.append(f'the judge does not divide damage by the logged 傷害倍率: {got}')
+    rows.append('damage at 傷害倍率 1.0 / 0.8 / 1.5')
     return errors, rows
 
 

@@ -520,6 +520,13 @@ constexpr float PerBleedLayer(const Config& c, const Tuning& t, const Nodes& nod
     return per;
 }
 
+// 放血 (5.8): each second, layers × rate (0.3%, 首領 0.1%, +0.01%／點) × the target's current health, × ESSB_MultDot and
+// (round 27g, 0.27.6) × ESSB_BaseDamageMult -- it was the one %-health damage of ours without the 傷害倍率. No G(L).
+constexpr float BleedDrainDamage(int layers, float rate, float health, const Tuning& t) noexcept
+{
+    return static_cast<float>(layers) * rate * health * t.multDot * t.baseDamageMult;
+}
+
 // Round 27b (review B N5): while catalysed the poison's M_mod is 1 + 每劑傷害 + 催毒期間中毒傷害 (one sum); the per-dose
 // strength carries 1 + 每劑, so the catalysed strength is that × (1 + 每劑 + 催毒) / (1 + 每劑).
 template <NodeReader Nodes>
@@ -2419,7 +2426,9 @@ constexpr void OnDeathCurseEnd(StatusPlan& plan, float fuseMult, Board& target, 
     // Round 27 (G1): the lost-health part (15%, +0.5%／點 死咒的已損失生命係數, 噬咒) takes only its own lines -- not the
     // end lines, the guide or 協奏 the fuse carries for the B_max ×2.0 part.
     const float vulnerability = ReactionVulnerability(target, self, t, nodes);
-    const float damage = bMax * n3::kDeathCurseBase * ReactionScale(kDarkness, t, in.player, nodes) * fuseMult + lost * ratio * vulnerability;
+    // Round 27g: the lost-health part is our damage too -- ×ESSB_BaseDamageMult (ReactionScale already has it for the rest).
+    const float damage = bMax * n3::kDeathCurseBase * ReactionScale(kDarkness, t, in.player, nodes) * fuseMult +
+                         lost * ratio * vulnerability * t.baseDamageMult;
     // B-small (round 27): 冥召／亡魂 read this marker at the death the settlement may cause (set before the damage, like 火葬).
     Writer{ plan, target, Who::kTarget }.Set(StatusKind::kCurseKill, 1.0f, 1.0f);
     plan.Push(Amount(Op::kDamage, damage, kDarkness));
@@ -2570,8 +2579,9 @@ constexpr FireSource PlanFireSource(const Board& self, const StatusInputs& in, c
     if (t.syncStage >= 3) {
         n += n3::kInfernoPerPoint * static_cast<float>(nodes.Rank(node::kFireInferno));
     }
-    const float base = in.config->damage[kFire][1] * n3::kSourceBase * TreeG(t, TreeOf(kFire)) * t.baseDamageMult;
-    source.perEnemy = (base + source.cost * n) * NodeSum(kFire, false, t, nodes);
+    // Round 27g: ×ESSB_BaseDamageMult on the whole burn (the cost × N part too), not only the B_max part.
+    const float base = in.config->damage[kFire][1] * n3::kSourceBase * TreeG(t, TreeOf(kFire));
+    source.perEnemy = (base + source.cost * n) * NodeSum(kFire, false, t, nodes) * t.baseDamageMult;
     return source;
 }
 

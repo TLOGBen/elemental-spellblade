@@ -392,7 +392,8 @@ constexpr Proc RollProc(int element, const Attack& a, const Config& c, const Tun
         proc.crit = true;
         proc.magnitude *= CritMultiplier(a.power);
     }
-    proc.magnitude += terms.flat[element];
+    // Round 27g (0.27.6): the flat part (血刃) is our damage too -- ×ESSB_BaseDamageMult like the rest (no G, no nodes).
+    proc.magnitude += terms.flat[element] * t.baseDamageMult;
     return proc;
 }
 
@@ -661,7 +662,8 @@ constexpr void PlanNoFormHit(Plan& plan, const Attack& a, const Config& c, const
         const float burn = std::min(kSmallBurnBase * g * BurnBonus(target, nodes) * t.multDrain, targetMagicka);
         if (burn > 0.0f) {
             plan.overloaded = pool > 0.0f;
-            const float damage = burn * (rate + (plan.overloaded ? kOverloadDispel : 0.0f)) * trueMult;
+            // Round 27g: ×ESSB_BaseDamageMult (no G, like 反咒) -- the 傷害倍率 covers every damage of ours
+            const float damage = burn * (rate + (plan.overloaded ? kOverloadDispel : 0.0f)) * trueMult * t.baseDamageMult;
             plan.Add({ Cast::kDrainMagicka, burn });
             plan.Add({ Cast::kTrueDamage, damage });
             trueTotal += damage;
@@ -693,7 +695,7 @@ constexpr void PlanNoFormHit(Plan& plan, const Attack& a, const Config& c, const
         const bool hushBreak = HushBreak(target, nodes);
         const float multiplier = rate + (hushBreak ? kHushBreakBonus : 0.0f) + (plan.overloaded ? kOverloadDispel : 0.0f) +
                                  (breakForm ? kBreakFormBonus : 0.0f);
-        const float damage = (spend + y) * multiplier * trueMult;
+        const float damage = (spend + y) * multiplier * trueMult * t.baseDamageMult;   // round 27g: ×傷害倍率, still no G
         if (!breakForm) {
             plan.Add({ Cast::kSpendMagicka, fromMagicka });
         }

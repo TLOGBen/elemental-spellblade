@@ -1,4 +1,4 @@
-# 元素魔戰士（Elements Spellblade）整合測試卷 —— 探針 log 版（Round 27f，DLL 0.27.5）
+# 元素魔戰士（Elements Spellblade）整合測試卷 —— 探針 log 版（Round 27g，DLL 0.27.6）
 
 這一版的原則：**你只負責動手，不用看畫面、不用抄數字**。每個可以觀察的事件，DLL 都會寫一行進 log（MCM「除錯等級」**4：探針 log**）；你跑完把 log 交給指揮官，指揮官用 `build/probe-judge.py` 逐步判定。只有 log 真的看不到的東西（特效、NPC 逃跑、音效、UI 條、技能樹畫面、FPS）才留一句「目視」，請你回答「是／否」。
 
@@ -12,7 +12,7 @@
 
 1. **存檔**：用一個全新或可以丟的測試存檔。
 2. **MO2**：右側外掛清單勾 `Elements Spellblade.esp`，記下它的 **Mod Index**（兩位十六進位，下面寫 `XX` 的地方換成它）；舊的探針包（`*-probe-pack*.esp`、round 18b 之類）一律取消勾選。部署完**整個重開遊戲**（DLL 只在啟動時載入）。
-3. **MCM → 元素魔戰士 →「一般」頁 →「除錯等級」設 `4：探針 log`**，整份測試都維持 4（等級 4 也會照舊寫 L1～L3 的舊行，不影響判定）。「平衡」頁：節點倍率 **3**、傷害倍率 **1**、持續時間 **1**。「熱鍵」頁：「直接切換熱鍵」開著（預設數字鍵區 1＝火焰、2＝冰霜…9＝水、0＝黑暗、`.`＝星界）。
+3. **MCM → 元素魔戰士 →「一般」頁 →「除錯等級」設 `4：探針 log`**，整份測試都維持 4（等級 4 也會照舊寫 L1～L3 的舊行，不影響判定）。「平衡」頁：節點倍率 **3**、持續時間 **1**；傷害倍率照你要玩的設定就好（0.27.6 起新遊戲預設 **0.8**，舊存檔保留原值），判讀程式會從 log 的 `mcm-state`／`mcm` 行讀出當下的倍率，把傷害數字先除掉再比。「熱鍵」頁：「直接切換熱鍵」開著（預設數字鍵區 1＝火焰、2＝冰霜…9＝水、0＝黑暗、`.`＝星界）。
 4. **Log 檔案位置**：`C:\Users\powde\OneDrive\Documents\My Games\Skyrim Special Edition\SKSE\ElementsSpellblade.log`（注意是 **OneDrive 底下的「文件」**）。
    - 這個檔**每次開遊戲都會整個覆寫**。DLL 每秒寫檔一次（存檔、讀檔時也會馬上寫），所以**關遊戲前先存一次檔、等 2 秒，再把 log 複製到別的地方**，然後才關遊戲。
    - 中途當機：先把 log 複製出來再重開，重開後從當機的那一站繼續（站號存在存檔裡，讀檔後接著按 + 就好）。
@@ -22,7 +22,7 @@
    - **主控台 `set ESSB_ProbeStep to N`**：直接跳到第 N 站（例如 `set ESSB_ProbeStep to 25`）。
    - **某一站做錯要重做**：按一次 `-` 再按一次 `+`（重新標記這一站），然後重做。判定器只看**每一站最後一次**標記之後的內容。
    - 這兩個鍵只在除錯等級 4、遊戲畫面（不在選單、主控台）時有作用；round 26b 起熱鍵與站標記在下一個 task 執行（最多晚一幀）。round 26c 起命中附傷也晚一幀；這一刀直接打死目標時不再附傷（log：`[T][hit-late] … reason=dead`）。排查崩潰時可以把 MCM「一般」頁的「TrueHUD 資源條」關掉（DLL 完全不做 TrueHUD 工作）。
-6. **基準**：本卷數字都假設**技能樹等級 1（G＝1.05）、傷害倍率 1、節點倍率 3、持續時間 1、白天、戶外、目標沒有抗性**。測試檔不要有「順轉」「免門檻」類節點。
+6. **基準**：本卷數字都假設**技能樹等級 1（G＝1.05）、傷害倍率 1（實際倍率由判讀程式從 log 讀出後換算）、節點倍率 3、持續時間 1、白天、戶外、目標沒有抗性**。測試檔不要有「順轉」「免門檻」類節點。
 7. **主控台小提醒**：`setav` 改的是基礎值（上限跟著變）；想改「當下的值」用 `damageav`／`restoreav`。`player.addperk XX……` 加的節點，DLL 每秒會記一行 `[ESSB][T][node] change=+ id=……`，不用另外確認。
 8. **跑完之後**：把 log 交給指揮官。指揮官執行 `python -B build/probe-judge.py <log 路徑>`，每一步印出 PASS／FAIL／EYES（要你回答目視那一句）／RECORD（只記錄）／NO-DATA（那一站沒標記或沒做到），並附上證據行（`#序號`）。
 
@@ -54,7 +54,7 @@
 ### 站 1：SETUP-1（DLL 版本與執行緒 X1）
 
 - **操作**：戶外晴天（`fw 81a`）。MCM →「查看 DLL 版本與狀態」按一次；按數字鍵區 1 開火焰、砍 NPC 一刀，用 Z（力量欄裝「【魔戰士】火焰形態」）關掉；讓 NPC 打你一下；讓一名會施法的 NPC 對你施一次法術；殺死一名 NPC；存檔再讀檔一次。
-- **log 判定**：`[ESSB][load] ElementsSpellblade 0.27.5`；`[T][pap] kind=mcm-button … version=0.27.5 active=True`；**全程不能出現 `[ESSB][BADMAG]`**（round 27c：一個操作的數值不是有限數或大得離譜，已丟掉沒套用）、**`[ESSB][OVERLAP]`**（兩個改引擎的工作同時在跑）、`[ESSB][OVERLAP-READ]`（round 27：有人在 task 外走效果清單）、`[ESSB][crash]`（round 27：DLL 裡發生不是自己存取違規的例外）或 `[ESSB][RNG]`（擲骰在 task 以外），出現＝FAIL；`[ESSB][X1]` 十種都在：`Papyrus native`、`input task`（round 27 起熱鍵的切換、關閉、融斷都在輸入 task 裡做，不再經過 `queued native task`；它出現也算數）、`TESHitEvent`、`TESHitEvent (you are the target)`、`hurt task`（round 26 修好：它以前跟上一行共用旗標）、`TESActiveEffectApplyRemoveEvent`、`TESDeathEvent`、`timer task`、`TESSpellCastEvent`、`input sink`；缺任何一種＝FAIL，**整份停下**。
+- **log 判定**：`[ESSB][load] ElementsSpellblade 0.27.6`；`[T][pap] kind=mcm-button … version=0.27.6 active=True`；**全程不能出現 `[ESSB][BADMAG]`**（round 27c：一個操作的數值不是有限數或大得離譜，已丟掉沒套用）、**`[ESSB][OVERLAP]`**（兩個改引擎的工作同時在跑）、`[ESSB][OVERLAP-READ]`（round 27：有人在 task 外走效果清單）、`[ESSB][crash]`（round 27：DLL 裡發生不是自己存取違規的例外）或 `[ESSB][RNG]`（擲骰在 task 以外），出現＝FAIL；`[ESSB][X1]` 十種都在：`Papyrus native`、`input task`（round 27 起熱鍵的切換、關閉、融斷都在輸入 task 裡做，不再經過 `queued native task`；它出現也算數）、`TESHitEvent`、`TESHitEvent (you are the target)`、`hurt task`（round 26 修好：它以前跟上一行共用旗標）、`TESActiveEffectApplyRemoveEvent`、`TESDeathEvent`、`timer task`、`TESSpellCastEvent`、`input sink`；缺任何一種＝FAIL，**整份停下**。
   **X2（round 26b，指揮官的執行緒裁定）**：每個 sink／task 每一條不同的呼叫鏈一行 `[ESSB][X2] <名稱> thread= window= same|DIFFERENT paused= havok= keys= frames=SkyrimSE.exe+0x…`。判定（round 26c）：命中 sink 只記下快照、不做任何引擎工作，它在哪條執行緒只記錄（這個載入順序裡 Precision／TDM 在視窗執行緒送命中事件）；**遊戲中（paused=0）** 所有 task（hit／timer／queued native／hurt／settle／death／spell-cast／input task）都要在 BSJobs 的 Post process（`post-process`）；輸入 sink＝`poll-controls`、UI task＝`ui-job`（或 `main-ui`）、Papyrus native＝`vm-job`；**暫停時（paused=1）** 都在視窗執行緒（`same`）或 `paused-*` 路徑。對不上＝FAIL；12 層內沒有認得的呼叫鏈＝EYES（判定器列出 frames 給指揮官）。X1 的 same／DIFFERENT 不再判定。
   另外：除錯等級 3 時，本模組造成的每一次擊殺、推力、跌倒、hazard 各記一行 `[ESSB][AB][L3] kind=kill|push|knock|hazard ref= tick= via= thread=`（給崩潰對照用，不判定）。
 - 目視：無（版本按鈕沒寫進 log 時才要看畫面）。
@@ -101,7 +101,7 @@
 
 ### 站 10：A-09（維持費）
 - **操作**：（自然回復已關）`player.restoreav magicka 300`，開火焰形態站 10 秒；換黑暗形態站 10 秒。
-- **log 判定**：`[T][second] form=fire spent=` 的中位數約 **最大魔力 ×1% ×0.993**（300 → 2.98），`form=dark` 約 **×2%**（5.96），差 20% 以內（用 `build/fix25_reference.py` 的 upkeep 算）；`dM` 約等於 −spent（回魔沒關時會提醒）。
+- **log 判定**：`[T][second] form=fire spent=` 的中位數約 **最大魔力 ×2.5% ×0.993**（300 → 7.45；0.27.6 起），`form=dark` 約 **×3.5%**（10.43），差 20% 以內（用 `build/fix25_reference.py` 的 upkeep 算）；`dM` 約等於 −spent（回魔沒關時會提醒）。
 
 ### 站 11：A-10＋E-09（暫停時計時器停住）
 - **操作**：火焰形態下按 Esc 停 30 秒再回來；打開背包 30 秒；（遊戲會在背景暫停的話）Alt+Tab 30 秒；存檔再讀檔。
@@ -117,7 +117,7 @@
 
 ### 站 14：A-13（水形態長流）
 - **操作**：（自然回復已關）`player.setav health 1000`、`player.setav stamina 200`、`player.setav magicka 300`；開水形態，`player.damageav health 500`、`player.damageav stamina 150`，站 10 秒。（長河部分有做就判：加「長河」、同調三段、隨從在 6 公尺內且受傷。）
-- **log 判定**：`second form=water`：生命沒滿時 `dH` 約 +最大生命 2%（1000 → +20）、耐力沒滿時 `dS` 約 +最大耐力 2%（+4）；`dM` 在「−一半維持費～0」之間（付 3.0、長流回 2.4，淨約 −0.6）；長河：`op=HealTarget ctx=form-second`。
+- **log 判定**：`second form=water`：生命沒滿時 `dH` 約 +最大生命 2%（1000 → +20）、耐力沒滿時 `dS` 約 +最大耐力 2%（+4）；`dM` 在「−一半維持費～0」之間（0.27.6 起付 7.45、長流回 5.96，淨約 −1.5）；長河：`op=HealTarget ctx=form-second`。
 
 ### 站 15：A-14（等待／睡覺／快速旅行／對話）
 - **操作**：火焰形態、魔力 300：① 按 T 等待 1 小時；② 床上睡 1 小時；③ 地圖快速旅行；④ 跟一名 NPC 對話 30 秒（不選選項）。做完把三個 rate setav 回原值。

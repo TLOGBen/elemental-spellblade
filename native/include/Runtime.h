@@ -428,6 +428,49 @@ constexpr std::uint32_t Gained(std::uint32_t before, std::uint32_t now) noexcept
     return now & ~before;
 }
 
+// (27g, 0.27.6) One new branch at the skill menu's close. `available` is the tree's points after everything the
+// framework already took in that menu (1 per main-line rank and 1 per branch). The branch stays when the other 4 are
+// there; otherwise it goes back and the framework's 1 comes back with it. `had` is what the player had for this branch
+// (the message says it); ESSBNative.SettleBranch answers `after`, and a refusal is always after > available.
+inline constexpr int kBranchCost = 5;
+inline constexpr int kBranchFrameworkCost = 1;
+
+struct BranchVerdict
+{
+    bool kept;
+    int before;
+    int after;
+    int had;
+};
+
+constexpr BranchVerdict SettleBranch(int available) noexcept
+{
+    const int rest = kBranchCost - kBranchFrameworkCost;
+    if (available >= rest) {
+        return { true, available, available - rest, available + kBranchFrameworkCost };
+    }
+    return { false, available, available + kBranchFrameworkCost, available + kBranchFrameworkCost };
+}
+
+// A menu's new branches settled one after another (the order ESSBTrees walks them): how many stay and what is left.
+struct BranchRun
+{
+    int kept;
+    int refunded;
+    int left;
+};
+
+constexpr BranchRun SettleBranches(int available, int count) noexcept
+{
+    BranchRun run{ 0, 0, available };
+    for (int i = 0; i < count; ++i) {
+        const BranchVerdict v = SettleBranch(run.left);
+        run.left = v.after;
+        (v.kept ? run.kept : run.refunded) += 1;
+    }
+    return run;
+}
+
 // ---------------------------------------------------------------- (27e) the lethal event's pace (0.27.4)
 
 // A hit that leaves you at or below 0 without dying (god mode, an essential player, 神佑's deferred kill) sends ESSB_Lethal

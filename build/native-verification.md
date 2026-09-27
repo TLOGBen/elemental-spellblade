@@ -537,3 +537,14 @@ TrueHUD 資源條的稽核（T1）找到的具體問題：
 - 修正：fix22_records HEAT_BODY_KINDS 的 Hit Shader＝Skyrim.esm FireCloakFXShader（0x02ACD8，Effects\FXFireAtlas02.dds）、Hit Effect Art＝FXFireCloak01（0x02ACD7，Magic\FXFireCloak01.nif），FX Persist；kCatalyzed 改 _VENOM_PoisonMistFXShader。
 - build/fix27_assets.py：讀 BSA v104／v105 的名稱表（只讀標頭、資料夾紀錄與名稱區），原版＝SkyrimSE/Data 的 Skyrim - *.bsa（177,748 個檔）、已安裝＝MO2 normal 設定檔啟用的模組封存檔與散檔（只讀）。fix27_verify ASSETS：ESSB 自己的 EFSH／ARTO／HAZD／EXPL（退役的武器光除外）全部在原版；身上火焰必須是原版火焰斗篷；我們的 MGEF 用到的 ESSBFX_ 複本（51 個）在原版或已安裝的模組；注入錯誤：光圈 ARTO 指向不存在的模型、身上火焰換回複本，都被抓到。沒有 MO2 的機器只檢查原版那一半。
 - 建置：native/build.py exit 0（PDB ok：build/pdb/ElementsSpellblade-0.27.5.pdb）；build_v03.py exit 0。
+
+## Round 27g（DLL 0.27.6）：選單順序、分支退回訊息、傷害倍率 0.8、維持費 2.5%
+
+- 0.27.5 凍結（hang2.dmp，377 條執行緒）：每條堆疊整段掃過，沒有 ElementsSpellblade.dll 的位址，也沒有執行緒起始在它裡面；主執行緒 20780 停在 hdtsmp64.dll+0x3E2420／+0x427D0（SkyrimSE+0x5765FF 呼叫），31 條 HDT-SMP 工作執行緒（ucrtbase+0x2CD00 起始）都閒置在 hdtsmp64+0x1EE3EB。判斷：卡在 Faster HDT-SMP，不是本 DLL；沒有離線重現（沒有我們的程式在跑）。log 的 N3_Heat3 同一場出現 4 次，前 3 次沒凍結，白熱的火焰斗篷 art 不改。
+- Custom Skill Menu 的列名：`元素魔戰士・NN 名稱`，NN 依 MSM_ORDER（無元素、通用、火、冰、雷、土、風、血、聖、毒、水、暗、星）；CSF 技能 id 不變。
+- 分支結算：Runtime.h rt::SettleBranch／SettleBranches（CSF 已扣 1，剩下 4 夠就扣，不夠就退回並加回 1）；ESSBNative.SettleBranch（tasklet 旗標）；ESSBTrees.SettleBranch 由 Reconcile 與 ReconcileGained 共用，通知寫「火焰「引火」需要 5 點，火焰樹剩 N 點，已退回」，除錯等級 ≥3 每個決定記一行 `[ESSB][trees][L3] branch tree= route= tier= index= id= name= need= had= before= after= refunded=`。分支描述開頭「分支：需 5 點。」。runtime_test BranchChecks：夠／剛好 4／3 不夠、0.27.5 的情形（火焰 10 點：6 階主線＋4 分支 → 全退，剩 4 點）、10 點買兩個、10 點三個留兩個、0～40 點 × 0～8 分支守恆掃描；突變 2 個。
+- 使用者 #12475 的情形：同一次 Custom Skill Menu 買了 6 階主線（00404B、004000、004096、00404C、004001、004002）和 4 個分支（002014 引火、002000 添薪、002028 猛爆、00202A 餘壓），CSF 各扣 1 共 10 點；關選單時剩 0，每個分支還要 4 點，4 個都退回（剩 4 點）。規則沒算錯，是訊息沒講清楚。
+- 傷害倍率（ESSB_BaseDamageMult）：settings.json 預設 0.8（ESP 的 GLOB、MCM 預設、還原預設都跟著；舊存檔保留自己的值）。稽核後補乘的地方：小滅法、滅法（HitMath.h，不乘 G）、血刃附加值、死咒已損生命段、火源代價×N 段、放血（Status.h BleedDrainDamage）、中毒死亡擴散保底。刻意不乘：自己付的代價（血重擊、血形態維持、火源 0.5%、過熱 10%、血契、血臨）、kHurtHealth（敵人的傷害轉回你）、扣魔扣耐。anchor_test DamageMultAnchors（×0.8 剛好）；突變 6 個；fix20_reference 的滅法跟著。
+- 維持費：upkeep_base_pct 2.5、upkeep_dark_pct 3.5（ManifestData.h 由 fix19_native 產生）；等級減免與 MCM 倍率不變；fix25_reference 的手算錨點改（200 × 2.5% × 0.993 = 4.965、300 × 3.5% × 0.3 × 2 = 6.3、長流 4.5 × 0.8 = 3.6）。
+- 測試卷判讀：probe-judge 從 mcm-state／mcm 行讀出當下傷害倍率（Line.dm），傷害數字用 Line.d 除掉再跟表上的 1.0 數字比；fix27_verify 用 1.0／0.8／1.5 的樣本檢查。站 10、站 14 的數字改 2.5%／3.5%。
+- 建置：native/build.py exit 0（07:44，ctest 9/9、突變 106/106、LIFETIME NET ok、PDB ok：build/pdb/ElementsSpellblade-0.27.6.pdb）；build_v03.py exit 0（見 ledger 時間）。

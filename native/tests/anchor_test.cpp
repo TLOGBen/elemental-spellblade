@@ -392,6 +392,97 @@ void Review27bAnchors()
     }
 }
 
+// ---------------------------------------------------------------- 27g: 傷害倍率 (ESSB_BaseDamageMult) covers every damage of ours
+float TrueDamageOf(const essb::Plan& p)
+{
+    float sum = 0.0f;
+    for (int i = 0; i < p.count; ++i) {
+        if (p.steps[i].cast == essb::Cast::kTrueDamage) {
+            sum += p.steps[i].magnitude;
+        }
+    }
+    return sum;
+}
+
+void DamageMultAnchors()
+{
+    const float kMult = 0.8f;   // the 0.27.6 default
+    float curse[2] = {};
+    float source[2] = {};
+    float blade[2] = {};
+    float small[2] = {};
+    float dispel[2] = {};
+    int n = 0;
+    for (const float mult : { 1.0f, kMult }) {
+        // 死咒: B_max part and the lost-health part (0.27.5 left the lost part out).
+        {
+            World w;
+            w.tuning.baseDamageMult = mult;
+            w.in.body = essb::Body{ 200.0f, 1000.0f, 100.0f, 100.0f, false, false, 100.0f };
+            MaxNodes nodes;
+            essb::Board target;
+            target[StatusKind::kDeathCurse] = essb::Slot{ true, 1.0f, 3.0f, 3.0f };
+            essb::Board me;
+            auto plan = std::make_unique<essb::StatusPlan>();
+            essb::OnDeathCurseEnd(*plan, 1.0f, target, me, w.in, nodes);
+            curse[n] = DamageOf(*plan, essb::kDarkness);
+        }
+        // 火源: the B_max part and the cost × N part (0.27.5 left the cost part out).
+        {
+            World w;
+            w.tuning.baseDamageMult = mult;
+            w.in.self.healthMax = 500.0f;
+            MaxNodes nodes;
+            essb::Board self;
+            self[StatusKind::kSourceLinger] = essb::Slot{ true, 1.0f, 0.0f, 2.0f };
+            source[n] = essb::PlanFireSource(self, w.in, nodes).perEnemy;
+        }
+        // 血刃: the flat part of a blood proc (0.27.5 added it after the multiplier).
+        {
+            World w;
+            w.tuning.baseDamageMult = mult;
+            MaxNodes nodes;
+            essb::StatusTerms terms;
+            terms.flat[essb::kBlood] = 40.0f;
+            essb::Attack a;
+            a.element = essb::kBlood;
+            a.power = true;
+            blade[n] = essb::RollProc(essb::kBlood, a, w.config, w.tuning, essb::PlayerFacts{}, essb::TargetFacts{}, nodes, w.rng, terms).magnitude;
+        }
+        // 小滅法 and 滅法: the no-form true damage (0.27.5: no multiplier at all).
+        for (const bool power : { false, true }) {
+            World w;
+            w.tuning.baseDamageMult = mult;
+            MaxNodes nodes;
+            essb::Attack a;
+            a.power = power;
+            essb::PlayerFacts p;
+            essb::TargetFacts target;
+            target.magicka = 200.0f;
+            target.magickaMax = 200.0f;
+            essb::Plan plan;
+            essb::PlanNoFormHit(plan, a, w.config, w.tuning, p, target, nodes);
+            (power ? dispel : small)[n] = TrueDamageOf(plan);
+        }
+        ++n;
+    }
+    const auto scaled = [&](const char* what, const float* v) {
+        Check(v[0] > 0.0f && Near(v[1], v[0] * kMult, std::max(1e-3, v[0] * 1e-5)),
+            std::string("27g 傷害倍率 0.8 scales ") + what + ": " + std::to_string(v[1]) + " vs " + std::to_string(v[0]) + " at 1.0");
+    };
+    scaled("死咒 (with the lost-health part)", curse);
+    scaled("火源 (with the cost part)", source);
+    scaled("血刃's flat part with the blood proc", blade);
+    scaled("小滅法", small);
+    scaled("滅法", dispel);
+    essb::Tuning one;
+    essb::Tuning low;
+    low.baseDamageMult = kMult;
+    const float drain[2] = { essb::BleedDrainDamage(3, 0.003f, 500.0f, one), essb::BleedDrainDamage(3, 0.003f, 500.0f, low) };
+    Check(Near(drain[0], 4.5f), "27g 放血 3 layers × 0.3% × 500 = 4.5 at 1.0: " + std::to_string(drain[0]));
+    scaled("放血", drain);
+}
+
 int main()
 {
     try {
@@ -404,6 +495,7 @@ int main()
         MeltdownAnchors();
         BurstCapacity();
         Review27bAnchors();
+        DamageMultAnchors();
         std::printf("NATIVE ANCHORS ok: %d checks (G1 sums and percentage effects at level 100 / 節點倍率 5 / every line, G3 counts, "
                     "G4 the formless fuse, the 24-target burst)\n",
             checks);

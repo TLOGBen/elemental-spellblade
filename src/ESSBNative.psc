@@ -61,6 +61,8 @@ Int Function NodeRank(Int aiTree, Int aiRoute, Int aiTier) Global Native
 Bool Function NodeBranch(Int aiTree, Int aiRoute, Int aiTier, Int aiIndex) Global Native
 ; round 27e：技能選單（StatsMenu）開啟後這條路線新買的分支（位元＝階 × 4 ＋ 第幾個）；ESSBTrees 補扣分支的另外 4 點。
 Int Function BranchesGained(Int aiTree, Int aiRoute) Global Native
+; round 27g（0.27.6）：選單關閉時結算一個新分支：回傳結算後的點數（夠 4 點就扣掉；不夠就退回，CSF 扣的 1 點加回來，所以比傳入的大）。
+Int Function SettleBranch(Int aiAvailable) Global Native
 Function RequestSwitch(Int aiElement) Global Native
 ; round 25 審查修正：遊戲在跑的秒數（這次開遊戲以來；暫停、讀檔不算）。控制器的秒計時器用它。
 Float Function RunningSeconds() Global Native

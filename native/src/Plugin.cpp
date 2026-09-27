@@ -3831,7 +3831,7 @@ void TargetSecond(RE::PlayerCharacter& player, const essb::Board& selfBoard, Con
             auto drainPtr = std::make_unique<essb::StatusPlan>();   // round 24: 28 KB, on the heap
             essb::StatusPlan& drain = *drainPtr;
             TraceCtx traceCtx("bleed-drain");   // round 26
-            drain.Push(essb::Amount(essb::Op::kBleedDrain, static_cast<float>(layers) * rate * health * c.tuning.multDot));
+            drain.Push(essb::Amount(essb::Op::kBleedDrain, essb::BleedDrainDamage(layers, rate, health, c.tuning)));   // 27g: ×傷害倍率
             Executor(player, enemy, c.tuning).Run(drain);
         }
         if (!board.poisonDot.has) {
@@ -5634,6 +5634,13 @@ std::int32_t PapyrusBranchesGained(RE::StaticFunctionTag*, std::int32_t tree, st
     }, 0, true);
 }
 
+// (27g) One new branch's points at the skill menu's close (rt::SettleBranch): the points left after it. A refusal is
+// always more than `available` (the framework's 1 comes back); -1 only if the guard caught something.
+std::int32_t PapyrusSettleBranch(RE::StaticFunctionTag*, std::int32_t available)
+{
+    return Guard("SettleBranch", [&]() -> std::int32_t { return essb::rt::SettleBranch(available).after; }, -1, true);
+}
+
 std::int32_t PapyrusNodeRank(RE::StaticFunctionTag*, std::int32_t tree, std::int32_t route, std::int32_t tier)
 {
     return Guard("NodeRank", [&]() -> std::int32_t {
@@ -6185,6 +6192,7 @@ bool RegisterPapyrus(RE::BSScript::IVirtualMachine* vm)
         vm->RegisterFunction("NodeRank", kClass, PapyrusNodeRank, true);       // round 27e: the ranks without the Papyrus cache
         vm->RegisterFunction("NodeBranch", kClass, PapyrusNodeBranch, true);
         vm->RegisterFunction("BranchesGained", kClass, PapyrusBranchesGained, true);
+        vm->RegisterFunction("SettleBranch", kClass, PapyrusSettleBranch, true);
         vm->RegisterFunction("Trace", kClass, PapyrusTrace);   // round 26: the probe log's Papyrus lines
         return true;
     } catch (...) {

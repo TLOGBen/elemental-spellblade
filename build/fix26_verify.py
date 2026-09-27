@@ -323,7 +323,8 @@ NATIVE_FAULTS = {
                                  'tag=Mark_fire mag=0.00 elapsed=8.00 duration=8.00 left=0.00 reason=dispel', 1)),
     'A-15': (lambda t: re.sub(r'wet=1 stormy=1 thunder=0', 'wet=1 stormy=0 thunder=0', t)),
     'A-05': (lambda t: t.replace('wanted=fire kind=refuse', 'wanted=fire kind=open', 1)),
-    'A-09': (lambda t: t.replace('form=fire spent=2.98', 'form=fire spent=4.50')),
+    # 27g: whatever the fee (2.5% since 0.27.6), a fire second at 4.50 is off it by far more than 20%
+    'A-09': (lambda t: re.sub(r'form=fire spent=[\d.]+', 'form=fire spent=4.50', t)),
 }
 
 

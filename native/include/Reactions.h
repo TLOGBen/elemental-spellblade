@@ -2135,7 +2135,8 @@ void PlanDeath(StatusPlan& plan, Crowd& crowd, Board& self, const BodyInputs& bi
     // cap): m' = min(m + S/12, 10 doses), d' = max(d - t, 12); S/12 above the cap lengthens the time to S / cap instead.
     if (cb.poisonDot.has) {
         const float remaining = cb.poisonDot.magnitude * cb.poisonDot.Remaining();
-        const float share = std::max(remaining, corpse.body.healthMax * n5::kDeathFloor) *
+        // round 27g: the floor ×ESSB_BaseDamageMult like the remaining it stands in for (that one already has it)
+        const float share = std::max(remaining, corpse.body.healthMax * n5::kDeathFloor * t.baseDamageMult) *
                             (nodes.Has(node::kPoisonCreep) ? n5::kCreep : n5::kDeathShare);
         const float perSecond = share / n5::kDeathSpreadSeconds;
         const Picked p = Around(crowd, 0, n5::kNear, n5::kUnlimited);

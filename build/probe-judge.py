@@ -167,7 +167,7 @@ class Actor:
 
 class Line:
     """One line of the log: a T line (kind, seq, g, r, fields, actors), a step marker, or any other ESSB line (raw)."""
-    __slots__ = ('n', 'text', 'kind', 'seq', 'g', 'r', 'f', 'a', 'ok')
+    __slots__ = ('n', 'text', 'kind', 'seq', 'g', 'r', 'f', 'a', 'ok', 'dm')
 
     def __init__(self, n, text):
         self.n = n
@@ -177,6 +177,7 @@ class Line:
         self.f = {}
         self.a = {}
         self.ok = True
+        self.dm = 1.0   # ESSB_BaseDamageMult in force at this line (read_log sets it)
 
     def __getitem__(self, key):
         return self.f.get(key)
@@ -185,6 +186,12 @@ class Line:
         x = self.f.get(key)
         y = num(x)
         return default if y is None else y
+
+    def d(self, key, default=None):
+        """A damage number of this line at 傷害倍率 1.0: the logged value divided by the ESSB_BaseDamageMult in force
+        (round 27g: the build default is 0.8 and a save keeps its own; the sheet's numbers are the 1.0 ones)."""
+        y = self.v(key)
+        return default if y is None else y / self.dm
 
     def short(self):
         return self.text if len(self.text) <= 260 else self.text[:257] + '...'
@@ -220,13 +227,36 @@ def parse_line(n, text):
     return line
 
 
+DAMAGE_MULT_GLOBAL = 'ESSB_BaseDamageMult'
+
+
 def read_log(path):
     raw = Path(path).read_bytes().decode('utf-8', errors='replace')
     lines = []
     for n, text in enumerate(raw.splitlines(), 1):
         if '[ESSB]' in text:
             lines.append(parse_line(n, text.rstrip()))
+    mark_damage_mult(lines)
     return lines
+
+
+def mark_damage_mult(lines):
+    """Round 27g: every line carries the 傷害倍率 in force -- the session's mcm-state value, then each [mcm] change of
+    it. Before the first mcm-state (no debug level 4 at load) it is unknown and taken as 1.0; DAMAGE_MULTS lists the
+    values seen so the report can say which one the numbers were divided by."""
+    current = 1.0
+    for x in lines:
+        if x.kind == 'mcm-state' and x.f.get(DAMAGE_MULT_GLOBAL) is not None:
+            current = x.v(DAMAGE_MULT_GLOBAL, current)
+        elif x.kind == 'mcm' and x.f.get('global') == DAMAGE_MULT_GLOBAL:
+            current = x.v('new', current)
+        if current <= 0:
+            current = 1.0
+        x.dm = current
+        DAMAGE_MULTS.add(round(current, 3))
+
+
+DAMAGE_MULTS = set()
 
 
 class Seg(list):
@@ -468,8 +498,8 @@ def x2_verdicts(log):
     return bad, eyes, rows
 
 
-# The DLL version this sheet judges (round 27f: 0.27.5). build/fix26_verify.py and build/fix27_verify.py build their samples with it.
-VERSION = '0.27.5'
+# The DLL version this sheet judges (round 27g: 0.27.6). build/fix26_verify.py and build/fix27_verify.py build their samples with it.
+VERSION = '0.27.6'
 
 
 @rule('SETUP-1')
@@ -937,7 +967,7 @@ def base_roll(proc):
 
 def ratio(proc, g=1.05):
     b = base_roll(proc)
-    return None if not b else proc.v('mag') / (b * g)
+    return None if not b else proc.d('mag') / (b * g)
 
 
 def noform(seg, **w):
@@ -954,7 +984,7 @@ def r_b01(seg, ctx):
     p1 = normal[0]
     over = p1['overloaded'] == '1'
     want = 13.13 if over else 10.5
-    if not near(p1.v('mag'), want, 0.08) or not near(p1.v('siphon'), 10.5, 0.08) or not near(p1.v('burned'), 5.25, 0.08):
+    if not near(p1.d('mag'), want, 0.08) or not near(p1.v('siphon'), 10.5, 0.08) or not near(p1.v('burned'), 5.25, 0.08):
         return FAIL(f'① 真傷 {p1["mag"]}（應 {want}）吸魔 {p1["siphon"]}（10.5）燒魔 {p1["burned"]}（5.25）', p1)
     e1 = next((x for x in ends if x.seq > p1.seq), None)
     t0, t1 = p1.a.get('tgt'), e1.a.get('tgt') if e1 else None
@@ -1018,7 +1048,7 @@ def r_b04(seg, ctx):
     p = next((p for p in ps if p['overloaded'] == '0'), None)
     if not p:
         return NODATA('加了 0049F6 之後沒有「沒觸發超載」的普攻' + ('（都是魔力滿的超載）' if ps else ''), *ps[:1])
-    if not 10.55 <= p.v('mag') <= 10.66:
+    if not 10.55 <= p.d('mag') <= 10.66:
         return FAIL(f'真傷 {p["mag"]}（應 10.6）', node, p)
     return PASS(f'真傷 {p["mag"]}（5.25 + 5.25 × 1.02）', node, p)
 
@@ -1055,7 +1085,7 @@ def r_b06(seg, ctx):
     caster = c.a.get('caster')
     if d.a.get('on') and caster and d.a['on'].id != caster.id:
         return FAIL('反咒的真傷打到的不是施法者', c, d)
-    if not rel(d.v('mag'), c.v('cost') * 1.02, 0.06):
+    if not rel(d.d('mag'), c.v('cost') * 1.02, 0.06):
         return FAIL(f'反咒真傷 {d["mag"]}，法術消耗 {c["cost"]}（應約 ×1.02）', c, d)
     if not any(x.seq > c.seq and x['ctx'] == 'enemy-cast' for x in resolve):
         return FAIL('反咒沒有戰意 +1', c, d)
@@ -1104,8 +1134,8 @@ def r_b07(seg, ctx):
     clean_n = [p for p in normal if near(ratio(p), 1.0, 0.005)]
     clean_p = [p for p in power if near(ratio(p), 1.5, 0.008)]
     heated = len(normal) + len(power) - len(clean_n) - len(clean_p)
-    bad_n = [p for p in clean_n if not 10.49 <= p.v('mag') <= 12.61]
-    bad_p = [p for p in clean_p if not 15.7 <= p.v('mag') <= 18.91]
+    bad_n = [p for p in clean_n if not 10.49 <= p.d('mag') <= 12.61]
+    bad_p = [p for p in clean_p if not 15.7 <= p.d('mag') <= 18.91]
     distinct = len({p['mag'] for p in clean_n})
     if bad_n or bad_p:
         return FAIL('強度超出範圍（普通 10.5～12.6、重擊 15.7～18.9）', *(bad_n + bad_p))
@@ -1252,7 +1282,7 @@ def r_b13(seg, ctx):
     if not got:
         return FAIL('電荷不是 2→3→4→5→6：' + '→'.join(map(str, mags)), *charges)
     bad_n = [p for p in procs if p['power'] == '0' and p.v('N') != p.v('charges') + 1]
-    over = [p for p in procs if p['crit'] == '0' and p['power'] == '0' and p.v('mag') > 26.3]
+    over = [p for p in procs if p['crit'] == '0' and p['power'] == '0' and p.d('mag') > 26.3]
     if bad_n or over:
         return FAIL('N ≠ 電荷 +1，或沒暴擊的強度超過 26.3', *(bad_n + over))
     pw = next((p for p in procs if p['power'] == '1' and p.v('charges') >= 6), None)
@@ -1263,7 +1293,7 @@ def r_b13(seg, ctx):
     end = next((x for x in seg.of('hit-end') if x.seq > pw.seq), None)
     if not dis or not cleared:
         return FAIL('滿格重擊沒放電或電荷沒清空', pw, dis, cleared)
-    extra = (pw.a['tgt'].h - end.a['tgt'].h - pw.v('mag')) if end else None
+    extra = ((pw.a['tgt'].h - end.a['tgt'].h) / pw.dm - pw.d('mag')) if end else None   # 27g: at 傷害倍率 1.0
     if extra is not None and extra < 150:
         return FAIL(f'放電只多扣 {extra:.0f}（應約 177）', pw, dis, end)
     crit = [p for p in procs if p['crit'] == '1']
@@ -1390,9 +1420,9 @@ def r_b18(seg, ctx):
     if not sneak or len(open_) < 2:
         return NODATA(f'潛行 {len(sneak)} 刀、被看見 {len(open_)} 刀')
     s = sneak[0]
-    if not 25.1 <= s.v('mag') <= 28.5:
+    if not 25.1 <= s.d('mag') <= 28.5:
         return FAIL(f'潛行未被發現那刀 {s["mag"]}（應 25.2～28.4，×3）', s)
-    bad = [p for p in open_ if p.v('mag') > 9.6]
+    bad = [p for p in open_ if p.d('mag') > 9.6]
     if bad:
         return FAIL('被看見的刀也 ×3', *bad)
     return PASS(f'潛行 {s["mag"]}（×3）；被看見 {fmt_nums([p.v("mag") for p in open_])}', s, *open_[:2])
@@ -1443,7 +1473,7 @@ def r_b21(seg, ctx):
         return NODATA(f'鮮血普攻只有 {len(ps)} 刀')
     p = ps[1]
     heal = steps_of(p).get('Heal')
-    if not 7.9 <= p.v('mag') <= 10.1:
+    if not 7.9 <= p.d('mag') <= 10.1:
         return FAIL(f'第二刀強度 {p["mag"]}（應 8～10）', p)
     if not heal or not rel(heal[0][0], p.v('mag') * 0.25, 0.08):
         return FAIL('第二刀吸血不是強度的 25%：' + (str(heal[0][0]) if heal else '沒有 Heal'), p)
@@ -1551,7 +1581,7 @@ def r_b24(seg, ctx):
     night = [p for p, n in rows if n == '1']
     if not day or not night:
         return NODATA(f'乾淨的第一刀：中午 {len(day)}、晚上 {len(night)}（各 3 次）')
-    bad = [p for p in day if p.v('mag') < 10.08 - 0.01] + [p for p in night if p.v('mag') > 10.5 + 0.01]
+    bad = [p for p in day if p.d('mag') < 10.08 - 0.01] + [p for p in night if p.d('mag') > 10.5 + 0.01]
     if bad:
         return FAIL('中午低於 10.08 或晚上高於 10.5', *bad)
     return PASS(f'中午 {fmt_nums([p.v("mag") for p in day])}；晚上 {fmt_nums([p.v("mag") for p in night])}', *(day[:2] + night[:2]))
@@ -1561,7 +1591,7 @@ def r_b24(seg, ctx):
 def r_b25(seg, ctx):
     node = node_added(seg, '002188')
     firsts = [p for p in first_hits(seg, 'divine') if not node or p.seq < node.seq]
-    undead = [p for p in firsts if 15.0 <= p.v('mag') <= 19.0]
+    undead = [p for p in firsts if 15.0 <= p.d('mag') <= 19.0]
     after = [p for p in seg.procs(el='divine') if node and p.seq > node.seq]
     second = []
     per = defaultdict(list)
@@ -1575,7 +1605,7 @@ def r_b25(seg, ctx):
     if not second:
         return NODATA('加聖痕後沒有同一名強盜的第二刀', node, undead[0])
     s = second[0]
-    if not 21.4 <= s.v('mag') <= 27.3:
+    if not 21.4 <= s.d('mag') <= 27.3:
         return FAIL(f'有聖痕的第二刀 {s["mag"]}（應 21.6～27.0）', node, s)
     return PASS(f'屍鬼第一刀 {undead[0]["mag"]}（×1.5）；聖痕後強盜第二刀 {s["mag"]}', undead[0], node, s)
 
@@ -1735,7 +1765,7 @@ def r_b32(seg, ctx):
     dmg = next((x for x in seg.ops(op='Damage', el='astral') if x.seq > settle.seq), None)
     gone = next((x for x in seg.ops(kind='N3_Star', op='Remove') if x.seq > settle.seq), None)
     dt = (settle.g - two.g) / 1000.0
-    if not dmg or not 15 <= dmg.v('mag') <= 22.5:
+    if not dmg or not 15 <= dmg.d('mag') <= 22.5:
         return FAIL('引爆傷害不是約 21（2×10×1.05）', settle, dmg)
     if not gone:
         return FAIL('引爆後星痕還在', settle, dmg)
@@ -1780,8 +1810,8 @@ def r_b34(seg, ctx):
     after_fire = [p for p in water if fire_end.seq < p.seq and p.g - fire_end.g <= 5000]
     if not after_frost or not after_fire:
         return NODATA(f'切掉之後 5 秒內的水普攻：冰 {len(after_frost)} 刀、火 {len(after_fire)} 刀')
-    hi_frost = [p for p in after_frost if p.v('mag') > 7.36]
-    hi_fire = [p for p in after_fire if p.v('mag') > 7.41]
+    hi_frost = [p for p in after_frost if p.d('mag') > 7.36]
+    hi_fire = [p for p in after_fire if p.d('mag') > 7.41]
     if hi_fire:
         return FAIL('火被切之後的水附傷超過 7.4', *hi_fire)
     if not hi_frost:
@@ -1799,7 +1829,7 @@ def r_b37(seg, ctx):
     fire = [x for x in dmg if x['el'] == 'fire']
     if not fire:
         return FAIL('融斷沒有火傷', burst[0])
-    if not 12.3 <= fire[0].v('mag') <= 12.9:
+    if not 12.3 <= fire[0].d('mag') <= 12.9:
         return FAIL(f'融斷火傷 {fire[0]["mag"]}（同調 0 段應 12.6；×2 以上＝錯）', burst[0], fire[0])
     unmark = [x for x in seg.ops(op='Unmark') if x.seq > burst[0].seq - 100]
     dumps = [x for x in seg.of('pap') if x['kind'] == 'dump-nearest' and x.seq > fire[0].seq]
@@ -1982,7 +2012,7 @@ def r_c06(seg, ctx):
     again = [y for y in rows if y.seq > x.seq and y.g - x.g < 3000 and any(o['op'] in ('Mark', 'Damage') for o in hurt_ops(seg, y))]
     if again:
         return FAIL('3 秒內第二下又觸發', x, *again)
-    if not 11.0 <= d.v('mag') <= 13.5:
+    if not 11.0 <= d.d('mag') <= 13.5:
         return FAIL(f'灼身火傷 {d["mag"]}（應 B_max × 1.0 左右）', x, d)
     return PASS(f'灼身：攻擊者掛你的火印記、火傷 {d["mag"]}；3 秒內第二下沒反應', node, x, m, d)
 
@@ -2086,7 +2116,7 @@ def r_d01(seg, ctx):
             continue
         want = BMAX[el] * 1.05
         rows.append(f'{el}: {d[0]["mag"]}（{want:.2f}）')
-        if not rel(d[0].v('mag'), want, 0.03):
+        if not rel(d[0].d('mag'), want, 0.03):
             bad.append(d[0])
     hurt_allies = harmed(seg, untouchable(seg))
     down = [x for x in seg.ops(kind='N3_Downed', op='Apply') if x['ctx'] == 'burst']
@@ -2110,7 +2140,7 @@ def r_d02(seg, ctx):
         want = BMAX[el] * 1.05
         lo, hi = want * 0.97, want * (1.35 if el == 'blood' else 1.25 if el == 'divine' else 1.03)
         rows.append(f'{el}: {x["mag"]}')
-        if not lo <= x.v('mag') <= hi:
+        if not lo <= x.d('mag') <= hi:
             bad.append(x)
     heal = [x for x in seg.ops(op='Heal', ctx='burst')]
     guided = [x for x in seg.ops(kind='N3_Guided', op='Apply') if x['ctx'] == 'burst']
@@ -2134,7 +2164,7 @@ def r_d03(seg, ctx):
     if not d:
         return NODATA('沒有冰融斷')
     first = d[0]
-    if not rel(first.v('mag'), 31.5, 0.03):
+    if not rel(first.d('mag'), 31.5, 0.03):
         return FAIL(f'三段冰融斷 {first["mag"]}（應 31.5＝10×3×1.05）', first)
     before = [x for x in seg.ops(ev='Shatter', ctx='burst') if not node or x.seq < node.seq]
     if before:
@@ -2147,7 +2177,7 @@ def r_d03(seg, ctx):
         dmg = next((x for x in seg.ops(op='Damage', ctx='burst', el='frost') if x.seq > s.seq), None)
         on = s.a.get('on')
         if dmg and on:
-            rows.append((s, dmg, dmg.v('mag') / on.hmax))
+            rows.append((s, dmg, dmg.d('mag') / on.hmax))
     if not rows:
         return NODATA('碎冰後沒有傷害 op', *shatter)
     fracs = [f for s, dmg, f in rows]
@@ -2163,12 +2193,12 @@ def r_d04(seg, ctx):
     if not div or not ast:
         return NODATA(f'聖融斷 {len(div)}、星融斷 {len(ast)}')
     d = div[0]
-    if not rel(d.v('mag'), 37.8, 0.03):
+    if not rel(d.d('mag'), 37.8, 0.03):
         return FAIL(f'三段聖融斷 {d["mag"]}（應 37.8，不是 75.6）', d)
     extra = [x for x in ast if x is not ast[0]]
-    if not rel(ast[0].v('mag'), 31.5, 0.03):
+    if not rel(ast[0].d('mag'), 31.5, 0.03):
         return FAIL(f'三段星融斷 {ast[0]["mag"]}（應 31.5）', ast[0])
-    if extra and not any(15 <= x.v('mag') <= 22.5 for x in extra):
+    if extra and not any(15 <= x.d('mag') <= 22.5 for x in extra):
         return FAIL('星痕引爆不是約 21（乘了 3？）', *extra)
     return PASS(f'聖 {d["mag"]}、星 {ast[0]["mag"]}' + (f' ＋ 引爆 {extra[0]["mag"]}' if extra else ''), d, ast[0], *extra[:1])
 
@@ -2272,8 +2302,8 @@ def r_d10(seg, ctx):
         return NODATA('死亡時沒有中毒擴散')
     before = [x for x in dots if not node or x.seq < node.seq]
     after = [x for x in dots if node and x.seq > node.seq]
-    bad = [x for x in before if not (rel(x.v('mag'), 20, 0.2) and 19 <= x.v('sec') <= 25)]
-    bad += [x for x in after if not (rel(x.v('mag'), 20, 0.2) and 30 <= x.v('sec') <= 38)]
+    bad = [x for x in before if not (rel(x.d('mag'), 20, 0.2) and 19 <= x.v('sec') <= 25)]
+    bad += [x for x in after if not (rel(x.d('mag'), 20, 0.2) and 30 <= x.v('sec') <= 38)]
     far = []
     for h, rows in scan_groups(seg):
         for r in rows:
@@ -2321,7 +2351,7 @@ def r_d13(seg, ctx):
     if not hits:
         return NODATA('開火印時旁邊的人沒吃火傷', node)
     ids = {x.a['on'].id for x in hits if x.a.get('on')}
-    bad = [x for x in hits if not 10.4 <= x.v('mag') <= 12.7]
+    bad = [x for x in hits if not 10.4 <= x.d('mag') <= 12.7]
     if len(ids) != 5 or bad:
         return FAIL(f'吃到火附傷的有 {len(ids)} 人（應最近 5 人），強度 {fmt_nums([x.v("mag") for x in hits])}', *hits)
     return PASS(f'最近 5 人各吃一次火附傷 {fmt_nums([x.v("mag") for x in hits])}', node, *hits[:5])
@@ -2524,7 +2554,7 @@ def r_d20(seg, ctx):
     dark = [x for x in seg.ops(op='Damage', ctx='domain-enemy') if x['el'] == 'dark']
     astral = [x for x in seg.of('apply') if (x['tag'] or '') == 'N3_DomainAstral']
     rows = f'地裂標記 {len(earth)}、跌倒 {len(knock)}、毒霧加劑 {len(poison)}、死域暗傷 {len(dark)}、星域標記 {len(astral)}'
-    bad = [x for x in dark if not (4.9 <= x.v('mag') <= 6.7)]
+    bad = [x for x in dark if not (4.9 <= x.d('mag') <= 6.7)]
     per = defaultdict(list)
     for k in knock:
         per[k.a['on'].id if k.a.get('on') else 0].append(k.g)
@@ -2725,6 +2755,8 @@ def main(argv):
     only = argv[argv.index('--step') + 1] if '--step' in argv else None
     lines = read_log(path)
     out, bad_format, ctx = judge(lines, only)
+    print('傷害倍率（ESSB_BaseDamageMult）：' + '、'.join(f'{m:g}' for m in sorted(DAMAGE_MULTS))
+          + '；傷害數字先除以當下的倍率，再跟表上（倍率 1.0）的數字比')
     counts = defaultdict(int)
     for i in ALL_IDS:
         if i not in out:

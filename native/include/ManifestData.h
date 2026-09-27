@@ -874,10 +874,10 @@ inline constexpr bool kTimedOnPlayer[12] = {false, true, true, false, false, fal
 inline constexpr float kElementDamage[12][2] = {{0.0f, 0.0f}, {10.0f, 12.0f}, {8.0f, 10.0f}, {1.0f, 25.0f}, {8.0f, 10.0f}, {8.0f, 9.0f}, {8.0f, 10.0f}, {8.0f, 10.0f}, {8.0f, 9.0f}, {5.0f, 7.0f}, {8.0f, 10.0f}, {8.0f, 10.0f}};
 inline constexpr float kNoFormBaseTrue = 5.0f;
 // settings.json upkeep_* (v0.4 1.1 維持費; round 25: the DLL timer pays it, ESSBFormRules is gone).
-inline constexpr float kUpkeepBasePct = 1.0f;
-inline constexpr float kUpkeepDarkPct = 2.0f;
+inline constexpr float kUpkeepBasePct = 2.5f;
+inline constexpr float kUpkeepDarkPct = 3.5f;
 inline constexpr float kUpkeepLevelRelief = 0.7f;
 inline constexpr std::string_view elementNames[12] = {"無元素", "火焰", "冰霜", "雷電", "大地", "風", "鮮血", "神聖", "毒素", "水", "黑暗", "星界"};
-inline constexpr char nativeVersion[] = "0.27.5";
+inline constexpr char nativeVersion[] = "0.27.6";
 inline constexpr char addressHash[] = "1d7530d001139ca58f462ea0210a8055868159057ba8b5ebc624fc5e9c4f5e9a";
 }  // namespace essb

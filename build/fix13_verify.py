@@ -396,7 +396,10 @@ def mcm(folder):
     events.clear();accept[0]=True;vm.RestoreDefaults()
     for row in sliders:
         fid=int(row['valueOptions']['sourceForm'].split('|')[1],16)
-        assert values[fid].v==row['valueOptions']['defaultValue'],row['id']
+        # round 27g: this runs the legacy (pre-round-22) ESSBState, whose 傷害倍率 default is still 1.0; the current
+        # config says 0.8 (build_v03.py validate_status_arrays pins that change)
+        expected={'ESSB_BaseDamageMult':1.0}.get(row['id'],row['valueOptions']['defaultValue'])
+        assert values[fid].v==expected,row['id']
     assert events==['confirm','RefreshRuntimeValues','RefreshTrees','RefreshAbilities','RefreshRecovery','reset-page','notice']
     # Cancelled/unready/stale-before and stale-after-confirmation do not write.
     for reason in ('unready','stale','stale-after-confirm'):
@@ -445,6 +448,10 @@ def boundaries():
             current.pop('kill_attribution_seconds')
             for key in ('lightning_roll_mode','form_notify','form_sound','hotkeys_enabled','address_library_bin'):current.pop(key,None)  # later rounds' keys; address_library_bin = round 19b DLL build input
             current['state_schema_version'] = old_settings['state_schema_version']
+            # round 27g (0.27.6): the user's balance decisions -- 傷害倍率 0.8, upkeep 2.5% (暗 3.5%); build_v03.py pins them
+            for key, (was, now) in {'base_damage_mult': (1.0, 0.8), 'upkeep_base_pct': (1.0, 2.5), 'upkeep_dark_pct': (2.0, 3.5)}.items():
+                if current.get(key) == now and old_settings.get(key) == was:
+                    current[key] = was
             assert current == old_settings, 'only Round 14 attribution setting may change'
             continue
         if name == 'state-schema.lock.json':

@@ -901,15 +901,13 @@ Function Reconcile(Int aiTree)
 			If Math.LogicalAnd(SnapBranch[pos], Bit(n)) == 0
 				Perk branch = GetBranch(aiTree, route, tier, n)
 				If branch && player.HasPerk(branch)
-					If available >= BRANCH_COST - 1
-						available -= (BRANCH_COST - 1)
-						bought += 1
-					Else
-						player.RemovePerk(branch)
-						; CSF 已經扣掉的那 1 點也要退回。
-						available += 1
+					Int after = SettleBranch(player, aiTree, route, tier, n, branch, available)
+					If after > available
 						refused += 1
+					Else
+						bought += 1
 					EndIf
+					available = after
 				EndIf
 			EndIf
 			n += 1
@@ -920,9 +918,6 @@ Function Reconcile(Int aiTree)
 		available = 0
 	EndIf
 	points.SetValueInt(available)
-	If refused > 0
-		Debug.Notification("點數不足：" + TreeName(aiTree) + " 有 " + refused + " 個分支已退回")
-	EndIf
 	RefreshTree(aiTree)
 	If Controller && Controller.IsReadyUI()
 		Controller.RefreshAbilities()
@@ -959,12 +954,8 @@ Function ReconcileGained()
 						Int bit = Math.LeftShift(1, tier * 4 + n)
 						If Math.LogicalAnd(gained, bit) != 0
 							Perk branch = GetBranch(tree, route, tier, n)
-							If available >= BRANCH_COST - 1
-								available -= (BRANCH_COST - 1)
-							ElseIf branch
-								player.RemovePerk(branch)
-								available += 1
-								Debug.Notification("點數不足：" + TreeName(tree) + " 的分支已退回")
+							If branch
+								available = SettleBranch(player, tree, route, tier, n, branch, available)
 							EndIf
 						EndIf
 						n += 1
@@ -990,6 +981,26 @@ Function ReconcileGained()
 			Controller.LogEvent(1, "trees", "reconcile (menu opened elsewhere)")
 		EndIf
 	EndIf
+EndFunction
+
+; round 27g（0.27.6）：一個新分支的結算（Reconcile 與 ReconcileGained 共用；規則在 DLL 的 rt::SettleBranch，有單元測試）。
+; aiAvailable＝CSF 在這次選單裡扣完之後的點數（主線每階 1 點、分支 1 點都已扣掉）；分支還要另外 4 點。
+; 夠就扣；不夠就退回分支，CSF 扣的 1 點加回來，並告訴玩家是哪個分支、要幾點、這棵樹剩幾點。回傳結算後的點數。
+Int Function SettleBranch(Actor akPlayer, Int aiTree, Int aiRoute, Int aiTier, Int aiIndex, Perk akBranch, Int aiAvailable)
+	Int after = ESSBNative.SettleBranch(aiAvailable)
+	If after < 0
+		after = aiAvailable + 1   ; DLL 沒回答：退回（不會白送分支）
+	EndIf
+	Bool refunded = after > aiAvailable
+	String name = akBranch.GetName()
+	If refunded
+		akPlayer.RemovePerk(akBranch)
+		Debug.Notification(TreeName(aiTree) + "「" + name + "」需要 " + BRANCH_COST + " 點，" + TreeName(aiTree) + "樹剩 " 			+ (aiAvailable + 1) + " 點，已退回")
+	EndIf
+	If Controller.CachedDebugLevel >= 3
+		Controller.LogEvent(3, "trees", "branch tree=" + aiTree + " route=" + aiRoute + " tier=" + aiTier + " index=" + aiIndex 			+ " id=" + akBranch.GetFormID() + " name=" + name + " need=" + BRANCH_COST + " had=" + (aiAvailable + 1) 			+ " before=" + aiAvailable + " after=" + after + " refunded=" + refunded)
+	EndIf
+	Return after
 EndFunction
 
 ; ---------------------------------------------------------------- 洗點（規劃 3.1）
