@@ -66,6 +66,29 @@ B26 = {
 REASONS['build/fix24_verify.py'] = ('Round 26b（指揮官的執行緒裁定）：死亡 sink 的四條規則（只處理 dead = false、不處理你的死亡、經 DeathCounts、'
                                     '在 sink 讀屍體再交 task）改到 native/include/Sinks.h DeathSink 與 CorpseWorld 裡檢查（同樣的規則，加一條只規劃 '
                                     'DeathCounts 接受的）；對應的注入錯誤改在 Sinks.h 上做')
+C = '；Round 26c（堆積損壞修正，0.26.2）：'
+B26C = {
+    'native/src/Plugin.cpp': C + '命中 sink 只記快照再 AddTask（命中 task 做全部引擎工作）；受擊 sink 不讀效果清單（池子 atomic 鏡射）；DispelLive 依 id 重找；'
+                             'TaskScope 與 [ESSB][OVERLAP]；Rng() 只在 task；thread_local 的 selfDispel／traceCtx／inHitTask；通知加鎖；讀檔重設改 task；'
+                             'EssentialOf 的鎖 __finally；TimerStopper；TrueHUD 開關與生命週期 log',
+    'native/include/StatusEngine.h': C + 'DispelWhere 依身分重找後才驅散',
+    'native/include/Trace.h': C + 'TraceRng::Note 就地檢查範圍',
+    'native/include/Sinks.h': C + 'RouteHit（巢狀命中丟掉）',
+    'native/include/TrueHud.h': C + 'TrueHUD 的所有呼叫改走 AddUITask、Link 只在 task 改、ESSB_TrueHudBars 開關、生命週期 log、PoolBar 拿掉 SEH',
+    'native/include/Load.h': C + '解析 ESSB_TrueHudBars',
+    'native/tests/trace_test.cpp': C + 'tape 邊界壓力測試、依 id 重找的驅散、RouteHit',
+    'native/build.py': C + '3 個突變；突變程式沒有輸出（直接崩）時也記為失敗',
+    'native/CMakeLists.txt': C + '版本 0.26.2',
+    'native/include/ManifestData.h': C + '版本 0.26.2、kTrueHudBars',
+    'build/fix19_native.py': C + 'NATIVE_VERSION 0.26.2、manifest 的 ESSB_TrueHudBars',
+    'build/fix26_records.py': C + 'ESSB_TrueHudBars 0x005C01（預設 1）',
+    'build_v03.py': C + 'MCM「TrueHUD 資源條」開關（全域數 55）',
+    'build/probe-judge.py': C + 'SETUP-1：OVERLAP／RNG 出現即 FAIL、命中 task 要在 Post process、命中 sink 只記錄',
+    'build/fix26_verify.py': C + '0.26.2、check_26c（sink 不做引擎工作、TaskScope、thread_local、__finally、TimerStopper、Rng()）、OVERLAP 錯誤樣本',
+    'build/fix26_format.py': C + 'hit-late 行',
+}
+for _k, _v in B26C.items():
+    B26[_k] = B26.get(_k, '') + _v
 for _k, _v in B26.items():
     REASONS[_k] = REASONS.get(_k, '') + _v
 

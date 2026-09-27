@@ -31,6 +31,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -552,6 +553,109 @@ void SinkChecks()
     Check(offsets.size() == std::size(tr::kChainKeys) && offsets.contains(0x640E67) && offsets.contains(0x5B36AD), "X2: chain keys");
 }
 
+// ---------------------------------------------------------------- round 26c
+
+// P3: the tape never writes past its end -- sequentially (100 draws for 24 slots) and with four threads drawing at once
+// while a fifth restarts the recording (a data race by design here: the test is that it stays inside the object).
+struct Fenced {
+    tr::TraceRng rng{ 99 };
+    std::array<std::uint64_t, 8> canary{ 0xC0FFEE0DDBA11ULL, 0xC0FFEE0DDBA11ULL, 0xC0FFEE0DDBA11ULL, 0xC0FFEE0DDBA11ULL,
+        0xC0FFEE0DDBA11ULL, 0xC0FFEE0DDBA11ULL, 0xC0FFEE0DDBA11ULL, 0xC0FFEE0DDBA11ULL };
+    bool Intact() const
+    {
+        return std::all_of(canary.begin(), canary.end(), [](std::uint64_t c) { return c == 0xC0FFEE0DDBA11ULL; });
+    }
+};
+
+void TapeBoundsChecks()
+{
+    auto fenced = std::make_unique<Fenced>();
+    fenced->rng.Record(true);
+    for (int i = 0; i < 100; ++i) {
+        fenced->rng.Chance(0.5f);
+    }
+    Check(fenced->Intact() && fenced->rng.Count() == 100, "tape: 100 draws, 24 kept, nothing written past the tape");
+    auto shared = std::make_unique<Fenced>();
+    shared->rng.Record(true);
+    std::atomic_bool stop{ false };
+    std::vector<std::thread> workers;
+    for (int w = 0; w < 4; ++w) {
+        workers.emplace_back([&]() {
+            for (int i = 0; i < 200000; ++i) {
+                shared->rng.Real(0.0f, 1.0f);
+            }
+        });
+    }
+    std::thread restarter([&]() {
+        while (!stop.load()) {
+            shared->rng.Record(true);
+        }
+    });
+    for (auto& w : workers) {
+        w.join();
+    }
+    stop = true;
+    restarter.join();
+    Check(shared->Intact(), "tape: four threads drawing while a fifth restarts the recording never write past the tape");
+    Check(!shared->rng.Tape().empty(), "tape: still readable after the stress");
+}
+
+// P2: a fake whose Dispel erases the effect from the list (so a kept handle -- an index -- would point at another
+// effect afterwards): DispelWhere must re-find each by identity.
+struct ShiftingWorld {
+    using Handle = int;
+    std::vector<EffectView> list;
+    bool self = false;
+    template <class Fn>
+    void ForEach(Who, Fn&& fn)
+    {
+        for (int i = 0; i < static_cast<int>(list.size()); ++i) {
+            fn(list[static_cast<std::size_t>(i)], i);
+        }
+    }
+    void Dispel(Who, Handle h) { list.erase(list.begin() + h); }
+    bool SelfDispel() const { return self; }
+    void SetSelfDispel(bool on) { self = on; }
+};
+
+void DispelByIdChecks()
+{
+    ShiftingWorld w;
+    auto view = [](std::uint32_t uid, std::uint32_t effect) {
+        EffectView v;
+        v.uid = uid;
+        v.effect = effect;
+        v.spell = effect + 1;
+        return v;
+    };
+    w.list = { view(1, 10), view(2, 10), view(3, 20), view(4, 10) };
+    const int n = essb::engine::DispelWhere(w, Who::kTarget, [](const EffectView& v) { return v.effect == 10; });
+    Check(n == 3 && w.list.size() == 1 && w.list[0].uid == 3, "dispel: each match re-found by id before its Dispel (the list shifts)");
+    ShiftingWorld gone;
+    gone.list = { view(1, 10) };
+    int calls = 0;
+    const int m = essb::engine::DispelWhere(gone, Who::kTarget, [&](const EffectView& v) {
+        if (++calls == 1) {
+            return v.effect == 10;
+        }
+        return false;
+    });
+    Check(m == 1 && gone.list.empty() && !gone.self, "dispel: the self-dispel flag is restored");
+}
+
+// P1: the hit sink's route -- a hit raised inside our own hit task is dropped; yours goes to the hit task, on you to the
+// hurt task, the rest nowhere. The sink itself calls nothing that changes the engine (build/fix26_verify.py checks its
+// body); this is the pure part.
+void RouteChecks()
+{
+    using essb::sink::HitRoute;
+    Check(essb::sink::RouteHit(true, false, false) == HitRoute::kYours, "route: your hit -> the hit task");
+    Check(essb::sink::RouteHit(false, true, false) == HitRoute::kHurt, "route: a hit on you -> the hurt task");
+    Check(essb::sink::RouteHit(false, false, false) == HitRoute::kIgnore, "route: others' hits are ignored");
+    Check(essb::sink::RouteHit(true, false, true) == HitRoute::kNested && essb::sink::RouteHit(false, true, true) == HitRoute::kNested,
+        "route: a hit our own hit task raised is dropped (the old re-entrancy guard)");
+}
+
 // ---------------------------------------------------------------- the offline sample for build/probe-judge.py
 
 // The real planners in the fake world, one station per scenario (markers 9001..; build/fix26_verify.py renumbers them to
@@ -762,6 +866,9 @@ int main(int argc, char** argv)
         CrowdChecks();
         NameChecks();
         SinkChecks();
+        TapeBoundsChecks();
+        DispelByIdChecks();
+        RouteChecks();
         const std::string sample = Sample();
         SampleChecks(sample);
         if (argc >= 3) {

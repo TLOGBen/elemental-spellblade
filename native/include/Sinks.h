@@ -50,6 +50,30 @@ DeathSeen DeathSink(World& world, Ref corpse, const void* killer, const void* yo
     return s;
 }
 
+// Round 26c (the heap audit): in this load order TESHitEvent arrives on the window thread (Precision / TDM resolve hits
+// from a Main::Update hook) while every SKSE task runs on a Post-process worker -- so the hit sink does no engine work at
+// all: it reads the event and the hit-time facts, filters, and queues the hit; planning, casts, dispels and actor-value
+// writes run in the hit task. A hit event that arrives while a hit task runs on the same thread (our own casts) is
+// dropped, as the old re-entrancy guard did.
+enum class HitRoute : std::uint8_t
+{
+    kIgnore,   // neither yours nor on you
+    kNested,   // raised by our own hit task on this thread: dropped
+    kHurt,     // on you: snapshot for the hurt task
+    kYours,    // yours: filter here, then the hit task
+};
+
+constexpr HitRoute RouteHit(bool causeIsYou, bool targetIsYou, bool insideHitTask) noexcept
+{
+    if (insideHitTask) {
+        return HitRoute::kNested;
+    }
+    if (causeIsYou) {
+        return HitRoute::kYours;
+    }
+    return targetIsYou ? HitRoute::kHurt : HitRoute::kIgnore;
+}
+
 // One button of an input event, as the sink read it from the event itself.
 struct Press {
     Device device = Device::kOther;

@@ -3199,6 +3199,10 @@ def write_mcm(manifest):
                 control('ESSB_NativeHit', 'DLL 狀態（1=運作、0=未載入／停用／故障）', 'text', formatString='{0}'),
                 button('ESSB_NativeVersionInfo', '查看 DLL 版本與狀態', 'ShowNativeStatus',
                        '顯示 native DLL 版本與是否處理命中；0 不會退回 entry 51。')]
+    # round 26c (T2): the TrueHUD bars' switch -- off, the DLL does no TrueHUD widget work at all (an A/B without uninstalling)
+    truehud_toggle = control('ESSB_TrueHudBars', 'TrueHUD 資源條', 'toggle', defaultValue=1)
+    truehud_toggle['help'] = '關閉時 DLL 完全不做 TrueHUD 資源條的工作（已顯示的會移除）；用來排查崩潰。預設開。'
+    general.append(truehud_toggle)
     balance.append(button('ESSB_ReleaseDivineProtection', '解除神佑保護', 'ReleaseDivineProtection',
                           '確認後解除延遲死亡並停用模組，避免重新上鎖；卸載前請先解除並存檔。'))
     balance.append(button('ESSB_RestoreDefaults', '恢復預設設定', 'RestoreDefaults',
@@ -3293,7 +3297,8 @@ def validate_mcm(records, written):
     expected_globals |= {'ESSB_Mult' + n for n in ('Dot', 'Cooldown', 'Recovery', 'Drain', 'Duration', 'Upkeep')}
     expected_globals |= {'ESSB_Hotkey_'+n for n in ELEMENTS} | {'ESSB_HotkeysEnabled','ESSB_FormNotify','ESSB_FormSound'}
     expected_globals |= hit19.NATIVE_GLOBALS
-    assert glob_edids == expected_globals and len(glob_edids) == 54
+    expected_globals |= {'ESSB_TrueHudBars'}   # round 26c (T2)
+    assert glob_edids == expected_globals and len(glob_edids) == 55
     assert functions == {'RespecCurrent', 'RespecAll', 'DumpRegistry', 'RestoreDefaults', 'ReleaseDivineProtection', 'ApplyNativeSetting', 'ShowNativeStatus'}
     rows = config['pages'][2]['content']
     tree_rows = [r for r in rows if r.get('id') in expected_globals]

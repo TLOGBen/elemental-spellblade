@@ -150,14 +150,10 @@ struct State {
     std::atomic_bool ready{};     // manifest resolved and sinks registered
     std::atomic_bool faulted{};   // latched until the game restarts
     std::atomic_bool inGame{};    // from PostLoadGame/NewGame until the next PreLoadGame
-    std::atomic_bool handling{};  // re-entrancy guard of the hit sink (also guards `rng`)
     std::atomic_bool echoDispelQueued{};     // a consumed echo marker waits for its main-thread dispel
     std::atomic_bool riposteDispelQueued{};  // a used 反擊 window waits for its main-thread dispel
     std::atomic_bool tickQueued{};           // one timer task at a time (a task never re-queues itself)
     std::atomic_bool stopTimer{};
-    // True while this DLL dispels one of its own effects: the engine sends the removal event from inside Dispel(true)
-    // (native-verification-3 s6), and those removals are ours to handle, not expiries. Main thread only.
-    bool selfDispel = false;
     std::atomic<std::uint64_t> lastProcNotice{};
     essb::Cadence cadence{};         // round 25: the timer's clock (game-running time only; main thread); not design state
     // 審查修正: the game-running ms this session (never reset, never saved) -- Papyrus's windows read it through
@@ -167,8 +163,21 @@ struct State {
     HANDLE log{ INVALID_HANDLE_VALUE };
     Forms forms{};
     std::optional<essb::trace::TraceRng> rng;  // damage rolls; seeded once per game process (round 26: with a tape)
-    // Notices raised before the HUD exists (data load). Only touched from SKSE messages (main thread).
+    // Notices raised before the HUD exists (data load). Round 26c: Fault can raise one from any thread -- locked.
+    std::mutex noticeLock;
     std::vector<std::string> deferredNotices;
+    // Round 26c: your pools as the last task left them (WriteMirrors), so the hurt sink reads no effect list.
+    std::atomic<float> mirrorGuard{};
+    std::atomic<float> mirrorOverload{};
+    std::atomic_bool mirrorAfterimage{};
+    std::atomic_bool mirrorLinger{};
+    // Round 26c (P5): how many engine-mutating bodies run now (a task; > 1 = two at once), and which.
+    std::atomic<int> mutating{};
+    std::atomic<const char*> mutatingName{};
+    std::mutex overlapLock;
+    std::vector<std::pair<const char*, const char*>> overlapsSeen;
+    std::atomic_bool rngOutsideLogged{};
+    std::atomic_bool traceReset{};   // round 26c: OnGameReady asks the tick task to reset the probe log's watchers
     // Probe X1 (round 26 rework): which thread each sink and task really runs on. kDataLoaded arrives on the game's
     // InitTESThread (SKSE Hooks_Data: the hook sits in ID 35554, called only by InitTESThread's ThreadProc), so it is no
     // reference. The references are: the input sink's thread (BSInputDeviceManager::PollInputDevices is called from
@@ -181,10 +190,10 @@ struct State {
     std::atomic<DWORD> windowThread{};
     DWORD dataThread = 0;
     std::atomic_bool uiWitnessQueued{};   // round 26: one UI witness task at a time
-    std::array<std::array<std::atomic<DWORD>, 4>, 16> threadSeen{};
+    std::array<std::array<std::atomic<DWORD>, 4>, 20> threadSeen{};
     // Round 26b (X2): the call chains each sink / task was seen with (RtlCaptureStackBackTrace's hash), the executable's
     // and this DLL's address ranges, and the address of the Havok TLS index (REL::ID 528600), for the witness lines.
-    std::array<std::array<std::atomic<ULONG>, 8>, 16> chainSeen{};
+    std::array<std::array<std::atomic<ULONG>, 8>, 20> chainSeen{};
     std::uintptr_t exeBase = 0, exeEnd = 0, dllBase = 0, dllEnd = 0;
     std::uintptr_t havokTlsIndex = 0;
     // Round 23: the hits you took this frame, between the hit sink (before the damage) and the one task that reads the
@@ -201,7 +210,6 @@ struct State {
     std::mutex flushLock;
     std::uint64_t realStart = 0;
     std::atomic<std::uint64_t> lastFlush{};
-    const char* traceCtx = "-";                                     // main thread
     std::vector<std::pair<std::uint32_t, std::string>> globalNames; // manifest "globals": local id -> editor ID
     std::vector<float> globalSeen;                                   // [i] of forms.globals; empty = dump them again
     std::vector<std::uint32_t> perksSeen;
@@ -215,6 +223,14 @@ struct State {
 };
 
 State state;
+
+// Round 26c (P4): per-thread state. The removal event of our own Dispel(true) arrives on the dispelling thread inside the
+// call (native-verification-3 s6), so the self-dispel flag is the thread's; so are the running event's label for the
+// probe log, "inside a hit task" (a hit event our own casts raise is dropped) and "inside a task" (P3 / P5).
+thread_local bool t_selfDispel = false;
+thread_local bool t_inHitTask = false;
+thread_local bool t_inTask = false;
+thread_local const char* t_traceCtx = "-";
 constexpr essb::Config kConfig = essb::MakeConfig();
 
 // ---------------------------------------------------------------- log and on-screen notices
@@ -274,8 +290,8 @@ std::uint64_t Emit(const essb::trace::Line& line) noexcept
 // The running event's label on every op line (main thread; nests).
 struct TraceCtx {
     const char* prev;
-    explicit TraceCtx(const char* ctx) noexcept : prev(state.traceCtx) { state.traceCtx = ctx; }
-    ~TraceCtx() { state.traceCtx = prev; }
+    explicit TraceCtx(const char* ctx) noexcept : prev(t_traceCtx) { t_traceCtx = ctx; }
+    ~TraceCtx() { t_traceCtx = prev; }
     TraceCtx(const TraceCtx&) = delete;
     TraceCtx& operator=(const TraceCtx&) = delete;
 };
@@ -352,9 +368,10 @@ enum class Probe
     kUiTask,       // round 26 (threading witness): an SKSE UI task (AddUITask, drained in UI::ProcessMessages)
     kInputFrame,   // round 26 (threading witness): the input sink on every call (PollInputDevices sends every frame)
     kInputTask,    // round 26b: a hotkey / step action the input sink queued
+    kHitTask,      // round 26c: the hit task (the hit sink only snapshots)
     kCount,
 };
-static_assert(static_cast<std::size_t>(Probe::kCount) <= 16);
+static_assert(static_cast<std::size_t>(Probe::kCount) <= 20);
 
 const char* Compare(DWORD thread, DWORD reference) noexcept
 {
@@ -382,7 +399,7 @@ bool ReadHavokTls(std::uintptr_t indexAddress, std::uint32_t& out) noexcept
 constexpr bool IsTaskProbe(Probe p) noexcept
 {
     return p == Probe::kTick || p == Probe::kNativeTask || p == Probe::kHurtTask || p == Probe::kSettleTask || p == Probe::kDeathTask ||
-           p == Probe::kCastTask || p == Probe::kUiTask || p == Probe::kInputTask;
+           p == Probe::kCastTask || p == Probe::kUiTask || p == Probe::kInputTask || p == Probe::kHitTask;
 }
 
 // Round 26b (X2): the first time each distinct call chain reaches a sink or a task, its return addresses (12 frames above
@@ -506,6 +523,71 @@ void MainThreadGuarded() noexcept
     }
 }
 
+// Round 26c (P5): every engine-mutating body (every SKSE task) runs inside one scope. The count of scopes open right now
+// must never pass 1 (SKSE runs its tasks one after another); if it does, "[ESSB][OVERLAP] <name> thread= with=<other>"
+// is logged once per pair. Two atomics per task: kept in release.
+void Overlap(const char* name, const char* other) noexcept
+{
+    try {
+        std::lock_guard lock(state.overlapLock);
+        for (const auto& [a, b] : state.overlapsSeen) {
+            if (a == name && b == other) {
+                return;
+            }
+        }
+        state.overlapsSeen.emplace_back(name, other);
+    } catch (...) {
+    }
+    Logf("[ESSB][OVERLAP] %s thread=%lu with=%s", name, GetCurrentThreadId(), other ? other : "?");
+}
+
+struct TaskScope {
+    const char* name;
+    bool outer;
+    explicit TaskScope(const char* n) noexcept : name(n), outer(t_inTask)
+    {
+        if (outer) {
+            return;   // a nested scope on the same thread (a task body calling another body)
+        }
+        t_inTask = true;
+        const char* other = state.mutatingName.exchange(n);
+        if (state.mutating.fetch_add(1) + 1 > 1) {
+            Overlap(n, other);
+        }
+    }
+    ~TaskScope()
+    {
+        if (outer || !t_inTask) {
+            return;
+        }
+        t_inTask = false;
+        if (state.mutating.fetch_sub(1) <= 0) {
+            state.mutating = 0;
+        }
+    }
+    TaskScope(const TaskScope&) = delete;
+    TaskScope& operator=(const TaskScope&) = delete;
+};
+
+// A hit task's scope: a TESHitEvent our own casts raise on this thread is dropped by the sink (the old re-entrancy guard).
+struct InHitTask {
+    bool prev;
+    InHitTask() noexcept : prev(t_inHitTask) { t_inHitTask = true; }
+    ~InHitTask() { t_inHitTask = prev; }
+    InHitTask(const InHitTask&) = delete;
+    InHitTask& operator=(const InHitTask&) = delete;
+};
+
+// Round 26c (P3): the damage rolls are drawn only inside tasks (one context, one after another); a draw anywhere else is
+// logged once (it would race with the tasks).
+essb::trace::TraceRng& Rng() noexcept
+{
+    if (!t_inTask && !state.rngOutsideLogged.exchange(true)) {
+        Logf("[ESSB][RNG] a draw outside a task thread=%lu", GetCurrentThreadId());
+    }
+    return Rng();
+}
+
 // Debug.Notification equivalent: RE::DebugNotification (CommonLib-NG Misc.h), run on the main thread
 // through the SKSE task interface so it is safe from any caller.
 void Show(std::string text) noexcept
@@ -529,6 +611,7 @@ void Notify(std::string text) noexcept
         if (state.inGame) {
             Show(std::move(text));
         } else {
+            std::lock_guard lock(state.noticeLock);   // round 26c: Fault may raise a notice from any thread
             state.deferredNotices.push_back(std::move(text));
         }
     } catch (...) {
@@ -585,8 +668,13 @@ void Fault(const char* reason) noexcept
     state.ready = false;
     const bool first = !state.faulted.exchange(true);
     WriteNativeHit(0.0f);
-    state.handling = false;
-    state.selfDispel = false;
+    t_selfDispel = false;
+    if (t_inTask) {   // round 26c: a fault inside a task body (an SEH exit skips its scope's destructor)
+        t_inTask = false;
+        if (state.mutating.fetch_sub(1) <= 0) {
+            state.mutating = 0;
+        }
+    }
     if (!first) {
         return;
     }
@@ -1037,6 +1125,11 @@ void WriteMirrors(RE::PlayerCharacter& player, const essb::Board& me, const Node
     // TrueHUD (R5): 超載 / max magicka cap, 護血 / 20% max health, 蓄勁 / 10, 同調 / the stage-3 threshold (form only).
     const float magickaMax = MaxOf(player, RE::ActorValue::kMagicka);
     const float healthMax = MaxOf(player, RE::ActorValue::kHealth);
+    // Round 26c: the pools the hurt sink needs at hit time, so it reads no effect list (the sink runs beside the tasks).
+    state.mirrorGuard = me.guardPool.has ? me.guardPool.magnitude : 0.0f;
+    state.mirrorOverload = me.Has(K::kOverload) ? me[K::kOverload].magnitude : 0.0f;
+    state.mirrorAfterimage = me.Has(K::kAfterimage);
+    state.mirrorLinger = me.Has(K::kLingerShield);
     essb::hud::Publish(0, me.Has(K::kOverload) ? me[K::kOverload].magnitude : 0.0f, essb::res::OverloadCap(magickaMax, nodes));
     essb::hud::Publish(1, me.guardPool.has ? me.guardPool.magnitude : 0.0f, essb::kBloodGuardCapOfMaxHealth * healthMax);
     essb::hud::Publish(2, static_cast<float>(me.Layers(K::kStoredForce)), static_cast<float>(essb::n4::kForceCap));
@@ -1111,6 +1204,34 @@ std::atomic_bool& MarkerQueued(Marker marker) noexcept
     return marker == Marker::kEcho ? state.echoDispelQueued : state.riposteDispelQueued;
 }
 
+// Round 26c (P2): dispels the running effects `match` picks. Each is collected by its unique id and base effect, and
+// re-found in the live list right before its Dispel (an earlier dispel may have changed the list), never by a pointer
+// kept across dispels. Returns how many were dispelled.
+template <class Match>
+int DispelLive(RE::Actor& actor, Match&& match)
+{
+    std::vector<std::pair<std::uint16_t, const RE::EffectSetting*>> found;
+    ForEachRunningEffect(actor, [&](RE::ActiveEffect& effect, RE::EffectSetting& base) {
+        if (match(effect, base)) {
+            found.emplace_back(effect.usUniqueID, &base);
+        }
+    });
+    int dispelled = 0;
+    for (const auto& [uid, base] : found) {
+        RE::ActiveEffect* live = nullptr;
+        ForEachRunningEffect(actor, [&](RE::ActiveEffect& effect, RE::EffectSetting& b) {
+            if (!live && effect.usUniqueID == uid && &b == base) {
+                live = &effect;
+            }
+        });
+        if (live) {
+            live->Dispel(true);
+            ++dispelled;
+        }
+    }
+    return dispelled;
+}
+
 // Main-thread body of a marker dispel. The effects are collected first and dispelled after the walk, so the
 // active-effect list is never changed while it is being iterated.
 void DispelMarkerCpp(Marker marker) noexcept
@@ -1121,15 +1242,8 @@ void DispelMarkerCpp(Marker marker) noexcept
         if (!player || !wanted) {
             return;
         }
-        std::vector<RE::ActiveEffect*> found;
-        ForEachRunningEffect(*player, [&](RE::ActiveEffect& effect, RE::EffectSetting& base) {
-            if (&base == wanted) {
-                found.push_back(&effect);
-            }
-        });
-        for (RE::ActiveEffect* effect : found) {
-            effect->Dispel(true);
-        }
+        TaskScope scope("marker dispel");   // round 26c
+        DispelLive(*player, [&](RE::ActiveEffect&, RE::EffectSetting& base) { return &base == wanted; });   // round 26c (P2)
     } catch (const std::exception& e) {
         Fault(e.what());
     } catch (...) {
@@ -1228,8 +1342,8 @@ public:
     }
 
     void Dispel(essb::Who, Handle effect) { effect->Dispel(true); }
-    bool SelfDispel() const noexcept { return state.selfDispel; }
-    void SetSelfDispel(bool on) noexcept { state.selfDispel = on; }
+    bool SelfDispel() const noexcept { return t_selfDispel; }
+    void SetSelfDispel(bool on) noexcept { t_selfDispel = on; }
 
     RE::Actor& On(essb::Who who)
     {
@@ -1248,12 +1362,12 @@ public:
         if (CausedLogging()) {
             for (const auto& row : essb::status::kDomainSpawn) {
                 if (std::find(std::begin(row), std::end(row), spell) != std::end(row) && spell != 0) {
-                    LogCaused("hazard", &on, state.traceCtx);
+                    LogCaused("hazard", &on, t_traceCtx);
                     break;
                 }
             }
             if (watch && on.IsDead()) {
-                LogCaused("kill", &on, state.traceCtx);
+                LogCaused("kill", &on, t_traceCtx);
             }
         }
     }
@@ -1286,7 +1400,7 @@ public:
         }
         SendEvent(op, target_, centre);
         if (op.event == essb::Event::kPush || op.event == essb::Event::kKnock) {
-            LogCaused(op.event == essb::Event::kPush ? "push" : "knock", target_, state.traceCtx);   // round 26b (L3 A/B)
+            LogCaused(op.event == essb::Event::kPush ? "push" : "knock", target_, t_traceCtx);   // round 26b (L3 A/B)
         }
     }
 
@@ -1299,7 +1413,7 @@ public:
             const bool watch = CausedLogging() && !playerCharacter_.IsDead();
             playerCharacter_.AsActorValueOwner()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -amount);
             if (watch && playerCharacter_.IsDead()) {
-                LogCaused("kill", &playerCharacter_, state.traceCtx);   // round 26b (L3 A/B)
+                LogCaused("kill", &playerCharacter_, t_traceCtx);   // round 26b (L3 A/B)
             }
         }
     }
@@ -1346,7 +1460,7 @@ public:
             });
         }
         essb::trace::Line line("op");
-        essb::trace::OpLine(line, state.traceCtx, op, FactsOf(actor), l, count, was, left);
+        essb::trace::OpLine(line, t_traceCtx, op, FactsOf(actor), l, count, was, left);
         return Emit(line);
     }
 
@@ -1471,6 +1585,25 @@ int CountOurEffects(RE::Actor& actor)
     return count;
 }
 
+// Round 26c (P6): the alias list's read lock is taken and released in this SEH-only frame (__finally), so an access
+// violation inside the walk, caught by a task's __except further up, still releases the engine lock (a BSReadLockGuard's
+// destructor would be skipped by the SEH unwind under /EHsc).
+bool QuestObjectAlias(const RE::ExtraAliasInstanceArray* aliases) noexcept
+{
+    auto& lock = const_cast<RE::BSReadWriteLock&>(aliases->lock);
+    lock.LockForRead();
+    bool found = false;
+    __try {
+        for (std::uint32_t i = 0; i < aliases->aliases.size() && !found; ++i) {
+            const auto* data = aliases->aliases[i];
+            found = data && data->alias && data->alias->IsQuestObject();
+        }
+    } __finally {
+        lock.UnlockForRead();
+    }
+    return found;
+}
+
 // 2.9 必要角色 (review fix 2): essential (the reference or its base), or filling a quest-object alias. A unique or
 // protected named enemy is not exempt from being knocked down, raised or turned to ash.
 bool EssentialOf(RE::Actor& actor)
@@ -1483,12 +1616,7 @@ bool EssentialOf(RE::Actor& actor)
         return true;
     }
     if (const auto* aliases = actor.extraList.GetByType<RE::ExtraAliasInstanceArray>()) {
-        RE::BSReadLockGuard lock(aliases->lock);
-        for (const auto* data : aliases->aliases) {
-            if (data && data->alias && data->alias->IsQuestObject()) {
-                return true;
-            }
-        }
+        return QuestObjectAlias(aliases);
     }
     return false;
 }
@@ -1626,7 +1754,7 @@ void BuildCrowd(CrowdRead& out, RE::PlayerCharacter& player, RE::Actor* primary,
     }
     if (tracing) {
         essb::trace::Line head("scan");
-        head.F(" ctx=%s", state.traceCtx);
+        head.F(" ctx=%s", t_traceCtx);
         head.Actor("centre", FactsOf(primary));
         head.F(" aroundCentre=%.0f aroundYou=%.0f high=%d picked=%d", aroundPrimary, aroundYou, static_cast<int>(views.size()), c.count - 1);
         Emit(head);
@@ -1711,7 +1839,7 @@ void RunWithBodies(RE::PlayerCharacter& player, RE::Actor* primary, essb::Board*
             c.in.body = crowd.crowd->m[0].body;
         }
         const essb::BodyInputs bin = BodyInputsOf(player, c, sneak);
-        essb::RunBodies(plan, from, *crowd.crowd, self, bin, nodes, *state.rng);
+        essb::RunBodies(plan, from, *crowd.crowd, self, bin, nodes, Rng());
         if (targetBoard && primary) {
             *targetBoard = crowd.crowd->m[0].board;
         }
@@ -1769,22 +1897,22 @@ void TraceProc(const char* src, const essb::Plan& plan, const essb::Attack& atta
 {
     essb::trace::Line line("proc");
     const std::string_view spell = essb::IsElement(plan.element) ? ProcName(plan.element, attack.power) : std::string_view("-");
-    const std::string rolls = state.rng->Tape();
+    const std::string rolls = Rng().Tape();
     essb::trace::ProcLine(line, src, FactsOf(target), FactsOf(RE::PlayerCharacter::GetSingleton()), plan, attack, weaponType, spell, charges,
         critBonus, rolls);
     Emit(line);
-    state.rng->Record(true);   // the rest of the event's draws go to its "rng" line
+    Rng().Record(true);   // the rest of the event's draws go to its "rng" line
 }
 
 // The draws an event took after its proc (chances, the bodies' rolls), one line; recording stops.
 void TraceDraws(const char* ctx)
 {
-    if (state.rng->Count() > 0) {
+    if (Rng().Count() > 0) {
         essb::trace::Line line("rng");
-        line.F(" ctx=%s draws=%s", ctx, state.rng->Tape().c_str());
+        line.F(" ctx=%s draws=%s", ctx, Rng().Tape().c_str());
         Emit(line);
     }
-    state.rng->Record(false);
+    Rng().Record(false);
 }
 
 constexpr const char* RejectName(essb::Reject reason) noexcept
@@ -1820,7 +1948,7 @@ void ExtraProc(RE::PlayerCharacter& player, RE::Actor& target, const essb::Attac
     essb::Attack attack = hit;
     attack.leftHand = false;
     essb::Plan plan;
-    const essb::Proc proc = essb::RollProc(attack.element, attack, kConfig, c.tuning, c.player, facts, nodes, *state.rng, terms);
+    const essb::Proc proc = essb::RollProc(attack.element, attack, kConfig, c.tuning, c.player, facts, nodes, Rng(), terms);
     plan.Add({ essb::Cast::kProc, proc.magnitude, attack.element, attack.power });
     if (TraceOn()) {   // round 26 (the plan's element / magnitude / crit fields are only read by the log)
         plan.element = attack.element;
@@ -1831,46 +1959,29 @@ void ExtraProc(RE::PlayerCharacter& player, RE::Actor& target, const essb::Attac
     Apply(player, target, plan);
 }
 
-void Handle(const RE::TESHitEvent& ev)
-{
-    if (!Active()) {
-        return;
-    }
-    auto* player = RE::PlayerCharacter::GetSingleton();
-    if (!player) {
-        return;
-    }
-    auto* target = ev.target ? ev.target->As<RE::Actor>() : nullptr;
-    if (ev.cause.get() != player) {
-        if (target == player) {
-            HandleHurt(ev, *player);   // round 23: a hit whose target is you (Hurt.h)
-        }
-        return;  // every other actor's hit leaves here, before any further engine read
-    }
-    LogThreadOnce(Probe::kHit, "TESHitEvent");
-    TraceCtx traceCtx("hit");   // round 26
+// Round 26c (P1): what the hit sink read at hit time; the hit task plans and applies from it one frame later.
+struct HitSeen {
+    RE::ActorHandle target{};
+    essb::HitFacts facts{};
+    essb::Verdict verdict{};
+    essb::RawAttack raw{};
+};
 
-    const essb::HitFacts hit = ReadHitFacts(ev, *player, target);
-    if (target && state.forms.debug->value >= 3.0f) {
+// The hit task's body: everything a hit does, from the snapshot. `player` and `target` are live (checked by the caller).
+void Handle(const HitSeen& seen, RE::PlayerCharacter& playerRef, RE::Actor& targetRef)
+{
+    RE::PlayerCharacter* player = &playerRef;
+    RE::Actor* target = &targetRef;
+    TraceCtx traceCtx("hit");   // round 26
+    const essb::HitFacts& hit = seen.facts;
+    const essb::Verdict& verdict = seen.verdict;
+    if (state.forms.debug->value >= 3.0f) {
         state.probeTarget = target->GetHandle();   // probe N4-2 follows the last actor you hit
-    }
-    const essb::Verdict verdict = essb::Filter(hit);
-    if (verdict.reason != essb::Reject::kAccepted) {
-        if (state.forms.debug->value >= 3.0f) {
-            Logf("[ESSB][hit-reject][L3] reason=%s weapon=%d", RejectName(verdict.reason), verdict.weaponType);
-        }
-        if (TraceOn()) {   // round 26
-            essb::trace::Line line("hit-reject");
-            line.Actor("tgt", FactsOf(target));
-            line.F(" reason=%s weapon=%d", RejectName(verdict.reason), verdict.weaponType);
-            Emit(line);
-        }
-        return;
     }
 
     using K = essb::StatusKind;
     const bool formActive = hit.formActive == 1.0f;
-    essb::Attack attack = essb::MakeAttack(verdict.element, ReadAttack(ev, *player, verdict.weaponType));
+    essb::Attack attack = essb::MakeAttack(verdict.element, seen.raw);
     const bool realPower = attack.power;
     const auto perks = MakeNodes(*player, formActive);
     const essb::TargetFacts targetFacts = TargetFactsOf(*target);
@@ -1915,9 +2026,9 @@ void Handle(const RE::TESHitEvent& ev)
     const essb::TargetFacts judged = essb::JudgedTarget(targetFacts, targetBoard, nodes);
     const bool tracing = TraceOn();   // round 26: the proc's rolls, then every other draw of this hit
     if (tracing) {
-        state.rng->Record(true);
+        Rng().Record(true);
     }
-    const essb::Plan plan = essb::PlanHit(attack, kConfig, c.tuning, c.player, judged, nodes, *state.rng, terms);
+    const essb::Plan plan = essb::PlanHit(attack, kConfig, c.tuning, c.player, judged, nodes, Rng(), terms);
     if (tracing) {
         TraceProc("hit", plan, attack, verdict.weaponType, target, terms.charges, terms.critBonus);
     }
@@ -1938,11 +2049,11 @@ void Handle(const RE::TESHitEvent& ev)
         // 回聲 (5.13): a star hit on a target that already carried star marks, outside the dark star.
         const bool echo = markElement == essb::kAstral && targetBoard.Has(K::kStar) && !selfBoard.Has(K::kCosmos);
         const bool avatarBefore = selfBoard.Has(K::kAvatar);
-        status = essb::PlanStatusHit(statusPlan, markElement, attack.power, targetBoard, selfBoard, c.in, nodes, *state.rng);
+        status = essb::PlanStatusHit(statusPlan, markElement, attack.power, targetBoard, selfBoard, c.in, nodes, Rng());
         if (consumeStreak) {
             essb::Writer{ statusPlan, selfBoard, essb::Who::kPlayer }.Clear(K::kKillStreak);   // 連殺 used up
         }
-        const essb::SelfResult result = essb::PlanSelfHit(statusPlan, self, status, targetBoard, selfBoard, c.in, nodes, *state.rng);
+        const essb::SelfResult result = essb::PlanSelfHit(statusPlan, self, status, targetBoard, selfBoard, c.in, nodes, Rng());
         // Round 24 (N5): the hit's own branch bodies (震擊, 護持, 萎靡, 侵蝕, the curse's erosion) on member 0, then the
         // crowd bodies: every open / end / frozen ... event this hit produced, 回聲, 印潮, 化身's active legend.
         const bool surge = status.cutFrom != 0 && status.opened && nodes.Has(essb::node::kCommonSurge);
@@ -1960,18 +2071,18 @@ void Handle(const RE::TESHitEvent& ev)
         {
             const essb::BodyInputs bin = BodyInputsOf(*player, c, attack.sneakAttack);
             essb::Crowd& cw = *crowd.crowd;
-            essb::PlanHitBodies(statusPlan, cw, selfBoard, bin, markElement, attack.power, 0, nodes, *state.rng);
+            essb::PlanHitBodies(statusPlan, cw, selfBoard, bin, markElement, attack.power, 0, nodes, Rng());
             if (echo) {
                 essb::PlanEcho(statusPlan, cw, 0, plan.magnitude, c.in, nodes);
             }
             if (surge) {
-                essb::PlanSurge(statusPlan, cw, selfBoard, bin, markElement, status.cutFrom, nodes, *state.rng);   // 印潮
+                essb::PlanSurge(statusPlan, cw, selfBoard, bin, markElement, status.cutFrom, nodes, Rng());   // 印潮
             }
             if (avatar) {
                 const essb::AvatarNodes<std::remove_cvref_t<decltype(perks)>> full{ perks, c.in.formElement };
-                essb::PlanAvatarBurst(statusPlan, cw, selfBoard, bin, c.in.formElement, full, *state.rng);   // 化身
+                essb::PlanAvatarBurst(statusPlan, cw, selfBoard, bin, c.in.formElement, full, Rng());   // 化身
             }
-            essb::RunBodies(statusPlan, 0, cw, selfBoard, bin, nodes, *state.rng);
+            essb::RunBodies(statusPlan, 0, cw, selfBoard, bin, nodes, Rng());
             targetBoard = cw.m[0].board;
         }
         Executor(*player, target, c.tuning, &crowd.actors).Run(statusPlan);
@@ -1987,7 +2098,7 @@ void Handle(const RE::TESHitEvent& ev)
             once.twinWindow = false;
             once.riposteWindow = false;
             TraceCtx repeatCtx("repeat");   // round 26
-            const essb::Plan repeatHit = essb::PlanHit(attack, kConfig, c.tuning, once, judged, nodes, *state.rng, again);
+            const essb::Plan repeatHit = essb::PlanHit(attack, kConfig, c.tuning, once, judged, nodes, Rng(), again);
             if (tracing) {
                 TraceProc("repeat", repeatHit, attack, verdict.weaponType, target, again.charges, again.critBonus);
             }
@@ -1997,15 +2108,15 @@ void Handle(const RE::TESHitEvent& ev)
             auto repeatPtr = std::make_unique<essb::StatusPlan>();
             essb::StatusPlan& repeatPlan = *repeatPtr;
             const essb::HitStatus repeated = essb::PlanStatusHit(repeatPlan, markElement, attack.power, targetBoard, selfBoard, repeatIn,
-                nodes, *state.rng);
-            essb::PlanSelfHit(repeatPlan, self, repeated, targetBoard, selfBoard, repeatIn, nodes, *state.rng, true);
+                nodes, Rng());
+            essb::PlanSelfHit(repeatPlan, self, repeated, targetBoard, selfBoard, repeatIn, nodes, Rng(), true);
             RunWithBodies(*player, target, &targetBoard, repeatPlan, 0, selfBoard, c, nodes, crowd);
         }
         if (result.extraProc && !target->IsDead()) {
             ExtraProc(*player, *target, attack, c, judged, terms, nodes);
         }
     } else {
-        essb::PlanSelfNoForm(statusPlan, plan, self, targetBoard, selfBoard, c.in, nodes, state.rng->Real(0.0f, 1.0f));
+        essb::PlanSelfNoForm(statusPlan, plan, self, targetBoard, selfBoard, c.in, nodes, Rng().Real(0.0f, 1.0f));
         // 封印 (5.1, round 24): the dispel's silence reaches every hostile within 3 m of the target.
         int silence = 0;
         for (int i = 0; i < plan.count; ++i) {
@@ -2017,7 +2128,7 @@ void Handle(const RE::TESHitEvent& ev)
             const essb::Board planned = targetBoard;
             BuildCrowd(crowd, *player, target, &planned, kAroundEvent, kAroundEvent);
             const essb::BodyInputs bin = BodyInputsOf(*player, c, attack.sneakAttack);
-            essb::PlanHitBodies(statusPlan, *crowd.crowd, selfBoard, bin, 0, attack.power, silence, nodes, *state.rng);
+            essb::PlanHitBodies(statusPlan, *crowd.crowd, selfBoard, bin, 0, attack.power, silence, nodes, Rng());
         }
         RunWithBodies(*player, target, &targetBoard, statusPlan, 0, selfBoard, c, nodes, crowd);
     }
@@ -2031,16 +2142,102 @@ void Handle(const RE::TESHitEvent& ev)
     Report(plan, attack, verdict.weaponType, *target, status);
 }
 
-void HandleCpp(const RE::TESHitEvent* ev) noexcept
+void HitTaskCpp(const HitSeen& seen) noexcept
 {
     try {
-        if (ev) {
-            Handle(*ev);
+        TaskScope scope("hit task");   // round 26c (P5)
+        if (!Active()) {
+            return;
+        }
+        auto* player = RE::PlayerCharacter::GetSingleton();
+        auto held = seen.target.get();
+        RE::Actor* target = held.get();
+        if (!player || !target) {
+            return;
+        }
+        InHitTask inHit;   // a hit event our own casts raise here is dropped (the old re-entrancy guard)
+        LogThreadOnce(Probe::kHitTask, "hit task");
+        NoteTaskThread();
+        if (target->IsDead()) {
+            // Round 26c: the hit's own damage killed the target before this task (one frame after the hit): no proc on a
+            // corpse. Logged so the probe sheet can tell it from a missing proc.
+            if (state.forms.debug->value >= 3.0f) {
+                Logf("[ESSB][hit-late][L3] %08X dead before the hit task (no proc)", target->GetFormID());
+            }
+            if (TraceOn()) {
+                essb::trace::Line line("hit-late");
+                line.Actor("tgt", FactsOf(target));
+                line.F(" reason=dead");
+                Emit(line);
+            }
+            return;
+        }
+        Handle(seen, *player, *target);
+    } catch (const std::exception& e) {
+        Fault(e.what());
+    } catch (...) {
+        Fault("unknown C++ exception in the hit task");
+    }
+}
+
+void HitTaskGuarded(const HitSeen& seen) noexcept
+{
+    __try {
+        HitTaskCpp(seen);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        Fault("access violation in the hit task");
+    }
+}
+
+// Round 26c (P1): the hit sink does no engine work. It reads the event, the hand and the hit-time facts (flags, the
+// equipped weapons, the globals, the target's dead / teammate flags), filters, and queues the hit task. The route
+// (yours / on you / nested in our own hit task / neither) is Sinks.h RouteHit.
+void HitSinkCpp(const RE::TESHitEvent& ev) noexcept
+{
+    try {
+        if (!Active()) {
+            return;
+        }
+        auto* player = RE::PlayerCharacter::GetSingleton();
+        if (!player) {
+            return;
+        }
+        auto* target = ev.target ? ev.target->As<RE::Actor>() : nullptr;
+        switch (essb::sink::RouteHit(ev.cause.get() == player, target == player, t_inHitTask)) {
+        case essb::sink::HitRoute::kIgnore:
+        case essb::sink::HitRoute::kNested:
+            return;
+        case essb::sink::HitRoute::kHurt:
+            HandleHurt(ev, *player);   // round 23: a hit whose target is you (Hurt.h); a snapshot, the hurt task does the work
+            return;
+        case essb::sink::HitRoute::kYours:
+            break;
+        }
+        LogThreadOnce(Probe::kHit, "TESHitEvent");
+        HitSeen seen;
+        seen.facts = ReadHitFacts(ev, *player, target);
+        seen.verdict = essb::Filter(seen.facts);
+        if (seen.verdict.reason != essb::Reject::kAccepted) {
+            if (state.forms.debug->value >= 3.0f) {
+                Logf("[ESSB][hit-reject][L3] reason=%s weapon=%d", RejectName(seen.verdict.reason), seen.verdict.weaponType);
+            }
+            if (TraceOn()) {   // round 26
+                essb::trace::Line line("hit-reject");
+                line.Actor("tgt", FactsOf(target));
+                line.F(" reason=%s weapon=%d", RejectName(seen.verdict.reason), seen.verdict.weaponType);
+                Emit(line);
+            }
+            return;
+        }
+        seen.raw = ReadAttack(ev, *player, seen.verdict.weaponType);
+        seen.target = target->GetHandle();
+        if (const auto* tasks = SKSE::GetTaskInterface()) {
+            tasks->AddTask([seen]() { HitTaskGuarded(seen); });
         }
     } catch (const std::exception& e) {
         Fault(e.what());
     } catch (...) {
-        Fault("unknown C++ exception in hit handler");
+        Fault("unknown C++ exception in the hit sink");
     }
 }
 
@@ -2049,15 +2246,14 @@ class HitSink final : public RE::BSTEventSink<RE::TESHitEvent>
 public:
     RE::BSEventNotifyControl ProcessEvent(const RE::TESHitEvent* ev, RE::BSTEventSource<RE::TESHitEvent>*) override
     {
-        if (state.faulted || state.handling.exchange(true)) {
+        if (!ev || state.faulted) {
             return RE::BSEventNotifyControl::kContinue;
         }
         __try {
-            HandleCpp(ev);
+            HitSinkCpp(*ev);
         } __except (EXCEPTION_EXECUTE_HANDLER) {
-            Fault("access violation in hit handler");
+            Fault("access violation in the hit sink");
         }
-        state.handling = false;
         return RE::BSEventNotifyControl::kContinue;
     }
 };
@@ -2090,6 +2286,7 @@ float DotDamageOf(RE::PlayerCharacter& player, RE::FormID spell);   // below (ro
 void HurtCpp() noexcept
 {
     try {
+        TaskScope scope("hurt task");   // round 26c (P5)
         std::vector<std::pair<RE::ActorHandle, essb::HurtFacts>> hits;
         {
             std::lock_guard lock(state.hurtLock);
@@ -2115,6 +2312,15 @@ void HurtCpp() noexcept
                 attacker = nullptr;
             }
             f.attacker = f.attacker && attacker != nullptr;
+            if (f.cloakTick) {   // round 26c: the sink marked a cloak candidate; the check reads the attacker here
+                bool cloak = false;
+                if (attacker && state.forms.cloak) {
+                    ForEachRunningEffect(*attacker, [&](RE::ActiveEffect&, RE::EffectSetting& effect) {
+                        cloak = cloak || effect.HasKeyword(state.forms.cloak);
+                    });
+                }
+                f.cloakTick = cloak;
+            }
             f.dotDamage = f.sourceSpell ? DotDamageOf(*player, f.sourceSpell) : 0.0f;
             f.magicka = values->GetActorValue(RE::ActorValue::kMagicka);
             f.magickaMax = MaxOf(*player, RE::ActorValue::kMagicka);
@@ -2138,9 +2344,9 @@ void HurtCpp() noexcept
             if (tracing) {   // round 26: the cooldowns as the hit found them (before the plan sets new ones)
                 cdYou = essb::trace::Cooldowns(me);
                 cdAttacker = essb::trace::Cooldowns(foe);
-                state.rng->Record(true);
+                Rng().Record(true);
             }
-            essb::PlanHurt(plan, f, foe, me, c.in, nodes, *state.rng);
+            essb::PlanHurt(plan, f, foe, me, c.in, nodes, Rng());
             if (tracing) {
                 essb::trace::Line line("hurt");
                 essb::trace::HurtLine(line, FactsOf(f.attacker ? attacker : nullptr), FactsOf(player), f, c.in.formElement, plan.count, cdYou,
@@ -2219,20 +2425,17 @@ void HandleHurt(const RE::TESHitEvent& ev, RE::PlayerCharacter& player)
     f.melee = !f.spell && !projectile;
     f.blocked = ev.flags.any(Flag::kHitBlocked);
     f.destructive = magic && Destructive(*magic);
-    if (f.spell && !projectile && attacker && state.forms.cloak) {
-        ForEachRunningEffect(*attacker, [&](RE::ActiveEffect&, RE::EffectSetting& effect) {
-            f.cloakTick = f.cloakTick || effect.HasKeyword(state.forms.cloak);
-        });
-    }
+    // Round 26c (P1): the sink reads no effect list (the tasks change them on another thread). The cloak check (a spell
+    // hit with no projectile from an attacker wearing a cloak) is marked here and made in the hurt task; your pools come
+    // from what the last task left (WriteMirrors: at most one 100 ms timer tick old).
+    f.cloakTick = f.spell && !projectile && attacker && state.forms.cloak;
     auto* values = player.AsActorValueOwner();
     f.healthBefore = values->GetActorValue(RE::ActorValue::kHealth);
     f.magickaBefore = values->GetActorValue(RE::ActorValue::kMagicka);
-    const essb::Board me = ReadBoard(player);
-    using K = essb::StatusKind;
-    f.overloadBefore = me.Has(K::kOverload) ? me[K::kOverload].magnitude : 0.0f;
-    f.guardBefore = me.guardPool.has ? me.guardPool.magnitude : 0.0f;
-    f.afterimage = me.Has(K::kAfterimage);
-    f.linger = me.Has(K::kLingerShield);
+    f.overloadBefore = state.mirrorOverload.load();
+    f.guardBefore = state.mirrorGuard.load();
+    f.afterimage = state.mirrorAfterimage.load();
+    f.linger = state.mirrorLinger.load();
     {
         std::lock_guard lock(state.hurtLock);
         state.hurts.emplace_back(attacker ? attacker->GetHandle() : RE::ActorHandle{}, f);
@@ -2305,6 +2508,33 @@ public:
 
 CastSink castSink;
 
+// Round 26c (T3): the bars' lifecycle calls at debug level 3, with the calling thread and TrueHUD's own.
+void HudLog(const char* what, int bar) noexcept
+{
+    if (state.forms.debug && state.forms.debug->value >= 3.0f) {
+        Logf("[ESSB][hud][L3] %s bar=%d thread=%lu truehud=%lu", what, bar, GetCurrentThreadId(), essb::hud::TrueHudThread());
+    }
+}
+
+// Round 26c: TrueHUD's reload as a guarded task (the bars' state is the tasks').
+void HudReloadCpp() noexcept
+{
+    try {
+        TaskScope scope("hud reload");
+        essb::hud::Reload();
+    } catch (...) {
+    }
+}
+
+void HudReloadGuarded() noexcept
+{
+    __try {
+        HudReloadCpp();
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        Fault("access violation in the hud reload task");
+    }
+}
+
 // TrueHUD's menu (re)opening: its OnClose removed every custom widget, so the bars are loaded and added again.
 void OnMenuCpp(const RE::MenuOpenCloseEvent& ev) noexcept
 {
@@ -2317,7 +2547,7 @@ void OnMenuCpp(const RE::MenuOpenCloseEvent& ev) noexcept
         }
         if (ev.opening && ev.menuName == "TrueHUD") {
             if (const auto* tasks = SKSE::GetTaskInterface()) {
-                tasks->AddTask([]() { essb::hud::Reload(); });
+                tasks->AddTask([]() { HudReloadGuarded(); });
             }
         }
     } catch (...) {
@@ -2355,6 +2585,7 @@ struct Expiry {
 void SettleCpp(const Expiry& expiry) noexcept
 {
     try {
+        TaskScope scope("settle task");   // round 26c (P5)
         if (!Enabled()) {   // master switch (review fix 3)
             return;
         }
@@ -2385,10 +2616,10 @@ void SettleCpp(const Expiry& expiry) noexcept
             line.F(" tag=%s mag=%.2f elapsed=%.2f duration=%.2f crystals=%d", essb::trace::TagName(expiry.removed.tag).c_str(),
                 expiry.removed.magnitude, expiry.removed.elapsed, expiry.removed.duration, expiry.removed.crystals);
             Emit(line);
-            state.rng->Record(true);
+            Rng().Record(true);
         }
         const essb::engine::Settled settled =
-            essb::engine::PlanSettle(plan, expiry.removed, targetBoard, selfBoard, c.in, nodes, *state.rng);
+            essb::engine::PlanSettle(plan, expiry.removed, targetBoard, selfBoard, c.in, nodes, Rng());
         CrowdRead crowd;
         // 跳印：過期終焉照常結算，然後印記跳到 6 公尺內最近一個沒有印記的敵人（剩 4 秒、不開印、只跳一次）——
         // round 24: from the same crowd the end's bodies read (one scan per event).
@@ -2452,6 +2683,7 @@ struct AppliedSeen {
 void TraceAppliedCpp(const AppliedSeen& seen) noexcept
 {
     try {
+        TaskScope scope("apply trace task");   // round 26c (P5)
         auto held = seen.actor.get();
         RE::Actor* actor = held.get();
         if (!actor || !TraceOn()) {
@@ -2530,10 +2762,10 @@ void TraceEffectEvent(const RE::TESActiveEffectApplyRemoveEvent& ev) noexcept
 void OnRemoveCpp(const RE::TESActiveEffectApplyRemoveEvent& ev) noexcept
 {
     try {
-        if (!state.selfDispel && ev.target && TraceOn()) {
+        if (!t_selfDispel && ev.target && TraceOn()) {
             TraceEffectEvent(ev);   // round 26
         }
-        if (ev.isApplied || state.selfDispel || !Enabled() || !ev.target) {
+        if (ev.isApplied || t_selfDispel || !Enabled() || !ev.target) {
             return;
         }
         auto* actor = ev.target->As<RE::Actor>();
@@ -2608,6 +2840,7 @@ struct DeathSnapshot {
 void DeathCpp(const DeathSnapshot& snapshot) noexcept
 {
     try {
+        TaskScope scope("death task");   // round 26c (P5)
         if (!Enabled()) {
             return;
         }
@@ -2661,9 +2894,9 @@ void DeathCpp(const DeathSnapshot& snapshot) noexcept
         facts.curseCap = essb::CurseCap(c.tuning, nodes);
         const bool tracing = TraceOn();   // round 26
         if (tracing) {
-            state.rng->Record(true);
+            Rng().Record(true);
         }
-        essb::PlanDeath(plan, *crowd.crowd, selfBoard, bin, facts, nodes, *state.rng);
+        essb::PlanDeath(plan, *crowd.crowd, selfBoard, bin, facts, nodes, Rng());
         if (tracing) {
             essb::trace::Line line("death");
             line.Actor("corpse", FactsOf(corpse));
@@ -3038,7 +3271,7 @@ void TargetSecond(RE::PlayerCharacter& player, const essb::Board& selfBoard, Con
         // poison -- no NPC-cast cloak (it hit the NPC's allies, took the kill credit and had a fixed strength).
         const float miasma = essb::rule::MiasmaDoses(board, c.in, nodes);
         const float plague = essb::rule::PlagueChance(board, c.tuning, nodes);
-        const bool plagueNow = plague > 0.0f && state.rng->Chance(plague);
+        const bool plagueNow = plague > 0.0f && Rng().Chance(plague);
         if (miasma <= 0.0f && !plagueNow) {
             continue;
         }
@@ -3240,27 +3473,22 @@ void SlowImmunity(RE::PlayerCharacter& player, const essb::Board& me, const essb
     if (!essb::SlowImmune(me, t, nodes)) {
         return;
     }
-    std::vector<RE::ActiveEffect*> found;
-    ForEachRunningEffect(player, [&](RE::ActiveEffect& effect, RE::EffectSetting& base) {
+    // round 26c (P2): collected by id, re-found before each dispel
+    const int dispelled = DispelLive(player, [&](RE::ActiveEffect& effect, RE::EffectSetting& base) {
         essb::SlowView v;
         v.archetype = static_cast<int>(base.GetArchetype());
         v.primaryAV = static_cast<int>(base.data.primaryAV);
         v.secondaryAV = static_cast<int>(base.data.secondaryAV);
         v.detrimental = base.IsDetrimental();
         v.duration = effect.duration;
-        if (essb::IsSlow(v)) {
-            found.push_back(&effect);
-        }
+        return essb::IsSlow(v);
     });
-    for (RE::ActiveEffect* effect : found) {
-        effect->Dispel(true);
+    if (dispelled > 0 && state.forms.debug->value >= 2.0f) {
+        Logf("[ESSB][slow][L2] immune: %d slow(s) dispelled", dispelled);
     }
-    if (!found.empty() && state.forms.debug->value >= 2.0f) {
-        Logf("[ESSB][slow][L2] immune: %d slow(s) dispelled", static_cast<int>(found.size()));
-    }
-    if (!found.empty() && TraceOn()) {   // round 26
+    if (dispelled > 0 && TraceOn()) {   // round 26
         essb::trace::Line line("slow-immune");
-        line.F(" dispelled=%d", static_cast<int>(found.size()));
+        line.F(" dispelled=%d", dispelled);
         Emit(line);
     }
 }
@@ -3591,6 +3819,7 @@ bool GameStopped(RE::UI* ui)
 void TickCpp() noexcept
 {
     try {
+        TaskScope scope("timer task");   // round 26c (P5)
         // Round 26: the probe log's watchers run before the master switch (turning it off is logged too).
         if (auto* watched = RE::PlayerCharacter::GetSingleton(); watched && Active()) {
             ProbeWatch(*watched);
@@ -3673,7 +3902,7 @@ void TickCpp() noexcept
             TraceSecond(*player, second, c.in.formElement);   // round 26
         }
         WriteMirrors(*player, selfBoard, nodes);   // an effect that ran out takes its mirror to 0
-        essb::hud::Tick();
+        essb::hud::Tick(!state.forms.trueHudBars || state.forms.trueHudBars->value == 1.0f);   // round 26c (T2): the MCM switch
     } catch (const std::exception& e) {
         Fault(e.what());
     } catch (...) {
@@ -3736,6 +3965,21 @@ void TimerLoop() noexcept
         }
     }
 }
+
+// Round 26c (P7): the timer thread is stopped (and waited for, briefly) before the statics it reads are destroyed. At
+// process exit the thread is already gone and the wait returns at once; it never blocks the loader for long.
+std::thread timerThread;
+
+struct TimerStopper {
+    ~TimerStopper()
+    {
+        state.stopTimer = true;
+        if (timerThread.joinable()) {
+            WaitForSingleObject(static_cast<HANDLE>(timerThread.native_handle()), 1000);
+            timerThread.detach();
+        }
+    }
+} timerStopper;
 
 // ---------------------------------------------------------------- round 25 (N6): hotkeys (ruling R6)
 
@@ -3837,6 +4081,7 @@ essb::Device DeviceOf(RE::INPUT_DEVICE device) noexcept
 void InputActionCpp(const essb::sink::Action& a) noexcept
 {
     try {
+        TaskScope scope("input task");   // round 26c (P5)
         LogThreadOnce(Probe::kInputTask, "input task");
         NoteTaskThread();
         if (a.kind == essb::sink::ActionKind::kStep) {
@@ -4015,6 +4260,7 @@ void LoadManifest()
         throw std::runtime_error("input device manager unavailable");
     }
     input->AddEventSink(&inputSink);   // round 25 (N6): the hotkeys (ESSBInput is gone)
+    essb::hud::SetLog(&HudLog);   // round 26c (T3)
     if (essb::hud::Find()) {
         Log("[ESSB][load] TrueHUD found: the pool and sync bars use its custom widget API");
     } else {
@@ -4042,7 +4288,7 @@ void LoadManifest()
     if (const auto* tasks = SKSE::GetTaskInterface()) {
         tasks->AddTask([]() { MainThreadGuarded(); });
     }
-    std::thread(TimerLoop).detach();
+    timerThread = std::thread(TimerLoop);   // round 26c (P7): kept, stopped before `state` is destroyed
     state.ready = true;
     PublishStatus();
     Log("[ESSB][load] manifest resolved; hit (yours and on you), effect-removed, death and spell-cast sinks registered; timer running; "
@@ -4065,36 +4311,61 @@ void AnnounceStatus()
     }
 }
 
+// Round 26c (P4): the load's resets of task-owned state run as a task (FIFO: before the first timer tick of this game).
+void GameReadyCpp() noexcept
+{
+    try {
+        TaskScope scope("game ready");
+        state.cadence = essb::Cadence{};   // round 25: the timer's clock starts again after a load (nothing carried over)
+        // Round 26: after a load the probe log shows the globals and the perks again, and the step marker starts from the save.
+        state.globalSeen.clear();
+        state.perksRead = false;
+        state.domainsSeen.clear();
+        state.secondRead = false;
+        state.stepSeen = -1.0f;
+        essb::hud::Reload();   // round 23: (re)load the bars' swf after a load / new game (round 26c: from a task)
+    } catch (...) {
+    }
+}
+
+void GameReadyGuarded() noexcept
+{
+    __try {
+        GameReadyCpp();
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        Fault("access violation in the game-ready task");
+    }
+}
+
 void OnGameReady()
 {
-    // Round 26: after a load the probe log shows the globals and the perks again, and the step marker starts from the save.
-    state.globalSeen.clear();
-    state.perksRead = false;
-    state.domainsSeen.clear();
-    state.secondRead = false;
-    state.stepSeen = -1.0f;
+    if (const auto* tasks = SKSE::GetTaskInterface()) {
+        tasks->AddTask([]() { GameReadyGuarded(); });   // round 26c: queued before inGame turns on (the timer waits for it)
+    }
     if (TraceOn()) {
         essb::trace::Line line("trace");
         line.F(" game-ready running=%llu", static_cast<unsigned long long>(state.runningMs.load()));
         Emit(line);
     }
     FlushTrace();
-    state.cadence = essb::Cadence{};   // round 25: the timer's clock starts again after a load (nothing carried over)
     state.inGame = true;
     state.echoDispelQueued = false;
     state.riposteDispelQueued = false;
-    state.selfDispel = false;
+    t_selfDispel = false;
     state.hurtQueued = false;
     {
         std::lock_guard lock(state.hurtLock);
         state.hurts.clear();
     }
-    essb::hud::Reload();   // round 23: (re)load the bars' swf after a load / new game
     PublishStatus();
-    for (auto& text : state.deferredNotices) {
+    std::vector<std::string> notices;
+    {
+        std::lock_guard lock(state.noticeLock);   // round 26c
+        notices.swap(state.deferredNotices);
+    }
+    for (auto& text : notices) {
         Show(text);
     }
-    state.deferredNotices.clear();
     AnnounceStatus();
 }
 
@@ -4277,6 +4548,7 @@ struct NativeJob {
 void NativeJobCpp(NativeJob* job) noexcept
 {
     try {
+        TaskScope scope("queued native task");   // round 26c (P5)
         if (Enabled()) {   // master switch (review fix 3): the switch may have been turned off since the call
             LogThreadOnce(Probe::kNativeTask, "queued native task");
             NoteTaskThread();
@@ -4369,6 +4641,7 @@ void CrowdOpOutsideBodies(const char* what) noexcept
 void InterruptCpp(const RE::ActorHandle& handle) noexcept
 {
     try {
+        TaskScope scope("interrupt task");   // round 26c (P5)
         auto ptr = handle.get();
         RE::Actor* actor = ptr.get();
         if (actor && !actor->IsDead() && actor->Is3DLoaded()) {
@@ -4410,6 +4683,7 @@ void QueueInterrupt(RE::ActorHandle actor)
 void CastCpp(const CastSeen& seen) noexcept
 {
     try {
+        TaskScope scope("spell-cast task");   // round 26c (P5)
         auto* player = RE::PlayerCharacter::GetSingleton();
         auto casterPtr = seen.caster.get();
         RE::Actor* caster = casterPtr.get();
@@ -4543,7 +4817,7 @@ void AddOrSet(essb::StatusPlan& plan, essb::Board& target, essb::Board& self, Co
                 essb::rule::Freeze(plan, target, essb::rule::FrozenSeconds(t, nodes), 1.0f, nodes);
             }
         } else {
-            essb::rule::AddFreeze(plan, target, static_cast<float>(delta(K::kFreeze)), false, c.in, nodes, *state.rng);
+            essb::rule::AddFreeze(plan, target, static_cast<float>(delta(K::kFreeze)), false, c.in, nodes, Rng());
         }
         break;
     case 3: tw.Set(K::kFissure, 1.0f, essb::Scaled(t, essb::n3::kFissure)); break;
@@ -4765,14 +5039,14 @@ void PapyrusBurst(RE::StaticFunctionTag*, std::int32_t element)
                     selfBoard.Layers(essb::StatusKind::kSync), essb::BurstRadius(nodes));
                 line.Actor("you", FactsOf(player));
                 Emit(line);
-                state.rng->Record(true);
+                Rng().Record(true);
             }
             CrowdRead crowd;
             BuildCrowd(crowd, *player, nullptr, nullptr, 0.0f, essb::BurstRadius(nodes) + kAroundEvent);
             const essb::BodyInputs bin = BodyInputsOf(*player, c, false);
             auto planPtr = std::make_unique<essb::StatusPlan>();
             essb::StatusPlan& plan = *planPtr;
-            const essb::BurstResult r = essb::PlanBurst(plan, *crowd.crowd, selfBoard, bin, stage, element, nodes, *state.rng);
+            const essb::BurstResult r = essb::PlanBurst(plan, *crowd.crowd, selfBoard, bin, stage, element, nodes, Rng());
             Executor(*player, nullptr, c.tuning, &crowd.actors).Run(plan);
             WriteMirrors(*player, selfBoard, nodes);
             if (state.forms.debug->value >= 1.0f) {   // v0.4 6.1: 融斷（目標數、同調段）; probe N5-2 reads the crowd size
@@ -4831,7 +5105,7 @@ void PapyrusFormEnter(RE::StaticFunctionTag*, std::int32_t element)
             CrowdRead crowd;
             BuildCrowd(crowd, *player, nullptr, nullptr, 0.0f, essb::BurstRadius(nodes) + kAroundEvent);
             const essb::BodyInputs bin = BodyInputsOf(*player, c, false);
-            essb::PlanAdvent(plan, *crowd.crowd, selfBoard, bin, element, nodes, *state.rng);
+            essb::PlanAdvent(plan, *crowd.crowd, selfBoard, bin, element, nodes, Rng());
             Executor(*player, nullptr, c.tuning, &crowd.actors).Run(plan);
             WriteMirrors(*player, selfBoard, nodes);
         });
@@ -4946,16 +5220,16 @@ void PapyrusCastProc(RE::StaticFunctionTag*, RE::Actor* actor, bool power)
         essb::Plan plan;
         const bool tracing = TraceOn();   // round 26
         if (tracing) {
-            state.rng->Record(true);
+            Rng().Record(true);
         }
-        const essb::Proc proc = essb::RollProc(element, attack, kConfig, c.tuning, c.player, facts, nodes, *state.rng, terms);
+        const essb::Proc proc = essb::RollProc(element, attack, kConfig, c.tuning, c.player, facts, nodes, Rng(), terms);
         plan.Add({ essb::Cast::kProc, proc.magnitude, element, attack.power });
         if (tracing) {   // the plan's element / magnitude / crit fields are only read by the log
             plan.element = element;
             plan.magnitude = proc.magnitude;
             plan.crit = proc.crit;
             TraceProc("cast", plan, attack, -1, actor, terms.charges, terms.critBonus);
-            state.rng->Record(false);
+            Rng().Record(false);
         }
         Apply(*player, *actor, plan);
         });

@@ -13,7 +13,7 @@
              every Papyrus call of ESSBNative.Trace sits behind a level-4 check (CachedDebugLevel >= 4 / Level() >= 4 or
              the gated Probe / LogEvent / LogThrottled / ESSBLog.Log); the timer thread flushes once a second; the step
              keys run only with the level on; ESSBNative.Trace is declared and registered through Guard (read-only); the
-             MCM debug enum has 4：探針 log; DLL version 0.26.1 everywhere (round 26b).
+             MCM debug enum has 4：探針 log; DLL version 0.26.2 everywhere (round 26c).
   RECORDS    ESSB_ProbeStep is a GLOB at 0x005C00 in the written ESP and in the manifest's globals (Load.h resolves it:
              build/fix25_verify LOAD runs the loader on this ESP).
   MUTANTS    the Trace.h / StatusEngine.h probe-log mutants of native/build.py all failed trace_test (receipt), >= 4.
@@ -118,16 +118,16 @@ def op(ctx, name, who='target', kind='-', el='none', mag=0.0, sec=0.0, on=None, 
 
 def s_setup(fault):
     L = Log()
-    L.raw('[ESSB][load] ElementsSpellblade 0.26.1; SE 1.5.97 + SKSE 2.0.20 only; no entry-51 fallback')
+    L.raw('[ESSB][load] ElementsSpellblade 0.26.2; SE 1.5.97 + SKSE 2.0.20 only; no entry-51 fallback')
     L.step(1)
-    L.t('pap', ' kind=mcm-button who=- button=ShowNativeStatus version=0.26.1 active=True')
+    L.t('pap', ' kind=mcm-button who=- button=ShowNativeStatus version=0.26.2 active=True')
     probes = ['Papyrus native', 'queued native task', 'TESHitEvent', 'TESHitEvent (you are the target)', 'hurt task',
               'TESActiveEffectApplyRemoveEvent', 'TESDeathEvent', 'timer task', 'TESSpellCastEvent', 'input sink']
     for p in probes:
         if fault and p == 'hurt task':
             continue
         L.raw(f'[ESSB][X1] {p} thread=15464 n=1 input=18188 DIFFERENT task=15464 same window=18188 DIFFERENT dataLoaded=2744 paused=0')
-    for name, keys in (('TESHitEvent', 'hit-task'), ('timer task', 'post-process'), ('queued native task', 'post-process'),
+    for name, keys in (('TESHitEvent', '-'), ('hit task', 'post-process'), ('timer task', 'post-process'), ('queued native task', 'post-process'),
                        ('input sink (every frame)', 'poll-controls'), ('SKSE UI task', 'ui-job'), ('Papyrus native', 'vm-job')):
         L.raw(f'[ESSB][X2] {name} thread=15464 window=18188 DIFFERENT paused=0 havok=0x00000004 keys={keys} '
               'frames=ESSB+0x1A2B,SkyrimSE.exe+0x640E67')
@@ -367,6 +367,7 @@ def check_samples(j):
     good = s_setup(False).text()
     for label, bad in (('task on the UI job', good.replace('[ESSB][X2] timer task thread=15464 window=18188 DIFFERENT paused=0 havok=0x00000004 keys=post-process',
                                                            '[ESSB][X2] timer task thread=15464 window=18188 DIFFERENT paused=0 havok=0x00000004 keys=ui-job', 1)),
+                       ('an overlap', good + '[ESSB][OVERLAP] hit task thread=15464 with=timer task\n'),
                        ('paused task off the window thread', good.replace('timer task thread=18188 window=18188 same paused=1',
                                                                          'timer task thread=15464 window=18188 DIFFERENT paused=1', 1).replace('keys=paused-tasks', 'keys=-', 1))):
         assert bad != good, label
@@ -379,7 +380,7 @@ def check_samples(j):
 
 # ---------------------------------------------------------------- TRACE (static)
 
-X1_NAMES = ['"TESHitEvent"', '"TESHitEvent (you are the target)"', '"hurt task"', '"TESSpellCastEvent"', '"TESActiveEffectApplyRemoveEvent"',
+X1_NAMES = ['"hit task"', '"SKSE UI task"', '"input sink (every frame)"', '"input task"', '"TESHitEvent"', '"TESHitEvent (you are the target)"', '"hurt task"', '"TESSpellCastEvent"', '"TESActiveEffectApplyRemoveEvent"',
             '"TESDeathEvent"', '"timer task"', '"input sink"', '"Papyrus native"', '"queued native task"', '"settle task"', '"death task"',
             '"spell-cast task"']
 
@@ -410,6 +411,7 @@ def check_trace(cpp, sources, trace_h, config_text):
         errors.append('the input sink runs a switch itself (round 26b: PlanInput, then AddTask)')
     if '[ESSB][X2]' not in cpp or 'RtlCaptureStackBackTrace(2, 12' not in cpp or 'REL::ID(528600)' not in cpp:
         errors.append('the X2 witness (call chains, the Havok TLS word) is missing')
+    errors += check_26c(cpp)
     if 'inline constexpr float kLevel = 4.0f;' not in trace_h:
         errors.append('Trace.h kLevel is not 4')
     loop = cpp[cpp.index('void TimerLoop() noexcept'):cpp.index('// ---------------------------------------------------------------- round 25 (N6): hotkeys')]
@@ -436,16 +438,71 @@ def check_trace(cpp, sources, trace_h, config_text):
     return errors
 
 
+def fn_text(cpp, head, stop):
+    at = cpp.find(head)
+    if at < 0:
+        return ''
+    end = cpp.find(stop, at)
+    return cpp[at:end if end > at else at + 4000]
+
+
+TASK_BODIES = {'void HitTaskCpp(': 'hit task', 'void HurtCpp()': 'hurt task', 'void SettleCpp(': 'settle task',
+               'void DeathCpp(': 'death task', 'void CastCpp(const CastSeen& seen) noexcept\n{': 'spell-cast task',
+               'void TickCpp()': 'timer task', 'void NativeJobCpp(': 'queued native task', 'void InterruptCpp(': 'interrupt task',
+               'void InputActionCpp(': 'input task', 'void GameReadyCpp(': 'game ready', 'void HudReloadCpp(': 'hud reload'}
+SINK_FORBIDDEN = ('CastSpellImmediate', 'Apply(', 'Executor(', 'Dispel(', 'RestoreActorValue', 'BuildCrowd(', 'ReadBoard(',
+                  'ForEachRunningEffect(', 'RequestSwitch(', 'Rng()')
+
+
+def check_26c(cpp):
+    """Round 26c: the hit / hurt sinks do no engine work (P1), every task body opens a TaskScope (P5), collect-then-dispel
+    re-finds by id (P2), the thread-owned flags are thread_local (P4), the alias lock is released on the SEH path (P6),
+    the timer thread is stopped before `state` goes (P7), TrueHUD calls go through UI tasks with a switch (T1, T2)."""
+    errors = []
+    sink = fn_text(cpp, 'void HitSinkCpp(const RE::TESHitEvent& ev) noexcept', '\nclass HitSink final')
+    hurt = fn_text(cpp, 'void HandleHurt(const RE::TESHitEvent& ev, RE::PlayerCharacter& player)\n{', '\n}\n')
+    if not sink or 'AddTask(' not in sink or 'essb::sink::RouteHit(' not in sink:
+        errors.append('the hit sink does not route (Sinks.h RouteHit) and queue the hit task (round 26c P1)')
+    for body, name in ((sink, 'hit sink'), (hurt, 'hurt sink')):
+        for word in SINK_FORBIDDEN:
+            if word in body:
+                errors.append(f'the {name} does engine work or reads an effect list itself ({word}) -- round 26c P1')
+    for head, name in TASK_BODIES.items():
+        body = fn_text(cpp, head, '\n}\n')
+        if not body or f'TaskScope scope("{name}");' not in body:
+            errors.append(f'the {name} body opens no TaskScope (round 26c P5)')
+    if '[ESSB][OVERLAP]' not in cpp or 'state.mutating.fetch_add(1) + 1 > 1' not in cpp:
+        errors.append('the overlap witness is missing (round 26c P5)')
+    if 'thread_local bool t_selfDispel' not in cpp or 'state.selfDispel' in cpp or 'state.handling' in cpp or 'state.traceCtx' in cpp:
+        errors.append('a thread-owned flag is shared across threads (round 26c P4)')
+    for word in ('DispelLive(*player', 'DispelLive(player'):
+        if word not in cpp:
+            errors.append(f'{word}: a collect-then-dispel without the re-find (round 26c P2)')
+    # the engine adapter's Dispel takes the handle StatusEngine.h DispelWhere has just re-found
+    rest = cpp.replace('live->Dispel(true);', '').replace('void Dispel(essb::Who, Handle effect) { effect->Dispel(true); }', '')
+    if '->Dispel(true)' in rest:
+        errors.append('a Dispel on a pointer kept across other dispels (round 26c P2)')
+    if re.search(r'RE::BS\w*LockGuard \w+\(', cpp) or '__finally' not in cpp:
+        errors.append('an engine lock guard inside an SEH frame (round 26c P6)')
+    if 'std::thread(TimerLoop).detach()' in cpp or 'struct TimerStopper' not in cpp:
+        errors.append('the timer thread is not stopped before state is destroyed (round 26c P7)')
+    if 'state.rng->' in cpp or '*state.rng' in cpp:
+        errors.append('a random draw bypasses Rng() (round 26c P3)')
+    return errors
+
+
 def check_versions(b):
     errors = []
     cmake = (ROOT / 'native/CMakeLists.txt').read_text(encoding='utf-8')
     header = (ROOT / 'native/include/ManifestData.h').read_text(encoding='utf-8')
     import fix19_native as n
-    if 'VERSION 0.26.1' not in cmake or 'nativeVersion[] = "0.26.1"' not in header or n.NATIVE_VERSION != '0.26.1':
-        errors.append('the DLL version is not 0.26.1 in CMakeLists / ManifestData.h / fix19_native')
+    if 'VERSION 0.26.2' not in cmake or 'nativeVersion[] = "0.26.2"' not in header or n.NATIVE_VERSION != '0.26.2':
+        errors.append('the DLL version is not 0.26.2 in CMakeLists / ManifestData.h / fix19_native')
     manifest = json.loads((b.OUT / 'SKSE/Plugins/ElementsSpellblade/manifest.json').read_text(encoding='utf-8'))
-    if manifest.get('native_version') != '0.26.1':
-        errors.append('the packaged manifest is not 0.26.1')
+    if manifest.get('native_version') != '0.26.2':
+        errors.append('the packaged manifest is not 0.26.2')
+    if manifest.get('globals', {}).get('ESSB_TrueHudBars') != 0x5C01:
+        errors.append('ESSB_TrueHudBars is not in the manifest globals at 0x005C01 (round 26c T2)')
     if manifest.get('globals', {}).get('ESSB_ProbeStep') != 0x5C00:
         errors.append('ESSB_ProbeStep is not in the manifest globals at 0x005C00')
     return errors
@@ -526,6 +583,12 @@ def self_test(j, cpp, sources, trace_h, config_text, sheet_text):
         'HasOurEffect(*killer, nullptr); snapshot.seen = essb::sink::DeathSink(', 1), sources, trace_h, config_text))
     expect('the input sink switching itself', check_trace(cpp.replace('const auto actions = essb::sink::PlanInput(presses, facts);',
         'const auto actions = essb::sink::PlanInput(presses, facts); RequestSwitch(1, "x");', 1), sources, trace_h, config_text))
+    expect('the hit sink casting again', check_trace(cpp.replace('        seen.raw = ReadAttack(ev, *player, seen.verdict.weaponType);',
+        '        seen.raw = ReadAttack(ev, *player, seen.verdict.weaponType); CasterOf(*player).CastSpellImmediate(nullptr, false, nullptr, 1.0f, false, 0.0f, player);', 1),
+        sources, trace_h, config_text))
+    expect('a task body without its scope', check_trace(cpp.replace('TaskScope scope("settle task");', '', 1), sources, trace_h, config_text))
+    expect('the hurt sink reading your board', check_trace(cpp.replace('    f.guardBefore = state.mirrorGuard.load();',
+        '    f.guardBefore = ReadBoard(player).guardPool.magnitude;', 1), sources, trace_h, config_text))
     expect('a station moved in the sheet', check_judge(j, sheet_text.replace('### 站 25：B-07', '### 站 25：B-08', 1))[0])
     expect('a station without log 判定', check_judge(j, sheet_text.replace('**log 判定**', '**判定**', 1))[0])
     return caught
@@ -558,7 +621,7 @@ def run(b):
     print(f'FIX26 ok: probe-judge judges all {judge_counts["steps"]} steps at {judge_counts["stations"]} stations = build/probes-all.md; '
           f'native sample (real planners) {len(native)} steps PASS and FAIL with one fault each ({", ".join(r[0] for r in native)}); '
           f'hand samples {len(hand)} steps PASS / FAIL ({", ".join(r[0] for r in hand)}); hurt task on its own X1 flag, 13 X1 probes, '
-          f'level 4, 1 s flush, gated step keys and Papyrus probes, ESSBNative.Trace guarded; ESSB_ProbeStep GLOB 0x005C00; 0.26.1; 26b sinks (death reads the corpse only, input queues) and X2 witness; '
+          f'level 4, 1 s flush, gated step keys and Papyrus probes, ESSBNative.Trace guarded; ESSB_ProbeStep GLOB 0x005C00; 0.26.2; 26c: sinks snapshot only, task scopes, re-find dispels; 26b sinks (death reads the corpse only, input queues) and X2 witness; '
           f'line endings kept; {len(caught)}/{len(caught)} source faults caught; {len(trace_mutants)} trace mutants failed; '
           f'history: {history["changed"]} changed / {history["added"]} added functions, {len(history["silent_edits_caught"])} silent '
           f'edits caught; native seal {native_history["changed"]} changed / {native_history["added"]} added / '

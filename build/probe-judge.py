@@ -430,10 +430,12 @@ _X2 = re.compile(r'^\[ESSB\]\[X2\] (.+?) thread=(\d+) window=(\d+) (\w+) paused=
 # The chain keys (native/include/Trace.h kChainKeys; build/fix26_verify.py checks the two agree).
 CHAIN_KEYS = {0x640E67: 'post-process', 0x5B36AD: 'paused-tasks', 0x5C770C: 'hit-task', 0x7211EF: 'hit-frame', 0x63FCC9: 'ui-job',
               0x5B35BF: 'main-ui', 0x5B3F48: 'poll-controls', 0x5B33B5: 'paused-input', 0x640623: 'vm-job', 0x5B3381: 'paused-vm'}
-X2_TASKS = {'timer task', 'queued native task', 'hurt task', 'settle task', 'death task', 'spell-cast task', 'input task'}
+X2_TASKS = {'timer task', 'queued native task', 'hurt task', 'settle task', 'death task', 'spell-cast task', 'input task', 'hit task'}
 X2_HIT = {'TESHitEvent', 'TESHitEvent (you are the target)'}
 # during gameplay: the context each probe must show (the commander's ruling, round 26b); a name not listed is only recorded
-X2_WANT = {**{n: {'post-process'} for n in X2_TASKS}, **{n: {'post-process', 'hit-task', 'hit-frame'} for n in X2_HIT},
+# Round 26c: the hit sinks no longer do engine work, so their context is only recorded (in this load order Precision / TDM
+# send TESHitEvent on the window thread); every task -- the hit task included -- must be in Post process.
+X2_WANT = {**{n: {'post-process'} for n in X2_TASKS},
            'input sink': {'poll-controls'}, 'input sink (every frame)': {'poll-controls'}, 'SKSE UI task': {'ui-job', 'main-ui'},
            'Papyrus native': {'vm-job'}}
 
@@ -470,8 +472,14 @@ def r_setup(seg, ctx):
     button = [x for x in log.of('pap') if x['kind'] == 'mcm-button' and 'ShowNativeStatus' in x.text]
     if not version:
         return NODATA('log 裡沒有 [ESSB][load] ElementsSpellblade 版本行（不是這一版的 log？）')
-    if '0.26.1' not in version[0].text:
-        return FAIL('DLL 版本不是 0.26.1', version[0])
+    if '0.26.2' not in version[0].text:
+        return FAIL('DLL 版本不是 0.26.2', version[0])
+    overlap = [x for x in log if x.kind == 'raw' and x.text.startswith('[ESSB][OVERLAP]')]
+    if overlap:
+        return FAIL('出現 [ESSB][OVERLAP]：兩個改引擎的工作同時在跑（round 26c 規定永遠不能出現）', *overlap[:4])
+    rng = [x for x in log if x.kind == 'raw' and x.text.startswith('[ESSB][RNG]')]
+    if rng:
+        return FAIL('擲骰出現在 task 以外', *rng[:2])
     seen = defaultdict(list)
     for x in log:
         if x.kind == 'raw':
@@ -485,16 +493,16 @@ def r_setup(seg, ctx):
     if missing:
         return FAIL('X1 缺：' + '、'.join(missing), *evidence)
     x2_names = {n for x, n, p, k in rows}
-    if not (x2_names & X2_HIT) or 'timer task' not in x2_names:
-        return FAIL('X2 缺命中 sink 或計時器 task 的呼叫鏈', *evidence)
+    if 'hit task' not in x2_names or 'timer task' not in x2_names:
+        return FAIL('X2 缺命中 task 或計時器 task 的呼叫鏈', *evidence)
     if bad:
         return FAIL('X2：' + '；'.join(r for x, r in bad[:4]), *[x for x, r in bad[:6]])
-    ok_button = bool(button) and 'version=0.26.1' in button[-1].text and 'active=True' in button[-1].text
+    ok_button = bool(button) and 'version=0.26.2' in button[-1].text and 'active=True' in button[-1].text
     if eyes or not ok_button:
         why = ('；'.join(r for x, r in eyes[:4]) + '；') if eyes else ''
-        return EYES(why + ('MCM 版本按鈕沒寫進 log 或不是 0.26.1／True，請看畫面；' if not ok_button else '') + '呼叫鏈：' + chains,
+        return EYES(why + ('MCM 版本按鈕沒寫進 log 或不是 0.26.2／True，請看畫面；' if not ok_button else '') + '呼叫鏈：' + chains,
                     *(evidence + [x for x, r in eyes[:3]]))
-    return PASS('版本 0.26.1；X1 十種都在；X2：遊戲中命中 sink 與所有 task 在 Post process、輸入／UI／VM 在各自的 job、暫停時在視窗執行緒。'
+    return PASS('版本 0.26.2；X1 十種都在；沒有 OVERLAP；X2：遊戲中所有 task（含命中 task）在 Post process、輸入／UI／VM 在各自的 job、暫停時在視窗執行緒（命中 sink 只記錄）。'
                 '呼叫鏈：' + chains, *(evidence + [x for x, n, p, k in rows[:4]]))
 
 

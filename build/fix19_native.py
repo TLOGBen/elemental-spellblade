@@ -35,7 +35,7 @@ import fix23_reference as _ref23
 import fix24_reference as _ref24
 import fix25_reference as _ref25
 NATIVE = ROOT / 'native'
-NATIVE_VERSION = '0.26.1'
+NATIVE_VERSION = '0.26.2'
 NATIVE_HIT = 0x52d1
 NATIVE_WANTED = 0x52d2
 NATIVE_GLOBALS = {'ESSB_NativeHit', 'ESSB_NativeWanted'}      # round 19: the MCM shows both
@@ -254,6 +254,7 @@ def globals_(b):
         ids[name] = b.ID_BALANCE_GLOB[name][0]
     ids[hit25.THUNDER_GLOBAL] = hit25.thunder_global_id()
     ids[hit26.PROBE_STEP_GLOBAL] = hit26.probe_step_id()   # round 26: the probe log's step marker
+    ids[hit26.TRUEHUD_GLOBAL] = hit26.truehud_id()          # round 26c: the TrueHUD bars switch
     ids['ESSB_FreeOpen'] = b.ID_MECH_GLOB + mech.index('ESSB_FreeOpen')
     ids['ESSB_HotkeysEnabled'] = b.hit18.KEY_ENABLE
     ids['ESSB_FormNotify'] = b.hit18.NOTIFY

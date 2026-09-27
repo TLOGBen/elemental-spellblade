@@ -33,6 +33,7 @@ BODIES = {
              ' silenced=' + B + ' echo=' + B + ' riposte=' + B + r' steps=\S+ rolls=.+$'),
     'hit-end': r' tgt=' + ACTOR + ' you=' + ACTOR + r' ops=\d+$',
     'menu': r' name=.+ opening=' + B + ' paused=' + B + '$',
+    'hit-late': r' tgt=' + ACTOR + r' reason=\w+$',
     'hit-reject': r' tgt=' + ACTOR + r' reason=[\w-]+ weapon=-?\d+$',
     'remove': (r' on=' + ACTOR + r' tag=\S+ mag=' + NUM + ' elapsed=' + NUM + ' duration=' + NUM + ' left=' + NUM +
                r' reason=(?:expired|dispel|death)$'),

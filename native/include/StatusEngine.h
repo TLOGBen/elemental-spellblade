@@ -67,22 +67,40 @@ Board ReadBoard(E& engine, Who who)
     return board;
 }
 
+// Round 26c (P2): the matches are collected by identity (unique id, base effect, spell) and each is re-found in the live
+// list right before its Dispel -- an earlier dispel may change the list, so no handle is kept across dispels. One that is
+// gone by then is skipped. Returns how many were dispelled.
 template <class E, class Match>
 int DispelWhere(E& engine, Who who, Match&& match)
 {
-    std::vector<typename E::Handle> found;
-    engine.ForEach(who, [&](const EffectView& v, typename E::Handle h) {
+    struct Id {
+        std::uint32_t uid, effect, spell;
+    };
+    std::vector<Id> found;
+    engine.ForEach(who, [&](const EffectView& v, typename E::Handle) {
         if (match(v)) {
-            found.push_back(h);
+            found.push_back(Id{ v.uid, v.effect, v.spell });
         }
     });
     const bool outer = engine.SelfDispel();
     engine.SetSelfDispel(true);
-    for (const auto& h : found) {
-        engine.Dispel(who, h);
+    int dispelled = 0;
+    for (const Id& id : found) {
+        bool done = false;
+        typename E::Handle live{};
+        engine.ForEach(who, [&](const EffectView& v, typename E::Handle h) {
+            if (!done && v.uid == id.uid && v.effect == id.effect && v.spell == id.spell) {
+                live = h;
+                done = true;
+            }
+        });
+        if (done) {
+            engine.Dispel(who, live);
+            ++dispelled;
+        }
     }
     engine.SetSelfDispel(outer);
-    return static_cast<int>(found.size());
+    return dispelled;
 }
 
 // Ruling R5: cast by hand (spell / scroll / staff from the left or right hand), still timed, beneficial -- not race

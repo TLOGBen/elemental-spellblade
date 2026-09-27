@@ -200,6 +200,12 @@ MUTANTS = [
     # Round 26b: the sinks read only their own event (Sinks.h).
     ('the death sink reads the killer', 'Sinks.h', 'trace',
      '    s.servant = world.Servant(corpse);', '    s.servant = world.Servant(corpse) || (killer && world.Servant(static_cast<Ref>(const_cast<void*>(killer))));'),
+    # Round 26c: the tape's bound, the dispel re-find, the nested-hit drop.
+    ('the tape writes past its end', 'Trace.h', 'trace', 'if (i >= 0 && i < kTape) {', 'if (i >= 0) {'),
+    ('a dispel by a stale handle (no re-find by identity)', 'StatusEngine.h', 'trace',
+     'if (!done && v.uid == id.uid && v.effect == id.effect && v.spell == id.spell) {', 'if (!done) {'),
+    ('a hit raised in our own hit task is queued again', 'Sinks.h', 'trace',
+     '    if (insideHitTask) {\n        return HitRoute::kNested;', '    if (false) {\n        return HitRoute::kNested;'),
     ('a blocked hotkey is still run', 'Sinks.h', 'trace',
      'out.push_back(Action{ ActionKind::kSwitch, element, 0, code, open });', 'out.push_back(Action{ ActionKind::kSwitch, element, 0, code, true });'),
 ]
@@ -255,7 +261,7 @@ def run_mutants(log):
         log.write(f'$ mutant {i} ({name}): exit {r.returncode}\n{r.stdout}\n')
         if r.returncode == 0:
             raise RuntimeError(f'NATIVE MUTANT survived: {name} ({header}) -- the {test} test does not see it')
-        results.append(dict(name=name, header=header, test=test, exit=r.returncode, first_line=r.stdout.strip().splitlines()[-1][:200]))
+        results.append(dict(name=name, header=header, test=test, exit=r.returncode, first_line=(r.stdout.strip().splitlines() or [f'no output: the process died (exit {r.returncode:#x})'])[-1][:200]))
     return results
 
 

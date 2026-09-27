@@ -510,8 +510,9 @@ public:
     {
         std::string out;
         char one[64];
-        for (int i = 0; i < count_; ++i) {
-            const Draw& d = tape_[i];
+        const int shown = std::clamp(count_, 0, kTape);
+        for (int i = 0; i < shown; ++i) {
+            const Draw& d = tape_[static_cast<std::size_t>(i)];
             int n = 0;
             if (d.kind == 'C') {
                 n = std::snprintf(one, sizeof(one), "%sC(%.4g)=%d", i ? " " : "", d.a, d.v > 0.5f ? 1 : 0);
@@ -540,8 +541,12 @@ private:
         if (!recording_) {
             return;
         }
-        if (count_ < kTape) {
-            tape_[count_++] = Draw{ kind, a, b, v };
+        // Round 26c (P3): the index is read once and checked right where it is used, so no draw -- even one racing
+        // another thread's (the draws are the tasks' only; Plugin.cpp logs any other) -- can write past tape_.
+        const int i = count_;
+        if (i >= 0 && i < kTape) {
+            tape_[static_cast<std::size_t>(i)] = Draw{ kind, a, b, v };
+            count_ = i + 1;
         } else {
             ++more_;
         }

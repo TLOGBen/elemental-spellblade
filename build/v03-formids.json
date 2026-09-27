@@ -4,7 +4,7 @@
     "Skyrim.esm"
   ],
   "esl_flagged": false,
-  "record_count": 5028,
+  "record_count": 5029,
   "next_object_id": "00601A",
   "allocation": [
     {
@@ -6728,6 +6728,11 @@
     "ESSB_ProbeStep": {
       "id": "005C00",
       "formid": "01005C00",
+      "type": "GLOB"
+    },
+    "ESSB_TrueHudBars": {
+      "id": "005C01",
+      "formid": "01005C01",
       "type": "GLOB"
     },
     "ESSB_Proc": {

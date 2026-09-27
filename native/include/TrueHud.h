@@ -12,8 +12,14 @@
 // below pin the layout for the compiler we build with. TrueHUD stays an optional runtime dependency: no TrueHUD.dll, or
 // no RequestPluginAPI export, and nothing is drawn (silently).
 //
-// Threads: the values are written by the DLL's main-thread timer task (Publish) and read by TrueHUD's UI thread
-// (PoolBar::Update) through atomics; the API calls themselves only queue HUD tasks inside TrueHUD.
+// Threads (round 26c audit): the values are written by our SKSE tasks (Publish, from WriteMirrors) and read by TrueHUD
+// on its own thread (PoolBar::Update) through relaxed atomics only -- Update reads nothing else of ours, no effect list,
+// no actor. Every call INTO TrueHUD (LoadCustomWidgets, RegisterNewWidgetType, AddWidget, RemoveWidget) is made from an
+// SKSE UI task (AddUITask: the UI job, where TrueHUD's menu runs), never from a Post-process worker and never while a
+// reload of ours is being decided: the load / add / remove decisions (Link) are made only in our timer / reload tasks
+// (one after another), and the UI tasks they queue run in queue order. The GFxValue members (WidgetBase::object, view) are
+// TrueHUD's: it sets them before Initialize and releases the widget (and so them) on its own thread; we keep no copy of
+// the shared_ptr. The widget calls have no SEH frame any more (round 26c): a fault inside Scaleform is not hidden.
 #include <RE/Skyrim.h>
 #include <SKSE/SKSE.h>
 
@@ -138,26 +144,43 @@ inline void Publish(int bar, float current, float full) noexcept
     Shared().full[bar].store(full, std::memory_order_relaxed);
 }
 
+// Round 26c (T3): the lifecycle log (Plugin.cpp: debug level 3, with the thread); set once at data load.
+using LogFn = void (*)(const char* what, int bar) noexcept;
+inline std::atomic<LogFn>& LogHook() noexcept
+{
+    static std::atomic<LogFn> hook{};
+    return hook;
+}
+inline void SetLog(LogFn fn) noexcept { LogHook().store(fn); }
+inline void Note(const char* what, int bar = -1) noexcept
+{
+    if (LogFn fn = LogHook().load()) {
+        fn(what, bar);
+    }
+}
+
 class PoolBar final : public WidgetBase
 {
 public:
     explicit PoolBar(int a_bar) : bar_(a_bar) {}
 
-    // TrueHUD calls these on its UI thread: a C++ catch inside, an SEH frame outside (the round-22 crash guards), so a
-    // failure here can only leave a bar undrawn.
-    void Initialize() override { Seh(&PoolBar::InitCpp, this); }
-    void Update(float) override { Seh(&PoolBar::RefreshCpp, this); }
-    void Dispose() override {}
+    // TrueHUD calls these on its own thread. A C++ catch only (round 26c: no SEH frame hiding a Scaleform fault).
+    void Initialize() override
+    {
+        Note("Initialize", bar_);
+        InitCpp(this);
+    }
+    void Update(float) override
+    {
+        if (!updated_) {
+            updated_ = true;
+            Note("Update (first)", bar_);
+        }
+        RefreshCpp(this);
+    }
+    void Dispose() override { Note("Dispose", bar_); }
 
 private:
-    static void Seh(void (*fn)(PoolBar*) noexcept, PoolBar* self) noexcept
-    {
-        __try {
-            fn(self);
-        } __except (EXCEPTION_EXECUTE_HANDLER) {
-        }
-    }
-
     static void InitCpp(PoolBar* self) noexcept
     {
         try {
@@ -228,11 +251,13 @@ private:
     }
 
     int bar_;
+    bool updated_ = false;
     bool shown_ = false;
     double percent_ = -1.0;
 };
 
-// The API and the add state. All on the main thread except `loaded` (TrueHUD's callback).
+// The API and the add state. Round 26c: the plain fields only in our tasks (the timer / reload tasks, one at a time);
+// `loaded` is TrueHUD's callback's.
 struct Link {
     Api* api = nullptr;
     SKSE::PluginHandle plugin = SKSE::kInvalidPluginHandle;
@@ -241,7 +266,19 @@ struct Link {
     bool added = false;            // the bars were added since the last load
     int waitTicks = 0;             // AddWidget waits a tick after the load (the loadClip is asynchronous)
     int pendingTicks = 0;          // timer ticks since the load was requested (review: TrueHUD may never call back)
+    bool enabled = true;           // round 26c (T2): the MCM switch ESSB_TrueHudBars as the last tick saw it
 };
+
+// Round 26c: every call into TrueHUD from an SKSE UI task (the UI job; TrueHUD's menu runs there).
+inline void OnUi(std::function<void()> fn) noexcept
+{
+    try {
+        if (const auto* tasks = SKSE::GetTaskInterface()) {
+            tasks->AddUITask(std::move(fn));
+        }
+    } catch (...) {
+    }
+}
 
 // The oldest TrueHUD whose interface the declarations above were checked against (the installed 1.1.10's PDB).
 inline constexpr std::uint64_t kMinVersion = (1ull << 48) | (1ull << 32) | (10ull << 16);
@@ -302,28 +339,64 @@ inline bool Find() noexcept
     }
 }
 
-// A new load: at game load and whenever TrueHUD's menu opens (its OnClose removed every custom widget).
+inline unsigned long TrueHudThread() noexcept
+{
+    Api* api = Hud().api;
+    return api ? api->GetTrueHUDThreadId() : 0;
+}
+
+// A new load: at game load and whenever TrueHUD's menu opens (its OnClose removed every custom widget). Called from our
+// tasks; the load itself runs in a UI task.
 inline void Reload() noexcept
 {
     Link& h = Hud();
-    if (!h.api || h.requested.exchange(true)) {
+    if (!h.api || !h.enabled || h.requested.exchange(true)) {
         return;
     }
     h.loaded = false;
     h.added = false;
     h.waitTicks = 0;
     h.pendingTicks = 0;
-    h.api->LoadCustomWidgets(h.plugin, kSwf, [](ApiResult result) {
-        Hud().loaded = result == ApiResult::kOk;
-        Hud().requested = false;
+    OnUi([]() {
+        Note("LoadCustomWidgets");
+        Link& link = Hud();
+        link.api->LoadCustomWidgets(link.plugin, kSwf, [](ApiResult result) {
+            Note(result == ApiResult::kOk ? "loaded" : "load failed");
+            Hud().loaded = result == ApiResult::kOk;
+            Hud().requested = false;
+        });
     });
 }
 
-// Once per timer tick (main thread): add the bars one tick after the load finished.
-inline void Tick() noexcept
+// Once per timer tick (our timer task): the MCM switch (T2), then add the bars one tick after the load finished. The
+// add runs in a UI task.
+inline void Tick(bool enabled) noexcept
 {
     Link& h = Hud();
-    if (!h.api || h.added) {
+    if (!h.api) {
+        return;
+    }
+    if (enabled != h.enabled) {
+        h.enabled = enabled;
+        if (!enabled) {
+            // T2: off -- the bars go (if they were added) and nothing more is loaded or added until it is on again.
+            if (h.added) {
+                OnUi([]() {
+                    for (int bar = 0; bar < kBarCount; ++bar) {
+                        Note("RemoveWidget", bar);
+                        Hud().api->RemoveWidget(Hud().plugin, kWidgetType, static_cast<std::uint32_t>(bar), RemovalMode::kImmediate);
+                    }
+                });
+            }
+            h.added = false;
+            h.requested = false;
+            h.loaded = false;
+            return;
+        }
+        Reload();
+        return;
+    }
+    if (!enabled || h.added) {
         return;
     }
     if (!h.loaded) {
@@ -337,11 +410,16 @@ inline void Tick() noexcept
     if (++h.waitTicks < 2) {
         return;
     }
-    h.api->RegisterNewWidgetType(h.plugin, kWidgetType);
-    for (int bar = 0; bar < kBarCount; ++bar) {
-        h.api->AddWidget(h.plugin, kWidgetType, static_cast<std::uint32_t>(bar), kSymbol, std::make_shared<PoolBar>(bar));
-    }
     h.added = true;
+    OnUi([]() {
+        Link& link = Hud();
+        Note("RegisterNewWidgetType");
+        link.api->RegisterNewWidgetType(link.plugin, kWidgetType);
+        for (int bar = 0; bar < kBarCount; ++bar) {
+            Note("AddWidget", bar);
+            link.api->AddWidget(link.plugin, kWidgetType, static_cast<std::uint32_t>(bar), kSymbol, std::make_shared<PoolBar>(bar));
+        }
+    });
 }
 
 }  // namespace essb::hud

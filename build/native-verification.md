@@ -367,3 +367,31 @@ snapshot 的 74 段中，R5→R1 priority 遞減；按 smoke 證實的最低 pri
 | L3 對照 | 除錯等級 3 起，本模組造成的每一次擊殺、推力、跌倒、hazard 記一行 `[ESSB][AB][L3] kind= ref= tick=GetTickCount64 via= thread=`，給崩潰 A/B 對照。 |
 | 判定 | `build/probe-judge.py` 的 SETUP-1：遊戲中命中 sink 與所有 task 要在 Post process（命中 sink 也接受命中 task／HitFrameHandler）、輸入／UI／VM 在各自的工作、暫停時在視窗執行緒；對不上 FAIL，12 層內沒有認得的鍵 EYES。 |
 | 測試 | trace_test 的假世界：死亡 sink 只讀屍體（兇手、你從不被讀）、你的死亡什麼都不讀、`dead = true` 只記錄；`PlanInput` 被擋的熱鍵不執行、站標記要等級 4。2 個 Sinks.h 突變（死亡 sink 讀兇手、被擋的熱鍵照樣執行）都讓測試失敗。fix26_verify 另有 2 個 X2 錯誤樣本（遊戲中 task 在 UI 工作、暫停時 task 不在視窗執行緒）必須 FAIL。 |
+
+
+## Round 26c（堆積損壞修正，DLL 0.26.2）
+
+使用者 A/B：停用本模組不崩；0.26.1 幾分鐘內崩（`crash-2026-09-27-04-49-35`：EngineFixes 的 tbbmalloc free list 已損壞，崩在原版命中 task 35582→36016→37650→37673→37633 配置記憶體時）。唯讀稽核（堆積稽核筆記）：這個載入順序裡 TESHitEvent 在視窗執行緒送出（Precision／TDM 從 Main::Update hook 當場結算，X2 frame 0x5B373D；MagicTweaks 的法術路徑也是），而我們所有 SKSE task 同時在 Post process 工作執行緒上跑——命中 sink 同步做的 CastSpellImmediate、Dispel、RestoreActorValue、process list 掃描，跟我們自己的 task 在同一個玩家施法器、效果清單與數值上競爭。26b「命中 sink 維持同步」的前提（原版的送出情境）撤回。另一個 A/B：停用 TrueHUD（本 DLL 跳過資源條）玩 15～20 分鐘不崩，開著幾分鐘內崩。
+
+| 項目 | 做法 |
+|---|---|
+| P1 命中 sink | 只讀事件、手上武器、全域變數與命中當下的旗標（`HitFacts`、`RawAttack`），在 sink 裡 `Filter`，接受的才排 `AddTask` 給命中 task；規劃、施放、驅散、數值寫入都在命中 task（晚一幀）。路由是 `Sinks.h RouteHit`（你的／打你的／我們命中 task 裡自己觸發的巢狀命中＝丟掉，取代舊的 `handling` 旗標）。受擊 sink 不再讀效果清單：你的池子由每個 task 的 `WriteMirrors` 寫進 atomic（最多晚一個 100 ms tick），披風檢查標記後在受擊 task 裡做。代價：這一刀直接打死目標時不附傷（`[hit-late]`）；因為死亡事件先到，死亡處理看不到這一刀的印記（例如第一刀就打死時聖灰不觸發）。 |
+| P2 收集後驅散 | `StatusEngine.h DispelWhere`、`DispelMarkerCpp`、`SlowImmunity` 都改成先收集 id（usUniqueID＋基礎效果＋法術），每次 Dispel 前在即時清單裡重新找到它；找不到就跳過。 |
+| P3 擲骰 | 只在 task 裡用（`Rng()`，task 以外第一次用會記 `[ESSB][RNG]`）；`TraceRng::Note` 先讀索引、就地檢查範圍再寫，不可能寫出 `tape_`。 |
+| P4 共用狀態 | `selfDispel`、`traceCtx` 改成 thread_local（我們的 Dispel 的移除事件在同一條執行緒同步送回）；`handling` 移除；`deferredNotices` 加鎖；globalSeen／perksSeen／domainsSeen／stepSeen／secondSeen／traceWasOn、`cadence` 的重設、TrueHUD 的 `Link`（added／waitTicks／pendingTicks）都只在 task 裡改（讀檔時改由一個 game-ready task 重設，FIFO 排在第一個 tick 前）；`Fault()` 不再動別的執行緒的旗標。 |
+| P5 重疊見證 | 每個 task 本體開一個 `TaskScope`（atomic 計數）；同時超過 1 個就記 `[ESSB][OVERLAP] <名稱> thread= with=<另一個>`，每對一次；release 也保留。 |
+| P6 SEH 與鎖 | `EssentialOf` 的別名清單讀鎖改在只含 SEH 的函式裡手動上鎖、`__finally` 解鎖，外層 `__except` 攔到存取違規時也會解鎖（`BSReadLockGuard` 的解構在 /EHsc 的 SEH 展開裡會被跳過）。 |
+| P7 計時執行緒 | 不再 detach；靜態的 `TimerStopper` 在 `state` 之前解構：設停止旗標、等待最多 1 秒、再 detach。 |
+| T1 TrueHUD | 重新稽核見下。 |
+| T2 開關 | 新 GLOB `ESSB_TrueHudBars`（0x005C01，預設 1），MCM「一般」頁「TrueHUD 資源條」；0＝不載入、不新增，已加的資源條移除。 |
+| T3 生命週期 log | 除錯等級 3：`[ESSB][hud][L3] <呼叫> bar= thread= truehud=`（LoadCustomWidgets、loaded、RegisterNewWidgetType、AddWidget、RemoveWidget、Initialize、第一次 Update、Dispose）。 |
+
+TrueHUD 資源條的稽核（T1）找到的具體問題：
+1. **呼叫 TrueHUD 的執行緒錯了**：`RegisterNewWidgetType`／`AddWidget`（計時 tick 裡）與 `LoadCustomWidgets`（讀檔時在主執行緒的 `OnGameReady`、開 TrueHUD 選單時的 task）都是從我們的執行緒直接呼叫；遊戲中計時 task 在 Post process 工作執行緒上，跟 TrueHUD 自己在 UI 執行緒處理 widget 的工作並行。（推論）TrueHUD 的介面有 `GetTrueHUDThreadId`、`kBadThread`，表示它在意呼叫的執行緒；這些呼叫從別的執行緒進去就可能跟它的 HUD 佇列、widget 表同時被改——跟崩潰時 tbbmalloc 已損壞相符。改成全部經 SKSE `AddUITask`（UI 工作，TrueHUD 的選單在那裡跑）。
+2. **`Link` 的非 atomic 欄位被兩條執行緒同時改**：`Reload()` 在主執行緒（OnGameReady）改 added／waitTicks／pendingTicks 的同時，工作執行緒上的 tick 在讀寫它們；可能在一次 reload 還沒完成時又 AddWidget 同樣的 id。改成只在我們的 task 裡改（讀檔的 Reload 也改成 task）。
+3. **`PoolBar` 的 SEH 會吞掉 Scaleform 裡的存取違規**，讓堆積停在寫一半的狀態、之後在別處才崩；移除 SEH（只留 C++ catch）。
+其餘沒問題：Update 只讀 atomics（Publish 只寫 atomics）；不保留 widget 的 shared_ptr（`make_shared` 直接交給 AddWidget），GFxValue 由 TrueHUD 在它的執行緒釋放；字串參數都是靜態常數。
+
+測試：trace_test 加 tape 邊界（順序 100 次＋四條執行緒同時抽、第五條不停重設錄製，後方的保護值不變）、依 id 重找的驅散（假清單在 Dispel 時會位移）、`RouteHit`；3 個新突變（tape 寫出邊界、驅散用舊 handle、巢狀命中又排隊）都讓測試失敗（tape 那個會讓程式直接崩，build.py 已能記下沒有輸出的失敗）。fix26_verify 加靜態檢查：命中／受擊 sink 內沒有任何引擎工作或效果清單讀取、每個 task 本體有 TaskScope、thread_local、`__finally`、TimerStopper、`Rng()`；SETUP-1 出現 OVERLAP 必須 FAIL。
+
+另一次崩潰（`crash-2026-09-27-05-12-16`，TrueHUD 已停用，長時間遊玩後開新遊戲時）：主迴圈 35565 → 34862／34872（SKSE 掛勾處）→ 34677 → 34735／34736 → 34745 → 13148／13147 → 13277／13278／13276 → 20026 → 20087 → 19000 → 18568 `call [rax+0x120]`，讀到 0xFFFFFFFFFFFFFFFF：對一個 vtable 已是垃圾的物件做虛擬呼叫＝物件已被釋放或覆寫。本 DLL 不在堆疊。這是「同一個 process 前面已經發生的堆積損壞，到清理／重建世界時才爆」的樣子，跟 TrueHUD 無關、跟 P1 的並行寫入一致；所以主修正仍是 P1～P7，TrueHUD（T1～T3）是另一個確認過的問題。
