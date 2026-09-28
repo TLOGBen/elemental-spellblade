@@ -288,7 +288,7 @@ def run():
     multipliers=envelopes='retired in round 20: see build/fix20-check.json (difference patch vs reference)'
     # Ensure the scale applies to engine entry points too, without changing their conditions/count.
     by={(t['id'],r['index'],n['index']):n for t in plan['trees'] for r in t['routes'] for n in r['tiers']}
-    import fix27_text;_pt=fix27_text.player_text
+    import fix27_text;_nt=fix27_text.node_text
     # Identity and text independent ESP readback.
     records,meta=build_v03.read_plugin(build_v03.OUT/build_v03.PLUGIN);rec={r.edid:r for r in records}
     written=json.loads((ROOT/'build/v03-formids.json').read_text(encoding='utf-8'));baseline=json.loads((ROOT/'.codex/pre-fix6-snapshot/v03-formids.json').read_text(encoding='utf-8'))['records']
@@ -299,10 +299,10 @@ def run():
     for (tree,r,t),n in by.items():
         for rank in range(1,16):
             desc=rec[f'ESSB_P_{tree}_{r}_{t}_M{rank}'].d['DESC'].rstrip(b'\0').decode('utf-8')
-            assert desc==f'第 {rank}/15 點：'+_pt(n['main'])   # round 27e: the player text (design notes dropped)
+            assert desc==f'第 {rank}/15 點：'+_nt(f'ESSB_P_{tree}_{r}_{t}_M',n['main_label'],n['main'])   # round 27e: the player text (design notes dropped); 28c: per-node override
         for b in n['branches']:
             desc=rec[f'ESSB_P_{tree}_{r}_{t}_B{b["slot"]+1}'].d['DESC'].rstrip(b'\0').decode('utf-8')
-            assert _pt(b['description']) in desc
+            assert _nt(f'ESSB_P_{tree}_{r}_{t}_B{b["slot"]+1}',b['name'],b['description']) in desc
     # Peak Value Modifier on the only negative SpeedMult utility: non-stacking max with 70 clamp.
     import struct
     slow=rec['ESSB_UtilEffect_Slow'].d['DATA'];assert struct.unpack_from('<I',slow,64)[0]==34 and struct.unpack_from('<i',slow,68)[0]==30

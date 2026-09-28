@@ -229,6 +229,8 @@ def check_player_text(b, records):
     for path in files:
         for where, hit, text in txt.scan_json(path):
             errors.append(f'{path.name}{where}: design note {hit}: {text[:80]}')
+    # round 28c: every override still names a node of the plan, with the name and the v0.4 text it was written for
+    errors += txt.check_overrides(json.loads((ROOT / 'build/plan-tree-nodes.json').read_text(encoding='utf-8')))
     return errors
 
 
@@ -240,10 +242,43 @@ def player_text_faults():
     if txt.player_text(sample) != '餘壓：離開火形態（切換或融斷）後火源多留 2 秒':
         raise AssertionError(('player_text kept the note or cut the gameplay text', txt.player_text(sample)))
     caught.append('a dated note stripped, the gameplay parenthesis kept')
-    for leak in ('見 實作紀錄.md', 'Round 27 起', 'v0.4 本文', '待決', '指揮官裁定'):
+    for leak in ('見 實作紀錄.md', 'Round 27 起', 'v0.4 本文', '待決', '指揮官裁定',
+                 '**另有冷卻**', '`ESSB_Wet`', '原「回滿魔力」', '見 2.4'):   # round 28c: markdown and change notes
         if not txt.markers('順風：命中回復耐力 ' + leak):
             raise AssertionError(('a design marker not caught', leak))
         caught.append(f'marker: {leak}')
+    # Round 28c: markdown bold goes, the words stay; a note that holds 已決 / 原「…」 goes whole.
+    sample = '三重奏：第三次 ×3；**觸發後有 10 秒冷卻**（2026-09-28 已決，原「無冷卻」）'
+    if txt.player_text(sample) != '三重奏：第三次 ×3；觸發後有 10 秒冷卻':
+        raise AssertionError(('markdown bold or a change note left', txt.player_text(sample)))
+    caught.append('markdown bold and a change note stripped')
+    # Round 28c: an override is keyed by its node and pinned to the v0.4 text it was written for.
+    source = '水臨強化：舊的說明'
+    table = {'ESSB_P_water_1_2_B1': ('水臨強化', txt.digest(source), '水臨強化：玩家文字')}
+    if txt.node_text('ESSB_P_water_1_2_B1', '水臨強化', source, table) != '水臨強化：玩家文字':
+        raise AssertionError('an override was not applied to its node')
+    if txt.node_text('ESSB_P_water_1_2_B2', '別的節點', source, table) != source:
+        raise AssertionError('an override leaked to another node')
+    for name, text, what in (('水臨強化', source + '（改寫）', 'the v0.4 text of an overridden node changed'),
+                             ('水臨', source, 'an overridden node was renamed')):
+        try:
+            txt.node_text('ESSB_P_water_1_2_B1', name, text, table)
+        except txt.StaleOverride:
+            caught.append(what)
+        else:
+            raise AssertionError(('stale override not caught', what))
+    plan = {'trees': [{'id': 'water', 'routes': [{'index': 1, 'tiers': [{'index': 2, 'main_label': '主線', 'main': '主線 +1／點',
+                                                                          'branches': [{'slot': 0, 'name': '水臨強化', 'description': source}]}]}]}]}
+    if txt.check_overrides(plan, table):
+        raise AssertionError(('a current override reported', txt.check_overrides(plan, table)))
+    gone = dict(table, ESSB_P_water_9_9_B1=('不存在', txt.digest(''), '不存在：玩家文字'))
+    if not txt.check_overrides(plan, gone):
+        raise AssertionError('an override for a node that does not exist was not caught')
+    caught.append('an override for a node that does not exist')
+    marked = {'ESSB_P_water_1_2_B1': ('水臨強化', txt.digest(source), '水臨強化：**冷卻**')}
+    if not txt.check_overrides(plan, marked):
+        raise AssertionError('an override that carries markdown was not caught')
+    caught.append('an override that carries markdown')
     return caught
 
 

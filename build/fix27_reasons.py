@@ -184,6 +184,8 @@ _28B = {
     'build/fix27_text.py': '水臨強化（25%、要有敵人、10 秒冷卻）與新印潮的節點說明',
     'build/fix27_verify.py': '版本 0.28.1',
     'build/fix28_verify.py': 'F2 三個讀檔點依位置檢查；GAMEREADY、FAULTCLOSE、CASTWITH（ESP 複本、DLL 表、每個 Papyrus 呼叫點）、SURGE、ADVENT 與它們的注入錯誤',
+    'build/fix27_history_gen.py': 'F6：FILES 登記刪除的 src/ESSBPlayerAlias.psc（原型腳本）',
+    'build/fix27_history.py': 'F6：重新產生，FILES 多了刪除的 ESSBPlayerAlias.psc（sha256 取自 pre-fix27 快照）',
     'build/fix12_verify.py': 'F6：註明 src/ 不再需要原型腳本，但 NEW（pre-fix22 快照）裡還有 ESSBPlayerAlias.psc，所以照舊略過',
     'build/probe-judge.py': 'VERSION 0.28.1；B-29 水臨強化的 10 秒冷卻；D-14 新印潮',
     'build/probes-all.md': '站 47 加 ③④（冷卻）、站 77 新印潮的操作與判定',
@@ -191,3 +193,16 @@ _28B = {
 }
 for _file, _why in _28B.items():
     NATIVE[_file] = NATIVE.get(_file, R.rstrip('：')) + '；' + _B + _why
+
+# Round 28c (DLL 0.28.1, no DLL change): the perk text after 1b62153's v0.4 write-back. The overrides were keyed by the
+# cleaned text, so 水臨強化 and 印潮 fell back to the document's long sentences and 連殺 / 三重奏 showed its markdown.
+_C = '28c（0.28.1）：'
+_28C = {
+    'build/fix27_text.py': '覆寫改以節點（perk EditorID）為鍵，記下它寫給的 v0.4 名稱與原文 sha256，原文一變建置就失敗；'
+                           '去掉 markdown 粗體；標記多了 *、`、原「、見 x.y；連殺的覆寫（風形態潛行一擊殺死也算帶印）',
+    'build/fix27_verify.py': '玩家文字檢查加上覆寫檢查（節點還在、名稱與原文沒變、覆寫本身沒有標記）與它的注入錯誤；markdown 與變更註記的樣本',
+    'build/fix6_verify.py': 'perk 描述比對改用 fix27_text.node_text（逐節點覆寫）',
+    'build_v03.py': 'perk 描述改用 fix27_text.node_text（以 ESSB_P_樹_路線_階_M／_B格 為鍵的覆寫）',
+}
+for _file, _why in _28C.items():
+    NATIVE[_file] = NATIVE.get(_file, R.rstrip('：')) + '；' + _C + _why

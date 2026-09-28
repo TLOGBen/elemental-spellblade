@@ -123,7 +123,10 @@ for _script, _rows in _27H.items():
         _old = REASONS.setdefault(_script, {}).get(_fn)
         REASONS[_script][_fn] = (_old + '；' + _why) if _old else _why
 PROPERTY_REASONS = {}
-FILES = {}
+FILES = {
+    # round 28b (F6): the prototype player-alias script (never compiled, attached or shipped since v0.3) leaves src/
+    'ESSBPlayerAlias.psc': 'Round 28b（0.28.1，F6 清理）：刪除 v0.3 起就不編譯、不附掛、不出貨的原型玩家命中接收器',
+}
 
 # Silent edits of this round's code (a number or a call changed inside a declared function): each must fail.
 SILENT = [

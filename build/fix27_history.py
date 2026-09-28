@@ -114,6 +114,7 @@ PROPERTIES = {
 }
 
 FILES = {
+    'ESSBPlayerAlias.psc': ('Round 28b（0.28.1，F6 清理）：刪除 v0.3 起就不編譯、不附掛、不出貨的原型玩家命中接收器', '13b16ae78dae340cced3c3bfdd98ce6a8cf5fdbcb8c0195152637a62aa8d3014', 'removed'),
 }
 
 digest = _h21.digest

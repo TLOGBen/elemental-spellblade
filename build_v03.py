@@ -2216,8 +2216,10 @@ def build_esp(plan):
                 base = ID_MAIN_PERK + node * plan_trees.MAIN_MAX_RANK
                 full = f"{route['name']}·{tier['name']} 主線"
                 # round 27e (0.27.4): the player sees the gameplay text only -- the design document's notes are dropped
-                # (build/fix27_text.py; build/fix27_verify.py fails on any left)
-                main_text = hit27text.player_text(tier['main'])
+                # (build/fix27_text.py; build/fix27_verify.py fails on any left); round 28c: a node's override is keyed by
+                # its perk and fails the build when the v0.4 text it was written for changes (fix27_text.node_text)
+                stem = f"ESSB_P_{tree['id']}_{r}_{k}"
+                main_text = hit27text.node_text(f'{stem}_M', tier['main_label'], tier['main'])
                 for rank in range(plan_trees.MAIN_MAX_RANK):
                     ss = [('FULL', Z(full)),
                           ('DESC', Z(f"第 {rank + 1}/{plan_trees.MAIN_MAX_RANK} 點：{main_text}")),
@@ -2232,10 +2234,11 @@ def build_esp(plan):
                     add('PERK', base + rank, f"ESSB_P_{tree['id']}_{r}_{k}_M{rank + 1}", ss)
                 has_main = ('CTDA', ctda(CTDA_EQ, 1.0, FUNC_HAS_PERK, param1=own(base)))
                 for branch in tier['branches']:
+                    branch_text = hit27text.node_text(f"{stem}_B{branch['slot'] + 1}", branch['name'], branch['description'])
                     ss = [('FULL', Z(hit27text.player_text(branch['name']))),
                           # round 27g (0.27.6): a branch costs 5 points but the framework shows and takes 1 (ESSBTrees takes
                           # the other 4 when the menu closes), so the description says it first
-                          ('DESC', Z(f"{BRANCH_COST_TEXT}{hit27text.player_text(branch['description'])}")),
+                          ('DESC', Z(f"{BRANCH_COST_TEXT}{branch_text}")),
                           ('CTDA', gate),
                           # 規劃 3：階內主線至少投 1 點，才能點該階分支。
                           has_main,
