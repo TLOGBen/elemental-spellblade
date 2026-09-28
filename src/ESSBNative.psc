@@ -63,6 +63,22 @@ Bool Function NodeBranch(Int aiTree, Int aiRoute, Int aiTier, Int aiIndex) Globa
 Int Function BranchesGained(Int aiTree, Int aiRoute) Global Native
 ; round 27g（0.27.6）：選單關閉時結算一個新分支：回傳結算後的點數（夠 4 點就扣掉；不夠就退回，CSF 扣的 1 點加回來，所以比傳入的大）。
 Int Function SettleBranch(Int aiAvailable) Global Native
+; round 27h：選單（洗點前）的關閉——DLL 立刻把形態的全域變數歸零，融斷與形態能力在它的 task 裡做；False＝沒做（沒開或總開關關著）。
+Bool Function CloseForm() Global Native
+; round 27h：因為別的 task 正在跑而放棄的 task 數（MCM 狀態顯示；應該永遠是 0）。
+Int Function OverlapCount() Global Native
+; round 27h（探針）：Papyrus 處理了序號 aiSeq 的 DLL 事件（除錯等級 2 以上才呼叫；DLL 只讀寫計數）。
+Function EventSeen(Int aiSeq) Global Native
+; round 27h：技能樹點數的檢查（每棵樹：點數＋已花＝等級），選單關閉與讀檔時；DLL 在 task 裡讀 perk，寫 [ESSB][pts]。
+Function CheckPoints() Global Native
+; round 27h（Papyrus 審查 1）：洗點——回答這棵樹有幾個節點（DLL 的快照），在 task 裡全部拿掉並把點數設回等級；-1＝沒做（總開關關著）。
+Int Function RespecTree(Int aiTree) Global Native
+; round 27h（Papyrus 審查 6）：百毒不侵——15 公尺內最近 5 個敵人裡中毒的有幾個（DLL 每秒數好）。
+Int Function PoisonedNearby() Global Native
+; round 27h（Papyrus 審查 7）：用這次的強度（0＝紀錄的）與秒數施放本模組的單一效果法術（不改共用的法術紀錄）。
+Function CastWith(Spell akSpell, Actor akTarget, Float afMagnitude, Float afSeconds) Global Native
+; round 27h（探針卷站 92 故障演練）：除錯等級 4 才有作用。1＝強制一個 C++ 例外（這次遊戲的故障），2＝一個壞數值（丟棄，不故障）。
+Function ForceFault(Int aiKind) Global Native
 Function RequestSwitch(Int aiElement) Global Native
 ; round 25 審查修正：遊戲在跑的秒數（這次開遊戲以來；暫停、讀檔不算）。控制器的秒計時器用它。
 Float Function RunningSeconds() Global Native

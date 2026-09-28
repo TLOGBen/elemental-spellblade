@@ -18,6 +18,8 @@ NUM = r'[-+]?(?:\d+(?:\.\d+)?(?:e[-+]?\d+)?|inf|nan(?:\(ind\))?)'
 B = r'[01]'
 FID8 = r'0x[0-9A-F]{8}'
 FID6 = r'0x[0-9A-F]{6}'
+# Round 27h (review 1-1): the world clock (effects' elapsed) and the running clock (upkeep, the timer) on death / settle / hit-late.
+CLOCKS = r' world=(\d+) running=(\d+)'
 # name(0xFORMID)[h=cur/max m=cur/max s=cur/max( dead)?], or "-" (no actor). Names cannot hold ( ) [ ] = (Trace.h Line::Actor).
 ACTOR = (r'(?:-|[^()\[\]=]*\(' + FID8 + r'\)\[h=' + NUM + '/' + NUM + ' m=' + NUM + '/' + NUM + ' s=' + NUM + '/' + NUM +
          r'(?: dead)?\])')
@@ -33,7 +35,8 @@ BODIES = {
              ' silenced=' + B + ' echo=' + B + ' riposte=' + B + r' steps=\S+ rolls=.+$'),
     'hit-end': r' tgt=' + ACTOR + ' you=' + ACTOR + r' ops=\d+$',
     'menu': r' name=.+ opening=' + B + ' paused=' + B + '$',
-    'hit-late': r' tgt=' + ACTOR + r' reason=\w+( mode=\w+)?$',   # round 27 (G6): mode=corpse
+    # round 27 (G6): mode=corpse; 27h: the corpse event a corpse-mode op dropped, and both clocks (CLOCKS)
+    'hit-late': r'(?: tgt=' + ACTOR + r' reason=\w+( mode=\w+)?| corpse-event=\d+ dropped)' + CLOCKS + '$',
     'hit-reject': r' tgt=' + ACTOR + r' reason=[\w-]+ weapon=-?\d+$',
     'remove': (r' on=' + ACTOR + r' tag=\S+ mag=' + NUM + ' elapsed=' + NUM + ' duration=' + NUM + ' left=' + NUM +
                r' reason=(?:expired|dispel|death)$'),
@@ -47,10 +50,10 @@ BODIES = {
     'death': (r' corpse=' + ACTOR + ' killer=' + ACTOR + ' killerYou=' + B + ' frenzied=' + B + ' servant=' + B +
               r' marks=\d+ curse=\d+ poison=' + B + ' bleed=' + B + ' frozen=' + B + ' hush=' + B + ' essential=' + B +
               r' level=\d+ curseCap=\d+ crowd=\d+ ops=\d+$'),
-    'death-event': r' corpse=' + ACTOR + ' killer=' + ACTOR + ' dead=' + B + ' killerYou=' + B + ' servant=' + B + r' ours=\d+$',
+    'death-event': r' corpse=' + ACTOR + ' killer=' + ACTOR + ' dead=' + B + ' killerYou=' + B + ' servant=' + B + r' ours=\d+' + CLOCKS + '$',
     'burst-start': r' element=\w+ stage=\d+ sync=\d+ radius=' + NUM + ' you=' + ACTOR + '$',
     'burst': r' element=\w+ stage=\d+ targets=\d+ marks=\d+ crowd=\d+ ops=\d+$',
-    'settle': r' on=' + ACTOR + r' tag=\S+ mag=' + NUM + ' elapsed=' + NUM + ' duration=' + NUM + r' crystals=\d+$',
+    'settle': r' on=' + ACTOR + r' tag=\S+ mag=' + NUM + ' elapsed=' + NUM + ' duration=' + NUM + r' crystals=\d+' + CLOCKS + '$',
     'native': r' fn=\w+ who=' + ACTOR + r' a=-?\d+ b=-?\d+ x=' + NUM + r' form=\w+$',
     'scan': r' ctx=\S+ centre=' + ACTOR + ' aroundCentre=' + NUM + ' aroundYou=' + NUM + r' high=\d+ picked=-?\d+$',
     'scan-c': (r'(?: who=' + ACTOR + ' d_you=' + NUM + ' d_centre=' + NUM + ' hostile=' + B + ' teammate=' + B + ' engaged=' + B +
@@ -67,8 +70,11 @@ BODIES = {
     'domain-gone': r' ref=' + FID8 + '$',
     'domain-you': r' inside=[\w,]+ you=' + ACTOR + '$',
     'domain-enemy': r' who=' + ACTOR + r' inside=[\w,]+$',
+    # round 27h (probes): the events and natives per second, and each event Papyrus answered
+    'rate': r' events=\d+ echoed=\d+ lagMaxMs=\d+ natives=\d+$',
+    'vm': r' seq=\d+ lagMs=\d+$',
     'switch': (r' via=\w+ wanted=\w+ kind=\w+ element=\w+ active=' + B + r' current=\w+ dead=' + B + ' enabled=' + B +
-               ' freePass=' + B + ' freeOpen=' + B + ' gate=' + NUM + ' you=' + ACTOR + '$'),
+               ' freePass=' + B + ' freeOpen=' + B + ' gate=' + NUM + r'(?: reason=[a-z-]+)?' + ' you=' + ACTOR + '$'),   # 28: blocked reason
     'key': (r' code=\d+ element=\w+ verdict=(?:accepted|blocked) paused=' + B + ' menu=' + B + ' console=' + B + ' text=' + B +
             ' loading=' + B + r' thread=\d+$'),
     'mcm': r' global=\S+ old=' + NUM + ' new=' + NUM + '$',

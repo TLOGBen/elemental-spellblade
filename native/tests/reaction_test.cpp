@@ -83,7 +83,7 @@ std::string SuffixOf(int kind)
 {
     const std::string_view id = essb::kStatusRecords[kind].editorId;
     for (const std::string_view prefix :
-        { std::string_view("ESSB_N3_"), std::string_view("ESSB_N4_"), std::string_view("ESSB_N5_"), std::string_view("ESSB_N6_") }) {
+        { std::string_view("ESSB_N3_"), std::string_view("ESSB_N4_"), std::string_view("ESSB_N5_"), std::string_view("ESSB_N6_"), std::string_view("ESSB_N7_") }) {
         if (id.starts_with(prefix)) {
             return std::string(id.substr(prefix.size()));
         }
@@ -454,7 +454,7 @@ std::pair<int, int> GroupR(const json& table)
                 essb::PlanHitBodies(*plan, *crowd, self, bin, step.at(1).get<int>(), step.at(2).get<bool>(), step.at(3).get<int>(), nodes, rng);
                 essb::RunBodies(*plan, from, *crowd, self, bin, nodes, rng);
             } else if (op == "surge") {
-                essb::PlanSurge(*plan, *crowd, self, bin, step.at(1).get<int>(), step.at(2).get<int>(), nodes, rng);
+                essb::PlanSurge(*plan, *crowd, self, bin, step.at(1).get<int>(), nodes, rng);   // round 28b (F5): no old element
                 essb::RunBodies(*plan, from, *crowd, self, bin, nodes, rng);
             } else if (op == "avatar") {
                 essb::PlanAvatarBurst(*plan, *crowd, self, bin, step.at(1).get<int>(), nodes, rng);

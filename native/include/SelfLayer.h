@@ -113,13 +113,21 @@ namespace res {
 
 // The open gains of `element` for you (2.3 開印 +2 etc., 5.x): charges, 岩甲, 風勢, 同調, 共鳴層; returns the blades the
 // open sends (疾風痕 filling the gauge, 先風). `hitPower` / `hitCrit` are false for a forced open.
+// Round 28 (D2): `selfGains` false = only what lands on the target (誓約) -- the forced opens of one event (a switch's 臨, 雙斷,
+// 印潮) give your gains once, for the first target opened, not once per target.
 template <NodeReader Nodes, RandomSource Rng>
 constexpr int OpenGains(StatusPlan& plan, int element, bool hitPower, bool hitCrit, Board& target, Board& me, const StatusInputs& in,
-    const Nodes& nodes, Rng& rng)
+    const Nodes& nodes, Rng& rng, bool selfGains = true)
 {
     const Tuning& t = *in.tuning;
     const Writer pw{ plan, me, Who::kPlayer };
     int blades = 0;
+    if (!selfGains) {
+        if (element == kDivine && nodes.Has(node::kDivineOath)) {
+            Writer{ plan, target, Who::kTarget }.Set(StatusKind::kOath, 1.0f, Scaled(t, n4::kOath));   // 誓約 is the target's
+        }
+        return 0;
+    }
     switch (element) {
     case kLightning: {
         int gain = n4::kChargeOpen + nodes.Rank(node::kLightningOpenCharge) / 5;   // 開印電荷 +1／每 5 點
@@ -416,11 +424,13 @@ constexpr SelfResult PlanSelfHit(StatusPlan& plan, const SelfHit& hit, const Hit
     return out;
 }
 
-// A forced open (Papyrus 臨, 雙斷): the open gains only (no hit, so no crit, no power, no sync +1).
+// A forced open (Papyrus 臨, 雙斷): the open gains only (no hit, so no crit, no power, no sync +1). Round 28 (D2): `selfGains`
+// false for every target of the event after the first.
 template <NodeReader Nodes, RandomSource Rng>
-constexpr void PlanSelfOpen(StatusPlan& plan, int element, Board& target, Board& me, const StatusInputs& in, const Nodes& nodes, Rng& rng)
+constexpr void PlanSelfOpen(StatusPlan& plan, int element, Board& target, Board& me, const StatusInputs& in, const Nodes& nodes, Rng& rng,
+    bool selfGains = true)
 {
-    res::Blades(plan, res::OpenGains(plan, element, false, false, target, me, in, nodes, rng), 1.0f);
+    res::Blades(plan, res::OpenGains(plan, element, false, false, target, me, in, nodes, rng, selfGains), 1.0f);
 }
 
 // Round 27b (review B N6): the killing blow's plan in corpse mode -- nothing of yours is spent on a corpse: no overload,

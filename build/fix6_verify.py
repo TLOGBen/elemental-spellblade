@@ -307,6 +307,7 @@ def run():
     import struct
     slow=rec['ESSB_UtilEffect_Slow'].d['DATA'];assert struct.unpack_from('<I',slow,64)[0]==34 and struct.unpack_from('<i',slow,68)[0]==30
     ctl=Ctl(settings);ctl.UtilSpells=[Spell()];ctl.UtilTargetSpells=[];reg=make_scripts(ROOT/'src',ctl)
+    reg['ESSBNative']=NS(CastWith=lambda spell,target,magnitude,seconds:spell.SetNthEffectMagnitude(0,magnitude))   # round 27h: the DLL casts with the override
     for value in [15,25,30,69,70,80,110,999]:
         reg['ESSBController'].ApplyUtil(0,value,3,Actor());assert ctl.UtilSpells[0].mag==min(value,70)
     for value in [0,50,70,100]:

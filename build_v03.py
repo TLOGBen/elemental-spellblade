@@ -1461,6 +1461,7 @@ import fix24_records as hit24
 import fix25_records as hit25
 import fix26_records as hit26
 import fix27_records as hit27
+import fix28_records as hit28
 import fix27_text as hit27text   # round 27e: player text without the design notes
 import tree_v04
 
@@ -1502,6 +1503,7 @@ def build_esp(plan):
     # SpellItem::SpellFlag::kNoAbsorb); the one-effect markers also Ignore Resistance (0x00100000): an Atronach's absorption
     # or a reflect never eats a mark, a status or an end.
     no_absorb, markers = hit27.dll_spell_flags(sys.modules[__name__])
+    spell_subrecords = {}   # round 28b (F1): local id -> the SPEL subrecords written (the CastWith copies copy them)
 
     def add(sig, fid, edid, ss, flags=0):
         if edid in manifest:
@@ -1513,6 +1515,8 @@ def build_esp(plan):
         if sig == 'SPEL' and (fid in no_absorb or hit27.delivered_to_others(ss)):
             ss = hit27.flag_spit(ss, fid in markers)
         used_ids.add(fid)
+        if sig == 'SPEL':
+            spell_subrecords[fid] = list(ss)
         rr.append((sig, record(sig, own(fid), [('EDID', Z(edid))] + ss, flags)))
         manifest[edid] = {'id': f'{fid:06X}', 'formid': f'{own(fid):08X}', 'type': sig}
 
@@ -1579,6 +1583,8 @@ def build_esp(plan):
     hit25.add_records(sys.modules[__name__], add)                 # round 25 (N6): domain hazards, markers, the timer's windows
     hit26.add_records(sys.modules[__name__], add)                 # round 26: ESSB_ProbeStep (the probe log's step marker)
     hit27.add_records(sys.modules[__name__], add, fx_ph)          # round 27 (G13): the weapon glow's ENCH, the open flash, 武器光
+    hit28.add_records(sys.modules[__name__], add, ref('Skyrim.esm', hit22.HEAT_BODY_SHADER),
+                      ref('Skyrim.esm', hit22.HEAT_BODY_ART))       # round 27h / 28: Papyrus ready, the body fire's switch, 三重奏's cooldown
 
     # -------------------------------------------------------------- KYWD
     add('KYWD', ID_KW_PROC, 'ESSB_Proc', [])
@@ -2398,6 +2404,8 @@ def build_esp(plan):
         ('ALST', I(0)), ('ALID', Z('ESSB_MCMPlayer')), ('FNAM', I(0)),
         ('ALFR', I(ref('Skyrim.esm', 0x14))), ('VTCK', I(0)), ('ALED', b''),
     ])
+    # round 28b (F1): the whole-second copies of the magnitude spells ESSBNative.CastWith casts (after their bases)
+    hit28.add_castwith_variants(sys.modules[__name__], add, spell_subrecords)
 
     # ----------------------------------------------------- 特效綁定表（build/fx-bindings.json）
     def fx_edid(fid):
@@ -3111,7 +3119,7 @@ def compile_scripts():
     pex = OUT / 'Scripts'
     psc.mkdir(parents=True, exist_ok=True)
     pex.mkdir(exist_ok=True)
-    # 清掉原型遺留（ESSBPlayerAlias 等），讓白名單檢查成立。
+    # 清掉 package 裡不在白名單的舊腳本（原型遺留；round 28b 起 src/ 也不再有原型腳本），讓白名單檢查成立。
     removed = []
     for folder, extension in [(psc, '.psc'), (pex, '.pex')]:
         keep = {n + extension for n in SCRIPTS}
@@ -3271,6 +3279,10 @@ def write_mcm(manifest):
     glow_toggle = control('ESSB_WeaponGlow', '形態光圈', 'toggle', defaultValue=1)
     glow_toggle['help'] = '開形態時腳下的元素光圈（顏色＝元素，隨同調 0～3 段換一個）。不碰武器與附魔。關閉時不顯示光圈。預設開。'
     general.append(glow_toggle)
+    # round 27h (review 1-3): the body fire of 白熱／熔燒／熔身 -- off, the statuses still work and nothing burns on you
+    heat_toggle = control(hit28.HEAT_BODY_FX_GLOBAL, '白熱全身特效', 'toggle', defaultValue=1)
+    heat_toggle['help'] = '白熱、熔燒、熔身時身上的火焰（原版火焰斗篷的樣子）。關閉時狀態照常，只是不顯示；之後掛上的才生效。用來排查 HDT-SMP 卡死。預設開。'
+    general.append(heat_toggle)
     balance.append(button('ESSB_ReleaseDivineProtection', '解除神佑保護', 'ReleaseDivineProtection',
                           '確認後解除延遲死亡並停用模組，避免重新上鎖；卸載前請先解除並存檔。'))
     balance.append(button('ESSB_RestoreDefaults', '恢復預設設定', 'RestoreDefaults',
@@ -3367,7 +3379,8 @@ def validate_mcm(records, written):
     expected_globals |= hit19.NATIVE_GLOBALS
     expected_globals |= {'ESSB_TrueHudBars'}   # round 26c (T2)
     expected_globals |= {'ESSB_WeaponGlow'}    # round 27 (G13)
-    assert glob_edids == expected_globals and len(glob_edids) == 56
+    expected_globals |= {hit28.HEAT_BODY_FX_GLOBAL}   # round 27h (review 1-3)
+    assert glob_edids == expected_globals and len(glob_edids) == 57
     assert functions == {'RespecCurrent', 'RespecAll', 'DumpRegistry', 'RestoreDefaults', 'ReleaseDivineProtection', 'ApplyNativeSetting', 'ShowNativeStatus'}
     rows = config['pages'][2]['content']
     tree_rows = [r for r in rows if r.get('id') in expected_globals]
@@ -3542,6 +3555,7 @@ def main():
     runpy.run_path(str(WORK / 'build/fix25_verify.py'))['run'](sys.modules[__name__])   # round 25: timer, hotkeys, domains, removals, records, resolve, nodes, faults, seals
     runpy.run_path(str(WORK / 'build/fix26_verify.py'))['run'](sys.modules[__name__])   # round 26: the probe log, the judge and the sheet, samples, seals
     runpy.run_path(str(WORK / 'build/fix27_verify.py'))['run'](sys.modules[__name__])   # round 27: visuals, sources, version, judge, mutants, seals
+    runpy.run_path(str(WORK / 'build/fix28_verify.py'))['run'](sys.modules[__name__])   # round 27h / 28: the reviews' rules, budgets, hazards
     runpy.run_path(str(WORK / 'build/fix18_probes.py'))['run'](sys.modules[__name__])
     perks = sum(1 for r in check if r.sig == 'PERK')
     print(f'READBACK ok: masters={meta["masters"]} records={len(check)} manifest={written["record_count"]} '
@@ -3687,6 +3701,7 @@ def validate_delivery(records):
     contact_names.update(hit24.contact_edids(sys.modules[__name__]))   # round 24: the corpse markers, 光耀, 星鏈, the timed debuffs
     contact_names.update(hit25.contact_edids())   # round 25: the domain markers, the hazard spells, the spawn spells
     contact_names.update(hit27.contact_edids())   # round 27: the open flashes
+    contact_names.update(hit28.contact_edids(sys.modules[__name__]))   # round 28; 28b: the CastWith copies
     aimed_names |= hit22.aimed_edids()
     groups = {0: [], 1: []}
     rows = []

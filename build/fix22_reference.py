@@ -711,7 +711,7 @@ class World:
         elif element == WATER:
             if cut:
                 guide = (2.0 if self.has('water', '強引') else 1.5) * (1 + self.pct(self.rank('water', '導引'), 0.03))
-                self.put(t, 'Guided', guide * mult, self.scaled(30.0))
+                self.put(t, 'Guided', guide, self.scaled(30.0))   # round 28: the guide itself, not × this end
             if t.has('Soak') and t.mag('Soak') > 1.5:
                 self.put(t, 'Soak', 1, self.soak_seconds())
             if self.has('water', '汪洋'):
@@ -745,6 +745,8 @@ class World:
     # ---------------------------------------------------------------- one hit (2.2, 2.3)
     def hit(self, element, power, hit_work=True):
         t, me = self.target, self.me
+        if not hit_work and t.marks:
+            return   # round 28 (D1): a forced open skips a target carrying any mark of ours (no cut, no refresh)
         refresh = element in t.marks
         linger = False
         open_mult = 1 + self.pct(self.rank(TREE[element], '開印效果'), 0.03)
@@ -885,7 +887,9 @@ class World:
         lost = max(0.0, b['health_max'] - b['health'])
         # round 27 (G1): the lost-health part takes only its own lines; B-small: 冥召／亡魂's marker before the damage
         self.put(t, 'CurseKill', 1, 1.0)
-        self.op('damage', DARKNESS, self.bmax(DARKNESS) * 2.0 * self.react_scale(DARKNESS) * fuse + lost * ratio * vuln)
+        # round 27g: × the damage multiplier; round 28: a boss takes the lost-health part ×0.5
+        self.op('damage', DARKNESS, self.bmax(DARKNESS) * 2.0 * self.react_scale(DARKNESS) * fuse +
+                lost * ratio * vuln * self.base * (0.5 if b['vip'] else 1.0))
         if self.has('darkness', '饕餮'):
             self.op('heal', self.bmax(DARKNESS) * self.recovery)
             self.op('magicka', self.bmax(DARKNESS) * self.recovery)

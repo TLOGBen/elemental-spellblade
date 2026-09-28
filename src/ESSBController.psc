@@ -625,7 +625,23 @@ Function Setup()
 		Return
 	EndIf
 	; Publish readiness only after every initialization phase is complete.
-	AppliedElement = CurrentElement.GetValueInt()
+	; round 27h（Papyrus 審查 2）：讀檔後 Setup 晚約 2 秒才跑，這段時間 DLL 暫停切換；形態能力照全域變數對齊（只留目前的那一個）。
+	Int current = 0
+	If FormActive.GetValueInt() == 1
+		current = CurrentElement.GetValueInt()
+	EndIf
+	Int ability = 0
+	While ability < FormAbilities.Length
+		If ability + 1 == current
+			If !player.HasSpell(FormAbilities[ability])
+				player.AddSpell(FormAbilities[ability], False)
+			EndIf
+		ElseIf player.HasSpell(FormAbilities[ability])
+			player.RemoveSpell(FormAbilities[ability])
+		EndIf
+		ability += 1
+	EndWhile
+	AppliedElement = current
 	RefreshSyncStage()
 	If StateBroken
 		Return
@@ -651,6 +667,11 @@ Function Setup()
 	RegisterForModEvent("ESSB_Switch", "OnESSBSwitch")
 	RegisterForModEvent("ESSB_Close", "OnESSBClose")
 	RegisterForModEvent("ESSB_Fx", "OnESSBFx")   ; round 27 (G13)：碎冰、放電、過熱引爆各一次專屬爆炸（規劃 2.12）
+	; round 27h（Papyrus 審查 2）：Papyrus 這一半就緒——DLL 讀到 1 才開始切換（讀檔時它先寫 0，把期間的切換留一個等著）。
+	GlobalVariable papyrusReady = Game.GetFormFromFile(0x005E00, "Elements Spellblade.esp") as GlobalVariable
+	If papyrusReady
+		papyrusReady.SetValue(1.0)
+	EndIf
 	If CachedDebugLevel >= 1
 		LogEvent(1, "init", "ready enabled=" + Enabled.GetValueInt() + " element=" + CurrentElement.GetValueInt() \
 			+ " active=" + FormActive.GetValueInt() + " native=" + NativeHit.GetValueInt())
@@ -668,20 +689,9 @@ EndFunction
 ; ---------------------------------------------------------------- 形態層
 
 ; round 27 (G8)：形態的切換由 DLL 在決定它的那個 task 裡做完——離開舊形態（階梯、你的資源、協奏）、餘響與雙生的標記、
-; 進入新形態與各元素的臨、關閉時的融斷與同調歸零——下一擊一定讀到新形態。ESSB_Switch 帶來元素、種類（1 開、2 切換、
-; 3 關）、DLL 動手前的同調與段數、原因（1 = 魔力耗盡）；這裡只換能力、放音效、做 Papyrus 自己的同調保留規則。
-; 依事件本身的種類處理（不再看當下的全域變數），所以關了馬上又開也一定先關（融斷）再開。
-Function SwitchForm(Int aiIndex, Int aiKind = 0, Int aiSyncBefore = -1, Int aiStageBefore = -1, Int aiReason = 0)
-	If !IsOperational()
-		Return
-	EndIf
-	If aiKind == 3
-		CloseForm(True, aiIndex, aiSyncBefore, aiStageBefore)
-		If aiReason == 1
-			Debug.Notification("魔力耗盡，形態已關閉")
-		EndIf
-		Return
-	EndIf
+; 進入新形態與各元素的臨、關閉時的融斷與同調歸零——下一擊一定讀到新形態。round 27h：形態能力（含光圈）與同調的保留也是
+; DLL 的；ESSB_Switch 來了這裡只放開啟的音效與 Papyrus 自己的附帶（FormOpenedFx）。
+Function FormOpenedFx(Int aiIndex)
 	Actor player = ThePlayer()
 	If !player || aiIndex < 1 || aiIndex > 11
 		Return
@@ -691,46 +701,16 @@ Function SwitchForm(Int aiIndex, Int aiKind = 0, Int aiSyncBefore = -1, Int aiSt
 		Return
 	EndIf
 	AppliedElement = aiIndex
-	If previous >= 1 && previous <= 11
-		player.RemoveSpell(FormAbilities[previous - 1])
-	EndIf
-	player.AddSpell(FormAbilities[aiIndex - 1], False)
-	Int syncBefore = aiSyncBefore
-	If syncBefore < 0
-		syncBefore = Sync.GetValueInt()
-	EndIf
 	RefreshTrees()
-
-	; 同調的保留來源（規劃 5.2）：承接（切換保留 1/3）、連斷（融斷後 5 秒內重開保留一半）、
-	; 永續／三重奏（融斷後保留一段或全部）。三者取高，不疊乘。
-	Int keep = 0
-	If previous >= 1
-		keep = ESSBNodes.CarryOverSync(Self, syncBefore)
-	EndIf
-	If (SyncKeepLeft > 0 && SyncKeepLeft > Now()) && SyncKeep > keep
-		keep = SyncKeep
-	EndIf
-	If PerpetualKeep > keep
-		keep = PerpetualKeep
-	EndIf
-	PerpetualKeep = 0
-	SyncKeep = 0
-	SyncKeepLeft = 0
-	; round 23 (N4)：同調是 DLL 掛在你身上的效果（ESSB_N4_Sync，鏡射 ESSB_Sync）。保留的份交給 DLL，不算升段、不給回饋。
-	; round 27 (G8)：DLL 已把同調歸零並加上新形態開啟的所得（先制等），保留的份加在上面。
-	If keep > 0
-		ESSBNative.KeepSync(keep)
-	EndIf
 	SyncStageShown = 0
 	PushSyncStage()
-
 	; 5.2 開啟熟練分支「順轉」：切換後 1 秒受傷 -50%（PERK 進入點讀 ESSB_GuardSwitch）。
 	If ESSBNodes.Br(Self, 12, 1, 1, 0) ; @node 順轉
 		SetGuardSwitch(1)
 	EndIf
 	SendModEvent("ESSB_FormChanged", "open", aiIndex as Float)
 	If CachedDebugLevel >= 1
-		LogEvent(1, "form", "switch " + previous + " -> " + aiIndex + " syncKeep=" + keep)
+		LogEvent(1, "form", "switch " + previous + " -> " + aiIndex)
 	EndIf
 	If previous >= 1 && previous != aiIndex
 		OnFormSwitched(previous, aiIndex)
@@ -739,37 +719,37 @@ Function SwitchForm(Int aiIndex, Int aiKind = 0, Int aiSyncBefore = -1, Int aiSt
 	ScheduleTick(1.0)
 EndFunction
 
-; abByDll = True：DLL 的關閉（熱鍵、Z、魔力耗盡；round 27 G8）——DLL 已寫好全域變數、融斷、洩壓、同調歸零、拿掉餘響，
-; 這裡不再寫全域變數（關了又馬上開時，新的值已經是開著的），aiSyncBefore／aiStageBefore 是 DLL 動手前的同調與段數。
-; abByDll = False：選單的關閉（洗點前），照舊由這裡寫全域變數並請 DLL 融斷與洩壓。
-Function CloseForm(Bool abByDll = False, Int aiElement = 0, Int aiSyncBefore = -1, Int aiStageBefore = -1)
-	; 關閉形態是選單也會要求的動作（洗點前先關形態），總開關關著也要能關；DLL 那一半（融斷、洩壓）在總開關關著時本來就不做。
+; 選單的關閉（MCM 洗點前）。熱鍵、Z、魔力耗盡的關閉是 DLL 的，ESSB_Switch 回來時走 FormClosedFx。
+Function CloseForm()
+	; 關閉形態是選單也會要求的動作（洗點前先關形態），總開關關著也要能關。
 	If !IsReadyUI()
 		Return
 	EndIf
+	; round 27h：DLL 在運作就交給它——全域變數立刻歸零（洗點馬上讀得到），融斷與形態能力在它的 task 裡做，ESSB_Switch 回來放音效。
+	If NativeHit && NativeHit.GetValueInt() == 1 && ESSBNative.CloseForm()
+		Return
+	EndIf
+	; DLL 沒在運作（總開關關著、故障、未安裝），或形態本來就沒開：照舊由這裡關。
 	Actor player = ThePlayer()
 	Int previous = AppliedElement
 	If previous == 0
-		previous = aiElement
-	EndIf
-	If previous == 0 && !abByDll
 		previous = CurrentElement.GetValueInt()
 	EndIf
 	AppliedElement = 0
-	If player && previous >= 1 && previous <= 11
-		player.RemoveSpell(FormAbilities[previous - 1])
-	EndIf
-	If !abByDll
-		FormActive.SetValueInt(0)
-		CurrentElement.SetValueInt(0)
+	FormActive.SetValueInt(0)
+	CurrentElement.SetValueInt(0)
+	If player
+		Int i = 0
+		While i < FormAbilities.Length
+			player.RemoveSpell(FormAbilities[i])
+			i += 1
+		EndWhile
 		; 關形態不是切換：沒有餘響；護血池隨形態清空。
-		If player
-			If EchoPendingSpell
-				player.DispelSpell(EchoPendingSpell)
-			EndIf
-			If BloodGuardSpell
-				player.DispelSpell(BloodGuardSpell)
-			EndIf
+		If EchoPendingSpell
+			player.DispelSpell(EchoPendingSpell)
+		EndIf
+		If BloodGuardSpell
+			player.DispelSpell(BloodGuardSpell)
 		EndIf
 	EndIf
 	PrevElement = previous
@@ -778,9 +758,9 @@ Function CloseForm(Bool abByDll = False, Int aiElement = 0, Int aiSyncBefore = -
 	EndIf
 	SendModEvent("ESSB_FormChanged", "close", 0.0)
 	If CachedDebugLevel >= 1
-		LogEvent(1, "form", "close " + previous + " byDll=" + abByDll)
+		LogEvent(1, "form", "close " + previous + " (menu, no DLL)")
 	EndIf
-	OnFormClosed(previous, abByDll, aiSyncBefore, aiStageBefore)
+	ClearSelfAll()
 	RefreshTrees()
 	RefreshAbilities()
 EndFunction
@@ -822,58 +802,30 @@ Function OnFormSwitched(Int aiOldIndex, Int aiNewIndex)
 	RefreshSyncStage()
 EndFunction
 
-; 融斷（規劃 2.5）：關閉形態的瞬間，範圍內每個帶印記的目標一次結清為爆傷，
-; 倍率 K_sync 隨同調段數 0／1／2／3 段 = ×1／×1.5／×2／×3。
-Function OnFormClosed(Int aiIndex, Bool abByDll = False, Int aiSyncBefore = -1, Int aiStageBefore = -1)
-	; 規劃 2.12 第 2 列：關形態／融斷一次 Release 音。爆炸由 ESSB_End 的反應本體放，
-	; 預算（每 0.5 秒 5 個）在 PlaceFx 裡，所以「範圍內每個印記目標一次爆炸」自動封頂 5 個。
-	PlayFormSound(FxSoundRelease, aiIndex)
-	Int syncBefore = aiSyncBefore
-	If syncBefore < 0
-		syncBefore = Sync.GetValueInt()
+; 融斷（規劃 2.5）：關閉形態的瞬間，範圍內每個帶印記的目標一次結清為爆傷，倍率 K_sync 隨同調段數 0／1／2／3 段
+; = ×1／×1.5／×2／×3——全在 DLL（Reactions.h PlanBurst，SwitchWork）；這裡只剩關閉的音效與 Papyrus 的附帶。
+Function FormClosedFx(Int aiIndex, Int aiReason)
+	; 規劃 2.12 第 2 列：關形態／融斷一次 Release 音。爆炸由 ESSB_End 的反應本體放（每 0.5 秒 5 個的預算在 PlaceFx）。
+	; 融斷、洩壓、同調歸零與保留（永續、連斷、三重奏）、免門檻、形態能力 round 27h 起都在 DLL 的切換 task 裡。
+	Int previous = AppliedElement
+	If previous == 0
+		previous = aiIndex
 	EndIf
-	Int stage = aiStageBefore
-	If stage < 0
-		stage = SyncStage()
-	EndIf
-	; round 24（N5）：融斷整個在 DLL（Reactions.h PlanBurst）：一次掃描（15 公尺、收束 20 公尺 +0.3 公尺／點），範圍內每個
-	; 帶印記的目標每個印記以自己的終焉本體 × K_sync × 融斷主線結清，寂、萬寂、斷界、回流、雙斷、安全閥、地斷、颶風、
-	; 墜星的融斷那一半都在同一個計畫；推力與領域經 ESSB_Push／ESSB_Domain 回來。
-	; round 27 (G8)：熱鍵、Z 與魔力耗盡的關閉由 DLL 在切換的 task 裡融斷與洩壓（abByDll）；選單的關閉照舊請 DLL 做。
-	If !abByDll
-		ESSBNative.Burst(aiIndex)
-		ESSBNative.FormLeave(aiIndex, True)
-	EndIf
-	If CachedDebugLevel >= 1
-		LogEvent(1, "burst", "queued stage=" + stage)
-	EndIf
-
-	; 5.2 持續傳奇分支「永續」：Z 關閉時若同調三段，融斷後保留一段同調到下一次開形態。
-	If stage >= 3 && ESSBNodes.HasPerpetual(Self)
-		Int t1 = 5
-		If SyncT1
-			t1 = SyncT1.GetValueInt()
-		EndIf
-		PerpetualKeep = t1
-	EndIf
-	; 5.2 安全閥（融斷時你受傷 -50% 2 秒）round 24 起是 DLL 掛在你身上的 ESSB_N5_SafetyValve，PERK 讀它。
-	; 5.1 冷寂路線的收尾（免門檻、連斷；回流與雙斷 round 24 起在 DLL）。
-	ESSBNoForm.OnBurst(Self, syncBefore)
-	; 5.2 關閉專精分支「三重奏」：DLL 在第三種元素的終焉留下 60 秒的「下一次融斷保留全部同調」（碼 51）。
-	Actor closer = ThePlayer()
-	If closer && ESSBNative.GetStatus(closer, 51) > 0
-		SetSyncKeep(syncBefore, 60)
-		ESSBNative.ClearStatus(closer, 51)
-	EndIf
-
-	; round 23 (N4)：融斷後同調歸零（DLL 的效果）；保留的份在下一次開形態時由 SwitchForm 交給 DLL。
-	; round 27 (G8)：DLL 的關閉已在切換的 task 裡歸零。
-	If !abByDll
-		ESSBNative.SetSync(0)
-	EndIf
+	AppliedElement = 0
+	PrevElement = previous
+	SendModEvent("ESSB_FormChanged", "close", 0.0)
+	PlayFormSound(FxSoundRelease, previous)
 	SyncStageShown = 0
 	PushSyncStage()
 	ClearSelfAll()
+	RefreshTrees()
+	RefreshAbilities()
+	If aiReason == 1
+		Debug.Notification("魔力耗盡，形態已關閉（5 秒內無法重新開啟）")
+	EndIf
+	If CachedDebugLevel >= 1
+		LogEvent(1, "form", "close " + previous + " reason=" + aiReason)
+	EndIf
 EndFunction
 
 ; ---------------------------------------------------------------- 附傷與命中
@@ -1079,36 +1031,10 @@ EndFunction
 
 ; ---------------------------------------------------------------- 傷害與法術套用封裝
 
-; 破魔印 8 秒（ESSBCounter）。
-Function ApplyManaBreakMark(Actor akTarget)
-	Actor player = ThePlayer()
-	If player && ManaBreakSpell && akTarget
-		ManaBreakSpell.SetNthEffectDuration(0, DurationInt(8))
-		player.DoCombatSpellApply(ManaBreakSpell, akTarget)
-	EndIf
-EndFunction
-
 ; 反咒（v0.4 5.1）round 23 起由 DLL 的施法事件判定（施法者帶破魔印時受該次施法消耗的真實傷害，Hurt.h PlanSpellCast）；
 ; 施法動畫事件的登記（StartCounter／StopCounter／OnAnimationEvent）與斷咒用的最近施法紀錄一起刪除。
 
-; 沉默 N 秒（ESSBSilence + MagickaRateMult -100）。首領減半（規劃 8）。
-Function ApplySilenceSpell(Actor akTarget, Int aiSeconds)
-	Actor player = ThePlayer()
-	If !player || !SilenceSpell || !akTarget || aiSeconds < 1
-		Return
-	EndIf
-	Int duration = aiSeconds
-	If IsVIPTarget(akTarget)
-		duration = duration / 2
-		If duration < 1
-			duration = 1
-		EndIf
-	EndIf
-	duration = DurationInt(duration)
-	SilenceSpell.SetNthEffectDuration(0, duration)
-	SilenceSpell.SetNthEffectDuration(1, duration)
-	player.DoCombatSpellApply(SilenceSpell, akTarget)
-EndFunction
+; round 27h：ApplySilenceSpell、ApplyManaBreakMark 沒有呼叫者（沉默與滅法印 round 23 起是 DLL 的），刪除。
 
 ; fix round 7: category delivery helpers never apply G(L).
 Float Function CooldownSeconds(Float afSeconds)
@@ -1183,11 +1109,12 @@ Function ApplyUtil(Int aiIndex, Float afMagnitude, Int aiDuration, Actor akTarge
 			afMagnitude = afMagnitude * MultDot.GetValue() * BaseDamageMult.GetValue()
 		EndIf
 	EndIf
-	utilSpell.SetNthEffectMagnitude(0, afMagnitude)
+	; round 27h（Papyrus 審查 7）：不再改共用的法術紀錄（兩個處理同時改會互相蓋掉、下一次沿用舊秒數）；DLL 用這次的強度與秒數施放。
+	Float seconds = 0.0
 	If aiDuration > 0
-		utilSpell.SetNthEffectDuration(0, DurationInt(aiDuration))
+		seconds = DurationInt(aiDuration)
 	EndIf
-	player.DoCombatSpellApply(utilSpell, akTarget)
+	ESSBNative.CastWith(utilSpell, akTarget, afMagnitude, seconds)
 EndFunction
 
 ; ---------------------------------------------------------------- 公式掛勾
@@ -1450,10 +1377,8 @@ Function ApplySelfMarker(Spell akMarker, Int aiSeconds)
 	If !player || !akMarker
 		Return
 	EndIf
-	If aiSeconds > 0
-		akMarker.SetNthEffectDuration(0, aiSeconds)
-	EndIf
-	player.DoCombatSpellApply(akMarker, player)
+	; round 27h（Papyrus 審查 7）：不改共用的法術紀錄；DLL 用這次的秒數施放（0＝紀錄的秒數）。
+	ESSBNative.CastWith(akMarker, player, 0.0, aiSeconds)
 EndFunction
 
 ; round 23：岩甲的護甲是 DLL 掛的效果（ESSB_N4_RockArmorAVEffect）；v0.3 的岩甲常駐能力（UtilSpells[18]）退役，
@@ -1881,14 +1806,8 @@ Int Function GetFreeOpen()
 	Return GFreeOpen.GetValueInt()
 EndFunction
 
-; ---- 同調保留（承接／連斷／永續／三重奏）
-Function SetSyncKeep(Int aiValue, Int aiSeconds)
-	aiSeconds = DurationInt(aiSeconds)
-	If aiValue > SyncKeep
-		SyncKeep = aiValue
-	EndIf
-	SyncKeepLeft = Now() + aiSeconds
-EndFunction
+; round 27h：同調的保留（連斷、三重奏、永續、承接）是 DLL 切換 task 的（Runtime.h SyncKeep）；SyncKeep／SyncKeepLeft／PerpetualKeep
+; 三個變數留到下一次 schema 升版才刪（存檔的欄位）。
 
 ; 協奏／大協奏的「切換後首次終焉」與三重奏的逐元素標記 round 23 起是 DLL 掛在你身上的效果（終焉事件帶旗標、倍率已乘）。
 
@@ -2350,9 +2269,7 @@ Function ApplyFear(Actor akTarget, Int aiSeconds, Bool abScaled = False)
 	If !abScaled
 		seconds = DurationInt(aiSeconds)
 	EndIf
-	FearSpell.SetNthEffectMagnitude(0, ESSBElem3.CharmCap(Self) as Float)
-	FearSpell.SetNthEffectDuration(0, seconds)
-	player.DoCombatSpellApply(FearSpell, akTarget)
+	ESSBNative.CastWith(FearSpell, akTarget, ESSBElem3.CharmCap(Self) as Float, seconds as Float)   ; round 27h（審查 7）
 	If CachedDebugLevel >= 4
 		Probe("fear", akTarget, "sec=" + seconds + " cap=" + ESSBElem3.CharmCap(Self))   ; round 26
 	EndIf
@@ -2370,16 +2287,13 @@ Function ApplyFrenzy(Actor akTarget, Int aiSeconds, Bool abScaled = False)
 	If !abScaled
 		seconds = DurationInt(aiSeconds)
 	EndIf
-	FrenzySpell.SetNthEffectMagnitude(0, ESSBElem3.CharmCap(Self) as Float)
-	FrenzySpell.SetNthEffectDuration(0, seconds)
-	player.DoCombatSpellApply(FrenzySpell, akTarget)
+	ESSBNative.CastWith(FrenzySpell, akTarget, ESSBElem3.CharmCap(Self) as Float, seconds as Float)   ; round 27h（審查 7）
 	If CachedDebugLevel >= 4
 		Probe("frenzy", akTarget, "sec=" + seconds + " cap=" + ESSBElem3.CharmCap(Self))   ; round 26
 	EndIf
 	; 5.12 開啟熟練分支「狂刃」：瘋狂中的目標造成的傷害 +50%（同樣秒數的引擎效果，AttackDamageMult +0.5）。
 	If ESSBNodes.Br(Self, 9, 1, 1, 2) && FrenzyBladeSpell ; @node 狂刃
-		FrenzyBladeSpell.SetNthEffectDuration(0, seconds)
-		player.DoCombatSpellApply(FrenzyBladeSpell, akTarget)
+		ESSBNative.CastWith(FrenzyBladeSpell, akTarget, 0.0, seconds as Float)   ; round 27h：紀錄的強度、這次的秒數
 	EndIf
 	If CachedDebugLevel >= 1
 		LogThrottled(1, "frenzy", akTarget.GetFormID() + " sec=" + aiSeconds)
@@ -2555,8 +2469,7 @@ Bool Function ApplyAsh(Actor akTarget)
 		EndIf
 		Return False
 	EndIf
-	AshSpell.SetNthEffectMagnitude(0, akTarget.GetActorValueMax("Health") + 100.0)
-	player.DoCombatSpellApply(AshSpell, akTarget)
+	ESSBNative.CastWith(AshSpell, akTarget, akTarget.GetActorValueMax("Health") + 100.0, 0.0)   ; round 27h（審查 7）
 	Return True
 EndFunction
 
@@ -2581,6 +2494,18 @@ EndFunction
 ; ================================================================ DLL → 反應本體（ModEvent）
 ; strArg 是 DLL 把各值以 "|" 串起來的字串（Plugin.cpp SendEvent，順序見 native/include/Status.h 的 enum Event），
 ; sender 是目標。每個處理函式先驗控制器，再把值交給反應本體；目標狀態已由 DLL 在送出前改好。
+
+; round 27h（探針）：除錯等級 2 以上把 DLL 事件的序號（最後一欄）送回去；DLL 算出 Papyrus 處理的延遲，每 10 秒記一行
+; [ESSB][vm][L2]，探針 log 每個事件一行。
+Function Echo(String asArgs)
+	If CachedDebugLevel < 2
+		Return
+	EndIf
+	String[] parts = StringUtil.Split(asArgs, "|")
+	If parts.Length >= 6
+		ESSBNative.EventSeen(parts[parts.Length - 1] as Int)
+	EndIf
+EndFunction
 
 Float Function EventArg(String[] akArgs, Int aiIndex)
 	If !akArgs || aiIndex < 0 || aiIndex >= akArgs.Length
@@ -2608,6 +2533,7 @@ EndFunction
 ; ESSB_Open：元素、開印倍率、這一擊切掉的元素（0 = 沒有）、1 = 命中開的印（強制開印是 0）。
 ; round 24（N5）：開印的本體與各樹開印分支在 DLL（Reactions.h Bodies::Open）；這裡只給經驗（規劃 4）。
 Event OnESSBOpen(String asEventName, String asArgs, Float afElement, Form akSender)
+	Echo(asArgs)
 	Actor target = akSender as Actor
 	; round 27 (G13)：DLL 先結算傷害再送事件，打死的目標照樣給經驗（開印那一刻它還活著）。
 	If !IsOperational() || !target
@@ -2632,6 +2558,7 @@ EndEvent
 ; round 24（N5）：終焉的本體、各樹終焉分支、連鎖終焉、大協奏、反哺都在 DLL（Reactions.h Bodies::End）；這裡只給經驗
 ;（規劃 4）與放終焉的爆炸特效（規劃 2.12，每 0.5 秒 5 個的預算在 PlaceFx）。
 Event OnESSBEnd(String asEventName, String asArgs, Float afElement, Form akSender)
+	Echo(asArgs)
 	Actor target = akSender as Actor
 	; round 27 (G13)：DLL 先結算終焉的傷害才送這個事件，被終焉打死的目標也要爆炸、也給經驗（round 24 起漏掉的就是這些）。
 	If !IsOperational() || !target
@@ -2658,6 +2585,7 @@ EndEvent
 ; ESSB_Knock：推力（碎岩、反震 3.0，地動 2.0）。跌倒的推力與每目標 8 秒冷卻在 Knockdown；推不倒（龍、騎乘、必要角色）的
 ; 反震改為減速 30% 3 秒（原本 OnEarthRetaliate 的做法）。
 Event OnESSBKnock(String asEventName, String asArgs, Float afForce, Form akSender)
+	Echo(asArgs)
 	Actor target = akSender as Actor
 	If !IsOperational() || !target || target.IsDead()
 		Return
@@ -2673,6 +2601,7 @@ EndEvent
 
 ; ESSB_SyncUp：同調升到第 N 段（音效、ESSB_SyncStage 模組事件、神佑的資格；回饋已由 DLL 給）。
 Event OnESSBSyncUp(String asEventName, String asArgs, Float afStage, Form akSender)
+	Echo(asArgs)
 	If !IsOperational()
 		Return
 	EndIf
@@ -2685,6 +2614,7 @@ EndEvent
 
 ; ESSB_Cleanse：洗淨（1 = 淨化：清除全部負面效果；0 = 清一個）。DLL 已判定冷卻（洗淨 3 秒、潮身 30 秒）。
 Event OnESSBCleanse(String asEventName, String asArgs, Float afPurge, Form akSender)
+	Echo(asArgs)
 	If !IsOperational()
 		Return
 	EndIf
@@ -2696,6 +2626,7 @@ EndEvent
 
 ; ESSB_Lethal：你這一擊被打到 0 以下（DLL 受擊 task 讀的生命）；神佑的延遲死亡在這裡結算。
 Event OnESSBLethal(String asEventName, String asArgs, Float afUnused, Form akSender)
+	Echo(asArgs)
 	If !IsCurrentController()
 		Return
 	EndIf
@@ -2709,6 +2640,7 @@ EndEvent
 ; 控不到的目標改為 3 秒幻視：攻擊 -20%（v0.4 5.12，只給詛咒階梯本身）；群體的那一份控不到就跳過。
 ; round 24（N5）：夢魘（恐懼時 3 公尺內詛咒 +1）與群魔（4 公尺內一起瘋狂）的範圍在 DLL（Reactions.h Bodies::Hallucinate）。
 Event OnESSBHallucinate(String asEventName, String asArgs, Float afKind, Form akSender)
+	Echo(asArgs)
 	Actor target = akSender as Actor
 	If !IsOperational() || !target || target.IsDead()
 		Return
@@ -2753,6 +2685,7 @@ EndEvent
 ; 落地時由 DLL 乘）、中心的 FormID（風渦：被終焉的目標）、1 = 推不動時減速 30% 3 秒（吹飛、吹上天、颶風）。
 ; 推力的每目標冷卻與免疫名單照舊在 Knockdown／BlowBack／PullTo／LiftUp。
 Event OnESSBPush(String asEventName, String asArgs, Float afKind, Form akSender)
+	Echo(asArgs)
 	Actor target = akSender as Actor
 	If !IsOperational() || !target || target.IsDead()
 		Return
@@ -2787,6 +2720,7 @@ EndEvent
 ; ESSB_Ash：化灰（DLL 的死亡 sink 判定：帶神聖印記死亡，或淨土）。崩解是 Papyrus 的法術（龍與必要角色 DLL 已排除，
 ; ApplyAsh 再擋一次）；聖灰、淨灰在 DLL。
 Event OnESSBAsh(String asEventName, String asArgs, Float afUnused, Form akSender)
+	Echo(asArgs)
 	Actor target = akSender as Actor
 	If !IsOperational() || !target
 		Return
@@ -2803,6 +2737,7 @@ EndEvent
 ; ESSB_Raise：亡者歸來（DLL 判定：階、等級上限、秒數、僕從攻擊加成、1 = 死靈主的永久）。復生的 AI、召喚上限與
 ; 不可復生的名單在 ApplyReanimate／CanReanimate（裁定 R4）。
 Event OnESSBRaise(String asEventName, String asArgs, Float afTier, Form akSender)
+	Echo(asArgs)
 	Actor target = akSender as Actor
 	If !IsOperational() || !target
 		Return
@@ -2827,6 +2762,7 @@ EndEvent
 
 ; ESSB_Sneak：連殺（風印記目標被你的潛行攻擊殺死）：秒數內不解除潛行（DLL 已乘持續時間；下一次潛行攻擊 ×2 是 DLL 的視窗）。
 Event OnESSBSneak(String asEventName, String asArgs, Float afSeconds, Form akSender)
+	Echo(asArgs)
 	If !IsOperational()
 		Return
 	EndIf
@@ -2839,6 +2775,7 @@ EndEvent
 ; ESSB_Domain：融斷（與聖域）留下的領域：元素、秒數（未乘持續時間）、半徑。round 25（N6，裁定 R4）：領域本身是引擎的
 ; hazard，DLL 已在目標腳下放好（Spawn Hazard，引擎管壽命與數量）；這裡只放一次該元素的開場爆炸特效（規劃 2.12）。
 Event OnESSBDomain(String asEventName, String asArgs, Float afElement, Form akSender)
+	Echo(asArgs)
 	Actor target = akSender as Actor
 	If !IsOperational() || !target
 		Return
@@ -2854,37 +2791,31 @@ Event OnESSBDomain(String asEventName, String asArgs, Float afElement, Form akSe
 	EndIf
 EndEvent
 
-; ESSB_Switch（round 25，裁定 R6）：熱鍵或形態力量要切換（元素、1 = 從沒有形態開啟）。DLL 已判定魔力門檻（血形態、順轉、
-; 免門檻例外）、寫好 ESSB_CurrentElement／ESSB_FormActive、用掉免門檻並顯示提示；這裡照規劃 1.1 換形態（能力、同調保留、
-; 關閉時的融斷）。
+; ESSB_Switch（round 25，裁定 R6；round 27h）：熱鍵、Z、魔力耗盡、選單的切換與關閉，DLL 在決定它的 task 裡全部做完——
+; 魔力門檻、ESSB_CurrentElement／ESSB_FormActive、融斷、同調與它的保留（承接、連斷、永續、三重奏）、免門檻、形態能力與光圈。
+; 這裡只剩音效、提示與 Papyrus 自己的附帶（順轉的受傷減免、氣旋與聖臨強化、節點能力、雙生的時間）。不等、不排隊
+;（0.27.6 的號碼牌等待拿掉了：DLL 的切換一個接一個在同一條執行緒上做完，順序不會亂）。
 Event OnESSBSwitch(String asEventName, String asArgs, Float afElement, Form akSender)
+	Echo(asArgs)
 	If !IsOperational()
+		If CachedDebugLevel >= 2
+			LogEvent(2, "drop", "ESSB_Switch element=" + ((afElement + 0.5) as Int) + " (the Papyrus half is not operational)")
+		EndIf
 		Return
 	EndIf
 	String[] args = StringUtil.Split(asArgs, "|")
+	Int element = (afElement + 0.5) as Int
 	Int kind = (EventArg(args, 1) + 0.5) as Int
 	Int syncBefore = (EventArg(args, 2) + 0.5) as Int
 	Int stageBefore = (EventArg(args, 3) + 0.5) as Int
 	Int reason = (EventArg(args, 4) + 0.5) as Int
-	; round 27b（審查 B N8）：切換事件一個接一個做完——關了馬上又開時，兩個處理不會在呼叫別的物件時交錯（關閉那一半寫的同調保留，
-	; 開啟那一半一定讀得到）。號碼牌是兩個全域變數（GlobalVariable.Mod 在全域變數自己身上做，不會重號）；等最多 1 秒。
-	GlobalVariable ticket = Game.GetFormFromFile(0x005DC0, "Elements Spellblade.esp") as GlobalVariable
-	GlobalVariable turn = Game.GetFormFromFile(0x005DC1, "Elements Spellblade.esp") as GlobalVariable
-	Float mine = 0.0
-	If ticket && turn
-		mine = ticket.Mod(1.0)
-		Int waited = 0
-		While turn.GetValue() < mine - 1.5 && waited < 100
-			Utility.Wait(0.01)
-			waited += 1
-		EndWhile
-	EndIf
 	If CachedDebugLevel >= 4
-		Probe("form-switch", ThePlayer(), "element=" + ((afElement + 0.5) as Int) + " kind=" + kind + " syncBefore=" + syncBefore + " stageBefore=" + stageBefore + " reason=" + reason + " current=" + CurrentElement.GetValueInt() + " active=" + FormActive.GetValueInt() + " applied=" + AppliedElement + " turn=" + (mine as Int))   ; round 26／27／27b
+		Probe("form-switch", ThePlayer(), "element=" + element + " kind=" + kind + " syncBefore=" + syncBefore + " stageBefore=" + stageBefore + " reason=" + reason + " current=" + CurrentElement.GetValueInt() + " active=" + FormActive.GetValueInt() + " applied=" + AppliedElement)   ; round 26／27／27h
 	EndIf
-	SwitchForm((afElement + 0.5) as Int, kind, syncBefore, stageBefore, reason)
-	If ticket && turn && turn.GetValue() < mine
-		turn.SetValue(mine)
+	If kind == 3
+		FormClosedFx(element, reason)
+	ElseIf element >= 1 && element <= 11
+		FormOpenedFx(element)
 	EndIf
 EndEvent
 
@@ -3087,7 +3018,8 @@ EndFunction
 ; FIX9: the failure latch is persistent; there is no retry/reset path.
 ; 審查修正 3：總開關（ESSB_Enabled）關掉時，所有遊戲路徑（命中、狀態、每秒、結算、ModEvent 反應）都不做事。
 Bool Function IsOperational()
-	Return IsReadyUI() && Enabled && Enabled.GetValueInt() == 1
+	; round 27h（Papyrus 審查 10）：DLL 沒在運作（被 SKSE 拒絕、未安裝、故障）時 Papyrus 也不做遊戲效果（只讀全域變數）。
+	Return IsReadyUI() && Enabled && Enabled.GetValueInt() == 1 && NativeHit && NativeHit.GetValueInt() == 1
 EndFunction
 
 ; 指揮官裁定（審查修正後）：MCM 與選單動作（狀態按鈕、技能樹選單、洗點、恢復預設、設定、關閉形態）不看總開關，
@@ -3832,8 +3764,7 @@ Function ApplyGuardWindow(Int aiIndex, Float afDeadline)
 	player.DispelSpell(window)
 	Int seconds = SecondsLeft(afDeadline)
 	If seconds > 0
-		window.SetNthEffectDuration(0, seconds)
-		player.DoCombatSpellApply(window, player)
+		ESSBNative.CastWith(window, player, 0.0, seconds)   ; round 27h（審查 7）：這次的秒數，不改共用的紀錄
 	EndIf
 EndFunction
 

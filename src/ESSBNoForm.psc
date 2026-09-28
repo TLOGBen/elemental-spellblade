@@ -63,18 +63,7 @@ EndFunction
 
 ; ================================================================== 冷寂（route 2）
 
-; 融斷結束後：免門檻、連斷（開形態的代價與同調保留，Papyrus 負責）。
+; 冷寂路線融斷後的「免門檻」「連斷」round 27h 起在 DLL 的切換 task（SwitchWork：Runtime.h SyncKeep、ESSB_FreeOpen）。
 ; round 24（N5）：冷寂路線的融斷倍率、範圍、寂（燒魔、上限、萬寂）、斷界、回流、雙斷都在 DLL（Reactions.h PlanBurst，
 ; 雙斷的再開印在 FormEnter 的 PlanAdvent）。
-Function OnBurst(ESSBController akCtl, Int aiSyncBefore) Global
-	; 新手分支「免門檻」：融斷後下一次開形態不需魔力。
-	If ESSBNodes.Br(akCtl, 11, 2, 0, 0) ; @node 免門檻
-		akCtl.SetFreeOpen(1)
-	EndIf
-
-	; 專精分支「連斷」：融斷後 5 秒內重開任一形態，保留一半同調。
-	If ESSBNodes.Br(akCtl, 11, 2, 2, 0) ; @node 連斷
-		akCtl.SetSyncKeep(aiSyncBefore / 2, 5)
-	EndIf
-EndFunction
 

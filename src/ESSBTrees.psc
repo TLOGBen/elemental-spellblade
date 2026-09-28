@@ -10,7 +10,7 @@ Scriptname ESSBTrees extends ReferenceAlias
 
 點數：CSF 的 perkPoints 是選單（根）層級的全域變數，所以一棵樹一個設定檔、
 一個 ESSB_Pts_<tree>。CSF 每買一個節點只扣 1 點；分支要 5 點，
-所以選單關閉後由 Reconcile() 補扣 4 點，補不出來就把該分支退回。
+所以選單關閉後補扣 4 點，補不出來就把該分支退回（round 27h 起由 DLL 在選單關閉的 task 裡結算）。
 
 效能：沒有每幀迴圈、沒有忙等。RefreshTree 只在選單關閉、洗點與機制前線主動要求時跑；
 13 棵樹以 120 + 75 格分塊保存 rank／branch，命中直接索引。未初始化的快取才即時查詢；
@@ -53,7 +53,7 @@ Int Property XP_PER_SECOND = 10 AutoReadOnly
 String Property PLUGIN_FILE = "Elements Spellblade.esp" AutoReadOnly
 String Property MENU_NAME = "StatsMenu" AutoReadOnly
 {CSF 3.x 沒有對外公開選單名稱；CustomSkills.dll 的 MenuSetup 修補的是原版 StatsMenu，
-所以這裡用 StatsMenu，並在 Reconcile 前後各留一道保險（重複開啟時先結清上一次）。}
+所以這裡用 StatsMenu（round 27h 起分支的結算由 DLL 聽它的關閉）。}
 
 ; ---------------------------------------------------------------- 內部狀態
 
@@ -79,7 +79,7 @@ Int QueuedTree = -1
 Bool OpeningMenu
 Float MenuRequestedAt
 
-; 選單前的分支快照（15 格位元遮罩），只對 PendingTree 有效。
+; round 27h：SnapBranch、PendingTree 與下面的快取陣列已不再使用（分支結算與節點快照在 DLL），留到下一次 schema 升版才刪。
 Int[] SnapBranch
 Int PendingTree = -1
 
@@ -105,6 +105,7 @@ Event OnPlayerLoadGame()
 	SettingsBusy = False
 	QueuedTree = -1
 	OpeningMenu = False
+	PendingTree = -1   ; round 27h（Papyrus 審查 3）：存檔裡留著的舊值不再影響結算
 	If AllValid
 		Int i = 0
 		While i < 13
@@ -166,9 +167,14 @@ Function Setup()
 	EndIf
 	RefreshActive(CurrentTree())
 	CustomSkills_AliasExt.RegisterForCustomSkillIncrease(Self)
-	; round 27e：技能樹也可能從「Custom Skill Menu」直接開（不經過 OpenTree）；一直聽 StatsMenu 的關閉，好補扣分支的點數。
+	; round 27e：技能樹也可能從「Custom Skill Menu」直接開（不經過 OpenTree）；round 27h 起分支的結算在 DLL，這裡聽關閉只為了清旗標。
 	RegisterForMenu(MENU_NAME)
+	RegisterForModEvent("ESSB_TreesSettled", "OnESSBTreesSettled")   ; round 27h
+	PendingTree = -1
 	Ready = True
+	If Controller.NativeHit && Controller.NativeHit.GetValueInt() == 1
+		ESSBNative.CheckPoints()   ; round 27h（探針）：讀檔時每棵樹的點數對不對（[ESSB][pts]）
+	EndIf
 	If Controller.CachedDebugLevel >= 1
 		Controller.LogEvent(1, "trees", "ready trees=" + TREE_COUNT + " api=" + CustomSkills.GetAPIVersion())
 	EndIf
@@ -517,109 +523,21 @@ EndFunction
 
 ; ---------------------------------------------------------------- 快取（給機制前線）
 
-Int Function CacheSlotOf(Int aiTree)
-	If !Controller || !Controller.IsCurrentController() || Controller.StateBroken
-		Return 0
-	EndIf
-	Int index = 0
-	While index < CACHE_SLOTS
-		If CacheTree[index] == aiTree
-			Return index
-		EndIf
-		index += 1
-	EndWhile
-	Return -1
-EndFunction
-
-; 三個快取槽固定分工：0 當前元素樹、1 無元素樹（11）、2 通用樹（12）。
-; 機制前線每一次計算都同時要這三棵，用輪替會在切換元素時把通用樹擠掉。
-Int Function SlotFor(Int aiTree)
-	If !Controller || !Controller.IsCurrentController() || Controller.StateBroken
-		Return 0
-	EndIf
-	If aiTree == 11
-		Return 1
-	ElseIf aiTree == 12
-		Return 2
-	EndIf
-	Return 0
-EndFunction
-
 ; 把一棵樹的 15 個主線階數與分支位元遮罩算進快取。約 120 次原生呼叫，只在事件時跑。
 Function RefreshTree(Int aiTree)
+	; round 27h（Papyrus 審查 1）：只更新這棵樹的等級與鏡射。節點的階數與分支由 DLL 回答（ESSBNative.NodeRank／NodeBranch，
+	; 讀它在 task 裡發布的快照）；原本每次升級、結算、洗點都重建的快取（約 1000 次原生呼叫）沒有人讀，拿掉了。
 	If !Controller || !Controller.IsCurrentController() || Controller.StateBroken
 		Return
 	EndIf
 	InitTables()
-	If Controller.StateBroken
+	If Controller.StateBroken || aiTree < 0 || aiTree >= TREE_COUNT
 		Return
 	EndIf
-	Actor player = ThePlayer()
-	If !player || aiTree < 0 || aiTree >= TREE_COUNT
-		Return
-	EndIf
-	Int slot = SlotFor(aiTree)
-	CacheTree[slot] = -1
-	AllValid[aiTree] = False
-	Int pos = 0
-	While pos < 15
-		Int route = pos / TIER_COUNT
-		Int tier = pos % TIER_COUNT
-		CacheRank[slot * 15 + pos] = GetMainRank(aiTree, route, tier)
-		Int bits = 0
-		Int n = 0
-		While n < BRANCH_SLOTS
-			Perk branch = GetBranch(aiTree, route, tier, n)
-			If branch && player.HasPerk(branch)
-				bits = Math.LogicalOr(bits, Bit(n))
-			EndIf
-			n += 1
-		EndWhile
-		CacheBranch[slot * 15 + pos] = bits
-		Int cacheIndex = aiTree * 15 + pos
-		If cacheIndex < 120
-			AllRankA[cacheIndex] = CacheRank[slot * 15 + pos]
-			AllBranchA[cacheIndex] = bits
-		Else
-			AllRankB[cacheIndex - 120] = CacheRank[slot * 15 + pos]
-			AllBranchB[cacheIndex - 120] = bits
-		EndIf
-		pos += 1
-	EndWhile
-	CacheTree[slot] = aiTree
 	LevelCache[aiTree] = TreeLevel(aiTree)
-	AllValid[aiTree] = True
-	If Controller.CachedDebugLevel >= 3
-		If Controller.CachedDebugLevel >= 3
-			Controller.LogEvent(3, "trees", "refresh tree=" + aiTree + " slot=" + slot)
-		EndIf
-	EndIf
-	Controller.RankCacheA = AllRankA
-	Controller.RankCacheB = AllRankB
-	Controller.BranchCacheA = AllBranchA
-	Controller.BranchCacheB = AllBranchB
 	Controller.LevelMirror = LevelCache
 	Controller.NodeMirrorReady = True
 	Controller.RefreshSyncStage()
-EndFunction
-
-; 機制前線的讀取入口：快取命中就 O(1)，沒命中就即時二分搜尋。
-Int Function CachedMainRank(Int aiTree, Int aiRoute, Int aiTier)
-	If !Controller || !Controller.IsCurrentController() || Controller.StateBroken
-		Return 0
-	EndIf
-	InitTables()
-	If Controller.StateBroken
-		Return 0
-	EndIf
-	If !ValidCell(aiTree, aiRoute, aiTier)
-		Return 0
-	EndIf
-	Int slot = CacheSlotOf(aiTree)
-	If slot < 0
-		Return GetMainRank(aiTree, aiRoute, aiTier)
-	EndIf
-	Return CacheRank[slot * 15 + aiRoute * TIER_COUNT + aiTier]
 EndFunction
 
 ; 機制前線用：一次把「當前元素樹 + 無元素樹 + 通用樹」算進三個固定槽。
@@ -671,24 +589,6 @@ Float Function TreeG(Int aiTree)
 		Return 0.0
 	EndIf
 	Return 1.0 + 0.05 * TreeLevel(aiTree)
-EndFunction
-
-Bool Function CachedBranch(Int aiTree, Int aiRoute, Int aiTier, Int aiIndex)
-	If !Controller || !Controller.IsCurrentController() || Controller.StateBroken
-		Return False
-	EndIf
-	InitTables()
-	If Controller.StateBroken
-		Return False
-	EndIf
-	If !ValidCell(aiTree, aiRoute, aiTier) || aiIndex < 0 || aiIndex >= BRANCH_SLOTS
-		Return False
-	EndIf
-	Int slot = CacheSlotOf(aiTree)
-	If slot < 0
-		Return HasBranch(aiTree, aiRoute, aiTier, aiIndex)
-	EndIf
-	Return Math.LogicalAnd(CacheBranch[slot * 15 + aiRoute * TIER_COUNT + aiTier], Bit(aiIndex)) != 0
 EndFunction
 
 ; ---------------------------------------------------------------- 經驗（規劃 4）
@@ -766,8 +666,8 @@ Event OnCustomSkillIncrease(String asSkillId)
 	GlobalVariable points = PtsGlobals[tree]
 	Int after = 0
 	If points
-		after = points.GetValueInt() + 1
-		points.SetValueInt(after)
+		; round 27h（Papyrus 審查 4）：加法在全域變數自己身上做（DLL 的結算同時改它也不會丟掉這一點）。
+		after = points.Mod(1.0) as Int
 	EndIf
 	RefreshTree(tree)
 	Controller.RefreshRuntimeValues()
@@ -806,14 +706,8 @@ Function OpenTree(Int aiTree, Bool abQueued = False)
 	If aiTree < 0 || aiTree >= TREE_COUNT
 		Return
 	EndIf
-	If PendingTree >= 0
-		; 上一次的選單沒有送出關閉事件（被別的模組關掉、或選單名稱不同），先補結清。
-		Int stale = PendingTree
-		PendingTree = -1
-		Reconcile(stale)
-	EndIf
-	TakeSnapshot(aiTree)
-	PendingTree = aiTree
+	; round 27h（Papyrus 審查 1／3）：分支的 5 點由 DLL 在選單關閉時結算（不管選單從哪裡開）；這裡不再拍快照、不再記 PendingTree。
+	PendingTree = -1
 	RegisterForMenu(MENU_NAME)
 	MenuRequestedAt = Utility.GetCurrentRealTime()
 	RegisterForSingleUpdate(1.0)
@@ -841,167 +735,24 @@ Event OnMenuClose(String asMenuName)
 	If asMenuName != MENU_NAME
 		Return
 	EndIf
-	If PendingTree < 0
-		ReconcileGained()   ; round 27e：從別處開的選單（Custom Skill Menu、原版技能選單）
-		Return
-	EndIf
+	; round 27h（Papyrus 審查 1／3）：分支的結算是 DLL 的（選單關閉的 task：每個新分支補扣 4 點或退回），做完送 ESSB_TreesSettled。
 	OpeningMenu = False
-	SettingsBusy = True
-	Int tree = PendingTree
 	PendingTree = -1
-	Reconcile(tree)
-	SettingsBusy = False
 EndEvent
 
-Function TakeSnapshot(Int aiTree)
+; round 27h：DLL 結算完分支（選單關閉）或洗完點——等級鏡射與節點能力跟著更新。
+Event OnESSBTreesSettled(String asEventName, String asArgs, Float afNumArg, Form akSender)
 	If !Controller || !Controller.IsCurrentController() || Controller.StateBroken
 		Return
 	EndIf
-	Actor player = ThePlayer()
-	Int pos = 0
-	While pos < 15
-		Int route = pos / TIER_COUNT
-		Int tier = pos % TIER_COUNT
-		Int bits = 0
-		Int n = 0
-		While n < BRANCH_SLOTS
-			Perk branch = GetBranch(aiTree, route, tier, n)
-			If player && branch && player.HasPerk(branch)
-				bits = Math.LogicalOr(bits, Bit(n))
-			EndIf
-			n += 1
-		EndWhile
-		SnapBranch[pos] = bits
-		pos += 1
-	EndWhile
-EndFunction
-
-; CSF 每個節點只扣 1 點；分支要 5 點，所以這裡補扣 4 點，補不出來就退回該分支。
-Function Reconcile(Int aiTree)
-	If !Controller || !Controller.IsCurrentController() || Controller.StateBroken
-		Return
-	EndIf
-	Actor player = ThePlayer()
-	If !player || aiTree < 0 || aiTree >= TREE_COUNT
-		Return
-	EndIf
-	GlobalVariable points = PtsGlobals[aiTree]
-	If !points
-		Return
-	EndIf
-	Int available = points.GetValueInt()
-	Int bought = 0
-	Int refused = 0
-	Int pos = 0
-	While pos < 15
-		Int route = pos / TIER_COUNT
-		Int tier = pos % TIER_COUNT
-		Int n = 0
-		While n < BRANCH_SLOTS
-			If Math.LogicalAnd(SnapBranch[pos], Bit(n)) == 0
-				Perk branch = GetBranch(aiTree, route, tier, n)
-				If branch && player.HasPerk(branch)
-					Int after = SettleBranch(player, aiTree, route, tier, n, branch, available)
-					If after > available
-						refused += 1
-					Else
-						bought += 1
-					EndIf
-					available = after
-				EndIf
-			EndIf
-			n += 1
-		EndWhile
-		pos += 1
-	EndWhile
-	If available < 0
-		available = 0
-	EndIf
-	points.SetValueInt(available)
-	RefreshTree(aiTree)
-	If Controller && Controller.IsReadyUI()
+	RefreshActive(CurrentTree())
+	If Controller.IsReadyUI()
 		Controller.RefreshAbilities()
 	EndIf
-	If Controller.CachedDebugLevel >= 1
-		Controller.LogEvent(1, "trees", "reconcile tree=" + aiTree + " branches=" + bought \
-			+ " refused=" + refused + " points=" + available)
-	EndIf
-EndFunction
+EndEvent
 
-; round 27e：不是從 OpenTree 開的技能選單關閉時：DLL 在選單打開那一刻記下每棵樹每條路線已有的分支
-; （ESSBNative.BranchesGained 回傳之後新買的），每個新分支補扣 4 點，不夠就退回（跟 Reconcile 同一套規則）。
-Function ReconcileGained()
-	If !Controller || !Controller.IsCurrentController() || Controller.StateBroken
-		Return
-	EndIf
-	Actor player = ThePlayer()
-	If !player
-		Return
-	EndIf
-	Bool changed = False
-	Int tree = 0
-	While tree < TREE_COUNT
-		GlobalVariable points = PtsGlobals[tree]
-		Int route = 0
-		While route < 3 && points
-			Int gained = ESSBNative.BranchesGained(tree, route)
-			If gained != 0
-				Int available = points.GetValueInt()
-				Int tier = 0
-				While tier < TIER_COUNT
-					Int n = 0
-					While n < BRANCH_SLOTS
-						Int bit = Math.LeftShift(1, tier * 4 + n)
-						If Math.LogicalAnd(gained, bit) != 0
-							Perk branch = GetBranch(tree, route, tier, n)
-							If branch
-								available = SettleBranch(player, tree, route, tier, n, branch, available)
-							EndIf
-						EndIf
-						n += 1
-					EndWhile
-					tier += 1
-				EndWhile
-				If available < 0
-					available = 0
-				EndIf
-				points.SetValueInt(available)
-				changed = True
-			EndIf
-			route += 1
-		EndWhile
-		tree += 1
-	EndWhile
-	If changed
-		RefreshActive(CurrentTree())
-		If Controller.IsReadyUI()
-			Controller.RefreshAbilities()
-		EndIf
-		If Controller.CachedDebugLevel >= 1
-			Controller.LogEvent(1, "trees", "reconcile (menu opened elsewhere)")
-		EndIf
-	EndIf
-EndFunction
-
-; round 27g（0.27.6）：一個新分支的結算（Reconcile 與 ReconcileGained 共用；規則在 DLL 的 rt::SettleBranch，有單元測試）。
-; aiAvailable＝CSF 在這次選單裡扣完之後的點數（主線每階 1 點、分支 1 點都已扣掉）；分支還要另外 4 點。
-; 夠就扣；不夠就退回分支，CSF 扣的 1 點加回來，並告訴玩家是哪個分支、要幾點、這棵樹剩幾點。回傳結算後的點數。
-Int Function SettleBranch(Actor akPlayer, Int aiTree, Int aiRoute, Int aiTier, Int aiIndex, Perk akBranch, Int aiAvailable)
-	Int after = ESSBNative.SettleBranch(aiAvailable)
-	If after < 0
-		after = aiAvailable + 1   ; DLL 沒回答：退回（不會白送分支）
-	EndIf
-	Bool refunded = after > aiAvailable
-	String name = akBranch.GetName()
-	If refunded
-		akPlayer.RemovePerk(akBranch)
-		Debug.Notification(TreeName(aiTree) + "「" + name + "」需要 " + BRANCH_COST + " 點，" + TreeName(aiTree) + "樹剩 " 			+ (aiAvailable + 1) + " 點，已退回")
-	EndIf
-	If Controller.CachedDebugLevel >= 3
-		Controller.LogEvent(3, "trees", "branch tree=" + aiTree + " route=" + aiRoute + " tier=" + aiTier + " index=" + aiIndex 			+ " id=" + akBranch.GetFormID() + " name=" + name + " need=" + BRANCH_COST + " had=" + (aiAvailable + 1) 			+ " before=" + aiAvailable + " after=" + after + " refunded=" + refunded)
-	EndIf
-	Return after
-EndFunction
+; round 27h（Papyrus 審查 1）：分支的結算（CSF 扣 1、補扣 4、不夠退回、訊息、L3 記錄）整個在 DLL 選單關閉的 task
+;（Plugin.cpp ReconcileBranchesWork，規則 Runtime.h SettleBranch，有單元測試）。
 
 ; ---------------------------------------------------------------- 洗點（規劃 3.1）
 
@@ -1091,51 +842,56 @@ Int Function RespecTree(Int aiTree, Bool abRefreshAbilities = True)
 	If !player
 		Return 0
 	EndIf
-	Int removed = 0
-	Int pos = 0
-	While pos < 15
-		Int route = pos / TIER_COUNT
-		Int tier = pos % TIER_COUNT
-		Int base = MainBase(aiTree, route, tier)
-		Int rank = GetMainRank(aiTree, route, tier)
-		Int step = 0
-		While step < rank
-			Perk node = Game.GetFormFromFile(base + step, PLUGIN_FILE) as Perk
-			If node
-				player.RemovePerk(node)
-				removed += 1
-			EndIf
-			step += 1
+	; round 27h（Papyrus 審查 1）：DLL 在 task 裡拿掉這棵樹的全部節點、點數設回等級，回答拿掉幾個（它的快照）；
+	; 做完送 ESSB_TreesSettled（節點能力跟著更新）。DLL 沒在運作時照舊由這裡逐一拿。
+	Int removed = -1
+	If Controller.NativeHit && Controller.NativeHit.GetValueInt() == 1
+		removed = ESSBNative.RespecTree(aiTree)
+	EndIf
+	If removed < 0
+		removed = 0
+		Int pos = 0
+		While pos < 15
+			Int route = pos / TIER_COUNT
+			Int tier = pos % TIER_COUNT
+			Int base = MainBase(aiTree, route, tier)
+			Int rank = GetMainRank(aiTree, route, tier)
+			Int step = 0
+			While step < rank
+				Perk node = Game.GetFormFromFile(base + step, PLUGIN_FILE) as Perk
+				If node
+					player.RemovePerk(node)
+					removed += 1
+				EndIf
+				step += 1
+			EndWhile
+			Int n = 0
+			While n < BRANCH_SLOTS
+				Perk branch = GetBranch(aiTree, route, tier, n)
+				If branch && player.HasPerk(branch)
+					player.RemovePerk(branch)
+					removed += 1
+				EndIf
+				n += 1
+			EndWhile
+			pos += 1
 		EndWhile
-		Int n = 0
-		While n < BRANCH_SLOTS
-			Perk branch = GetBranch(aiTree, route, tier, n)
-			If branch && player.HasPerk(branch)
-				player.RemovePerk(branch)
-				removed += 1
-			EndIf
-			n += 1
-		EndWhile
-		pos += 1
-	EndWhile
-	GlobalVariable points = PtsGlobals[aiTree]
-	GlobalVariable level = LvlGlobals[aiTree]
-	Int restored = 0
-	If points && level
-		restored = level.GetValueInt()
-		points.SetValueInt(restored)
+		GlobalVariable points = PtsGlobals[aiTree]
+		GlobalVariable level = LvlGlobals[aiTree]
+		If points && level
+			points.SetValueInt(level.GetValueInt())
+		EndIf
+		If Controller && abRefreshAbilities && Controller.IsReadyUI()
+			Controller.RefreshAbilities()
+		EndIf
 	EndIf
 	GlobalVariable stamp = RespecGlobals[aiTree]
 	If stamp
 		stamp.SetValue(Utility.GetCurrentGameTime())
 	EndIf
 	RefreshTree(aiTree)
-	If Controller && abRefreshAbilities && Controller.IsReadyUI()
-		Controller.RefreshAbilities()
-	EndIf
 	If Controller.CachedDebugLevel >= 1
-		Controller.LogEvent(1, "trees", "respec tree=" + aiTree + " removed=" + removed \
-			+ " points=" + restored)
+		Controller.LogEvent(1, "trees", "respec tree=" + aiTree + " removed=" + removed)
 	EndIf
 	Return removed
 EndFunction

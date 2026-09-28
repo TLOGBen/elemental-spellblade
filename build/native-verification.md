@@ -548,3 +548,53 @@ TrueHUD 資源條的稽核（T1）找到的具體問題：
 - 維持費：upkeep_base_pct 2.5、upkeep_dark_pct 3.5（ManifestData.h 由 fix19_native 產生）；等級減免與 MCM 倍率不變；fix25_reference 的手算錨點改（200 × 2.5% × 0.993 = 4.965、300 × 3.5% × 0.3 × 2 = 6.3、長流 4.5 × 0.8 = 3.6）。
 - 測試卷判讀：probe-judge 從 mcm-state／mcm 行讀出當下傷害倍率（Line.dm），傷害數字用 Line.d 除掉再跟表上的 1.0 數字比；fix27_verify 用 1.0／0.8／1.5 的樣本檢查。站 10、站 14 的數字改 2.5%／3.5%。
 - 建置：native/build.py exit 0（07:44，ctest 9/9、突變 106/106、LIFETIME NET ok、PDB ok：build/pdb/ElementsSpellblade-0.27.6.pdb）；build_v03.py exit 0（見 ledger 時間）。
+
+## Round 27h／28（DLL 0.28.0）：整體審查、Papyrus 層審查、使用者 2026-09-28 的決定
+
+### 整體審查（技術項）
+- **1-1 時鐘**：ReadMemberFrom 用執行時鐘比對快照的 atMs（世界時鐘），死亡時把印記算成已過期；改用世界時鐘。印記結算紀錄（SettledMarks）、潛行紀錄（連殺）也改世界時鐘；執行時鐘只留給維持費、計時器節奏、致命事件節流、切換防抖與燃盡鎖定。death-event／settle／hit-late 行帶 `world= running=`（hit-late 的「屍體模式丟掉的事件」那一行原本不合格式，一起補上）；probe-judge 兩個時鐘在相鄰兩行之間差超過 1 秒就警告。
+- **1-2 故障分級**：Runtime.h FaultGrade／Latch／ClearAtLoad。C++ 例外（manifest 查不到、crowd 索引、施法者、事件來源、計畫要的法術不在 manifest）→ SessionFault：只停這次遊戲，kPreLoadGame／kNewGame 清掉；本模組內的存取違規（SEH 接住的）→ Fault：重開遊戲前不恢復。任何故障：佇列一個關形態的 task（全域變數歸零、拿掉形態能力與光圈，不融斷）、一則提示。RealEngine::Select 越界：記 `[ESSB][skip]`、跳過那個 op，不丟例外（StatusEngine.h RunOp 看 Select 的回傳）。RunningSeconds 不再能故障（讀失敗答 0、記一次）。
+- **1-3**：白熱／熔燒／熔身的全身火焰拆成狀態法術裡的第二個效果（fix28 ESSB_HeatBodyFxEffect，原版火焰斗篷著色與 art、FX persist），條件是 ESSB_HeatBodyFx＝1（MCM「白熱全身特效」，預設開）；狀態效果本身不帶著色。除錯等級 ≥3 時每次套用／移除記 `[ESSB][bodyfx][L3] apply|remove <EditorID> fx=on|off`。
+- **1-4 切換**：OnESSBSwitch 的號碼牌忙等拿掉。形態能力（ESSB_FormAbility_*，含光圈）由 SwitchWork 用 AddSpell／RemoveSpell 換（manifest 加 kFormAbility1..11）；同調的保留搬進 DLL（Runtime.h SyncKeep、OnBurstKeep、OnOpenKeep：承接、連斷、永續、三重奏，取大不疊加；免門檻也在關閉時寫）。Papyrus 只剩 FormOpenedFx／FormClosedFx（音效、提示、順轉、節點能力、雙生時間）。MCM 洗點前的關閉走新原生 ESSBNative.CloseForm（全域變數立刻歸零，融斷與能力在 task）；DLL 沒在運作時照舊由 Papyrus 關。
+- **1-5**：命中 sink 不讀背包：HitPipeline.h EarlyGate（事件與全域變數就能決定的）＋NeedsHands；GetEquippedObject 與空手條件在 hit task 的 ReadHands 讀，task 再用同一個 Filter 決定。
+- **1-6 領域**：施放 Spawn Hazard 時記下（Runtime.h DomainLedger：攜帶者 handle、元素、到期，最多 64 筆），每秒只查記下的（第一次從攜帶者的 Spawn Hazard 效果學到危險區 handle）；60 公尺的 ForEachReferenceInRange 與掃每個角色效果的兩條路都拿掉。TargetSecond 只讀登記表說帶本模組效果、或站在領域裡的敵人。
+- **1-7**：讀檔／新遊戲的 task 重設：自己生命的帳本、同調保留、防抖、燃盡、致命節流、待切換、光圈觀察、分支快照、潛行紀錄；perk 快照重新發布。
+- **1-8**：同一個計畫裡已經死掉的角色不再被施放任何法術（原本只擋傷害）。fix27_verify 的 AddTask 規則改成精確：QueueTask、Show、主執行緒見證各一次；Show() 只能在 Notify 與讀檔補發提示呼叫。
+- **驗證**：runtime_test OverlapHarness：兩條執行緒同時跑整個計畫並打共用容器（登記表、結算紀錄、事件帳本、生命帳本），結果一致。Runtime.h Scope 記下重疊（Overlapped），每個 task 發現另一個本體正在跑就直接返回，計數給 MCM（ESSBNative.OverlapCount，狀態訊息顯示）。
+
+### Papyrus 層審查
+- **1**：ESSBTrees.RefreshTree 只更新等級與鏡射（原本每次升級約 1000 次原生呼叫重建沒有讀者的快取）。分支的 5 點結算整個在 DLL：StatsMenu 關閉的 task（ReconcileBranchesWork，規則 Runtime.h SettleBranch；訊息、L3 記錄照舊），做完送 ESSB_TreesSettled（Papyrus 更新等級與節點能力）並跑點數檢查。Papyrus 的 TakeSnapshot／Reconcile／ReconcileGained／SettleBranch 刪除。洗點走 ESSBNative.RespecTree（task 裡拿掉節點、點數設回等級）。留到下次 schema 升版的變數：ESSBTrees 的 AllRankA/B、AllBranchA/B、AllValid、CacheRank、CacheBranch、CacheTree、CacheNext、SnapBranch、PendingTree；ESSBController 的 RankCacheA/B、BranchCacheA/B、SyncKeep、SyncKeepLeft、PerpetualKeep。
+- **2**：ESSB_PapyrusReady（fix28）：DLL 在 kPreLoadGame／kNewGame 寫 0，Setup 結尾寫 1；之前的切換留一個（最新的）等著，計時器看到 1 再做；Setup 把 11 個形態能力照全域變數對齊。
+- **3**：分支結算不再依賴 PendingTree（每次 StatsMenu 關閉都結算），讀檔清 PendingTree。
+- **4**：OnCustomSkillIncrease 用 GlobalVariable.Mod(1)；DLL 的結算用 std::atomic_ref 一次加上差額。
+- **5**：領域危險區的每個效果加三個條件（不是玩家、不是隊友、HOSTILE_CTDA）；你身上出現領域標記時記 `[ESSB][domain-friendly]`。
+- **6**：百毒不侵的附近中毒敵人由 DLL 每秒數（15 公尺內最近 5 個，讀登記表），Papyrus 讀 ESSBNative.PoisonedNearby。
+- **7**：ApplyUtil、恐懼、瘋狂、狂刃、自身標記、守勢窗口、化灰改用 ESSBNative.CastWith（這次的強度當覆寫、秒數換成效力，不改共用的法術紀錄）。留在 Papyrus 的 SetNth：復生（有自己的鎖）與三個能力（AddSpell 前寫強度）。沒有呼叫者的 ApplySilenceSpell、ApplyManaBreakMark 刪除。
+- **9**：NodeRank／NodeBranch／BranchesGained 從 task 發布的 perk 快照回答（計時器每秒、選單結算、洗點、讀檔時發布，小鎖保護）。
+- **10**：IsOperational 另外要 ESSB_NativeHit＝1。
+- **11**：src/ESSBPlayerAlias.psc 與 build/compiler-results.json 沒有刪（實作者不刪檔的限制）；build_v03 與 fix12_verify 仍提到前者，後者由 build_scripts.py 產生。
+- **探針**：每個 ModEvent 最後一欄是序號；Papyrus 在除錯等級 ≥2 時送回（ESSBNative.EventSeen），DLL 算延遲；每秒 `[T][rate] events= echoed= lagMaxMs= natives=`，每 10 秒 `[ESSB][vm][L2]`；`[ESSB][form] ok|FAIL active= element= abilities=`（全域變數與身上的形態能力對不對）；`[ESSB][pts] tree= level= points= ranks= branches= ok|FAIL`（選單結算後與讀檔時）；Papyrus 沒就緒時 `[ESSB][drop]`；probe-judge 掃 Papyrus.0.log（暫停堆疊警告、沒綁上的 ESSB 原生）；build/papyrus_budget.py 離線估處理器的原生呼叫上限，fix28_verify 釘住（OnCustomSkillIncrease 22 ≤ 50；0.27.6 的 RefreshTree 會是 1267）。
+
+### 使用者 2026-09-28 的決定（遊戲規則改變，版本 0.28.0）
+- D1：強制開印（臨／臨強化、雙斷、印潮）只開在沒有任何本模組印記的目標上，不切、不刷新（Status.h PlanStatusHit 開頭）。注意：印潮挑的就是帶舊印記的目標，所以現在不會開到任何人。
+- D2：臨、雙斷、印潮的自身所得每次事件只給一次（SelfLayer.h OpenGains 的 selfGains；後面的目標只剩誓約）。
+- D3：水臨強化要臨的範圍內有敵人，回最大魔力 25%×回復倍率並淨化（不再回滿）。
+- D4：熱鍵與 Z 距上次切換不到 0.25 秒忽略（kind=blocked reason=debounce）。
+- D5：魔力耗盡的關閉照樣融斷，之後 5 秒不能開形態（提示、reason=burnout-lockout）。
+- D6：白熱火源每秒掛的火印記帶旗標 kMarkSourced，融斷時那個印記的傷害 ×0.5（打出來的印記不受影響）。
+- D7：維持費 5%（暗 7.5%）；長流退回這一秒實付魔力的 80%。
+- 修正：導引存自己的倍率（不乘協奏、三重奏、過載）；死咒已損生命段首領 ×0.5；連殺把風形態的潛行致命一擊當作有印記；三重奏觸發後 10 秒冷卻（新狀態 ESSB_N7_TrioCooldown）。
+- 測試：anchor_test RotationAnchors（熱鍵輪轉 12 次、1 名與 5 名敵人：第一次之後沒有傷害、沒有終焉、不切印；每次切換的同調所得 1 人與 5 人相同）、WaterAdventAnchors、SourcedBurstAnchors、FixAnchors；runtime_test SwitchRuleChecks；參考模型 fix22／23／24／25 跟著改；突變 122/122。
+
+- 建置：native/build.py exit 0（ctest 9/9、突變 122/122、LIFETIME NET ok、PDB ok：build/pdb/ElementsSpellblade-0.28.0.pdb）；build_v03.py exit 0（FIX25 LOAD ok、FIX27 ok、FIX28 ok）。
+
+## Round 28b（DLL 0.28.1）：0.28.0 驗收（Fable）的修正、使用者 2026-09-28 的兩項裁定
+
+- **F1 CastWith 的效力**：依本檔第 148 列與第 233 列（0x140540360：效力 ≠ 1 時，No Magnitude 效果只縮放時長；有強度的效果縮放強度 max(|m|×eff, 1.0)、時長照紀錄），0.28.0 的 `CastWithWork` 把「秒數 ÷ 紀錄秒數」當效力，恐懼／瘋狂（0x8807）、狂刃、ApplyUtil（0x8812／0x8817／0x8A15）全錯。做法選「整秒複本」（round 24 的先例），不選「施放後直接寫 ActiveEffect 的時長／強度」（那是寫遊戲記憶體，超出只寫 TESGlobal 的限制），也不退回 SetNth（會再改共用紀錄、回到審查 7 的競態）：`build/fix28_records.py` CASTWITH 8 族（恐懼、瘋狂、狂刃、ESSB_Util 0／13／23／25／26）× 1～20 秒，每個複本是基底的子紀錄只改 EDID 與 EFIT 秒數（0x5E05 起，共 160 筆）；`Runtime.h PlanCastWith`：No Magnitude → 效力＝秒數比；有強度 → 效力固定 1、強度當覆寫，要紀錄以外的秒數就用那個整秒複本（超過 20 秒夾住並記一次），沒有複本的有強度法術拒絕施放並記 `[ESSB][skip]`。執行器的 `Cast` 另加最後一道：效力 ≠ 1 而法術有任何非 No Magnitude 的效果時改用 1 並記一次。讀檔時 Load.h 檢查每個複本的秒數。離線檢查 fix28_verify CASTWITH：ESP 的複本與基底逐欄比對、DLL 表（ManifestData.h status::kCastWith）與紀錄一致、每個 Papyrus `ESSBNative.CastWith` 呼叫點解析到的法術（ApplyUtil 依實際的呼叫索引、守勢窗口 9 個、恐懼、瘋狂、狂刃、化灰）都是 No Magnitude、秒數 0，或有複本；四個注入錯誤都抓到。測試：runtime_test CastWithChecks（恐懼 4 秒：上限 30、4 秒；狂刃 1 秒：+0.5、1 秒；緩速 3 秒：30%、3 秒；守勢窗口效力 0.4；化灰、ApplyUtil(4) 不變；沒有複本就拒絕），3 個突變。**未實測**：實機要看恐懼的逃跑秒數、狂刃的傷害（探針 `[ESSB][castwith][L4]` 列出每次的法術、複本、強度、效力）。
+- **F2**：`MessageCpp` kPostLoadGame 成功分支在 `OnGameReady()` 前呼叫 `ClearPapyrusReady()`（ESSB_PapyrusReady 是存進存檔的 GLOB，讀檔會把 1 還原回來）。fix28_verify 依位置檢查三處（kPreLoadGame、kNewGame 在 OnGameReady 前、kPostLoadGame 成功分支在 OnGameReady 前），兩個注入錯誤。
+- **F3**：`GameReadyCpp` 加 `state.domains.Clear()`。
+- **F4 查證**：一般關形態（熱鍵、Z、魔力耗盡、MCM 的 `ESSBNative.CloseForm`）都走 `SwitchWork(kClose)` → `FormLeaveWork(from, true)` → `SelfLayer.h PlanSelfLeave`，護血池有值就推 `kBloodGuardPool 0`（驅散），餘響待發由 SwitchWork 驅散，所以原本就清。`FaultCloseCpp`（故障時關形態）只拿掉形態能力，護血池與餘響待發都留著；本輪在那裡用 `DispelLive` 驅散兩者（`t_selfDispel` 包住，例外時復原）。
+- **F5 新印潮**：`SwitchWork` 只在「切換」（不是開、不是關）時設 `surgeArmed`；命中 task 第一個元素命中一定把它清掉，那一擊開了印才觸發 `Reactions.h PlanSurge`：以命中目標為中心 15 公尺、`SurgeTarget`（沒有任何本模組印記、活著；群體本來就不含你、隨從、非敵對、死者），最近 2 人強制開新元素的印（D1 照舊，不切任何印記），自身所得一次（D2）。讀檔清掉。錨點 SurgeAnchors、參考模型 fix24 兩個情境、3 個突變、fix28_verify SURGE 兩個注入錯誤。
+- **F7 水臨強化冷卻**：`Reactions.h AdventCooldown`（10 秒，執行時鐘），`FormEnterWork` 把是否可用交給 `PlanAdvent`（`BodyInputs.waterAdventReady`），發動才開始冷卻；冷卻中整個水臨強化（淨化、回魔、浸濕）都不做，除錯等級 4 記 `[ESSB][advent][L4] water-plus cooldown left=<秒>`；讀檔／新遊戲歸零。錨點 WaterAdventCooldownAnchors（0 秒發動、5 秒不發動且剩 5 秒、10.5 秒再發動；冰臨強化沒有冷卻），4 個突變。
+- **F6**：兩個檔沒有刪掉（刪檔被權限擋下）；見實作紀錄。
+- 建置：native/build.py exit 0（ctest 9/9、突變 132/132、LIFETIME NET ok、PDB ok：build/pdb/ElementsSpellblade-0.28.1.pdb，DLL sha256 c15d6c73…）；build_v03.py exit 0（FIX25 LOAD ok、FIX27 ok、FIX28 ok，fix28 注入錯誤 27/27）。

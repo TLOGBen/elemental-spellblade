@@ -80,8 +80,9 @@ std::string SuffixOf(int kind)
     constexpr std::string_view n4 = "ESSB_N4_";
     constexpr std::string_view n5 = "ESSB_N5_";   // round 24's kinds follow (same prefix length)
     constexpr std::string_view n6 = "ESSB_N6_";   // round 25's too
-    Check(id.starts_with(n3) || id.starts_with(n4) || id.starts_with(n5) || id.starts_with(n6),
-        "status record without the ESSB_N3_ .. N6_ prefix");
+    constexpr std::string_view n7 = "ESSB_N7_";   // round 28's (三重奏's cooldown)
+    Check(id.starts_with(n3) || id.starts_with(n4) || id.starts_with(n5) || id.starts_with(n6) || id.starts_with(n7),
+        "status record without the ESSB_N3_ .. N7_ prefix");
     return std::string(id.substr(n3.size()));
 }
 

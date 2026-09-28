@@ -127,11 +127,14 @@ STATIONS = [
     (89, ['E-01'], '星痕引信的三種移除'),
     (90, ['E-08'], '雪漫城門口的掃描'),
     (91, ['E-13'], 'FPS'),
+    (92, ['F-01'], '故障演練'),          # round 27h (review: verification)
+    (93, ['F-02'], 'HDT-SMP 壓力站'),    # round 27h (the 0.27.5 freeze: an A/B around HDT-SMP)
 ]
 
 ALL_IDS = (['SETUP-1'] + [f'A-{i:02d}' for i in range(1, 19)] + [f'B-{i:02d}' for i in range(1, 38)] +
-           [f'C-{i:02d}' for i in range(1, 10)] + [f'D-{i:02d}' for i in range(1, 25)] + [f'E-{i:02d}' for i in range(1, 14)])
-assert len(ALL_IDS) == 102
+           [f'C-{i:02d}' for i in range(1, 10)] + [f'D-{i:02d}' for i in range(1, 25)] + [f'E-{i:02d}' for i in range(1, 14)] +
+           ['F-01', 'F-02'])   # round 27h
+assert len(ALL_IDS) == 104
 
 PLAYER_ID = 0x14
 GAMEPAD_BASE = 266   # SKSE key codes: keyboard 0-255, mouse 256-265, gamepad from 266
@@ -257,6 +260,23 @@ def mark_damage_mult(lines):
 
 
 DAMAGE_MULTS = set()
+
+
+def clock_drift(lines, limit_ms=1000):
+    """Round 27h (review 1-1): death / settle / hit-late lines carry the world clock (the effects' elapsed) and the running
+    clock (upkeep, the timer). Between two such lines both should advance alike; a gap over a second means the DLL
+    compared an effect's time against the wrong clock somewhere (0.27.6: marks judged expired at a death). The pairs."""
+    out, last = [], None
+    for x in lines:
+        w, r = x.v('world'), x.v('running')
+        if w is None or r is None:
+            continue
+        if last is not None:
+            dw, dr = w - last.v('world'), r - last.v('running')
+            if abs(dw - dr) > limit_ms:
+                out.append((last, x, dw, dr))
+        last = x
+    return out
 
 
 class Seg(list):
@@ -498,8 +518,8 @@ def x2_verdicts(log):
     return bad, eyes, rows
 
 
-# The DLL version this sheet judges (round 27g: 0.27.6). build/fix26_verify.py and build/fix27_verify.py build their samples with it.
-VERSION = '0.27.6'
+# The DLL version this sheet judges (round 28b: 0.28.1). build/fix26_verify.py and build/fix27_verify.py build their samples with it.
+VERSION = '0.28.1'
 
 
 @rule('SETUP-1')
@@ -1667,15 +1687,33 @@ def r_b28(seg, ctx):
 
 @rule('B-29')
 def r_b29(seg, ctx):
+    """Round 28 (D3, the user's decision): 水臨強化 restores 25% of max magicka (× the recovery slider, 1 in this sheet) and
+    cleanses, only with a hostile within the advent's range -- the first open (no enemy near) gives nothing."""
     node = node_added(seg, '0021FC') or node_added(ctx.all, '0021FC')
     ops = seg.ops(op='RestoreMagicka', ctx='enter')
+    enters = [x for x in seg.of('native') if x['fn'] == 'FormEnter'] or seg.of('switch')
     if not ops:
-        return NODATA('開水形態時沒有回魔（ctx=enter 的 RestoreMagicka）', node)
-    done = seg.done_after(ops[0])
-    you = done.a['on'] if done else None
-    if not you or not near(you.m, you.mmax, 1.0):
-        return FAIL(f'開水形態後魔力 {you.m if you else "?"}／{you.mmax if you else "?"}（應回滿）', ops[0], done)
-    return PASS(f'開水形態魔力回滿（{you.m:.0f}／{you.mmax:.0f}）', node, ops[0], done)
+        return NODATA('開水形態時沒有回魔（旁邊有敵人時才回；ctx=enter 的 RestoreMagicka）', node)
+    you = ops[0].a.get('on')
+    bad = [x for x in ops if you and not near(x.v('mag'), you.mmax * 0.25, 1.0)]
+    if bad:
+        return FAIL(f'水臨強化回魔 {fmt_nums([x.v("mag") for x in ops])}（應最大魔力 {you.mmax:.0f} 的 25%＝{you.mmax * 0.25:.1f}）', *bad[:3])
+    if len(ops) >= len(enters) and len(enters) >= 2:
+        return FAIL(f'開了 {len(enters)} 次水形態、每次都回魔（旁邊沒敵人的那次不該回）', *ops[:3])
+    # Round 28b (F7, the user's ruling 2026-09-28): 10 s cooldown on the running clock -- ③ inside it gives nothing and
+    # logs "[ESSB][advent][L4] water-plus cooldown left=<s>"; ④ after it gives 25% again.
+    close = [(a, b) for a, b in zip(ops, ops[1:]) if b.r - a.r < 10000]
+    if close:
+        a, b = close[0]
+        return FAIL(f'10 秒內回魔兩次（相隔 {(b.r - a.r) / 1000:.1f} 秒；水臨強化有 10 秒冷卻）', a, b)
+    cooling = raw_with(seg, '[ESSB][advent][L4] water-plus cooldown left=')
+    lefts = [float(x.text.rsplit('left=', 1)[1].split()[0]) for x in cooling]
+    if cooling and any(not 0.0 < s <= 10.0 for s in lefts):
+        return FAIL(f'冷卻中的剩餘秒數 {fmt_nums(lefts)}（應在 0～10 秒）', *cooling[:2])
+    if len(ops) < 2 or not cooling:
+        return NODATA(f'水臨強化回魔 {len(ops)} 次、冷卻中的 L4 行 {len(cooling)} 行（③ 要在 10 秒內再切到水、④ 要等 10 秒後再切）', node, *ops[:2])
+    return PASS(f'水臨強化回最大魔力 25%（{fmt_nums([x.v("mag") for x in ops])}），只在旁邊有敵人時；10 秒內再切到水沒有回魔'
+                f'（冷卻剩 {fmt_nums(lefts)} 秒），之後再切又回', node, *(ops[:2] + cooling[:1]))
 
 
 def wash_ok(x):
@@ -2359,16 +2397,28 @@ def r_d13(seg, ctx):
 
 @rule('D-14')
 def r_d14(seg, ctx):
+    # Round 28b (F5, the user's ruling 2026-09-28): 印潮 -- the first hit after switching to water opened its mark on an
+    # unmarked NPC; the 2 nearest OTHER unmarked NPCs within 15 m get the water mark too (ctx=hit, at != 0); the two carrying
+    # a fire mark keep it (no water on them, no fire mark removed: D1). 雙斷 opens on the targets the burst cleared.
     tide = [x for x in seg.ops(op='Mark', el='water') if x['ctx'] == 'hit' and x['at'] != '0']
+    fire = {x.a['on'].id for x in seg.ops(op='Mark', el='fire') if x.a.get('on')}
+    cut = [x for x in seg.ops(op='Unmark', el='fire') if x['ctx'] == 'hit' and x['at'] != '0']
     double = [x for x in seg.ops(op='Mark', el='frost') if x['ctx'] == 'enter']
     crit = [x for x in seg.ops(op='Slow') if x['ctx'] == 'enter' and near(x.v('mag'), 30, 0.01)]
     allies = harmed(seg, untouchable(seg))
-    rows = f'印潮 {len(tide)} 人、雙斷 {len(double)} 人、臨界 {len(crit)} 人'
+    tide_ids = {x.a['on'].id for x in tide if x.a.get('on')}
+    rows = f'印潮 {len(tide_ids)} 人、雙斷 {len(double)} 人、臨界 {len(crit)} 人'
     if allies:
         return FAIL(rows + '；碰到隨從', *allies)
-    if len(tide) < 2 or not double or not crit or len(crit) > 5:
-        return FAIL(rows + '（印潮應 2 人、臨界最多 5 人）', *(tide[:2] + double[:1] + crit[:1])) if (tide or double or crit) else NODATA(rows)
-    return PASS(rows, *(tide[:2] + double[:1] + crit[:1]))
+    if tide_ids & fire or cut:
+        return FAIL(rows + '（印潮只掛在身上沒有印記的人：帶火印記的被掛了水印或被切掉）', *(tide[:2] + cut[:2]))
+    if len(tide_ids) > 2:
+        return FAIL(rows + '（印潮最多 2 人）', *tide[:3])
+    if not tide_ids:
+        return FAIL(rows + '（切到水後第一擊開印，旁邊沒印記的人應被掛上水印記）') if double or crit else NODATA(rows)
+    if not double or not crit or len(crit) > 5:
+        return FAIL(rows + '（臨界最多 5 人）', *(double[:1] + crit[:1])) if (double or crit) else NODATA(rows)
+    return PASS(rows + '（印潮只掛沒有印記的人、最多 2 人）', *(tide[:2] + double[:1] + crit[:1]))
 
 
 @rule('D-15')
@@ -2722,6 +2772,92 @@ def r_e13(seg, ctx):
     return EYES(f'FPS 只能看畫面（這一站 domain 行 {len(doms)} 行；拿掉領域節點後應沒有 domain 行）', *doms[:1])
 
 
+# ---------------------------------------------------------------- F (round 27h)
+
+def raw_with(seg, *parts):
+    return [x for x in seg if x.kind == 'raw' and all(p in x.text for p in parts)]
+
+
+@rule('F-01')
+def r_f01(seg, ctx):
+    """The fault drill: a bad magnitude is dropped without a fault; a forced C++ exception is a SESSION fault that closes the
+    form; a reload clears it."""
+    badmag = raw_with(seg, '[ESSB][BADMAG]')
+    fault = raw_with(seg, '[ESSB][fault]', 'for this game session')
+    hard = raw_with(seg, '[ESSB][fault]', 'until the game restarts')
+    closed = raw_with(seg, '[ESSB][fault]', 'the form is closed')
+    cleared = raw_with(seg, '[ESSB][fault]', 'the session fault is cleared')
+    if not badmag and not fault:
+        return NODATA('沒有 BADMAG 也沒有 fault 行（主控台 cgf "ESSBNative.ForceFault" 2，再 1）')
+    if hard:
+        return FAIL('演練的 C++ 例外被當成要重開遊戲的故障（應只停這次遊戲）', *hard[:2])
+    if not badmag:
+        return FAIL('沒有 [ESSB][BADMAG]（ForceFault 2 應走丟棄壞數值的路）', *fault[:1])
+    if fault and fault[0].n < badmag[0].n:
+        return FAIL('BADMAG 之前就故障了', fault[0], badmag[0])
+    if not fault:
+        return NODATA('BADMAG 丟掉了、沒有故障（對）；還沒做 ForceFault 1', *badmag[:1])
+    if not closed or closed[0].n < fault[0].n:
+        return FAIL('故障後形態沒有關（沒有 the form is closed）', fault[0])
+    if not cleared or cleared[0].n < fault[0].n:
+        return EYES('故障、關形態都對；讀檔後沒看到 the session fault is cleared（讀檔了嗎？）', badmag[0], fault[0], closed[0])
+    return PASS('壞數值丟掉不故障；C++ 例外＝這次遊戲的故障、形態關閉；讀檔後恢復', badmag[0], fault[0], closed[0], cleared[0])
+
+
+@rule('F-02')
+def r_f02(seg, ctx):
+    """HDT-SMP stress: white heat 30 s ×3, 20 switches, the ring on / off, SMP gear. The log half: the body fire's applies and
+    removals, the switches, the ring switch, the per-second events / natives; the freeze itself only the screen shows."""
+    body = raw_with(seg, '[ESSB][bodyfx]')
+    applied = [x for x in body if ' apply ' in x.text]
+    removed = [x for x in body if ' remove ' in x.text]
+    switches = [x for x in seg.of('switch') if x['kind'] in ('open', 'switch', 'close')]
+    ring = [x for x in seg.of('mcm') if x['global'] == 'ESSB_WeaponGlow']
+    rates = seg.of('rate')
+    peak_events = max((x.v('events', 0) for x in rates), default=0)
+    peak_natives = max((x.v('natives', 0) for x in rates), default=0)
+    text = (f'身上火焰 套用 {len(applied)} 次、移除 {len(removed)} 次；切換 {len(switches)} 次；光圈開關 {len(ring)} 次；'
+            f'每秒事件最多 {peak_events:.0f}、原生呼叫最多 {peak_natives:.0f}')
+    if len(applied) < 3 or len(switches) < 20:
+        return NODATA('不夠：' + text + '（白熱 3 次、切換 20 次）', *(applied[:1] + switches[:1]))
+    return EYES(text + '；有沒有凍結只能看畫面（有的話請附 HDT-SMP 版本，另用 MCM「白熱全身特效」關掉再做一次）',
+                *(applied[:2] + switches[:2] + ring[:1]))
+
+
+def rate_summary(lines):
+    """Round 27h: the per-second ModEvents sent and natives Papyrus called (the probe log's rate lines)."""
+    rates = [x for x in lines if x.kind == 'rate']
+    if not rates:
+        return None
+    ev = [x.v('events', 0) for x in rates]
+    nat = [x.v('natives', 0) for x in rates]
+    lag = [x.v('lagMaxMs', 0) for x in rates]
+    return (f'每秒 ModEvent 平均 {statistics.mean(ev):.1f}、最多 {max(ev):.0f}；Papyrus 原生呼叫平均 {statistics.mean(nat):.1f}、'
+            f'最多 {max(nat):.0f}；Papyrus 處理延遲最長 {max(lag):.0f} ms（{len(rates)} 秒）')
+
+
+PAPYRUS_WARNINGS = (
+    ('Suspended stack count is over our warning threshold', 'Papyrus 的暫停堆疊超過警告門檻'),
+    ('Unbound native function', '沒綁上的原生函式'),
+)
+
+
+def papyrus_scan(path):
+    """Round 27h (Papyrus review): the Papyrus log's warnings that point at a slow or broken script half: the suspended-stack
+    threshold (with our scripts on the stacks) and unbound natives of ESSBNative."""
+    try:
+        text = Path(path).read_bytes().decode('utf-8', errors='replace')
+    except OSError:
+        return None
+    rows = []
+    for needle, label in PAPYRUS_WARNINGS:
+        hits = [line for line in text.splitlines() if needle in line]
+        ours = [line for line in hits if 'essb' in line.lower()] if needle.startswith('Unbound') else hits
+        rows.append((label, len(ours)))
+    essb_stack = sum(1 for line in text.splitlines() if 'essb' in line.lower() and 'stack' in line.lower())
+    return rows, essb_stack
+
+
 # ================================================================ run
 
 def judge(lines, only=None):
@@ -2755,6 +2891,14 @@ def main(argv):
     only = argv[argv.index('--step') + 1] if '--step' in argv else None
     lines = read_log(path)
     out, bad_format, ctx = judge(lines, only)
+    for a, b, dw, dr in clock_drift(lines)[:5]:
+        print(f'警告：#{a.seq} → #{b.seq} 世界時鐘走了 {dw / 1000:.1f} 秒、執行時鐘走了 {dr / 1000:.1f} 秒（差超過 1 秒）')
+    if (summary := rate_summary(lines)):
+        print(summary)
+    papyrus = argv[argv.index('--papyrus') + 1] if '--papyrus' in argv else str(Path(path).resolve().parents[1] / 'Logs/Script/Papyrus.0.log')
+    if (scan := papyrus_scan(papyrus)):
+        rows, stacks = scan
+        print('Papyrus.0.log：' + '、'.join(f'{label} {n} 次' for label, n in rows) + f'；提到 ESSB 的堆疊行 {stacks} 行')
     print('傷害倍率（ESSB_BaseDamageMult）：' + '、'.join(f'{m:g}' for m in sorted(DAMAGE_MULTS))
           + '；傷害數字先除以當下的倍率，再跟表上（倍率 1.0）的數字比')
     counts = defaultdict(int)

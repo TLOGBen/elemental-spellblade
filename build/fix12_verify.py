@@ -216,7 +216,7 @@ def caches():
 def log_gates():
     names=[]
     for p in NEW.glob('*.psc'):
-        if p.stem in ('ESSBLog','ESSBSettingsEffect','ESSBFormPowerEffect','ESSBMCM','ESSBPlayerAlias'):continue
+        if p.stem in ('ESSBLog','ESSBSettingsEffect','ESSBFormPowerEffect','ESSBMCM','ESSBPlayerAlias'):continue   # round 28b: src/ no longer has the prototype; NEW (the pre-fix22 snapshot) still does
         src=p.read_text(encoding='utf8').replace('\\\n','')
         stack=[]
         for line in src.splitlines():

@@ -65,15 +65,8 @@ Function PoisonFormTick(ESSBController akCtl) Global
 	EndIf
 	akCtl.ApplyUtil(23, 100.0, 3, player)
 	akCtl.ApplyUtil(26, 100.0, 3, player)
-	Actor[] nearby = akCtl.ScanTargets(player, 1050.0, 5, player)
-	Float heal = 0.0
-	Int index = 0
-	While index < nearby.Length
-		If nearby[index] && ESSBNative.GetStatus(nearby[index], 7) > 0
-			heal = heal + 6.0
-		EndIf
-		index += 1
-	EndWhile
+	; round 27h（Papyrus 審查 6）：附近（15 公尺內最近 5 個）中毒的敵人由 DLL 的每秒數好（不再每秒掃全部角色）。
+	Float heal = 6.0 * ESSBNative.PoisonedNearby()
 	If heal > 0.0
 		akCtl.ApplyUtil(4, heal, 0, player)
 	EndIf

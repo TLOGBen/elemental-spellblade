@@ -62,9 +62,12 @@ public:
         inTask_ = true;
         const char* other = c_.name.exchange(name);
         if (c_.mutating.fetch_add(1) + 1 > 1) {
+            overlapped_ = true;   // round 27h: the body must not run (our containers are not built for two at once)
             onOverlap(name, other);
         }
     }
+    // Round 27h (verification): another body was open when this one started -- the task returns without its work.
+    bool Overlapped() const noexcept { return overlapped_; }
     ~Scope()
     {
         if (outer_ || !inTask_) {
@@ -82,6 +85,7 @@ private:
     bool& inTask_;
     ScopeCounters& c_;
     bool outer_;
+    bool overlapped_ = false;
 };
 
 // An SEH exit (or a fault) inside a body: the scope's destructor will not run, so the thread's flag and the count go back.
@@ -670,6 +674,254 @@ constexpr TickPlan PlanTick(bool enabled, bool player, bool stopped, const Beat&
 constexpr bool ReadEngaged(bool hostile, bool teammate, bool dead, float toCentre, float toYou, float aroundPrimary, float aroundYou) noexcept
 {
     return !hostile && !teammate && !dead && (toCentre <= aroundPrimary || toYou <= aroundYou);
+}
+
+// ---------------------------------------------------------------- (27h) fault grades (review 1-2)
+
+// A C++ exception of ours (a manifest lookup, a crowd index, a missing caster, an event source) stops the DLL for this
+// game session only: the next load or new game clears it. An access violation inside this module (the SEH frame
+// handled it) stops it until the game restarts -- our memory may be damaged.
+enum class FaultGrade : std::uint8_t
+{
+    kSession,
+    kHard,
+};
+
+struct FaultLatch {
+    bool faulted = false;
+    bool hard = false;
+};
+
+constexpr FaultLatch Latch(FaultLatch now, FaultGrade grade) noexcept
+{
+    return FaultLatch{ true, now.hard || grade == FaultGrade::kHard };
+}
+
+// kPreLoadGame / kNewGame: a session fault ends with its session; a hard one stays.
+constexpr FaultLatch ClearAtLoad(FaultLatch now) noexcept
+{
+    return now.hard ? now : FaultLatch{};
+}
+
+// ---------------------------------------------------------------- (27h) the sync kept across a switch (review 1-4)
+
+// Was Papyrus's (ESSBController.SwitchForm / OnFormClosed, ESSBNoForm.OnBurst); the switch task keeps it now, so the
+// close's rules are written before the reopen reads them (0.27.6 made Papyrus wait on a ticket for that).
+//   承接 (common)   a switch keeps 1/3 of the sync it had
+//   連斷 (no form)  a burst keeps half for an open within 5 s
+//   永續 (common)   a burst at stage 3 keeps SyncT1 for the next open
+//   三重奏          its marker (the third end) makes the next burst keep all of it for 60 s
+// The largest applies, never a sum. Windows on the running clock (Papyrus's Now()), × the duration slider.
+struct SyncKeep {
+    int keep = 0;               // 連斷 / 三重奏
+    std::uint64_t untilMs = 0;
+    int perpetual = 0;          // 永續
+};
+
+struct BurstKeepFacts {
+    int syncBefore = 0;
+    int stageBefore = 0;
+    int t1 = 5;                 // ESSB_SyncT1
+    bool perpetual = false;     // 永續
+    bool chain = false;         // 連斷
+    bool trio = false;          // 三重奏's keep-all marker on you
+    std::uint64_t nowMs = 0;
+    std::uint64_t chainMs = 5000;
+    std::uint64_t trioMs = 60000;
+};
+
+constexpr SyncKeep OnBurstKeep(SyncKeep s, const BurstKeepFacts& f) noexcept
+{
+    if (f.stageBefore >= 3 && f.perpetual) {
+        s.perpetual = f.t1;
+    }
+    if (f.chain) {
+        s.keep = s.keep > f.syncBefore / 2 ? s.keep : f.syncBefore / 2;
+        s.untilMs = f.nowMs + f.chainMs;
+    }
+    if (f.trio) {
+        s.keep = s.keep > f.syncBefore ? s.keep : f.syncBefore;
+        s.untilMs = f.nowMs + f.trioMs;   // the later rule's window (Papyrus: SetSyncKeep sets it again)
+    }
+    return s;
+}
+
+struct OpenKeep {
+    int add = 0;                // the share added to the count the open started again
+    SyncKeep next{};            // what stays (nothing: every keep is used or dropped by an open)
+};
+
+constexpr OpenKeep OnOpenKeep(const SyncKeep& s, bool switched, int syncBefore, bool carry, std::uint64_t nowMs) noexcept
+{
+    int keep = switched && carry ? syncBefore / 3 : 0;
+    if (s.untilMs > nowMs && s.keep > keep) {
+        keep = s.keep;
+    }
+    if (s.perpetual > keep) {
+        keep = s.perpetual;
+    }
+    return OpenKeep{ keep, SyncKeep{} };
+}
+
+// ---------------------------------------------------------------- (27h) the domains we placed (review 1-6)
+
+// Every domain the DLL spawns is recorded when its Spawn Hazard spell is cast (the actor it was cast on, the element,
+// until when); each second only these are checked -- no 60 m cell walk. The hazard reference is learned once from the
+// carrier's Spawn Hazard effect and kept. A record goes when its time is up or when neither its carrier nor its hazard
+// can be found any more. At most kMaxDomains (the oldest goes first).
+inline constexpr std::size_t kMaxDomains = 64;
+
+template <class Carrier, class Ref>
+struct DomainRecord {
+    Carrier carrier{};
+    int element = 0;
+    std::uint64_t untilMs = 0;
+    Ref hazard{};
+    bool found = false;
+};
+
+template <class Carrier, class Ref>
+class DomainLedger
+{
+public:
+    using Record = DomainRecord<Carrier, Ref>;
+    void Add(Carrier carrier, int element, std::uint64_t untilMs)
+    {
+        if (records_.size() >= kMaxDomains) {
+            records_.erase(records_.begin());
+        }
+        records_.push_back(Record{ carrier, element, untilMs, Ref{}, false });
+    }
+    // `alive(record)`: its carrier or its hazard is still there.
+    template <class Alive>
+    void Prune(std::uint64_t nowMs, Alive&& alive)
+    {
+        std::erase_if(records_, [&](Record& r) { return r.untilMs <= nowMs || !alive(r); });
+    }
+    std::vector<Record>& Records() noexcept { return records_; }
+    const std::vector<Record>& Records() const noexcept { return records_; }
+    void Clear() noexcept { records_.clear(); }
+
+private:
+    std::vector<Record> records_;
+};
+
+// ---------------------------------------------------------------- (27h) the events Papyrus handled (probes)
+
+// Every ModEvent the DLL sends carries a sequence number as its last '|' field; Papyrus sends it back (ESSBNative.EventSeen,
+// debug level >= 2) and the lag is measured here. A window (the timer's 10 s line, the per-second rate line) is taken and
+// reset by the timer task; the counters are atomics (the VM's thread echoes, the tasks send).
+class EventLedger
+{
+public:
+    static constexpr std::uint32_t kSlots = 256;
+    std::uint32_t Sent(std::uint64_t nowMs) noexcept
+    {
+        const std::uint32_t seq = next_.fetch_add(1) + 1;
+        at_[seq % kSlots].store(nowMs);
+        sent_.fetch_add(1);
+        return seq;
+    }
+    // The lag of `seq` (-1: too old, never sent, or answered already).
+    std::int64_t Echo(std::uint32_t seq, std::uint64_t nowMs) noexcept
+    {
+        const std::uint32_t last = next_.load();
+        if (seq == 0 || seq > last || last - seq >= kSlots) {
+            return -1;
+        }
+        const std::uint64_t at = at_[seq % kSlots].exchange(0);
+        if (at == 0 || nowMs < at) {
+            return -1;
+        }
+        const std::uint64_t lag = nowMs - at;
+        echoed_.fetch_add(1);
+        lagSum_.fetch_add(lag);
+        std::uint64_t max = lagMax_.load();
+        while (lag > max && !lagMax_.compare_exchange_weak(max, lag)) {
+        }
+        return static_cast<std::int64_t>(lag);
+    }
+    struct Window {
+        std::uint64_t sent = 0;
+        std::uint64_t echoed = 0;
+        std::uint64_t lagSum = 0;
+        std::uint64_t lagMax = 0;
+    };
+    Window Take() noexcept
+    {
+        return Window{ sent_.exchange(0), echoed_.exchange(0), lagSum_.exchange(0), lagMax_.exchange(0) };
+    }
+
+private:
+    std::atomic<std::uint32_t> next_{};
+    std::array<std::atomic<std::uint64_t>, kSlots> at_{};
+    std::atomic<std::uint64_t> sent_{};
+    std::atomic<std::uint64_t> echoed_{};
+    std::atomic<std::uint64_t> lagSum_{};
+    std::atomic<std::uint64_t> lagMax_{};
+};
+
+// ---------------------------------------------------------------- (27h) the tree points (probes)
+
+// A tree's points are right when what is left plus what was spent (a main-line rank 1, a branch 5) is its level (every
+// level gives one point, the tree starts at level 1 with 1; a respec gives the level back).
+constexpr bool PointsHold(int level, int points, int ranks, int branches) noexcept
+{
+    return points >= 0 && points + ranks + branches * kBranchCost == level;
+}
+
+// ---------------------------------------------------------------- (28b) ESSBNative.CastWith (F1)
+
+// One Papyrus cast of a spell of ours with its own magnitude and seconds. The engine's effectiveness (0x140540360; the
+// apply visitor writes the magnitude override first): exactly 1 changes nothing; otherwise a No Magnitude (0x400) effect
+// has its DURATION scaled, and an effect with a magnitude has its MAGNITUDE scaled (max(|m| x eff, 1.0)) and keeps the
+// record duration. 0.28.0 passed seconds / record as the effectiveness for every spell: 恐懼 (record 10 / 2 s) at 4 s became
+// a level cap × 2 lasting 2 s, 狂刃 (0.5 / 3 s) at 1 s a +100% attack, the ApplyUtil slows 18% / 5 s. So:
+//   No Magnitude            the spell itself, effectiveness = seconds / record (the marker's time), override = the magnitude;
+//   with a magnitude        effectiveness exactly 1 -- the record's own seconds (0 asked, or the record's) casts the spell,
+//                           any other number casts its whole-second copy (status::kCastWith, 1..kCastWithMaxSeconds,
+//                           longer clamps); a magnitude spell without copies is refused (never scaled).
+struct CastWithFacts {
+    std::uint32_t spell = 0;          // the spell asked for (local FormID)
+    bool noMagnitude = false;         // every effect of it is No Magnitude
+    float recordSeconds = 0.0f;       // its effect's record duration and magnitude
+    float recordMagnitude = 0.0f;
+    float magnitude = 0.0f;           // asked (0 = the record's)
+    float seconds = 0.0f;             // asked (0 = the record's)
+};
+
+struct CastWithCall {
+    std::uint32_t spell = 0;          // what to cast: the spell or its copy; 0 = refused
+    float effectiveness = 1.0f;
+    float magnitude = 0.0f;           // the override
+    int copySeconds = 0;              // the copy's whole seconds (0 = the spell itself)
+    bool clamped = false;             // asked longer than the longest copy
+};
+
+constexpr CastWithCall PlanCastWith(const CastWithFacts& f) noexcept
+{
+    CastWithCall c;
+    c.magnitude = f.magnitude > 0.0f ? f.magnitude : f.recordMagnitude;
+    if (f.noMagnitude) {
+        c.spell = f.spell;
+        c.effectiveness = EffectivenessFor(f.seconds, f.recordSeconds);
+        return c;
+    }
+    const float gap = f.seconds - f.recordSeconds;
+    if (f.seconds <= 0.0f || (gap < 0.001f && gap > -0.001f)) {
+        c.spell = f.spell;   // the record's own time, effectiveness 1
+        return c;
+    }
+    for (const auto& family : status::kCastWith) {
+        if (family.base == f.spell) {
+            c.copySeconds = WholeSeconds(f.seconds, status::kCastWithMaxSeconds);
+            c.clamped = f.seconds >= static_cast<float>(status::kCastWithMaxSeconds) + 0.5f;
+            c.spell = family.first + static_cast<std::uint32_t>(c.copySeconds - 1);
+            return c;
+        }
+    }
+    c.spell = 0;   // refused: a duration asked of a magnitude spell without copies
+    return c;
 }
 
 }  // namespace essb::rt

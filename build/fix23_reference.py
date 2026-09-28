@@ -310,13 +310,14 @@ class World23(_n3.World):
             if self.has('common', '協奏'):
                 mult *= 1.5
             self.drop(me, 'Concert')
-        if self.has('common', '三重奏') and 1 <= element <= 11:
+        if self.has('common', '三重奏') and 1 <= element <= 11 and not me.has('TrioCooldown'):   # round 28: 10 s rest
             kinds = 1 + sum(1 for e in range(1, 12) if e != element and me.has(f'Trio{e}'))
             if kinds >= 3:
                 mult *= 3.0
                 for e in range(1, 12):
                     self.drop(me, f'Trio{e}')
                 self.put(me, 'SyncKeepAll', 1, 60.0)
+                self.put(me, 'TrioCooldown', 1, 10.0)
             else:
                 self.put(me, f'Trio{element}', 1, 10.0)
         if self.has('lightning', '過載終焉') and charge >= 8:
@@ -551,7 +552,11 @@ class World23(_n3.World):
             repeats = min(5, 2 + self.rank('wind', '多段觸發') // 5) - 1
         return extra, repeats
 
-    def self_open(self, element):
+    def self_open(self, element, gains=True):
+        if not gains:   # round 28 (D2): an event's later forced opens -- only 誓約 lands (the target's)
+            if element == DIVINE and self.has('divine', '誓約'):
+                self.put(self.target, 'Oath', 1, self.scaled(8.0))
+            return
         self.blades(self.open_gains(element, False, False))
 
     # ---------------------------------------------------------------- no form (5.1)

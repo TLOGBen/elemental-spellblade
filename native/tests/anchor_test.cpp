@@ -13,13 +13,17 @@
 #include "Status.h"
 #include "StatusEngine.h"
 
+#include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <cstdio>
 #include <memory>
 #include <set>
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -483,6 +487,301 @@ void DamageMultAnchors()
     scaled("放血", drain);
 }
 
+// ---------------------------------------------------------------- round 28: the user's decisions 2026-09-28
+int CountOps(const essb::StatusPlan& plan, essb::Op op)
+{
+    int n = 0;
+    for (int i = 0; i < plan.count; ++i) {
+        n += plan.ops[i].op == op ? 1 : 0;
+    }
+    return n;
+}
+
+int CountEvents(const essb::StatusPlan& plan, essb::Event event)
+{
+    int n = 0;
+    for (int i = 0; i < plan.count; ++i) {
+        n += plan.ops[i].op == essb::Op::kEvent && plan.ops[i].event == event ? 1 : 0;
+    }
+    return n;
+}
+
+essb::Crowd Around5(int members)
+{
+    essb::Crowd crowd;
+    crowd.count = members + 1;   // member 0 (the hit's target) is empty in an advent
+    for (int k = 1; k <= members; ++k) {
+        crowd.m[k].has = true;
+        crowd.m[k].body = essb::Body{ 1000.0f, 1000.0f, 100.0f, 100.0f, false, false, 100.0f };
+        crowd.m[k].pos = { 30.0f * static_cast<float>(k), 0.0f, 0.0f };   // all within 2 m of you
+    }
+    return crowd;
+}
+
+// A hotkey rotation (every switch opens the 臨: the user's rule) around 5 hostiles, every node at 15 and every branch: after
+// the first switch marked them all, no switch cuts a mark (D1) -- no end, no damage without a weapon hit -- and a switch's
+// sync gain is the same with 1 target as with 5 (D2: your gains once per switch, not per target).
+void RotationAnchors()
+{
+    const int order[] = { essb::kFire, essb::kFrost, essb::kLightning, essb::kEarth, essb::kWind, essb::kDivine, essb::kPoison,
+        essb::kDarkness, essb::kAstral, essb::kFire, essb::kFrost, essb::kLightning };
+    int syncGain[2] = {};
+    int n = 0;
+    for (const int members : { 1, 5 }) {
+        World w;
+        MaxNodes nodes;
+        nodes.allBranches = true;
+        essb::Crowd crowd = Around5(members);
+        essb::Board me;
+        const essb::BodyInputs bin{ &w.in, false, 100.0f, 100.0f, 100.0f, 100.0f };
+        int damage = 0;
+        int ends = 0;
+        int maxGain = 0;
+        for (std::size_t i = 0; i < std::size(order); ++i) {
+            const int before = me.Layers(StatusKind::kSync);
+            auto plan = std::make_unique<essb::StatusPlan>();
+            essb::PlanAdvent(*plan, crowd, me, bin, order[i], nodes, w.rng);
+            maxGain = std::max(maxGain, me.Layers(StatusKind::kSync) - before);
+            if (i > 0) {
+                damage += CountOps(*plan, essb::Op::kDamage);
+                ends += CountEvents(*plan, essb::Event::kEnd);
+                Check(CountOps(*plan, essb::Op::kRemoveMark) == 0, "28 D1: switch " + std::to_string(i) + " cut a mark");
+            }
+            me = essb::Board{};   // the switch starts the sync count again (SwitchWork); the gain is what one switch gives
+        }
+        Check(damage == 0 && ends == 0, "28 D1: a rotation after the first switch deals no damage and ends nothing (" +
+                                            std::to_string(damage) + " damage ops, " + std::to_string(ends) + " ends, " +
+                                            std::to_string(members) + " targets)");
+        syncGain[n++] = maxGain;
+    }
+    Check(syncGain[0] > 0 && syncGain[0] == syncGain[1], "28 D2: a switch's sync gain does not grow with the targets (" +
+                                                            std::to_string(syncGain[0]) + " with 1, " + std::to_string(syncGain[1]) + " with 5)");
+}
+
+// D3: 水臨強化 -- 25% of max magicka × the recovery slider and a cleanse, only with a hostile in the advent's range.
+void WaterAdventAnchors()
+{
+    for (const int members : { 0, 1 }) {
+        World w;
+        w.tuning.multRecovery = 2.0f;
+        MaxNodes nodes;
+        nodes.Add(essb::node::kWaterAdventPlus);
+        essb::Crowd crowd = Around5(members);
+        essb::Board me;
+        const essb::BodyInputs bin{ &w.in, false, 100.0f, 100.0f, 10.0f, 200.0f };
+        auto plan = std::make_unique<essb::StatusPlan>();
+        essb::PlanAdvent(*plan, crowd, me, bin, essb::kWater, nodes, w.rng);
+        float restored = 0.0f;
+        for (int i = 0; i < plan->count; ++i) {
+            if (plan->ops[i].op == essb::Op::kRestoreMagicka) {
+                restored += plan->ops[i].magnitude;
+            }
+        }
+        const bool cleansed = CountEvents(*plan, essb::Event::kCleanse) > 0;
+        if (members == 0) {
+            Check(restored == 0.0f && !cleansed, "28 D3: no hostile in range -- no magicka, no cleanse");
+        } else {
+            Check(Near(restored, 200.0f * 0.25f * 2.0f) && cleansed, "28 D3: 25% of 200 × recovery 2 = 100 and a cleanse (" +
+                                                                    std::to_string(restored) + ")");
+        }
+    }
+}
+
+// D6: a burst settles a mark the fire source put on (flag n3::kMarkSourced) at half the fusion damage of a hit's mark.
+void SourcedBurstAnchors()
+{
+    float fire[2] = {};
+    int n = 0;
+    for (const int flags : { 0, essb::n3::kMarkSourced }) {
+        World w;
+        MaxNodes nodes;
+        essb::Crowd crowd;
+        crowd.count = 2;
+        crowd.m[1].has = true;
+        crowd.m[1].body = essb::Body{ 1000.0f, 1000.0f, 100.0f, 100.0f, false, false, 100.0f };
+        crowd.m[1].pos = { 100.0f, 0.0f, 0.0f };
+        crowd.m[1].board.mark[essb::kFire] = essb::Slot{ true, static_cast<float>(flags), 1.0f, 8.0f };
+        essb::Board me;
+        const essb::BodyInputs bin{ &w.in, false, 100.0f, 100.0f, 100.0f, 100.0f };
+        auto plan = std::make_unique<essb::StatusPlan>();
+        (void)essb::PlanBurst(*plan, crowd, me, bin, 0, essb::kFire, nodes, w.rng);
+        fire[n++] = DamageOf(*plan, essb::kFire, 1);
+    }
+    Check(fire[0] > 0.0f && Near(fire[1], fire[0] * 0.5f, std::max(1e-3, fire[0] * 1e-4)),
+        "28 D6: the source's mark bursts at half (" + std::to_string(fire[1]) + " vs " + std::to_string(fire[0]) + ")");
+}
+
+// Round 28 (the user's fixes): 死咒's lost-health part ×0.5 on a boss; the guide is itself (× nothing of the end); 三重奏
+// rests 10 s after it fires.
+void FixAnchors()
+{
+    {
+        World w;
+        w.in.body = essb::Body{ 200.0f, 1000.0f, 100.0f, 100.0f, true, false, 100.0f };   // a boss
+        MaxNodes nodes;
+        essb::Board target;
+        target[StatusKind::kDeathCurse] = essb::Slot{ true, 1.0f, 3.0f, 3.0f };
+        essb::Board me;
+        auto plan = std::make_unique<essb::StatusPlan>();
+        essb::OnDeathCurseEnd(*plan, 1.0f, target, me, w.in, nodes);
+        // 120 (the B_max part) + 420 × 0.5 = 330
+        Check(Near(DamageOf(*plan, essb::kDarkness), 330.0f), "28 死咒 on a boss: " + std::to_string(DamageOf(*plan, essb::kDarkness)) + " != 330");
+    }
+    {
+        float guide[2] = {};
+        int n = 0;
+        for (const float mult : { 1.0f, 2.0f }) {
+            World w;
+            MaxNodes nodes;
+            essb::Board target;
+            target.mark[essb::kWater] = essb::Slot{ true, 0.0f, 1.0f, 8.0f };
+            essb::Board me;
+            auto plan = std::make_unique<essb::StatusPlan>();
+            essb::PlanEnd(*plan, essb::kWater, essb::EndReason::kCut, mult, false, target, me, w.in, nodes, w.rng);
+            guide[n++] = target[StatusKind::kGuided].magnitude;
+        }
+        Check(guide[0] > 1.0f && Near(guide[0], guide[1]), "28 the guide is itself: " + std::to_string(guide[0]) + " / " + std::to_string(guide[1]));
+    }
+    {
+        World w;
+        MaxNodes nodes;
+        nodes.Add(essb::node::kCommonTrio);
+        essb::Board me;
+        me[StatusKind::kTrio1] = essb::Slot{ true, 1.0f, 1.0f, 10.0f };
+        me[StatusKind::kTrio2] = essb::Slot{ true, 1.0f, 1.0f, 10.0f };
+        auto plan = std::make_unique<essb::StatusPlan>();
+        int flags = 0;
+        const float first = essb::res::EndExtra(*plan, essb::kLightning, 0, me, w.in, nodes, flags);
+        Check(Near(first, 3.0f) && me.Has(StatusKind::kTrioCooldown), "28 三重奏 fires and rests");
+        me[StatusKind::kTrio4] = essb::Slot{ true, 1.0f, 1.0f, 10.0f };
+        me[StatusKind::kTrio5] = essb::Slot{ true, 1.0f, 1.0f, 10.0f };
+        const float second = essb::res::EndExtra(*plan, essb::kDivine, 0, me, w.in, nodes, flags);
+        Check(Near(second, 1.0f), "28 三重奏 does not fire again inside its 10 s rest (" + std::to_string(second) + ")");
+    }
+}
+
+// ---------------------------------------------------------------- round 28b: the user's rulings 2026-09-28
+// F5 印潮: the first hit after a switch opened its mark (member 0) -- up to 2 other hostiles within 15 m of it carrying no
+// mark of ours get the new element's mark, nearest first; a marked one is skipped (no switch), one at 16 m is out.
+void SurgeAnchors()
+{
+    struct Row {
+        const char* name;
+        std::vector<std::pair<float, int>> others;   // (x in game units from member 0 at 0, the element of a mark it carries or 0)
+        std::vector<int> want;                       // the members that must come out with the water mark
+    };
+    const float m16 = 16.0f * 70.0f;
+    const Row rows[] = {
+        { "0 unmarked -> 0", { { 200.0f, essb::kFire }, { 300.0f, essb::kFrost } }, {} },
+        { "3 unmarked in range -> the 2 nearest", { { 300.0f, 0 }, { 100.0f, 0 }, { 200.0f, 0 } }, { 2, 3 } },
+        { "unmarked at 16 m -> excluded", { { m16, 0 }, { 150.0f, 0 } }, { 2 } },
+        { "already marked -> excluded (no switch)", { { 50.0f, essb::kFire }, { 120.0f, 0 }, { 60.0f, essb::kWater } }, { 2 } },
+    };
+    for (const Row& row : rows) {
+        World w;
+        MaxNodes nodes;
+        nodes.Add(essb::node::kCommonSurge);
+        essb::Crowd crowd;
+        crowd.count = 1 + static_cast<int>(row.others.size());
+        crowd.m[0].has = true;
+        crowd.m[0].body = essb::Body{ 1000.0f, 1000.0f, 100.0f, 100.0f, false, false, 100.0f };
+        crowd.m[0].board.mark[essb::kWater] = essb::Slot{ true, 0.0f, 0.0f, 15.0f };   // the hit's own open
+        for (std::size_t i = 0; i < row.others.size(); ++i) {
+            essb::Member& m = crowd.m[i + 1];
+            m.has = true;
+            m.body = essb::Body{ 1000.0f, 1000.0f, 100.0f, 100.0f, false, false, 100.0f };
+            m.pos = { row.others[i].first, 0.0f, 0.0f };
+            if (row.others[i].second != 0) {
+                m.board.mark[row.others[i].second] = essb::Slot{ true, 0.0f, 1.0f, 15.0f };
+            }
+        }
+        const essb::Crowd before = crowd;
+        essb::Board me;
+        const essb::BodyInputs bin{ &w.in, false, 100.0f, 100.0f, 100.0f, 100.0f };
+        auto plan = std::make_unique<essb::StatusPlan>();
+        essb::PlanSurge(*plan, crowd, me, bin, essb::kWater, nodes, w.rng);
+        for (int k = 1; k < crowd.count; ++k) {
+            const bool wanted = std::find(row.want.begin(), row.want.end(), k) != row.want.end();
+            const bool had = before.m[k].board.mark[essb::kWater].has;
+            const bool opened = !had && crowd.m[k].board.mark[essb::kWater].has;
+            Check(opened == wanted, std::string("28b F5 印潮 ") + row.name + ": member " + std::to_string(k) +
+                                        (wanted ? " not marked" : " marked"));
+            for (int e = essb::kFire; e <= essb::kAstral; ++e) {
+                Check(!before.m[k].board.mark[e].has || crowd.m[k].board.mark[e].has,
+                    std::string("28b F5 印潮 ") + row.name + ": member " + std::to_string(k) + " lost a mark (a switch)");
+            }
+        }
+        Check(CountOps(*plan, essb::Op::kRemoveMark) == 0, std::string("28b F5 印潮 ") + row.name + ": a mark was removed");
+        Check(CountEvents(*plan, essb::Event::kOpen) == static_cast<int>(row.want.size()),
+            std::string("28b F5 印潮 ") + row.name + ": " + std::to_string(CountEvents(*plan, essb::Event::kOpen)) + " opens");
+    }
+    {   // without the branch nothing happens
+        World w;
+        MaxNodes nodes;
+        essb::Crowd crowd = Around5(3);
+        essb::Board me;
+        const essb::BodyInputs bin{ &w.in, false, 100.0f, 100.0f, 100.0f, 100.0f };
+        auto plan = std::make_unique<essb::StatusPlan>();
+        essb::PlanSurge(*plan, crowd, me, bin, essb::kWater, nodes, w.rng);
+        Check(plan->count == 0, "28b F5 印潮 without the branch plans nothing");
+    }
+}
+
+// F7 水臨強化's 10 s cooldown (running clock): fires at 0 s, not at 5 s (the L4 case), again at 10.5 s.
+void WaterAdventCooldownAnchors()
+{
+    essb::AdventCooldown cooldown;
+    const std::uint64_t at[] = { 0, 5000, 10500 };
+    const bool fires[] = { true, false, true };
+    for (int i = 0; i < 3; ++i) {
+        World w;
+        MaxNodes nodes;
+        nodes.Add(essb::node::kWaterAdventPlus);
+        essb::Crowd crowd = Around5(1);
+        essb::Board me;
+        essb::BodyInputs bin{ &w.in, false, 100.0f, 100.0f, 10.0f, 200.0f };
+        bin.waterAdventReady = cooldown.Ready(at[i]);
+        auto plan = std::make_unique<essb::StatusPlan>();
+        const essb::AdventOutcome out = essb::PlanAdvent(*plan, crowd, me, bin, essb::kWater, nodes, w.rng);
+        if (out.waterFired) {
+            cooldown.Fired(at[i]);
+        }
+        const bool restored = CountOps(*plan, essb::Op::kRestoreMagicka) > 0;
+        const bool cleansed = CountEvents(*plan, essb::Event::kCleanse) > 0;
+        const std::string when = std::to_string(at[i]) + " ms";
+        Check(out.waterFired == fires[i] && restored == fires[i] && cleansed == fires[i],
+            "28b F7 水臨強化 at " + when + (fires[i] ? " did not fire" : " fired inside its 10 s"));
+        Check(out.waterCooling == !fires[i], "28b F7 水臨強化 at " + when + ": the cooling flag (the L4 line)");
+        if (!fires[i]) {
+            Check(Near(cooldown.Left(at[i]), 5.0f), "28b F7 left at 5 s = 5 s: " + std::to_string(cooldown.Left(at[i])));
+            // nothing of the branch: the same plan as without 水臨強化 (the water 臨's own open stays)
+            World bare;
+            MaxNodes none;
+            essb::Crowd crowd2 = Around5(1);
+            essb::Board me2;
+            essb::BodyInputs bin2{ &bare.in, false, 100.0f, 100.0f, 10.0f, 200.0f };
+            auto plan2 = std::make_unique<essb::StatusPlan>();
+            (void)essb::PlanAdvent(*plan2, crowd2, me2, bin2, essb::kWater, none, bare.rng);
+            Check(plan->count == plan2->count, "28b F7 水臨強化 cooling plans what no 水臨強化 plans (" + std::to_string(plan->count) +
+                                                   " vs " + std::to_string(plan2->count) + " ops)");
+        }
+    }
+    essb::AdventCooldown other;   // the other advents: no cooldown -- 冰臨強化 at 0 s and 5 s both slow
+    for (const std::uint64_t now : { std::uint64_t{ 0 }, std::uint64_t{ 5000 } }) {
+        World w;
+        MaxNodes nodes;
+        nodes.Add(essb::node::kFrostAdventPlus);
+        essb::Crowd crowd = Around5(1);
+        essb::Board me;
+        essb::BodyInputs bin{ &w.in, false, 100.0f, 100.0f, 10.0f, 200.0f };
+        bin.waterAdventReady = other.Ready(now);
+        auto plan = std::make_unique<essb::StatusPlan>();
+        const essb::AdventOutcome out = essb::PlanAdvent(*plan, crowd, me, bin, essb::kFrost, nodes, w.rng);
+        Check(!out.waterFired && !out.waterCooling && CountOps(*plan, essb::Op::kSlow) > 0,
+            "28b F7 冰臨強化 keeps no cooldown (" + std::to_string(now) + " ms)");
+    }
+}
+
 int main()
 {
     try {
@@ -496,6 +795,12 @@ int main()
         BurstCapacity();
         Review27bAnchors();
         DamageMultAnchors();
+        RotationAnchors();
+        WaterAdventAnchors();
+        SourcedBurstAnchors();
+        FixAnchors();
+        SurgeAnchors();
+        WaterAdventCooldownAnchors();
         std::printf("NATIVE ANCHORS ok: %d checks (G1 sums and percentage effects at level 100 / 節點倍率 5 / every line, G3 counts, "
                     "G4 the formless fuse, the 24-target burst)\n",
             checks);

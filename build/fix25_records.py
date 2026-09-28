@@ -205,6 +205,21 @@ def hazard_effects(b, element):
     return out
 
 
+# Round 27h (Papyrus review 5): the hazard spells had no conditions -- a domain could mark you or a follower standing in
+# it. Every hazard effect now needs: not the player (GetIsReference PlayerRef == 0), not a teammate
+# (IsPlayerTeammate == 0), and hostile (round 21's HOSTILE_CTDA, the ice armour chill's exact condition).
+FUNC_GET_IS_REFERENCE = 136
+FUNC_IS_PLAYER_TEAMMATE = 584
+PLAYER_REF = 0x000014
+
+
+def hazard_conditions(b):
+    import fix21_records as hit21
+    return [b.ctda(b.CTDA_EQ, 0.0, FUNC_GET_IS_REFERENCE, param1=b.ref('Skyrim.esm', PLAYER_REF)),
+            b.ctda(b.CTDA_EQ, 0.0, FUNC_IS_PLAYER_TEAMMATE),
+            hit21.HOSTILE_CTDA]
+
+
 def add_records(b, add):
     I, F, Z = b.I, b.F, b.Z
     own = b.own
@@ -232,6 +247,7 @@ def add_records(b, add):
         spell = [('OBND', bytes(12)), ('FULL', Z(f'元素魔戰士：{label}')), etyp, ('DESC', Z('')), ('SPIT', b.spit(0, 1, 1))]
         for effect, magnitude, seconds in hazard_effects(b, element):
             spell += [('EFID', I(own(effect))), ('EFIT', struct.pack('<fII', magnitude, 0, seconds))]
+            spell += [('CTDA', c) for c in hazard_conditions(b)]   # round 27h (Papyrus review 5)
         add('SPEL', hazard_spell_id(element), hazard_spell_edid(element), spell)
         data = struct.pack('<IffffIIIII', HAZARD_LIMIT, DOMAIN_RADIUS_FEET, 5.0, 0.0, HAZARD_TARGET_INTERVAL, HAZARD_FLAGS,
                            own(hazard_spell_id(element)), 0, 0, 0)

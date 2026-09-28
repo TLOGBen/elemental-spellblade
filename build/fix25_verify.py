@@ -64,7 +64,7 @@ REMOVED_NAMES = ['StartDomain', 'InDomain', 'TickDomain', 'DomainActive', 'Playe
                  'GCombo', 'ComboHits', 'ComboTime']   # round-25 review: the dead 連段
 # round-25 review: Papyrus's second windows count the DLL's game-running clock, never real time.
 WINDOW_FUNCTIONS = ['TickTimers', 'TimersActive', 'SecondsLeft', 'SetEmber', 'SetQuench', 'SetShockRecent', 'SetGuardSwitch',
-                    'SetGuardIce', 'SetSyncKeep']
+                    'SetGuardIce']   # round 27h: SetSyncKeep went with the sync keep (the DLL's running clock, Runtime.h SyncKeep)
 REMOVED_NATIVES = ['ExtendFuse', 'WashBuffs']
 N6_EVENTS = {'ESSB_Switch': 'OnESSBSwitch', 'ESSB_Close': 'OnESSBClose'}
 
@@ -94,8 +94,8 @@ def check_contract(sources, cpp, status_h, reactions, engine_h, timer_h):
         if f'RegisterForModEvent("{event}", "{handler}")' not in ctl:
             errors.append(f'{event}: ESSBController does not register {handler}')
     switch = re.search(r'(?ms)^Event OnESSBSwitch\(.*?^EndEvent', ctl)
-    if not switch or 'SwitchForm(' not in switch[0]:
-        errors.append('OnESSBSwitch does not change the form through SwitchForm')
+    if not switch or not re.search(r'FormOpenedFx\(|FormClosedFx\(', switch[0]):
+        errors.append('OnESSBSwitch does not hand the switch to FormOpenedFx / FormClosedFx (round 27h: the DLL did the form)')
     close = re.search(r'(?ms)^Event OnESSBClose\(.*?^EndEvent', ctl)
     if not close or 'CloseForm()' not in close[0]:
         errors.append('OnESSBClose does not close the form')

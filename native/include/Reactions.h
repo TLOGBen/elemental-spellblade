@@ -185,6 +185,9 @@ inline constexpr float kPureAsh = 1.0f;              // 淨灰：附近亡靈 B_
 inline constexpr float kRemnant = 0.25f;             // 殘魂：詛咒 1～2 層 25% 復生
 inline constexpr float kServantAttack = 0.1f;        // 詛咒 5 層以上每層僕從攻擊 +10%
 inline constexpr float kStreak = 5.0f;               // 連殺：5 秒
+inline constexpr float kWaterAdventMagicka = 0.25f;   // round 28 (D3): 水臨強化 restores 25% of max magicka (was: full)
+inline constexpr std::uint64_t kWaterAdventCooldownMs = 10000;   // round 28b (F7): 水臨強化 at most once in 10 s (running clock)
+inline constexpr int kSurgeTargets = 2;              // round 28b (F5): 印潮 marks at most 2 unmarked hostiles
 // burst (2.5, 5.1, 5.2)
 inline constexpr std::array<float, 4> kSync{ 1.0f, 1.5f, 2.0f, 3.0f };   // K_sync by stage
 inline constexpr int kHushCap = 5;                   // 寂：上限 5（寂上限 +1／每 5 點 → 8），10 秒
@@ -319,6 +322,26 @@ struct BodyInputs {
     float staminaMax = 0.0f;
     float magicka = 0.0f;              // your magicka and its max (回流, 無魔, 深淵回響, 水臨強化)
     float magickaMax = 0.0f;
+    bool waterAdventReady = true;      // round 28b (F7): 水臨強化 is off its 10 s cooldown (Plugin.cpp's AdventCooldown)
+};
+
+// Round 28b (F7, the user's ruling 2026-09-28): 水臨強化 (the cleanse and 25% magicka, and its soak on the ring) fires at
+// most once in 10 s of the running clock -- an open or a switch to water inside the window does not fire it. A load or a
+// new game starts it over (GameReadyCpp). The other advents keep no cooldown.
+struct AdventCooldown {
+    std::uint64_t untilMs = 0;
+    [[nodiscard]] constexpr bool Ready(std::uint64_t nowMs) const noexcept { return nowMs >= untilMs; }
+    [[nodiscard]] constexpr float Left(std::uint64_t nowMs) const noexcept
+    {
+        return Ready(nowMs) ? 0.0f : static_cast<float>(untilMs - nowMs) / 1000.0f;
+    }
+    constexpr void Fired(std::uint64_t nowMs) noexcept { untilMs = nowMs + n5::kWaterAdventCooldownMs; }
+};
+
+// What PlanAdvent did that its caller keeps: 水臨強化 fired (start the cooldown) or would have and was cooling (the L4 line).
+struct AdventOutcome {
+    bool waterFired = false;
+    bool waterCooling = false;
 };
 
 // ================================================================ the timed utilities and other small op builders
@@ -863,7 +886,8 @@ public:
         case kWater:
             if (reason == EndReason::kCut && !chain && Has(node::kWaterFlood)) {
                 // 大潮：水終焉時範圍內所有浸濕目標都給接管元素導引。
-                const float guide = (Has(node::kWaterStrongGuide) ? n3::kStrongGuide : n5::kGuide) * Signature(kWater) * body;
+                // Round 28: the guide itself (its own legend line), not × this end's body.
+                const float guide = (Has(node::kWaterStrongGuide) ? n3::kStrongGuide : n5::kGuide) * Signature(kWater);
                 const Picked p = Around(c_, k, n5::kArea, n5::kNearLimit, [](const Member& x) { return x.board.Has(StatusKind::kSoak); });
                 for (int i = 0; i < p.n; ++i) {
                     On(p.k[i], [&](Board& b, const StatusInputs& in) {
@@ -1868,15 +1892,16 @@ BurstResult PlanBurst(StatusPlan& plan, Crowd& crowd, Board& self, const BodyInp
             // One end-cooldown check for the whole burst of this target: inside it the marks just go.
             const bool allowed = !target.Has(StatusKind::kEndCooldown);
             const Writer tw{ plan, target, Who::kTarget };
-            auto settle = [&](int e) {
+            auto settle = [&](int e, float share) {
                 if (allowed) {
                     // The end's state part as for any end (×1: K_sync and the burst lines go to the fusion hit only); its
-                    // event carries K (× the guide the state part took off) for the body pass.
+                    // event carries K (× the guide the state part took off) for the body pass. Round 28 (D6): a mark the fire
+                    // source put on counts half (`share`).
                     const int from = plan.count;
                     PlanEndBody(plan, e, EndReason::kBurst, 1.0f, false, target, self, in, nodes, rng);
                     for (int i = from; i < plan.count; ++i) {
                         if (plan.ops[i].op == Op::kEvent && plan.ops[i].event == Event::kEnd && static_cast<int>(plan.ops[i].arg[0] + 0.5f) == e) {
-                            plan.ops[i].arg[2] *= mult;
+                            plan.ops[i].arg[2] *= mult * share;
                         }
                     }
                     ++settled;
@@ -1887,15 +1912,16 @@ BurstResult PlanBurst(StatusPlan& plan, Crowd& crowd, Board& self, const BodyInp
             };
             for (int e = kFire; e <= kAstral; ++e) {
                 if (target.mark[e].has) {
+                    const bool sourced = (MarkFlags(target.mark[e].magnitude) & n3::kMarkSourced) != 0;
                     tw.Unmark(e);
-                    settle(e);
+                    settle(e, sourced ? n3::kSourcedBurst : 1.0f);
                 }
             }
             if (target.Has(StatusKind::kResidual)) {
                 const int residual = target.Layers(StatusKind::kResidual);
                 tw.Clear(StatusKind::kResidual);
                 if (IsElement(residual)) {
-                    settle(residual);
+                    settle(residual, 1.0f);
                 }
             }
         });
@@ -2240,7 +2266,9 @@ void PlanDeath(StatusPlan& plan, Crowd& crowd, Board& self, const BodyInputs& bi
     }
     // 連殺 (5.7): a wind-marked target your sneak attack killed -- 5 s of keeping sneak (Papyrus) and the next sneak attack
     // ×2 (the DLL's window).
-    if (f.killerYou && nodes.Has(node::kWindKillStreak) && cb.mark[kWind].has && cb.Has(StatusKind::kLastHitSneak) &&
+    // Round 28: the killing blow was a wind-form sneak attack -- it counts as the wind mark (its mark never landed on the
+    // corpse, or it cut one).
+    if (f.killerYou && nodes.Has(node::kWindKillStreak) && cb.Has(StatusKind::kLastHitSneak) &&
         cb.Layers(StatusKind::kLastHitSneak) == kWind) {
         plan.Push(MakeEvent(Event::kSneak, Scaled(t, n5::kStreak)));
         pw.Set(StatusKind::kKillStreak, 1.0f, Scaled(t, n5::kStreak));
@@ -2254,17 +2282,22 @@ void PlanDeath(StatusPlan& plan, Crowd& crowd, Board& self, const BodyInputs& bi
 // its cut, its open); the 臨強化 branches act on the same range even without the main line (2 m); 臨界 slows the
 // hostiles nearby 30% 2 s; 雙斷 (a burst in the last 3 s) opens on every hostile within the burst range.
 template <NodeReader Nodes, RandomSource Rng>
-void PlanAdvent(StatusPlan& plan, Crowd& crowd, Board& self, const BodyInputs& bin, int element, const Nodes& nodes, Rng& rng)
+AdventOutcome PlanAdvent(StatusPlan& plan, Crowd& crowd, Board& self, const BodyInputs& bin, int element, const Nodes& nodes, Rng& rng)
 {
+    AdventOutcome outcome;
+    // Round 28b (F7): 水臨強化 would fire (water, the branch, a hostile in the ring) -- only when off its cooldown.
+    const bool waterPlus = element == kWater && nodes.Has(node::kWaterAdventPlus);
     const StatusInputs& base = *bin.in;
     const Tuning& t = *base.tuning;
     const int start = plan.count;
     Bodies<Nodes, Rng> b(plan, crowd, self, bin, nodes, rng);
+    bool gained = false;   // round 28 (D2): your gains of the opens once for this switch
     auto open = [&](int k) {
         b.On(k, [&](Board& target, const StatusInputs& in) {
             const HitStatus opened = PlanStatusHit(plan, element, false, target, self, in, nodes, rng, false);
             if (opened.opened) {
-                PlanSelfOpen(plan, element, target, self, in, nodes, rng);
+                PlanSelfOpen(plan, element, target, self, in, nodes, rng, !gained);
+                gained = true;
             }
         });
     };
@@ -2297,7 +2330,7 @@ void PlanAdvent(StatusPlan& plan, Crowd& crowd, Board& self, const BodyInputs& b
             }
             break;
         case kWater:
-            if (nodes.Has(node::kWaterAdventPlus)) {
+            if (waterPlus && bin.waterAdventReady) {
                 b.On(k, [&](Board& target, const StatusInputs& in) {
                     Writer{ plan, target, Who::kTarget }.Set(StatusKind::kSoak, 1.0f, rule::SoakSeconds(*in.tuning, nodes));
                 });
@@ -2318,9 +2351,16 @@ void PlanAdvent(StatusPlan& plan, Crowd& crowd, Board& self, const BodyInputs& b
             break;
         }
     }
-    if (element == kWater && nodes.Has(node::kWaterAdventPlus)) {
-        plan.Push(MakeEvent(Event::kCleanse, 1));   // 水臨強化：你清除全部負面效果（本體在 Papyrus）
-        plan.Push(Amount(Op::kRestoreMagicka, std::max(0.0f, bin.magickaMax - bin.magicka)));   // 並回滿魔力
+    // Round 28 (D3, the user's decision): 水臨強化 needs a hostile within the advent's range; then it cleanses you and restores
+    // 25% of your max magicka (× the recovery slider) -- it no longer fills it (every switch opens it: the user's rule).
+    if (waterPlus && ring.n > 0) {
+        if (bin.waterAdventReady) {
+            plan.Push(MakeEvent(Event::kCleanse, 1));   // 水臨強化：你清除全部負面效果（本體在 Papyrus）
+            plan.Push(Amount(Op::kRestoreMagicka, bin.magickaMax * n5::kWaterAdventMagicka * t.multRecovery));
+            outcome.waterFired = true;
+        } else {
+            outcome.waterCooling = true;   // round 28b (F7): inside the 10 s -- nothing of 水臨強化
+        }
     }
     if (element == kBlood && nodes.Has(node::kBloodAdventPlus)) {
         plan.Push(Amount(Op::kPayHealth, base.self.healthMax * n5::kBloodAdventCost));   // 血臨強化：付 15%（留 1 點）
@@ -2342,25 +2382,36 @@ void PlanAdvent(StatusPlan& plan, Crowd& crowd, Board& self, const BodyInputs& b
         }
     }
     RunBodies(plan, start, crowd, self, bin, nodes, rng);
+    return outcome;
 }
 
 // ================================================================ 印潮 (5.2)
 
-// The switch hit's open (the hit cut `oldElement`): up to 2 other targets within 15 m carrying the same old mark each
-// get the new element's open (a forced open: cut, open).
-template <NodeReader Nodes, RandomSource Rng>
-void PlanSurge(StatusPlan& plan, Crowd& crowd, Board& self, const BodyInputs& bin, int element, int oldElement, const Nodes& nodes, Rng& rng)
+// Round 28b (F5, the user's ruling 2026-09-28; replaces the old rule D1 left without targets): the first hit after a
+// form switch opened its mark (Plugin.cpp's surge flag) -- up to 2 OTHER hostiles within 15 m of that target carrying
+// no mark of ours at all get the NEW element's mark (a forced open: nobody's mark is switched, D1 stays). Nearest
+// first; the crowd holds no you, teammate, follower (allies), non-hostile or dead actor, and a member already dead in
+// this plan is skipped here too. Your gains of these opens once for the event (D2).
+constexpr bool SurgeTarget(const Member& x) noexcept
 {
-    if (!nodes.Has(node::kCommonSurge) || !IsElement(oldElement)) {
+    return x.board.MarkCount() == 0 && x.body.health > 0.0f;
+}
+
+template <NodeReader Nodes, RandomSource Rng>
+void PlanSurge(StatusPlan& plan, Crowd& crowd, Board& self, const BodyInputs& bin, int element, const Nodes& nodes, Rng& rng)
+{
+    if (!nodes.Has(node::kCommonSurge) || !IsElement(element)) {
         return;
     }
     Bodies<Nodes, Rng> b(plan, crowd, self, bin, nodes, rng);
-    const Picked p = Around(crowd, 0, n5::kNear, 2, [&](const Member& x) { return x.board.mark[oldElement].has; });
+    const Picked p = Around(crowd, 0, n5::kNear, n5::kSurgeTargets, [](const Member& x) { return SurgeTarget(x); });
+    bool gained = false;   // round 28 (D2)
     for (int i = 0; i < p.n; ++i) {
         b.On(p.k[i], [&](Board& target, const StatusInputs& in) {
             const HitStatus opened = PlanStatusHit(plan, element, false, target, self, in, nodes, rng, false);
             if (opened.opened) {
-                PlanSelfOpen(plan, element, target, self, in, nodes, rng);
+                PlanSelfOpen(plan, element, target, self, in, nodes, rng, !gained);
+                gained = true;
             }
         });
     }

@@ -122,5 +122,13 @@ Function ShowNativeStatus()
 	If ESSBLog.Level() >= 4
 		ESSBNative.Trace("mcm-button", None, "button=ShowNativeStatus version=" + version + " active=" + active)   ; round 26：探針 log
 	EndIf
-	ShowMessage("ElementsSpellblade DLL：" + version + "\n命中附傷運作：" + active + hint + "\n停用時不會退回 entry 51。", False, "確定", "")
+	; round 27h：兩個 task 同時在跑而放棄的次數（應該是 0；不是 0 請回報）。
+	String overlap = ""
+	If version != ""
+		Int overlaps = ESSBNative.OverlapCount()
+		If overlaps > 0
+			overlap = "\n同時執行而放棄的工作：" + overlaps + " 次（請回報）"
+		EndIf
+	EndIf
+	ShowMessage("ElementsSpellblade DLL：" + version + "\n命中附傷運作：" + active + overlap + hint + "\n停用時不會退回 entry 51。", False, "確定", "")
 EndFunction

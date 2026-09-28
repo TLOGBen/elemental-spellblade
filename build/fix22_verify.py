@@ -370,12 +370,17 @@ def check_ui(sources, mcm_text=None):
 
     ctl_vm = Script(SRC / 'ESSBController.psc', dict())
     ctl_vm.overrides.update(IsCurrentController=lambda: True)
-    ctl_vm.fields.update(Ready=True, StateBroken=False, Enabled=Glob(0))
+    ctl_vm.fields.update(Ready=True, StateBroken=False, Enabled=Glob(0), NativeHit=Glob(1))
     if ctl_vm.IsOperational() or not ctl_vm.IsReadyUI():
         errors.append('switch off: IsOperational must be False and IsReadyUI True')
     ctl_vm.fields['Enabled'] = Glob(1)
     if not (ctl_vm.IsOperational() and ctl_vm.IsReadyUI()):
         errors.append('switch on: IsOperational and IsReadyUI must both be True')
+    # Round 27h (Papyrus review 10): the DLL not running (ESSB_NativeHit 0) stops the game effects too, never the menus.
+    ctl_vm.fields['NativeHit'] = Glob(0)
+    if ctl_vm.IsOperational() or not ctl_vm.IsReadyUI():
+        errors.append('the DLL off: IsOperational must be False and IsReadyUI True')
+    ctl_vm.fields['NativeHit'] = Glob(1)
     ctl_vm.fields['Enabled'] = Glob(0)
 
     events = []
@@ -543,8 +548,8 @@ def self_test(sources, cpp, status_h):
     expect('a status task without the master switch', check_switch(cpp.replace('if (!Enabled()) {   // master switch (review fix 3)',
                                                                               'if (!Active()) {', 1), sources), 'master switch')
     s = dict(sources)
-    s['ESSBController.psc'] = s['ESSBController.psc'].replace('&& Enabled.GetValueInt() == 1\r\nEndFunction', '\r\nEndFunction')
-    s['ESSBController.psc'] = s['ESSBController.psc'].replace('&& Enabled.GetValueInt() == 1\nEndFunction', '\nEndFunction')
+    # round 27h: IsOperational also needs ESSB_NativeHit (Papyrus review 10) -- the fault drops the master switch only
+    s['ESSBController.psc'] = s['ESSBController.psc'].replace('Enabled && Enabled.GetValueInt() == 1 && NativeHit', 'NativeHit', 1)
     expect('IsOperational without the master switch', check_switch(cpp, s), 'IsOperational')
     expect('an MCM action behind the master switch', check_ui(sources, sources['ESSBMCM.psc'].replace(
         'ESSBState.ReadyUI()', 'ESSBState.Operational()')), 'with the switch off')

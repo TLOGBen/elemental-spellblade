@@ -130,9 +130,11 @@ def check_contract(sources, cpp, status_h, reactions, sinks_h=None):
                 errors.append(f'the death sink no longer {why}')
         if 'ProcessLists' in body or 'BuildCrowd' in body:
             errors.append('the death sink scans the process list itself (R3: scans run in the task)')
-    closed = re.search(r'(?ms)^Function OnFormClosed\(Int aiIndex[^)]*\).*?^EndFunction', ctl)   # round 27: + abByDll, sync, stage
-    if not closed or 'ESSBNative.Burst(aiIndex)' not in closed[0]:
-        errors.append('OnFormClosed does not burst through ESSBNative.Burst(aiIndex)')
+    # round 27h (review 1-4): the burst of a close is the switch task's (SwitchWork -> BurstWork); the menu's close asks the
+    # DLL too (ESSBNative.CloseForm); Papyrus's FormClosedFx only plays the release
+    work = re.search(r'void SwitchWork\(RE::PlayerCharacter& player, essb::SwitchKind kind, int from, int to, int reason\)\n\{.*?\n\}\n', cpp, re.S)
+    if not work or 'BurstWork(from);' not in work[0]:
+        errors.append('the close in SwitchWork does not burst (BurstWork)')
     for fn in ('OnFormClosed', 'OnFormOpened'):
         block = re.search(r'(?ms)^Function ' + fn + r'\(Int aiIndex[^)]*\).*?^EndFunction', ctl)
         if block and re.search(r'\bScanTargets\(|\bForceOpenOn\(|\bMarkedNear\(', block[0]):
@@ -384,9 +386,9 @@ def self_test(sources, cpp, status_h, reactions, b):
     expect('the death sink handles dead = true', check_contract(sources, cpp.replace('if (e.dead || e.dyingIsYou) {', 'if (e.dyingIsYou) {', 1),
                                                                    status_h, reactions, sinks_h.replace('    if (dead) {', '    if (false) {', 1))[0],
            'handles only dead = false')
-    s = dict(sources)
-    s['ESSBController.psc'] = s['ESSBController.psc'].replace('ESSBNative.Burst(aiIndex)', 'ESSBNative.Burst(0)', 1)
-    expect('the burst without the closing element', check_contract(s, cpp, status_h, reactions)[0], 'ESSBNative.Burst(aiIndex)')
+    # round 27h (review 1-4): the close's burst is the switch task's
+    expect('the close without its burst', check_contract(sources, cpp.replace('        BurstWork(from);             // 融斷', '        // 融斷', 1),
+                                                          status_h, reactions)[0], 'does not burst')
     s = dict(sources)
     s['ESSBElem.psc'] += '\nFunction Probe24(ESSBController akCtl, Actor akTarget) Global\n\takCtl.OnKillEvent(akTarget)\nEndFunction\n'
     expect('a call into the deleted kill hook', check_removed(s, b), 'still names OnKillEvent')
@@ -405,6 +407,9 @@ def check_behaviour():
     settings = json.loads((ROOT / 'settings.json').read_text(encoding='utf-8'))
     ctl = v6.Ctl(settings)
     reg = v6.make_scripts(SRC, ctl)
+    from types import SimpleNamespace as NS
+    # round 27h (Papyrus review 7): ApplyUtil casts through ESSBNative.CastWith (the DLL casts with this magnitude)
+    reg['ESSBNative'] = NS(CastWith=lambda spell, target, magnitude, seconds: spell.SetNthEffectMagnitude(0, magnitude))
     c = reg['ESSBController']
     # Round 25 (N6): GetDamageMult and ReactDamage went with the Papyrus domains (死域's damage is the DLL's D_react);
     # they run on the scripts round 24 shipped (build/fix25_history.py ties them to today's).

@@ -449,7 +449,7 @@ def boundaries():
             for key in ('lightning_roll_mode','form_notify','form_sound','hotkeys_enabled','address_library_bin'):current.pop(key,None)  # later rounds' keys; address_library_bin = round 19b DLL build input
             current['state_schema_version'] = old_settings['state_schema_version']
             # round 27g (0.27.6): the user's balance decisions -- 傷害倍率 0.8, upkeep 2.5% (暗 3.5%); build_v03.py pins them
-            for key, (was, now) in {'base_damage_mult': (1.0, 0.8), 'upkeep_base_pct': (1.0, 2.5), 'upkeep_dark_pct': (2.0, 3.5)}.items():
+            for key, (was, now) in {'base_damage_mult': (1.0, 0.8), 'upkeep_base_pct': (1.0, 5.0), 'upkeep_dark_pct': (2.0, 7.5)}.items():
                 if current.get(key) == now and old_settings.get(key) == was:
                     current[key] = was
             assert current == old_settings, 'only Round 14 attribution setting may change'

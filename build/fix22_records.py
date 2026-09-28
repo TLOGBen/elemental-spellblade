@@ -232,7 +232,10 @@ def add_records(b, add, fx, settings):
     # textures only Vulcano's archive has; the body fire of 白熱 / 熔燒 / 熔身 (v0.4 2.12: the one visual on you) is now
     # the vanilla Flame Cloak's -- its shader (Skyrim.esm FireCloakFXShader) and its flame art (FXFireCloak01).
     flames = b.ref('Skyrim.esm', HEAT_BODY_SHADER)
-    shaders = {'kFrozen': fx[b.FX_STATUS_FROZEN], 'kHeat3': flames, 'kHeat4': flames, 'kMoltenBody': flames}
+    # Round 27h (review 1-3): the flames moved to their own effect in the same spells (build/fix28_records.py
+    # ESSB_HeatBodyFxEffect, conditioned on the MCM switch 白熱全身特效); the status effects carry no shader.
+    shaders = {'kFrozen': fx[b.FX_STATUS_FROZEN]}
+    import fix28_records as hit28
     # Round 27 (G13, v0.4 2.11 / 2.12「元素狀態變化」): the target statuses the player must see carry the element's shading,
     # from the records 2.11 names (already copied into the ESP by the FX front): persistent for the layered states
     # (凍結、血痕、催毒、浸濕、水壓、詛咒、星痕), a one-off flash for 冰晶 (each crystal) and 死咒 (its declaration).
@@ -255,12 +258,11 @@ def add_records(b, add, fx, settings):
         ss += [('FULL', Z(label)),
                ('DATA', b.mgef_data(flags, 1, casting=1, delivery=delivery, hit_shader=shader)),
                ('DNAM', Z(text))]
-        if kind in HEAT_BODY_KINDS:
-            ss = [(k, b.mgef_data(flags, 1, casting=1, delivery=delivery, hit_shader=shader,
-                                  hit_effect_art=b.ref('Skyrim.esm', HEAT_BODY_ART))) if k == 'DATA' else (k, v) for k, v in ss]
         add('MGEF', effect_id(kind), edid_effect(suffix), ss)
         # Record magnitude 0: a cast without an override (override 0) leaves 0 layers, so 0 means 0.
         efit = [('EFID', I(own(effect_id(kind)))), ('EFIT', struct.pack('<fII', 0.0, 0, int(seconds)))]
+        if kind in HEAT_BODY_KINDS:
+            efit += hit28.heat_body_fx_items(b, seconds)   # round 27h: the body fire, switchable (MCM 白熱全身特效)
         tier = {'kHoly1': 0, 'kHoly2': 1, 'kHoly3': 2}.get(kind)
         if tier is not None:
             efit += [('EFID', I(own(_ids['holyWeapon.effect']))),

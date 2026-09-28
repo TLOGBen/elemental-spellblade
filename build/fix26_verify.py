@@ -214,7 +214,7 @@ def s_b08(fault):
         L.t('op', op('fire-source', 'Damage', el='fire', mag=6.30))
         L.t('op', op('tick', 'PayHealth', 'you', mag=5.0, on=you(1000 - 5 * s)))
     L.wait(200)
-    L.t('settle', ' on=' + you(960) + ' tag=N3_Heat3 mag=0.00 elapsed=8.00 duration=8.00 crystals=0')
+    L.t('settle', ' on=' + you(960) + ' tag=N3_Heat3 mag=0.00 elapsed=8.00 duration=8.00 crystals=0 world=11000 running=11000')   # 27h: both clocks
     L.t('op', op('settle', 'Noop', 'target', on=you(960)).replace(' on=', ' ev=Overheat args=0|0|0|0|0|0|0|0 on='))
     L.t('op', op('settle', 'PayHealth', 'you', mag=100.0, on=you(960)))
     L.t('op', op('settle', 'Remove', 'you', 'N3_Heat3', on=you(860)))
@@ -616,8 +616,8 @@ def self_test(j, cpp, sources, trace_h, config_text, sheet_text):
         'HasOurEffect(*killer, nullptr); snapshot.seen = essb::sink::DeathSink(', 1), sources, trace_h, config_text))
     expect('the input sink switching itself', check_trace(cpp.replace('const auto actions = essb::sink::PlanInput(presses, facts);',
         'const auto actions = essb::sink::PlanInput(presses, facts); RequestSwitch(1, "x");', 1), sources, trace_h, config_text))
-    expect('the hit sink casting again', check_trace(cpp.replace('        seen.raw = ReadAttack(ev, *player, seen.verdict.weaponType);',
-        '        seen.raw = ReadAttack(ev, *player, seen.verdict.weaponType); CasterOf(*player).CastSpellImmediate(nullptr, false, nullptr, 1.0f, false, 0.0f, player);', 1),
+    expect('the hit sink casting again', check_trace(cpp.replace('        seen.raw = ReadAttack(ev);',
+        '        seen.raw = ReadAttack(ev); CasterOf(*player).CastSpellImmediate(nullptr, false, nullptr, 1.0f, false, 0.0f, player);', 1),
         sources, trace_h, config_text))
     expect('a task body without its scope', check_trace(cpp.replace('TaskScope scope("settle task");', '', 1), sources, trace_h, config_text))
     expect('the hurt sink reading your board', check_trace(cpp.replace('    f.guardBefore = state.mirrorGuard.load();',

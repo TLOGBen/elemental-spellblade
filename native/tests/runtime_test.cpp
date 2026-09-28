@@ -12,19 +12,24 @@
 //             and the read-only natives; the removal erases its row; two threads publishing and reading at once (E1)
 //   hurt      a hit waits for its frame's end; "after" and our own health changes per hit (E4, G7); PlanHurt's loss leaves
 //             out our own payments
+#include "HitPipeline.h"
 #include "Registry.h"
 #include "Runtime.h"
 #include "Trace.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <iostream>
+#include <iterator>
 #include <map>
 #include <set>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -75,6 +80,7 @@ void ScopeChecks()
             Check(c.mutating == 1, "scope: a nested body on the same thread counts once");
         }
         Check(inTask && c.mutating == 1, "scope: the nested scope leaves the outer open");
+        Check(!outer.Overlapped(), "scope (27h): one body alone did not overlap");
     }
     Check(c.mutating == 0 && overlaps == 0, "scope: closed, no overlap");
     // two threads inside at once: reported
@@ -94,6 +100,7 @@ void ScopeChecks()
         bool inTask = false;
         rt::Scope mine("mine", inTask, c, report);
         Check(overlaps == 1 && c.mutating == 2, "scope: two threads at once are one overlap");
+        Check(mine.Overlapped(), "scope (27h): the second body knows it overlapped (its task returns without its work)");
     }
     stage = 2;
     other.join();
@@ -621,6 +628,195 @@ void BranchChecks()
     }
 }
 
+// Round 27h (review 1-2): a C++ exception stops the DLL for the session, an access violation of ours until restart.
+void FaultChecks()
+{
+    rt::FaultLatch f;
+    f = rt::Latch(f, rt::FaultGrade::kSession);
+    Check(f.faulted && !f.hard, "fault: a C++ exception is a session fault");
+    Check(!rt::ClearAtLoad(f).faulted, "fault: a load clears a session fault");
+    f = rt::Latch(f, rt::FaultGrade::kHard);
+    Check(f.faulted && f.hard, "fault: an access violation after it makes it hard");
+    Check(rt::ClearAtLoad(f).faulted && rt::ClearAtLoad(f).hard, "fault: a load keeps a hard fault");
+    rt::FaultLatch g = rt::Latch(rt::FaultLatch{}, rt::FaultGrade::kHard);
+    g = rt::Latch(g, rt::FaultGrade::kSession);
+    Check(g.hard && rt::ClearAtLoad(g).faulted, "fault: a later C++ exception does not soften a hard fault");
+}
+
+// Round 27h (review 1-6): the domains we placed -- recorded at the cast, checked each second, gone when done.
+void DomainLedgerChecks()
+{
+    rt::DomainLedger<int, int> ledger;
+    ledger.Add(7, 1, 5000);
+    ledger.Add(8, 2, 9000);
+    ledger.Prune(4000, [](auto&) { return true; });
+    Check(ledger.Records().size() == 2, "domains: both live at 4 s");
+    ledger.Prune(5000, [](auto&) { return true; });
+    Check(ledger.Records().size() == 1 && ledger.Records()[0].element == 2, "domains: the first is gone at its end");
+    ledger.Prune(6000, [](auto& r) { return r.carrier != 8; });
+    Check(ledger.Records().empty(), "domains: a record whose carrier and hazard are gone is dropped");
+    for (int i = 0; i < 70; ++i) {
+        ledger.Add(i, 1, 100000);
+    }
+    Check(ledger.Records().size() == rt::kMaxDomains && ledger.Records().front().carrier == 70 - static_cast<int>(rt::kMaxDomains),
+        "domains: at most 64, the oldest goes first");
+}
+
+// Round 27h (review 1-5): the hit sink decides what needs no hands; the task decides the rest with the same Filter.
+void HitGateChecks()
+{
+    essb::HitFacts f;
+    f.causeIsPlayer = true;
+    f.enabled = 1.0f;
+    f.targetIsActor = true;
+    f.formActive = 1.0f;
+    f.element = 1.0f;
+    f.source = essb::SourceKind::kWeapon;
+    f.sourceWeaponType = 1;
+    Check(essb::EarlyGate(f).reason == essb::Reject::kAccepted && !essb::NeedsHands(f) && essb::Filter(f).reason == essb::Reject::kAccepted,
+        "hit gate: a weapon source needs no hands");
+    f.bash = true;
+    Check(essb::EarlyGate(f).reason == essb::Reject::kBashOrBlocked, "hit gate: a bash is rejected in the sink");
+    f.bash = false;
+    f.source = essb::SourceKind::kNone;
+    Check(essb::NeedsHands(f), "hit gate: an unarmed or projectile hit reads the hands in the task");
+    f.right.nothing = true;
+    f.left.nothing = true;
+    Check(essb::Filter(f).reason == essb::Reject::kAccepted && essb::Filter(f).weaponType == 0, "hit gate: both hands empty = hand to hand");
+    f.source = essb::SourceKind::kOther;
+    Check(!essb::NeedsHands(f) && essb::Filter(f).reason == essb::Reject::kUnsupportedWeapon, "hit gate: a spell source is rejected without hands");
+}
+
+// Round 27h (probes): the event lag and the points invariant.
+void ProbeLedgerChecks()
+{
+    rt::EventLedger ledger;
+    const std::uint32_t a = ledger.Sent(1000);
+    const std::uint32_t b = ledger.Sent(1010);
+    Check(ledger.Echo(a, 1050) == 50 && ledger.Echo(b, 1030) == 20, "events: the lag of each echo");
+    Check(ledger.Echo(a, 1100) == -1, "events: one echo per event");
+    Check(ledger.Echo(9999, 1100) == -1, "events: an echo of an event never sent");
+    const rt::EventLedger::Window w = ledger.Take();
+    Check(w.sent == 2 && w.echoed == 2 && w.lagMax == 50 && w.lagSum == 70, "events: the window counts");
+    Check(ledger.Take().sent == 0, "events: taking the window resets it");
+    for (int i = 0; i < 300; ++i) {
+        (void)ledger.Sent(2000);
+    }
+    Check(ledger.Echo(a, 3000) == -1, "events: an echo older than the ring is ignored");
+    // the 0.27.5 report: fire level 10, 6 main-line ranks, the 4 branches refunded -> 4 points left
+    Check(rt::PointsHold(10, 4, 6, 0), "points: level 10 = 4 left + 6 ranks");
+    Check(!rt::PointsHold(10, 0, 6, 4) && rt::PointsHold(26, 0, 6, 4), "points: a branch costs 5");
+    Check(!rt::PointsHold(10, -1, 11, 0), "points: never below 0");
+}
+
+// Round 28 (D4, D5) and round 27h (review 1-4): the switch's bounce and lockout, the sync a burst leaves.
+void SwitchRuleChecks()
+{
+    essb::SwitchFacts f;
+    f.magickaMax = 100.0f;
+    f.magicka = 100.0f;
+    f.nowMs = 10000;
+    f.lastSwitchMs = 9900;
+    Check(essb::PlanSwitch(f, essb::kFire).kind == essb::SwitchKind::kBlocked && essb::PlanSwitch(f, essb::kFire).block == essb::SwitchBlock::kDebounce,
+        "D4: a switch 0.1 s after the last is a bounce");
+    f.lastSwitchMs = 9700;
+    Check(essb::PlanSwitch(f, essb::kFire).kind == essb::SwitchKind::kOpen, "D4: 0.3 s later it opens");
+    f.burnoutUntilMs = 12000;
+    Check(essb::PlanSwitch(f, essb::kFire).kind == essb::SwitchKind::kBlocked && essb::PlanSwitch(f, essb::kFire).block == essb::SwitchBlock::kBurnout,
+        "D5: no form opens during the burn-out lockout");
+    f.nowMs = 12000;
+    Check(essb::PlanSwitch(f, essb::kFire).kind == essb::SwitchKind::kOpen, "D5: the lockout ends");
+    f.active = true;
+    f.current = essb::kFrost;
+    f.nowMs = 11000;
+    Check(essb::PlanSwitch(f, essb::kFire).kind == essb::SwitchKind::kSwitch, "D5: the lockout only stops an open");
+
+    rt::BurstKeepFacts k;
+    k.syncBefore = 10;
+    k.stageBefore = 2;
+    k.chain = true;
+    k.nowMs = 1000;
+    rt::SyncKeep s = rt::OnBurstKeep(rt::SyncKeep{}, k);
+    Check(s.keep == 5 && s.untilMs == 6000, "keep: 連斷 keeps half for 5 s");
+    Check(rt::OnOpenKeep(s, false, 0, false, 5999).add == 5 && rt::OnOpenKeep(s, false, 0, false, 6000).add == 0, "keep: only inside its window");
+    k.trio = true;
+    s = rt::OnBurstKeep(rt::SyncKeep{}, k);
+    Check(s.keep == 10 && s.untilMs == 61000, "keep: 三重奏 keeps all for 60 s");
+    k = rt::BurstKeepFacts{};
+    k.stageBefore = 3;
+    k.perpetual = true;
+    k.t1 = 5;
+    s = rt::OnBurstKeep(rt::SyncKeep{}, k);
+    Check(rt::OnOpenKeep(s, false, 0, false, 999999).add == 5, "keep: 永續 keeps T1 for the next open whenever");
+    Check(rt::OnOpenKeep(rt::SyncKeep{}, true, 9, true, 0).add == 3 && rt::OnOpenKeep(rt::SyncKeep{}, false, 9, true, 0).add == 0,
+        "keep: 承接 a third on a switch only");
+    Check(rt::OnOpenKeep(s, true, 30, true, 0).add == 10 && rt::OnOpenKeep(s, true, 30, true, 0).next.perpetual == 0,
+        "keep: the largest, never a sum; an open uses them up");
+}
+
+// Round 27h (verification): two threads run whole plans at once on the fake engine and hammer the containers the tasks
+// share (the registry, the settled marks, the event ledger, the health ledger) -- the game never runs two task bodies at
+// once (a TaskScope that overlaps returns), but if it did, our own containers must stay consistent.
+void OverlapHarness()
+{
+    essb::Config c;
+    essb::Tuning t;
+    essb::reg::Registry registry;
+    essb::reg::SettledMarks settled;
+    rt::EventLedger events;
+    rt::HealthLedger health;
+    constexpr int kRounds = 3000;
+    std::atomic<int> casts{ 0 };
+    auto body = [&](int who) {
+        essb::StatusInputs in;
+        in.config = &c;
+        in.tuning = &t;
+        in.n4 = true;
+        in.formElement = who == 0 ? essb::kFrost : essb::kFire;
+        MidRng rng;
+        for (int i = 0; i < kRounds; ++i) {
+            essb::Board target;
+            target.mark[who == 0 ? essb::kFire : essb::kFrost] = essb::Slot{ true, 0.0f, 2.0f, 8.0f };
+            essb::Board me;
+            auto plan = std::make_unique<essb::StatusPlan>();
+            (void)essb::PlanStatusHit(*plan, in.formElement, (i & 1) != 0, target, me, in, NoNodes{}, rng);
+            CorpseEngine e;
+            e.corpse = false;
+            essb::engine::RunPlan(e, *plan, t);
+            casts += e.castsOnTarget + e.castsOnYou;
+            essb::reg::Snapshot snap;
+            snap.atMs = static_cast<std::uint64_t>(i);
+            essb::engine::EffectView v;
+            v.uid = static_cast<std::uint32_t>(i + 1);
+            v.effect = essb::status::kMarkEffect[essb::kFire];
+            snap.ours.push_back(v);
+            const essb::reg::Key key{ static_cast<std::uint32_t>(i % 40 + who * 100), 7u };
+            registry.Publish(key, snap);
+            (void)registry.Get(key);
+            registry.EraseUid(key, v.uid);
+            settled.Note(key.form, essb::kFire, static_cast<std::uint64_t>(i));
+            (void)settled.Recent(key.form, static_cast<std::uint64_t>(i));
+            (void)events.Echo(events.Sent(static_cast<std::uint64_t>(i + 1)), static_cast<std::uint64_t>(i + 2));
+            health.Add(1.0f);
+        }
+    };
+    std::thread a(body, 0);
+    std::thread b(body, 1);
+    a.join();
+    b.join();
+    Check(health.Now() == 2.0 * kRounds, "overlap harness: the health ledger lost no change (" + std::to_string(health.Now()) + ")");
+    const rt::EventLedger::Window w = events.Take();
+    Check(w.sent == 2u * kRounds && w.echoed == 2u * kRounds, "overlap harness: every event counted once");
+    Check(casts.load() > 0, "overlap harness: both plans ran");
+    int present = 0;
+    for (int who = 0; who < 2; ++who) {
+        for (int k = 0; k < 40; ++k) {
+            present += registry.Get(essb::reg::Key{ static_cast<std::uint32_t>(k + who * 100), 7u }).has_value() ? 1 : 0;
+        }
+    }
+    Check(present == 80, "overlap harness: the registry kept every actor (" + std::to_string(present) + " of 80)");
+}
+
 void LethalChecks()
 {
     Check(rt::LethalDue(0, 500) && !rt::LethalDue(500, 1200) && rt::LethalDue(500, 1500) && rt::LethalDue(5000, 100),
@@ -822,6 +1018,73 @@ void PluginRuleChecks()
 
 }  // namespace
 
+// ---------------------------------------------------------------- round 28b (F1): ESSBNative.CastWith
+// The engine rule the planner answers for (0x140540360): effectiveness 1 changes nothing; otherwise a No Magnitude effect's
+// duration × eff, any other effect's magnitude max(|m| × eff, 1) with the record duration kept.
+struct Landed {
+    float magnitude = 0.0f;
+    float seconds = 0.0f;
+};
+
+Landed Engine(const essb::rt::CastWithCall& c, bool noMagnitude, float recordSeconds)
+{
+    Landed out{ c.magnitude, c.copySeconds > 0 ? static_cast<float>(c.copySeconds) : recordSeconds };
+    if (c.effectiveness != 1.0f) {
+        if (noMagnitude) {
+            out.seconds *= c.effectiveness;
+        } else {
+            out.magnitude = std::max(std::fabs(out.magnitude) * c.effectiveness, 1.0f);
+        }
+    }
+    return out;
+}
+
+void CastWithChecks()
+{
+    using essb::rt::CastWithFacts;
+    using essb::rt::PlanCastWith;
+    Check(std::size(essb::status::kCastWith) == 8, "28b F1: eight CastWith families (fear, frenzy, 狂刃, five ApplyUtil)");
+    const auto& fear = essb::status::kCastWith[0];
+    const auto& blade = essb::status::kCastWith[2];
+    const auto& slow = essb::status::kCastWith[3];
+    auto land = [&](std::uint32_t spell, bool noMagnitude, float recordSeconds, float recordMagnitude, float magnitude, float seconds) {
+        const essb::rt::CastWithCall c = PlanCastWith(CastWithFacts{ spell, noMagnitude, recordSeconds, recordMagnitude, magnitude, seconds });
+        return std::pair{ c, Engine(c, noMagnitude, recordSeconds) };
+    };
+    {   // 恐懼 (ESSB_FearSpell 10 / 2 s, level cap 30) for 4 s: the cap stays 30, lasts 4 s -- the 4 s copy at effectiveness 1
+        const auto [c, got] = land(fear.base, false, 2.0f, 10.0f, 30.0f, 4.0f);
+        Check(c.effectiveness == 1.0f && c.spell == fear.first + 3 && Near(got.magnitude, 30.0f) && Near(got.seconds, 4.0f),
+            "28b F1 恐懼 4 s: cap " + std::to_string(got.magnitude) + " for " + std::to_string(got.seconds) + " s");
+        const auto [same, rec] = land(fear.base, false, 2.0f, 10.0f, 30.0f, 2.0f);
+        Check(same.spell == fear.base && same.effectiveness == 1.0f && Near(rec.magnitude, 30.0f) && Near(rec.seconds, 2.0f),
+            "28b F1 恐懼 at its record 2 s: the spell itself");
+    }
+    {   // 狂刃 (ESSB_N3_FrenzyBlade 0.5 / 3 s) for 1 s: +0.5 for 1 s (0.28.0: max(0.5 × 1/3, 1) = +100%)
+        const auto [c, got] = land(blade.base, false, 3.0f, 0.5f, 0.0f, 1.0f);
+        Check(c.effectiveness == 1.0f && c.spell == blade.first && Near(got.magnitude, 0.5f) && Near(got.seconds, 1.0f),
+            "28b F1 狂刃 1 s: " + std::to_string(got.magnitude) + " for " + std::to_string(got.seconds) + " s");
+    }
+    {   // ApplyUtil(0, 30, 3): the slow (ESSB_Util_Slow 0 / 5 s) 30% for 3 s (0.28.0: 18% for 5 s)
+        const auto [c, got] = land(slow.base, false, 5.0f, 0.0f, 30.0f, 3.0f);
+        Check(c.effectiveness == 1.0f && c.spell == slow.first + 2 && Near(got.magnitude, 30.0f) && Near(got.seconds, 3.0f),
+            "28b F1 ApplyUtil slow 3 s: " + std::to_string(got.magnitude) + "% for " + std::to_string(got.seconds) + " s");
+        const auto [longer, clamp] = land(slow.base, false, 5.0f, 0.0f, 30.0f, 45.0f);
+        Check(longer.clamped && longer.spell == slow.first + essb::status::kCastWithMaxSeconds - 1 && Near(clamp.magnitude, 30.0f),
+            "28b F1 past the longest copy: clamped, the magnitude kept");
+    }
+    {   // unaffected: a guard window / self marker (No Magnitude, record 10 s) for 4 s -- effectiveness 0.4, the time scaled
+        const auto [c, got] = land(0x5171, true, 10.0f, 0.0f, 0.0f, 4.0f);
+        Check(c.spell == 0x5171 && Near(c.effectiveness, 0.4f) && Near(got.seconds, 4.0f), "28b F1 a guard window keeps its effectiveness time");
+        const auto [ash, a] = land(0x5130, false, 3.0f, 1.0f, 600.0f, 0.0f);   // 化灰: seconds 0 -- the record's, the magnitude
+        Check(ash.spell == 0x5130 && ash.effectiveness == 1.0f && Near(a.magnitude, 600.0f) && Near(a.seconds, 3.0f), "28b F1 化灰 unchanged");
+        const auto [heal, h] = land(0x5044, false, 0.0f, 0.0f, 25.0f, 0.0f);   // ApplyUtil(4, heal, 0)
+        Check(heal.spell == 0x5044 && heal.effectiveness == 1.0f && Near(h.magnitude, 25.0f), "28b F1 ApplyUtil(4, heal, 0) unchanged");
+        const auto [refused, r] = land(0x5044, false, 5.0f, 0.0f, 25.0f, 3.0f);   // a magnitude spell without copies
+        Check(refused.spell == 0, "28b F1 a magnitude spell without copies is refused, never scaled");
+        (void)r;
+    }
+}
+
 int main()
 {
     try {
@@ -840,7 +1103,14 @@ int main()
         ContextChecks();
         LethalChecks();
         BranchChecks();
+        FaultChecks();
+        DomainLedgerChecks();
+        HitGateChecks();
+        ProbeLedgerChecks();
+        SwitchRuleChecks();
+        OverlapHarness();
         RingChecks();
+        CastWithChecks();
         std::printf("NATIVE RUNTIME ok: %d checks (task scopes, the session and new game, the log and Query, SEH, the input gate, "
                     "event text and UTF-8, the effect registry with two threads, the hurt queue and our own health, the corpse mode, the settled marks, "
                     "the dispel re-find, the native guard, the tick order, the crowd read)\n",

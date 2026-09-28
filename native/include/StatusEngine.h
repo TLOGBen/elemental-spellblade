@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <type_traits>
 #include <vector>
 
 namespace essb::engine {
@@ -183,7 +184,15 @@ constexpr BadValue CheckOp(const StatusOp& op, const Lowered& l) noexcept
 template <class E>
 void RunOp(E& engine, const StatusOp& op, const Tuning& tuning)
 {
-    engine.Select(op.at);   // round 24: the crowd member this op acts on (0 = the plan's own target)
+    // Round 24: the crowd member this op acts on (0 = the plan's own target). Round 27h (review 1-2): an engine whose
+    // Select answers false (a member the plan did not read) skips this op -- logged there, never thrown.
+    if constexpr (std::is_same_v<decltype(engine.Select(op.at)), bool>) {
+        if (!engine.Select(op.at)) {
+            return;
+        }
+    } else {
+        engine.Select(op.at);
+    }
     const Lowered l = Lower(op, tuning.slowCapPct);
     if (const BadValue bad = CheckOp(op, l); bad.bad) {
         if constexpr (requires { engine.BadMagnitude(op, bad); }) {
@@ -216,7 +225,10 @@ void RunOp(E& engine, const StatusOp& op, const Tuning& tuning)
     if (l.dispelEffect2 && !corpse) {
         DispelWhere(engine, on, [&](const EffectView& v) { return v.effect == l.dispelEffect2; });
     }
-    if (l.spell && !corpse && !(op.op == Op::kDamage && engine.Dead(on))) {
+    // Round 27h (review 1-8): nothing is cast on an actor already dead when its op comes up -- killed earlier in this same
+    // plan (its end's damage came first) or before it: a mark, a slow, a DoT on a corpse would only linger (the damage
+    // alone was skipped before). Corpse mode (the killing blow's corpse) skipped all of it already; events and costs run.
+    if (l.spell && !corpse && !engine.Dead(on)) {
         engine.Cast(on, l.spell, l.magnitude, l.effectiveness);
     }
     switch (op.op) {
@@ -588,6 +600,11 @@ inline std::vector<std::uint32_t> CastSpells()
     for (const auto& family : status::kTimed) {
         for (const std::uint32_t id : family) {
             out.push_back(id);
+        }
+    }
+    for (const auto& family : status::kCastWith) {   // round 28b (F1): ESSBNative.CastWith's whole-second copies
+        for (int s = 0; s < status::kCastWithMaxSeconds; ++s) {
+            out.push_back(family.first + static_cast<std::uint32_t>(s));
         }
     }
     return out;

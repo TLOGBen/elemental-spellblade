@@ -252,8 +252,9 @@ constexpr FormSecond PlanFormSecond(StatusPlan& plan, Board& me, const SecondFac
             if (f.staminaMax * out.flow > 0.0f) {
                 plan.Push(Amount(Op::kRestoreStamina, f.staminaMax * out.flow * t.multRecovery));
             }
-            if (fee > 0.0f) {
-                plan.Push(Amount(Op::kRestoreMagicka, fee * n6::kFlowMagickaShare));
+            // Round 28 (F11): 80% of the magicka actually spent this second (a nearly empty pool no longer refunds the full fee).
+            if (out.spent > 0.0f) {
+                plan.Push(Amount(Op::kRestoreMagicka, out.spent * n6::kFlowMagickaShare));
             }
             // 長河：同調三段時長流同時作用於附近同伴（生命與耐力）。
             if (t.syncStage >= 3 && nodes.Rank(node::kWaterLongRiver) > 0) {
@@ -551,7 +552,17 @@ struct SwitchFacts {
     float magickaMax = 0.0f;
     bool freePass = false;    // 5.2 順轉：開形態免魔力門檻
     bool freeOpen = false;    // 5.1 免門檻：融斷後下一次開形態不需魔力（ESSB_FreeOpen）
+    // Round 28 (the user's decisions 2026-09-28): the running clock now, the last switch the DLL carried out, and the end
+    // of the burn-out lockout (0 = none).
+    std::uint64_t nowMs = 0;
+    std::uint64_t lastSwitchMs = 0;
+    std::uint64_t burnoutUntilMs = 0;
 };
+
+// D4: element hotkeys and Z within 0.25 s of the last switch carried out are an input bounce, not a request (no cooldown:
+// a quarter second apart is fine). D5: after magicka ran out and closed the form (燃盡 kept), no form opens for 5 s.
+inline constexpr std::uint64_t kSwitchDebounceMs = 250;
+inline constexpr std::uint64_t kBurnoutLockMs = 5000;
 
 enum class SwitchKind : std::uint8_t
 {
@@ -560,18 +571,37 @@ enum class SwitchKind : std::uint8_t
     kOpen,
     kSwitch,
     kClose,    // the same element again = close (Z)
+    kBlocked,  // round 28: a bounce (D4) or the burn-out lockout (D5) -- SwitchPlan::block says which
+};
+
+enum class SwitchBlock : std::uint8_t
+{
+    kNone,
+    kDebounce,
+    kBurnout,
 };
 
 struct SwitchPlan {
     SwitchKind kind = SwitchKind::kIgnore;
     int element = 0;          // what ESSB_CurrentElement becomes (0 closed)
     bool consumeFree = false; // opening from no form uses up 免門檻 (ESSB_FreeOpen -> 0)
+    SwitchBlock block = SwitchBlock::kNone;
 };
 
 constexpr SwitchPlan PlanSwitch(const SwitchFacts& f, int wanted) noexcept
 {
     SwitchPlan p;
     if (!f.enabled || f.dead || !IsElement(wanted)) {
+        return p;
+    }
+    if (f.lastSwitchMs != 0 && f.nowMs >= f.lastSwitchMs && f.nowMs - f.lastSwitchMs < kSwitchDebounceMs) {
+        p.kind = SwitchKind::kBlocked;
+        p.block = SwitchBlock::kDebounce;
+        return p;
+    }
+    if (!f.active && f.nowMs < f.burnoutUntilMs) {
+        p.kind = SwitchKind::kBlocked;
+        p.block = SwitchBlock::kBurnout;
         return p;
     }
     if (f.active && f.current == wanted) {

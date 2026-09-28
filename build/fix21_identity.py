@@ -644,8 +644,14 @@ CPP_ALLOWED = {
     # round 27e (0.27.4): Papyrus's generic node reader -- ESSBNative.NodeRank / NodeBranch / BranchesGained take the coordinates
     # of ESSBNodes' reads, which this scan resolves by v0.4 name on the Papyrus side (ESSBController.Rank / Br forward them)
     ('Plugin.cpp', 'if (nodes.Has(essb::BranchId{ tree, route, tier, index })) {'): 'the branch mask of a route (StatsMenu snapshot)',
-    ('Plugin.cpp', 'return MakeNodes(*player, FormIsActive()).Rank(essb::NodeId{ tree, route, tier });'): 'ESSBNative.NodeRank for ESSBNodes.Rank',
-    ('Plugin.cpp', 'return MakeNodes(*player, FormIsActive()).Has(essb::BranchId{ tree, route, tier, index });'): 'ESSBNative.NodeBranch for ESSBNodes.Br',
+    # round 27h (0.28.0, Papyrus review 1 / 9): the natives answer from a perk snapshot a task publishes (every node); the
+    # StatsMenu reconcile, the respec and the points check walk every node of a tree the same way
+    ('Plugin.cpp', 'snap.ranks[(tree * 3 + route) * 5 + tier] = static_cast<std::uint8_t>(nodes.Rank(essb::NodeId{ tree, route, tier }));'): 'the perk snapshot for ESSBNative.NodeRank / NodeBranch',
+    ('Plugin.cpp', 'const essb::BranchId id{ tree, route, tier, index };'): 'the StatsMenu reconcile of every branch bought',
+    ('Plugin.cpp', 'const essb::NodeId id{ tree, route, tier };'): 'a respec (every node of the tree)',
+    ('Plugin.cpp', 'const essb::BranchId branch{ tree, route, tier, index };'): 'a respec (every branch of the tree)',
+    ('Plugin.cpp', 'ranks += perks.Rank(essb::NodeId{ tree, route, tier });'): 'the points check (every node)',
+    ('Plugin.cpp', 'branches += perks.Has(essb::BranchId{ tree, route, tier, index }) ? 1 : 0;'): 'the points check (every branch)',
 }
 
 

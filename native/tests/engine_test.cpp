@@ -218,6 +218,19 @@ void Run()
     p2.Push(essb::MakeEvent(essb::Event::kFrozen, 3.0f));   // round 24: a body-only event never reaches Papyrus
     essb::engine::RunPlan(g, p2, t);
     Check(std::none_of(g.log.begin(), g.log.end(), [](const std::string& s) { return s.starts_with("cast"); }), "run: no damage cast on the dead");
+    // Round 27h (review 1-8): nor a mark or a status -- the target died earlier in the plan (its end's damage killed it).
+    Fake dh;
+    dh.deadTarget = true;
+    essb::StatusPlan pd;
+    essb::Board dead;
+    essb::Writer{ pd, dead, Who::kTarget }.Mark(essb::kFrost, 8.0f);
+    essb::Writer{ pd, dead, Who::kTarget }.Set(StatusKind::kCurse, 3.0f, 8.0f);
+    pd.Push(essb::Amount(essb::Op::kHeal, 5.0f));
+    essb::engine::RunPlan(dh, pd, t);
+    Check(std::none_of(dh.log.begin(), dh.log.end(), [](const std::string& s) { return s.starts_with("cast") && s.find("on target") != std::string::npos; }),
+        "run (27h): no mark and no status is cast on a target already dead");
+    Check(std::any_of(dh.log.begin(), dh.log.end(), [](const std::string& s) { return s.starts_with("cast") && s.find("on player") != std::string::npos; }),
+        "run (27h): your own heal still lands");
     Check(std::count_if(g.log.begin(), g.log.end(), [](const std::string& s) { return s.starts_with("dispel"); }) == 2, "run: both DoTs dispelled");
     Check(std::find(g.log.begin(), g.log.end(), "pay 12") != g.log.end(), "run: the cost path pays");
     Check(std::find(g.log.begin(), g.log.end(), "event " + std::to_string(static_cast<int>(essb::Event::kKnock))) != g.log.end(),

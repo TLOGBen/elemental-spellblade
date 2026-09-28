@@ -92,7 +92,7 @@ std::string SuffixOf(int kind)
 {
     const std::string_view id = essb::kStatusRecords[kind].editorId;
     for (const std::string_view prefix :
-        { std::string_view("ESSB_N3_"), std::string_view("ESSB_N4_"), std::string_view("ESSB_N5_"), std::string_view("ESSB_N6_") }) {
+        { std::string_view("ESSB_N3_"), std::string_view("ESSB_N4_"), std::string_view("ESSB_N5_"), std::string_view("ESSB_N6_"), std::string_view("ESSB_N7_") }) {
         if (id.starts_with(prefix)) {
             return std::string(id.substr(prefix.size()));
         }

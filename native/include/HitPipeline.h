@@ -108,7 +108,8 @@ constexpr bool ValidElement(float element) noexcept
 }
 
 // Gate order follows ESSBController.OnWeaponHit; only the verdict matters, the order only picks the reason.
-constexpr Verdict Filter(const HitFacts& f) noexcept
+// Round 27h (review 1-5): the gates before the weapon -- the hit sink decides them from the event and the globals alone.
+constexpr Verdict EarlyGate(const HitFacts& f) noexcept
 {
     if (!f.causeIsPlayer) {
         return { Reject::kNotPlayer };
@@ -124,6 +125,21 @@ constexpr Verdict Filter(const HitFacts& f) noexcept
     }
     if (f.teammate || f.commanded) {
         return { Reject::kAlly };
+    }
+    return {};
+}
+
+// Round 27h (review 1-5): whether the weapon type needs your hands (GetEquippedObject, the empty-hand condition): only
+// when the event's source is not itself a weapon or a non-weapon form. The hit task reads them then, not the sink.
+constexpr bool NeedsHands(const HitFacts& f) noexcept
+{
+    return f.source != SourceKind::kWeapon && f.source != SourceKind::kOther;
+}
+
+constexpr Verdict Filter(const HitFacts& f) noexcept
+{
+    if (const Verdict early = EarlyGate(f); early.reason != Reject::kAccepted) {
+        return early;
     }
     const int weaponType = ResolveWeaponType(f);
     if (!SupportedWeapon(weaponType)) {

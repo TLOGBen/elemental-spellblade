@@ -143,6 +143,10 @@ def wiring(b, write_if_changed, root):
     import fix25_records as rec25
     kinds += [dict(kind=k[0], suffix=k[1], effect=rec25.effect_id(k[0]), spell=rec25.spell_id(k[0]), seconds=k[4],
                    on_player=k[3], stub=False) for k in rec25.KINDS]
+    # Round 28: then build/fix28_records.py's (三重奏's cooldown; no stubs).
+    import fix28_records as rec28
+    kinds += [dict(kind=k[0], suffix=k[1], effect=rec28.effect_id(k[0]), spell=rec28.spell_id(k[0]), seconds=k[4],
+                   on_player=k[3], stub=False) for k in rec28.KINDS]
     data = dict(
         kinds=kinds,
         marks=[dict(element=i + 1, effect=b.ID_MARK_EFFECT + i, spell=b.ID_MARK_SPELL + i) for i in range(11)],

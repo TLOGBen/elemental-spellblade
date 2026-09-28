@@ -25,6 +25,7 @@ import fix24_records as hit24
 import fix25_records as hit25
 import fix26_records as hit26
 import fix27_records as hit27
+import fix28_records as hit28
 import fix20_fixture
 import fix22_fixture
 import fix23_fixture
@@ -36,12 +37,13 @@ import fix23_reference as _ref23
 import fix24_reference as _ref24
 import fix25_reference as _ref25
 NATIVE = ROOT / 'native'
-NATIVE_VERSION = '0.27.6'
+NATIVE_VERSION = '0.28.1'
 NATIVE_HIT = 0x52d1
 NATIVE_WANTED = 0x52d2
 NATIVE_GLOBALS = {'ESSB_NativeHit', 'ESSB_NativeWanted'}      # round 19: the MCM shows both
 NEW_EDIDS = (NATIVE_GLOBALS | hit20.new_edids() | hit21.new_edids() | hit22.new_edids() | hit23.new_edids() |
-             hit24.new_edids() | hit25.new_edids() | hit26.new_edids() | hit27.new_edids())   # every record the native slices added
+             hit24.new_edids() | hit25.new_edids() | hit26.new_edids() | hit27.new_edids() |
+             hit28.new_edids())   # every record the native slices added
 DEPS = {
     'CommonLibSSE-NG': ('https://github.com/CharmedBaryon/CommonLibSSE-NG', 'b93280e832f263dbef44e44cbe2936622a02f91a'),
     'spdlog': ('https://github.com/gabime/spdlog', '27cb4c76708608465c413f6d0e6b8d99a4d84302'),
@@ -66,7 +68,11 @@ ENTRY_51 = 51    # Apply Combat Hit Spell
 # and, from round 22, the status layer's (build/fix22_reference.NODE_NAMES); the slot of each is looked up by name in
 # the identity table.
 # Round 27 (G8): the switch is the DLL's -- 雙生's 30 s marker is cast there (ESSBController.OnFormSwitched did it).
-ROUND27_NODES = {'kCommonTwin': ('common', '雙生')}
+ROUND27_NODES = {'kCommonTwin': ('common', '雙生'),
+                 # Round 27h (review 1-4): the sync a switch keeps is the switch task's (was ESSBController.SwitchForm /
+                 # OnFormClosed and ESSBNoForm.OnBurst): 承接, 永續, 連斷, 免門檻.
+                 'kCommonCarry': ('common', '承接'), 'kCommonPerpetual': ('common', '永續'),
+                 'kNoFormChainBurst': ('noform', '連斷'), 'kNoFormFreeGate': ('noform', '免門檻')}
 NODE_IDENTITY = (dict(_ref.NODE_NAMES) | dict(_ref22.NODE_NAMES) | dict(_ref23.NODE_NAMES) |   # round 23 (N4): the self layer's
                  dict(_ref24.NODE_NAMES) |                                                         # round 24 (N5): the bodies'
                  dict(_ref25.NODE_NAMES) | ROUND27_NODES)                                          # round 25 (N6): the timer's
@@ -251,12 +257,16 @@ def globals_(b):
         ids[name] = b.ID_GLOB_ENGINE[name]   # round 23 review: the sync thresholds too (one source with Papyrus)
     for tree, key in enumerate(b.TREES):
         ids[f'ESSB_Lvl_{key}'] = b.ID_TREE_GLOB['Lvl'] + tree
+        ids[f'ESSB_Pts_{key}'] = b.ID_TREE_GLOB['Pts'] + tree   # round 27h: the points check ([ESSB][pts])
     # Round 25 (N6): the per-second work (維持費、長流), the hotkeys and 免門檻; 審查修正: 雷雨's own flag ESSB_EnvThunder,
     # and no 聖域 mirror (聖域's -20% is the hazard's own effects on the enemies inside).
     for name in ['ESSB_MultUpkeep', 'ESSB_WaterFlowBasePct', 'ESSB_WaterFlowPerRankPct']:
         ids[name] = b.ID_BALANCE_GLOB[name][0]
     ids[hit25.THUNDER_GLOBAL] = hit25.thunder_global_id()
     ids[hit26.PROBE_STEP_GLOBAL] = hit26.probe_step_id()   # round 26: the probe log's step marker
+    # Round 27h: the Papyrus half's readiness (the DLL holds switches until 1) and the body fire's switch (logged at L3).
+    ids[hit28.PAPYRUS_READY_GLOBAL] = hit28.papyrus_ready_id()
+    ids[hit28.HEAT_BODY_FX_GLOBAL] = hit28.heat_body_fx_id()
     ids[hit26.TRUEHUD_GLOBAL] = hit26.truehud_id()          # round 26c: the TrueHUD bars switch
     ids[hit27.WEAPON_GLOW_GLOBAL] = hit27.glow_id()          # round 27d: 形態光圈 (the ring watch logs it)
     ids['ESSB_FreeOpen'] = b.ID_MECH_GLOB + mech.index('ESSB_FreeOpen')
@@ -310,6 +320,9 @@ def spells(b):
     # round 27 (G13): the open's flash, one spell per element (the DLL casts it when a mark opens)
     for ix, name in enumerate(hit27.ELEMENTS):
         rows[f'kMarkFlash{ix + 1}'] = (hit27.flash_spell_id(ix), f'ESSB_MarkFlash_{name}')
+    # round 27h (review 1-4): the form abilities -- the switch task adds and removes them (Papyrus did, after a ticket wait)
+    for ix, name in enumerate(hit27.ELEMENTS):
+        rows[f'kFormAbility{ix + 1}'] = (b.ID_FORM_ABILITY_SPELL + ix, f'ESSB_FormAbility_{name}')
     for seconds in range(1, hit20.SILENCE_COUNT + 1):
         rows[f'kSilence{seconds}'] = (hit20.SILENCE + seconds - 1, hit20.silence_edid(seconds))
     for seconds in range(1, hit21.SOAK_MAX_SECONDS + 1):
@@ -375,7 +388,7 @@ def header_text(b):
     L += ['};', '', '// Spell per planned cast (HitMath.h Cast). Local FormIDs in Elements Spellblade.esp.', 'namespace spell {']
     sp = spells(b)
     for name, row in sp.items():
-        if not name.startswith(('kSilence', 'kSoak', 'kMarkFlash')):
+        if not name.startswith(('kSilence', 'kSoak', 'kMarkFlash', 'kFormAbility')):
             L.append(f'inline constexpr std::uint32_t {name} = {hex(row["local_id"])};  // {row["editor_id"]}')
     L.append('inline constexpr std::uint32_t kSilence[' + str(hit20.SILENCE_COUNT) + '] = {'
              + ', '.join(hex(sp[f'kSilence{i}']['local_id']) for i in range(1, hit20.SILENCE_COUNT + 1)) + '};  // ESSB_Native_Silence_1..8')
@@ -387,6 +400,8 @@ def header_text(b):
     L.append(f'inline constexpr int kRingStages = {hit27.RING_STAGES};  // [element - 1][stage]: kRingEffectFirst + (element - 1) * kRingStages + stage')
     L.append('inline constexpr std::uint32_t kMarkFlash[12] = {0x0, ' + ', '.join(hex(sp[f'kMarkFlash{i}']['local_id']) for i in range(1, 12))
              + '};  // [element]: ESSB_MarkFlash_<X>, the open\'s flash (round 27, G13)')
+    L.append('inline constexpr std::uint32_t kFormAbility[12] = {0x0, ' + ', '.join(hex(sp[f'kFormAbility{i}']['local_id']) for i in range(1, 12))
+             + '};  // [element]: ESSB_FormAbility_<X> (round 27h: the switch task adds / removes them)')
     L += ['}  // namespace spell', '', '// Effects the DLL looks for on the target or the player.', 'namespace effect {']
     for name, row in effects(b).items():
         L.append(f'inline constexpr std::uint32_t {name} = {hex(row["local_id"])};  // {row["editor_id"]}')
@@ -394,11 +409,12 @@ def header_text(b):
     names = {'ESSB_Enabled': 'kEnabled', 'ESSB_FormActive': 'kFormActive', 'ESSB_CurrentElement': 'kCurrentElement',
              'ESSB_DebugLevel': 'kDebugLevel', 'ESSB_NativeHit': 'kNativeHit', 'ESSB_NativeWanted': 'kNativeWanted'}
     for edid, fid in g.items():
-        if edid.startswith(('ESSB_Lvl_', 'ESSB_Hotkey_')):
+        if edid.startswith(('ESSB_Lvl_', 'ESSB_Pts_', 'ESSB_Hotkey_')):
             continue
         cname = names.get(edid, 'k' + edid.removeprefix('ESSB_'))
         L.append(f'inline constexpr std::uint32_t {cname} = {hex(fid)};  // {edid}')
     L.append('inline constexpr std::uint32_t kTreeLevel[13] = {' + ', '.join(hex(g[f'ESSB_Lvl_{k}']) for k in b.TREES) + '};  // ESSB_Lvl_<tree>')
+    L.append('inline constexpr std::uint32_t kTreePoints[13] = {' + ', '.join(hex(g[f'ESSB_Pts_{k}']) for k in b.TREES) + '};  // ESSB_Pts_<tree> (round 27h)')
     L.append('inline constexpr std::uint32_t kHotkey[11] = {' + ', '.join(hex(g[f'ESSB_Hotkey_{e}']) for e in b.ELEMENTS)
              + '};  // ESSB_Hotkey_<element> (round 25: the input sink reads them)')
     L += ['}  // namespace glob', '', '// Skyrim.esm forms (local FormIDs in Skyrim.esm).', 'namespace vanilla {']
@@ -459,7 +475,10 @@ def status_ids(b):
                        stub=False, editor_id=hit24.edid_spell(k[1])) for k in hit24.KINDS] +
                  # round 25 (N6): the domain markers the hazards leave and your per-second windows (build/fix25_records.py)
                  [dict(kind=k[0], effect=hit25.effect_id(k[0]), spell=hit25.spell_id(k[0]), seconds=k[4], player=k[3],
-                       stub=False, editor_id=hit25.edid_spell(k[1])) for k in hit25.KINDS],
+                       stub=False, editor_id=hit25.edid_spell(k[1])) for k in hit25.KINDS] +
+                 # round 28: 三重奏's cooldown (build/fix28_records.py)
+                 [dict(kind=k[0], effect=hit28.effect_id(k[0]), spell=hit28.spell_id(k[0]), seconds=k[4], player=k[3],
+                       stub=False, editor_id=hit28.edid_spell(k[1])) for k in hit28.KINDS],
         'domains': [dict(element=e, hazard=hit25.hazard_id(e), hazard_spell=hit25.hazard_spell_id(e),
                          spawn_effect=hit25.spawn_effect_id(e),
                          spawn=[hit25.spawn_id(e, s) for s in range(1, hit25.DOMAIN_MAX_SECONDS + 1)],
@@ -519,6 +538,15 @@ def status_header(b):
     for e in range(12):
         row = by_element[e]['spawn'] if e in by_element else zero
         L.append('    {' + ', '.join(hex(x) if x else '0' for x in row) + f'}},  // element {e}')
+    L.append('};')
+    # Round 28b (F1): ESSBNative.CastWith's whole-second copies of the magnitude spells (build/fix28_records.py CASTWITH):
+    # [family] -> the base spell and the copy lasting 1 s (the copy of s seconds is first + s - 1).
+    L.append(f'inline constexpr int kCastWithMaxSeconds = {hit28.CASTWITH_MAX_SECONDS};')
+    L.append('struct CastWithFamily { std::uint32_t base; std::uint32_t first; };')
+    L.append('inline constexpr CastWithFamily kCastWith[] = {')
+    for name, base, copies in hit28.castwith_rows(b):
+        assert copies == list(range(copies[0], copies[0] + hit28.CASTWITH_MAX_SECONDS)), name
+        L.append(f'    {{{hex(base)}, {hex(copies[0])}}},  // {name}: ESSB_N7_CastWith{name}_1..{hit28.CASTWITH_MAX_SECONDS}')
     L.append('};')
     L += ['}  // namespace status', '',
           f'inline constexpr int kDomainMaxSeconds = {hit25.DOMAIN_MAX_SECONDS};  // round 25: the longest domain spell',
@@ -685,6 +713,9 @@ def verify(b):
             assert key_id[row['editor_id']] == row['local_id'], (group, name, row)
     for name, row in m['spells'].items():
         fx = effect_ids(by[row['editor_id']])
+        if name.startswith('kFormAbility'):   # round 27h: the form effect, then the four rings (build_v03)
+            assert fx[0] == b.ID_FORM_ABILITY_EFFECT + int(name.removeprefix('kFormAbility')) - 1, (name, fx)
+            continue
         single = not name.startswith('kSilence')   # the soaked slows and the 寂滅 marker are single-effect
         assert (len(fx) == 1) if single else fx == [b.ID_SILENCE_EFFECT, b.util_effect_id(12)], (name, fx)
     for name, fid in m['globals'].items():

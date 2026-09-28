@@ -259,6 +259,9 @@ inline constexpr float kJumpSeconds = 4.0f;         // 5.2 跳印：跳過去的
 inline constexpr float kJumpRadius = 420.0f;        // 5.2 跳印：6 公尺內最近一個沒有印記的敵人
 inline constexpr int kMarkJumped = 2;              // 印記強度的旗標位元：跳印跳過來的（每個印記只跳一次）
 inline constexpr int kMarkExtended = 4;            // 旗標位元：咒延續過的（每目標一次）；一般印記的強度是 0
+inline constexpr int kMarkSourced = 8;             // round 28 (D6): 旗標位元：白熱火源每秒掛的（融斷傷害只算一半）
+inline constexpr float kSourcedBurst = 0.5f;       // D6: 火源掛的印記在融斷的傷害 ×0.5
+inline constexpr float kDeathCurseVip = 0.5f;      // round 28: 死咒「已損生命」那段對首領 ×0.5（同碎冰、血潮的首領係數）
 inline constexpr float kCurseLinger = 4.0f;        // 5.12 咒延：詛咒 ≥3 層的目標，黑暗印記過期時續 4 秒
 inline constexpr int kCurseLingerAt = 3;
 inline constexpr float kLinger = 4.0f;             // 5.4 寒留：接管元素的印記持續 +4 秒
@@ -1192,6 +1195,7 @@ constexpr void RaiseHoly(StatusPlan& plan, Board& self, int steps, const StatusI
 // PlanEndBody below). Every number is v0.4's; the comment names the section.
 
 namespace n4 {
+inline constexpr float kTrioWindow = 10.0f;          // 三重奏：10 秒內三種終焉；觸發後同樣 10 秒冷卻（round 28）
 // 2.4 / 5.2 同調
 inline constexpr std::array<int, 3> kSyncStages{ 5, 15, 30 };  // 一段 5、二段 15、三段 30
 inline constexpr float kSyncThresholdPerPoint = 0.02f;         // 同調門檻 -2%／點
@@ -1621,7 +1625,8 @@ constexpr float EndExtra(StatusPlan& plan, int element, int charge, Board& me, c
         }
         pw.Clear(StatusKind::kConcert);
     }
-    if (nodes.Has(node::kCommonTrio) && IsElement(element)) {
+    // Round 28: after it fires, 三重奏 rests for its own 10 s window (kTrioCooldown): no marker, no ×3.
+    if (nodes.Has(node::kCommonTrio) && IsElement(element) && !me.Has(StatusKind::kTrioCooldown)) {
         int kinds = 1;
         for (int e = kFire; e <= kAstral; ++e) {
             kinds += e != element && me.Has(TrioKind(e)) ? 1 : 0;
@@ -1632,8 +1637,9 @@ constexpr float EndExtra(StatusPlan& plan, int element, int charge, Board& me, c
                 pw.Clear(TrioKind(e));
             }
             pw.Set(StatusKind::kSyncKeepAll, 1.0f, 60.0f);
+            pw.Set(StatusKind::kTrioCooldown, 1.0f, n4::kTrioWindow);
         } else {
-            pw.Set(TrioKind(element), 1.0f, 10.0f);   // this element's end, 10 s (a sliding window per element)
+            pw.Set(TrioKind(element), 1.0f, n4::kTrioWindow);   // this element's end, 10 s (a sliding window per element)
         }
     }
     if (nodes.Has(node::kLightningOverloadEnd) && charge >= n4::kOverloadEndCharges) {
@@ -2112,7 +2118,7 @@ constexpr void PlanEndBody(StatusPlan& plan, int element, EndReason reason, floa
             // 導引（強引 ×2.0；關閉傳奇主線 +3%／點）掛在目標身上，接管元素的下一次終焉讀它。
             const float guide = (nodes.Has(node::kWaterStrongGuide) ? n3::kStrongGuide : n3::kGuide) *
                                 (1.0f + Pct(t, nodes.Rank(node::kSignature[kWater]), 0.03f));
-            tw.Set(StatusKind::kGuided, guide * mult, Scaled(t, 30.0f));
+            tw.Set(StatusKind::kGuided, guide, Scaled(t, 30.0f));   // round 28: the guide itself (its own legend line only), not × this end
         }
         if (target.Has(StatusKind::kSoak) && target[StatusKind::kSoak].magnitude > 1.5f) {
             tw.Set(StatusKind::kSoak, 1.0f, rule::SoakSeconds(t, nodes));   // 汪洋之始的鎖在被切／結束時解開
@@ -2191,6 +2197,13 @@ constexpr HitStatus PlanStatusHit(StatusPlan& plan, int element, bool power, Boa
     HitStatus result;
     const Writer tw{ plan, target, Who::kTarget };
     const Writer pw{ plan, self, Who::kPlayer };
+
+    // Round 28 (D1, the user's decision 2026-09-28): a forced open (臨／臨強化, 雙斷, 印潮 -- no weapon hit) opens only on a
+    // target without any mark of ours: one carrying a mark (another element's or its own) is skipped -- no end, no cut,
+    // no refresh. A weapon hit still cuts as before.
+    if (!hitWork && target.MarkCount() > 0) {
+        return result;
+    }
 
     // ---- the mark
     const bool refresh = target.mark[element].has;
@@ -2427,8 +2440,9 @@ constexpr void OnDeathCurseEnd(StatusPlan& plan, float fuseMult, Board& target, 
     // end lines, the guide or 協奏 the fuse carries for the B_max ×2.0 part.
     const float vulnerability = ReactionVulnerability(target, self, t, nodes);
     // Round 27g: the lost-health part is our damage too -- ×ESSB_BaseDamageMult (ReactionScale already has it for the rest).
+    // Round 28: a boss takes the lost-health part ×0.5 (n3::kDeathCurseVip), as 碎冰 and 血潮 halve their %-health parts.
     const float damage = bMax * n3::kDeathCurseBase * ReactionScale(kDarkness, t, in.player, nodes) * fuseMult +
-                         lost * ratio * vulnerability * t.baseDamageMult;
+                         lost * ratio * vulnerability * t.baseDamageMult * (in.body.vip ? n3::kDeathCurseVip : 1.0f);
     // B-small (round 27): 冥召／亡魂 read this marker at the death the settlement may cause (set before the damage, like 火葬).
     Writer{ plan, target, Who::kTarget }.Set(StatusKind::kCurseKill, 1.0f, 1.0f);
     plan.Push(Amount(Op::kDamage, damage, kDarkness));

@@ -57,6 +57,7 @@ inline constexpr float kTwinWindowRecordSeconds = 30.0f;  // ESSB_TwinWindow as 
 inline constexpr std::uint32_t kRingEffectFirst = 0x5d90;  // ESSB_FormRingEffect_Fire_0 (round 27d)
 inline constexpr int kRingStages = 4;  // [element - 1][stage]: kRingEffectFirst + (element - 1) * kRingStages + stage
 inline constexpr std::uint32_t kMarkFlash[12] = {0x0, 0x5d80, 0x5d81, 0x5d82, 0x5d83, 0x5d84, 0x5d85, 0x5d86, 0x5d87, 0x5d88, 0x5d89, 0x5d8a};  // [element]: ESSB_MarkFlash_<X>, the open's flash (round 27, G13)
+inline constexpr std::uint32_t kFormAbility[12] = {0x0, 0x960, 0x961, 0x962, 0x963, 0x964, 0x965, 0x966, 0x967, 0x968, 0x969, 0x96a};  // [element]: ESSB_FormAbility_<X> (round 27h: the switch task adds / removes them)
 }  // namespace spell
 
 // Effects the DLL looks for on the target or the player.
@@ -117,12 +118,15 @@ inline constexpr std::uint32_t kWaterFlowBasePct = 0x5161;  // ESSB_WaterFlowBas
 inline constexpr std::uint32_t kWaterFlowPerRankPct = 0x5162;  // ESSB_WaterFlowPerRankPct
 inline constexpr std::uint32_t kEnvThunder = 0x5907;  // ESSB_EnvThunder
 inline constexpr std::uint32_t kProbeStep = 0x5c00;  // ESSB_ProbeStep
+inline constexpr std::uint32_t kPapyrusReady = 0x5e00;  // ESSB_PapyrusReady
+inline constexpr std::uint32_t kHeatBodyFx = 0x5e01;  // ESSB_HeatBodyFx
 inline constexpr std::uint32_t kTrueHudBars = 0x5c01;  // ESSB_TrueHudBars
 inline constexpr std::uint32_t kWeaponGlow = 0x5d00;  // ESSB_WeaponGlow
 inline constexpr std::uint32_t kFreeOpen = 0x5011;  // ESSB_FreeOpen
 inline constexpr std::uint32_t kHotkeysEnabled = 0x520f;  // ESSB_HotkeysEnabled
 inline constexpr std::uint32_t kFormNotify = 0x520d;  // ESSB_FormNotify
 inline constexpr std::uint32_t kTreeLevel[13] = {0x2400, 0x2401, 0x2402, 0x2403, 0x2404, 0x2405, 0x2406, 0x2407, 0x2408, 0x2409, 0x240a, 0x240b, 0x240c};  // ESSB_Lvl_<tree>
+inline constexpr std::uint32_t kTreePoints[13] = {0x2440, 0x2441, 0x2442, 0x2443, 0x2444, 0x2445, 0x2446, 0x2447, 0x2448, 0x2449, 0x244a, 0x244b, 0x244c};  // ESSB_Pts_<tree> (round 27h)
 inline constexpr std::uint32_t kHotkey[11] = {0x5202, 0x5203, 0x5204, 0x5205, 0x5206, 0x5207, 0x5208, 0x5209, 0x520a, 0x520b, 0x520c};  // ESSB_Hotkey_<element> (round 25: the input sink reads them)
 }  // namespace glob
 
@@ -510,6 +514,10 @@ inline constexpr NodeId kWaterLongRiver{8, 0, 4};  // v0.4 water 長河
 inline constexpr BranchId kCommonComposure{12, 0, 2, 0};  // v0.4 common 定神
 inline constexpr BranchId kCommonSmoothSwitch{12, 1, 1, 0};  // v0.4 common 順轉
 inline constexpr BranchId kCommonTwin{12, 2, 4, 1};  // v0.4 common 雙生
+inline constexpr BranchId kCommonCarry{12, 0, 0, 0};  // v0.4 common 承接
+inline constexpr BranchId kCommonPerpetual{12, 0, 4, 0};  // v0.4 common 永續
+inline constexpr BranchId kNoFormChainBurst{11, 2, 2, 0};  // v0.4 noform 連斷
+inline constexpr BranchId kNoFormFreeGate{11, 2, 0, 0};  // v0.4 noform 免門檻
 inline constexpr NodeId kProcAdept[12] = {kNoNode, {0, 0, 1}, {1, 0, 1}, {2, 0, 1}, {3, 0, 1}, {4, 0, 1}, {5, 0, 1}, {6, 0, 1}, {7, 0, 1}, kNoNode, {9, 0, 1}, {10, 0, 1}};  // [element]; water has none
 inline constexpr NodeId kProcMaster[12] = {kNoNode, {0, 0, 3}, {1, 0, 3}, {2, 0, 3}, {3, 0, 3}, {4, 0, 3}, {5, 0, 3}, {6, 0, 3}, {7, 0, 3}, kNoNode, {9, 0, 3}, {10, 0, 3}};  // [element]; water has none
 inline constexpr NodeId kOpenProc[12] = {kNoNode, {0, 1, 1}, {1, 1, 1}, {2, 1, 1}, {3, 1, 1}, kNoNode, {5, 1, 1}, {6, 1, 1}, {7, 1, 1}, {8, 1, 1}, {9, 1, 1}, {10, 1, 1}};  // [element]; round 22, checked by v0.4 label
@@ -663,6 +671,7 @@ enum class StatusKind : std::uint8_t
     kFrostDomainPlayer,
     kManaEmpty,
     kStormCooldown,
+    kTrioCooldown,
     kCount,
 };
 
@@ -803,6 +812,7 @@ inline constexpr StatusRecord kStatusRecords[] = {
     {0x580c, 0x580d, 2.0f, true, false, "ESSB_N6_FrostDomainPlayer"},
     {0x580e, 0x580f, 3600.0f, true, false, "ESSB_N6_ManaEmpty"},
     {0x5810, 0x5811, 3.0f, true, false, "ESSB_N6_StormCooldown"},
+    {0x5e03, 0x5e04, 10.0f, true, false, "ESSB_N7_TrioCooldown"},
 };
 
 namespace status {
@@ -848,6 +858,18 @@ inline constexpr std::uint32_t kDomainSpawn[12][24] = {
     {0x58d2, 0x58d3, 0x58d4, 0x58d5, 0x58d6, 0x58d7, 0x58d8, 0x58d9, 0x58da, 0x58db, 0x58dc, 0x58dd, 0x58de, 0x58df, 0x58e0, 0x58e1, 0x58e2, 0x58e3, 0x58e4, 0x58e5, 0x58e6, 0x58e7, 0x58e8, 0x58e9},  // element 10
     {0x58ed, 0x58ee, 0x58ef, 0x58f0, 0x58f1, 0x58f2, 0x58f3, 0x58f4, 0x58f5, 0x58f6, 0x58f7, 0x58f8, 0x58f9, 0x58fa, 0x58fb, 0x58fc, 0x58fd, 0x58fe, 0x58ff, 0x5900, 0x5901, 0x5902, 0x5903, 0x5904},  // element 11
 };
+inline constexpr int kCastWithMaxSeconds = 20;
+struct CastWithFamily { std::uint32_t base; std::uint32_t first; };
+inline constexpr CastWithFamily kCastWith[] = {
+    {0x5121, 0x5e05},  // Fear: ESSB_N7_CastWithFear_1..20
+    {0x5123, 0x5e19},  // Frenzy: ESSB_N7_CastWithFrenzy_1..20
+    {0x54c3, 0x5e2d},  // FrenzyBlade: ESSB_N7_CastWithFrenzyBlade_1..20
+    {0x10a0, 0x5e41},  // UtilSlow: ESSB_N7_CastWithUtilSlow_1..20
+    {0x50a5, 0x5e55},  // UtilFireResistDebuff: ESSB_N7_CastWithUtilFireResistDebuff_1..20
+    {0x50af, 0x5e69},  // UtilPoisonResistBuff: ESSB_N7_CastWithUtilPoisonResistBuff_1..20
+    {0x50b1, 0x5e7d},  // UtilHealRateBuff: ESSB_N7_CastWithUtilHealRateBuff_1..20
+    {0x50b2, 0x5e91},  // UtilDiseaseResistBuff: ESSB_N7_CastWithUtilDiseaseResistBuff_1..20
+};
 }  // namespace status
 
 inline constexpr int kDomainMaxSeconds = 24;  // round 25: the longest domain spell
@@ -874,10 +896,10 @@ inline constexpr bool kTimedOnPlayer[12] = {false, true, true, false, false, fal
 inline constexpr float kElementDamage[12][2] = {{0.0f, 0.0f}, {10.0f, 12.0f}, {8.0f, 10.0f}, {1.0f, 25.0f}, {8.0f, 10.0f}, {8.0f, 9.0f}, {8.0f, 10.0f}, {8.0f, 10.0f}, {8.0f, 9.0f}, {5.0f, 7.0f}, {8.0f, 10.0f}, {8.0f, 10.0f}};
 inline constexpr float kNoFormBaseTrue = 5.0f;
 // settings.json upkeep_* (v0.4 1.1 維持費; round 25: the DLL timer pays it, ESSBFormRules is gone).
-inline constexpr float kUpkeepBasePct = 2.5f;
-inline constexpr float kUpkeepDarkPct = 3.5f;
+inline constexpr float kUpkeepBasePct = 5.0f;
+inline constexpr float kUpkeepDarkPct = 7.5f;
 inline constexpr float kUpkeepLevelRelief = 0.7f;
 inline constexpr std::string_view elementNames[12] = {"無元素", "火焰", "冰霜", "雷電", "大地", "風", "鮮血", "神聖", "毒素", "水", "黑暗", "星界"};
-inline constexpr char nativeVersion[] = "0.27.6";
+inline constexpr char nativeVersion[] = "0.28.1";
 inline constexpr char addressHash[] = "1d7530d001139ca58f462ea0210a8055868159057ba8b5ebc624fc5e9c4f5e9a";
 }  // namespace essb

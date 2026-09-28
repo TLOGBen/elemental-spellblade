@@ -1,4 +1,4 @@
-"""Round 27 / 27b / 27c (DLL 0.27.6): offline checks of what this round changed, each with injected faults.
+"""Round 27 / 27b / 27c (DLL 0.28.1): offline checks of what this round changed, each with injected faults.
 
   VISUALS    build/fix27_visuals.check on the written ESP (G13, G14; 27b): the form ring -- four constant self effects per
              element with a Skyrim.esm ring art, one per ESSB_SyncStage 0..3 under ESSB_WeaponGlow (形態光圈), no shader or
@@ -13,7 +13,7 @@
              noexcept; G8: the switch in SwitchWork (the burst on every close, also magicka empty -- the user's decision
              2026-09-27), OnFormOpened calls no FormEnter, KeepSync declared and registered; G15: a step key bound to a form
              is the hotkey only, CycleDebugLevel reaches 4. One fault each must fail.
-  VERSION    0.27.6 in CMakeLists, ManifestData.h, fix19_native, the packaged manifest and build/probe-judge.py VERSION.
+  VERSION    0.28.1 in CMakeLists, ManifestData.h, fix19_native, the packaged manifest and build/probe-judge.py VERSION.
   JUDGE      SETUP-1 fails on [ESSB][OVERLAP-READ], on [ESSB][crash] and on an older version (the round-26 hand sample).
   MUTANTS    the receipt: every runtime / anchor mutant failed its test, and the contract's mutations are there (G1, G6,
              G7, E1, E3, the burst's overflow, G15).
@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'build'), str(ROOT)]
 SNAPSHOT = ROOT / '.codex/pre-fix27-snapshot'
 SRC = ROOT / 'src'
-VERSION = '0.27.6'
+VERSION = '0.28.1'
 
 import fix27_visuals as vis
 
@@ -169,13 +169,26 @@ def check_assets(b, records, vanilla, installed):
                 continue
             if installed is not None and not installed.has(path):
                 errors.append(f'{r.edid} {field}: {path} is in no installed archive or mod (a live effect of ours uses it)')
+    # Round 27h (review 1-3): the body fire is its own effect (ESSB_HeatBodyFxEffect: the vanilla Flame Cloak, FX persist) in
+    # every heat status spell, conditioned on ESSB_HeatBodyFx (MCM 白熱全身特效); the status effects carry no shader.
+    import fix28_records as hit28
+    fx = next((r for r in ours.values() if r.edid == hit28.HEAT_BODY_FX_EFFECT), None)
+    data = fx.d['DATA'] if fx else bytes(152)
+    shader, art = struct.unpack_from('<I', data, 32)[0], struct.unpack_from('<I', data, 96)[0]
+    if (shader, art) != (hit22.HEAT_BODY_SHADER, hit22.HEAT_BODY_ART) or not struct.unpack_from('<I', data, 0)[0] & 0x1000:
+        errors.append('the body fire effect is not the vanilla Flame Cloak (Skyrim.esm 02ACD8 / 02ACD7, FX persist)')
     for kind in hit22.HEAT_BODY_KINDS:
         suffix = next(s for k, s, *_ in hit22.KINDS if k == kind)
         effect = next((r for r in ours.values() if r.edid == hit22.edid_effect(suffix)), None)
-        data = effect.d['DATA'] if effect else bytes(152)
-        shader, art = struct.unpack_from('<I', data, 32)[0], struct.unpack_from('<I', data, 96)[0]
-        if (shader, art) != (hit22.HEAT_BODY_SHADER, hit22.HEAT_BODY_ART) or not struct.unpack_from('<I', data, 0)[0] & 0x1000:
-            errors.append(f'{kind}: the body fire is not the vanilla Flame Cloak (Skyrim.esm 02ACD8 / 02ACD7, FX persist)')
+        spell = next((r for r in ours.values() if r.edid == hit22.edid_spell(suffix)), None)
+        if effect and struct.unpack_from('<I', effect.d['DATA'], 32)[0]:
+            errors.append(f'{kind}: the status effect still carries a shader (the body fire is its own switchable effect)')
+        subs = spell.ss if spell else []
+        efids = [struct.unpack_from('<I', v, 0)[0] & 0xFFFFFF for k, v in subs if k == 'EFID']
+        ctdas = [v for k, v in subs if k == 'CTDA']
+        gate = b.gv_eq(hit28.heat_body_fx_id(), 1)
+        if hit28.heat_body_fx_effect_id() not in efids or gate not in ctdas:
+            errors.append(f'{kind}: the spell does not carry the body fire gated by ESSB_HeatBodyFx (MCM 白熱全身特效)')
     return errors, len(used)
 
 
@@ -189,8 +202,8 @@ def asset_faults(b, records, vanilla, installed):
     if not check_assets(b, bad, vanilla, installed)[0]:
         raise AssertionError('an ARTO on a missing mesh was not caught')
     caught.append('an art object on a missing mesh')
-    heat = hit22.edid_effect(next(s for k, s, *_ in hit22.KINDS if k == 'kHeat3'))
-    bad = _replace(records, heat, 'DATA', _put(32, b.own(0x3000)))
+    import fix28_records as hit28
+    bad = _replace(records, hit28.HEAT_BODY_FX_EFFECT, 'DATA', _put(32, b.own(0x3000)))
     if not check_assets(b, bad, vanilla, installed)[0]:
         raise AssertionError('the body fire on a copied shader was not caught')
     caught.append('the body fire on a copied shader')
@@ -242,12 +255,21 @@ def check_sources(cpp, sources, sinks_h):
     bare = [m.start() for m in re.finditer(r'__except\s*\((?!SehFilter\(GetExceptionInformation\(\), )', code)]
     if bare:
         errors.append(f'E2: {len(bare)} __except without SehFilter')
+    # Round 27h (review 1-8): the AddTask rule is exact -- one AddTask in QueueTask, one in Show, the main-thread witness
+    # once, nothing else; and Show() is called only by Notify and by OnGameReady's deferred notices.
     tasks = [m.start() for m in re.finditer(r'->AddTask\(', code)]
-    allowed = [fn_text(code, 'bool QueueTask(Fn fn, bool sessionOnly = false) noexcept'), fn_text(code, 'void Show(std::string text) noexcept')]
+    bodies = {'QueueTask': fn_text(code, 'bool QueueTask(Fn fn, bool sessionOnly = false) noexcept'),
+              'Show': fn_text(code, 'void Show(std::string text) noexcept')}
+    counts = {k: (body or '').count('->AddTask(') for k, body in bodies.items()}
     witness = code.count('tasks->AddTask([]() { MainThreadGuarded(); });')
-    inside = sum(1 for body in allowed if body and '->AddTask(' in body)
-    if len(tasks) != inside + witness or inside != 2:
-        errors.append(f'E3: {len(tasks)} AddTask calls, {inside + witness} allowed (QueueTask, Show, the main-thread witness)')
+    if counts != {'QueueTask': 1, 'Show': 1} or witness != 1 or len(tasks) != 3:
+        errors.append(f'E3: {len(tasks)} AddTask calls (QueueTask {counts.get("QueueTask")}, Show {counts.get("Show")}, the witness {witness}); '
+                      'exactly one each is allowed')
+    show_sites = [m.start() for m in re.finditer(r'(?<![\w:.>])Show\(', code) if not code[max(0, m.start() - 5):m.start()].endswith('void ')]
+    notify = fn_text(code, 'void Notify(std::string text) noexcept') or ''
+    ready = fn_text(code, 'void OnGameReady()') or ''
+    if len(show_sites) != 2 or notify.count('Show(') != 1 or ready.count('Show(') != 1:
+        errors.append(f'E3: Show() is called at {len(show_sites)} sites (only Notify and the deferred notices of OnGameReady may)')
     if '[ESSB][OVERLAP-READ]' not in cpp:
         errors.append('E1: no OVERLAP-READ witness')
     if 'state.registry.EraseUid(' not in cpp:
@@ -304,6 +326,10 @@ def source_faults(cpp, sources, sinks_h):
     expect('no OVERLAP-READ', check_sources(cpp.replace('[ESSB][OVERLAP-READ]', '[ESSB][READ]'), sources, sinks_h))
     expect('Query opening the log itself', check_sources(cpp.replace('    return essb::rt::Query(\n', '    OpenLog();\n    return Query_(\n', 1),
                                                          sources, sinks_h))
+    expect('a second AddTask in Show (not exact)', check_sources(cpp.replace('void Show(std::string text) noexcept\n{',
+        'void Show(std::string text) noexcept\n{\n    if (auto* t = SKSE::GetTaskInterface()) { t->AddTask([]() {}); }', 1), sources, sinks_h))
+    expect('a Show() outside Notify', check_sources(cpp.replace('void QueueFaultClose() noexcept\n{', 'void QueueFaultClose() noexcept\n{\n    Show("x");', 1),
+                                                   sources, sinks_h))
     expect('magicka closing without the burst', check_sources(cpp.replace('SwitchWork(player, essb::SwitchKind::kClose, from, 0, 1);',
                                                                            'SwitchWork(player, essb::SwitchKind::kIgnore, from, 0, 1);', 1), sources, sinks_h))
     s = dict(sources)

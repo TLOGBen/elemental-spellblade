@@ -22,8 +22,8 @@ NODE_NAMES = {
 FIRE, FROST, LIGHTNING, EARTH, WIND, BLOOD, DIVINE, POISON, WATER, DARKNESS, ASTRAL = range(1, 12)
 TREE = _n3.TREE
 DOMAIN_ELEMENTS = (FIRE, FROST, EARTH, BLOOD, DIVINE, POISON, WATER, DARKNESS, ASTRAL)   # v0.4 section 5's nine domains
-# round 27g (0.27.6, the user's balance decision): 2.5% (暗 3.5%); was v0.4 1.1's 1.0% (暗 2.0%). Relief unchanged.
-UPKEEP_BASE, UPKEEP_DARK, UPKEEP_RELIEF = 2.5, 3.5, 0.7   # 1.1（settings.json upkeep_*，fixture checks them）
+# round 27g (0.27.6): 2.5% (暗 3.5%); round 28 (D7, the user's decision 2026-09-28): 5% (暗 7.5%). Relief unchanged.
+UPKEEP_BASE, UPKEEP_DARK, UPKEEP_RELIEF = 5.0, 7.5, 0.7   # 1.1（settings.json upkeep_*，fixture checks them）
 METRE = 70.0
 
 
@@ -63,7 +63,7 @@ def cadence(steps):
 # ================================================================ the forms' second (1.1, 2.10, 5.11)
 
 def upkeep(element, magicka_max, level, mult_upkeep):
-    """1.1: 最大魔力 × 基礎% × (1 − 0.7 × 樹等級／100) × 維持費倍率；暗 3.5%、其餘 2.5%（0.27.6 起）；血形態不扣魔力。"""
+    """1.1: 最大魔力 × 基礎% × (1 − 0.7 × 樹等級／100) × 維持費倍率；暗 7.5%、其餘 5%（0.28.0 起）；血形態不扣魔力。"""
     if element == BLOOD or element == 0:
         return 0.0
     lv = min(100.0, max(1.0, level))
@@ -162,8 +162,8 @@ def form_second(w, f, allies):
                 w.op('heal', -1, f['health_max'] * out['flow'] * w.recovery)
             if f['stamina_max'] * out['flow'] > 0:
                 w.op('stamina', -1, f['stamina_max'] * out['flow'] * w.recovery)
-            if fee > 0:
-                w.op('magicka', -1, fee * 0.8)   # 長流另回維持費的 80%（不吃成長、不吃回復倍率）
+            if out['spent'] > 0:
+                w.op('magicka', -1, out['spent'] * 0.8)   # 長流回「這一秒真的付出的」魔力的 80%（round 28 F11；不吃成長、回復倍率）
             if w.sync >= 3 and w.rank('water', '長河') > 0:
                 for at, hmax, smax in allies[:5]:
                     w.op('healTarget', at, hmax * out['flow'] * w.recovery)
@@ -354,6 +354,8 @@ def scenario_specs():
     out.append(_form('blood: 10% health pays nothing', dict(form=BLOOD, health=10.0, health_max=100.0, health_permanent=100.0)))
     out.append(_form('blood: 5% health pays nothing', dict(form=BLOOD, health=5.0, health_max=100.0, health_permanent=100.0)))
     out.append(_form('water: 長流 base, tree 1', dict(form=WATER, magicka=100.0, magicka_max=200.0, health_max=300.0, stamina_max=150.0)))
+    # round 28 (F11): 3 magicka left, a 9.93 fee -> 3 spent, 2.4 back (not 7.94)
+    out.append(_form('water: a nearly empty pool refunds 80% of what it paid', dict(form=WATER, magicka=3.0, magicka_max=200.0)))
     out.append(_form('water: 長流 +5 熟練, stage 3, 大師 4, 長河 2, recovery x2, two allies',
                      dict(form=WATER, magicka=100.0, magicka_max=250.0, health_max=300.0, stamina_max=200.0),
                      levels={'water': 40}, tuning=dict(sync=3, recovery=2.0),
@@ -531,14 +533,14 @@ def fixture_row(damage, spec):
 # ================================================================ hand anchors
 # Each: scenario name -> what the arithmetic says (ops rows / outputs), written out here by hand.
 HAND = {
-    # round 27g (0.27.6): base 2.5%, darkness 3.5% (were 1.0% / 2.0%)
-    # 200 × 2.5% × (1 − 0.7 × 1/100) = 5 × 0.993 = 4.965
-    'upkeep: fire, tree 1, 200 magicka': dict(ops=[['spend', -1, 4.965]]),
-    # 300 × 3.5% × (1 − 0.7 × 100/100) × 2 = 10.5 × 0.3 × 2 = 6.3
-    'upkeep: darkness, tree 100, slider x2': dict(ops=[['spend', -1, 6.3]]),
-    # level 150 → 100: 100 × 2.5% × 0.3 = 0.75
-    'upkeep: tree 150 (clamped to 100)': dict(ops=[['spend', -1, 0.75]]),
-    # fee 200 × 2.5% × 0.993 = 4.965 > 0.5 → spend 0.5, empty → the clock (1, 3600 s)
+    # round 28 (D7): base 5%, darkness 7.5% (0.27.6: 2.5% / 3.5%; v0.4 1.1: 1.0% / 2.0%)
+    # 200 × 5% × (1 − 0.7 × 1/100) = 10 × 0.993 = 9.93
+    'upkeep: fire, tree 1, 200 magicka': dict(ops=[['spend', -1, 9.93]]),
+    # 300 × 7.5% × (1 − 0.7 × 100/100) × 2 = 22.5 × 0.3 × 2 = 13.5
+    'upkeep: darkness, tree 100, slider x2': dict(ops=[['spend', -1, 13.5]]),
+    # level 150 → 100: 100 × 5% × 0.3 = 1.5
+    'upkeep: tree 150 (clamped to 100)': dict(ops=[['spend', -1, 1.5]]),
+    # fee 200 × 5% × 0.993 = 9.93 > 0.5 → spend 0.5, empty → the clock (1, 3600 s)
     'upkeep: no more than you have; empty -> the 2 s clock starts': dict(ops=[['spend', -1, 0.5], ['apply', 'ManaEmpty', -1, 1.0, 3600.0]]),
     'upkeep: empty 2 s -> the form closes': dict(ops=[['remove', 'ManaEmpty', -1], ['event', -1, 'Close']]),
     # 70 / 100 → 0.6% of the same maximum 100 = 0.6 (審查修正: not of the current maximum 120)
@@ -547,10 +549,11 @@ HAND = {
     'blood: full health 1.0%, slider x1.5': dict(ops=[['pay', -1, 3.0]]),
     # 50%: 0.2 + (0.5 − 0.3) × 1 = 0.4% of 100 = 0.4
     'blood: 50% health 0.4%': dict(ops=[['pay', -1, 0.4]]),
-    # fee 250 × 2.5% × (1 − 0.28) = 4.5; 長流 (2 + 0.2 × 5)% + 0.0005 × 4 × 3 + 0.0005 × 2 = 0.03 + 0.006 + 0.001 = 0.037
-    # heal 300 × 0.037 × 2 = 22.2, stamina 200 × 0.037 × 2 = 14.8, magicka 4.5 × 0.8 = 3.6; ally 1: 180 × 0.037 × 2 = 13.32
+    # fee 250 × 5% × (1 − 0.28) = 9.0 (100 magicka: all of it spent); 長流 (2 + 0.2 × 5)% + 0.0005 × 4 × 3 + 0.0005 × 2 = 0.03 + 0.006 + 0.001 = 0.037
+    # heal 300 × 0.037 × 2 = 22.2, stamina 200 × 0.037 × 2 = 14.8, magicka 9.0 spent × 0.8 = 7.2; ally 1: 180 × 0.037 × 2 = 13.32
+    'water: a nearly empty pool refunds 80% of what it paid': dict(ops=[['spend', -1, 3.0], ['magicka', -1, 2.4]]),
     'water: 長流 +5 熟練, stage 3, 大師 4, 長河 2, recovery x2, two allies':
-        dict(ops=[['spend', -1, 4.5], ['heal', -1, 22.2], ['stamina', -1, 14.8], ['magicka', -1, 3.6], ['healTarget', 1, 13.32],
+        dict(ops=[['spend', -1, 9.0], ['heal', -1, 22.2], ['stamina', -1, 14.8], ['magicka', -1, 7.2], ['healTarget', 1, 13.32],
                   ['staminaTarget', 1, 6.66], ['healTarget', 2, 29.6], ['staminaTarget', 2, 18.5]]),
     # charge 2 → 3 for 10 s; the storm clock 3 × 1.5 = 4.5 s
     'storm: lightning in a storm, charge 2 -> 3, cooldown 3 s x1.5':

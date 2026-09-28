@@ -578,6 +578,12 @@ void ResolveStatus(Diag<D>& d, const nlohmann::json& manifest, Forms<D>& forms, 
     const auto have = [](const auto& table, std::uint32_t id) {
         return std::any_of(table.begin(), table.end(), [id](const auto& row) { return row.first == id; });
     };
+    // Round 28b (F1): each CastWith copy lasts its own whole seconds (the DLL picks it by that number).
+    for (const auto& family : essb::status::kCastWith) {
+        for (int i = 0; i < essb::status::kCastWithMaxSeconds; ++i) {
+            spell(family.first + static_cast<std::uint32_t>(i), "CastWith copy", static_cast<float>(i + 1));
+        }
+    }
     for (const std::uint32_t id : essb::engine::CastSpells()) {
         if (!have(s.spells, id)) {
             spell(id, "cast spell", 0.0f);

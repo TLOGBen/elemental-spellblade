@@ -79,13 +79,7 @@ EndFunction
 
 ; 5.2 持續新手主線「同調門檻 -2%／點」與持續熟練分支「專一」round 23 起在 DLL（Status.h res::Thresholds）。
 
-; 5.2 持續新手分支「承接」：切換時保留前一形態三分之一同調。
-Int Function CarryOverSync(ESSBController akCtl, Int aiBefore) Global
-	If !Br(akCtl, 12, 0, 0, 0) ; @node 承接
-		Return 0
-	EndIf
-	Return aiBefore / 3
-EndFunction
+; 5.2 持續新手分支「承接」round 27h 起在 DLL 的切換 task（Runtime.h OnOpenKeep）。
 
 ; 5.2 持續大師分支「回饋」（升段回生命與魔力各 B_max ×2）round 23 起在 DLL。
 
@@ -145,10 +139,7 @@ EndFunction
 ; 5.2 持續大師分支「極致」（同調三段每 10 次命中額外一次全額附傷）round 23 起在 DLL。
 
 
-; 5.2 持續傳奇分支「永續」：Z 關閉時若同調三段，融斷後保留一段同調。
-Bool Function HasPerpetual(ESSBController akCtl) Global
-	Return Br(akCtl, 12, 0, 4, 0) ; @node 永續
-EndFunction
+; 5.2 持續傳奇分支「永續」round 27h 起在 DLL 的切換 task（Runtime.h OnBurstKeep）。
 
 ; 5.2 關閉傳奇分支「雙生」：雙持時左手武器攜帶你前一個形態的元素 30 秒。
 Bool Function HasTwin(ESSBController akCtl) Global

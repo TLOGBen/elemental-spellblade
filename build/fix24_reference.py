@@ -728,7 +728,7 @@ class World24(_n4.World23):
                 self.event_at(k, 'Domain', POISON, 5.0, AREA)
         elif element == WATER:
             if reason == CUT and not chain and self.has('water', '大潮'):
-                guide = (2.0 if self.has('water', '強引') else 1.5) * self.sig(WATER) * body
+                guide = (2.0 if self.has('water', '強引') else 1.5) * self.sig(WATER)   # round 28: not × the body
                 for j in self.around(k, AREA, NEAR_LIMIT, lambda x: x.board.has('Soak')):
                     self.on(j, lambda: self.put(self.target, 'Guided', guide, self.scaled(30.0)))
             if not chain and self.has('water', '洗滌'):
@@ -1400,7 +1400,7 @@ class World24(_n4.World23):
         if you and corpse.spell_user and self.has('noform', '無魔'):
             self.op('stamina', max(0.0, self.stamina_max - self.stamina))
             self.give_magicka(self.magicka_max)
-        if (you and self.has('wind', '連殺') and WIND in cb.marks and cb.has('LastHitSneak') and
+        if (you and self.has('wind', '連殺') and cb.has('LastHitSneak') and   # round 28: the wind sneak blow counts as marked
                 cb.layers('LastHitSneak') == WIND):
             self.op('event', 'Sneak', self.scaled(5.0))
             self.put(me, 'KillStreak', 1, self.scaled(5.0))
@@ -1412,11 +1412,13 @@ class World24(_n4.World23):
             before = len(self.ops)
             self.hit(element, False, hit_work=False)
             if any(r[0] == 'event' and r[1] == 'Open' and r[2] == element for r in self.ops[before:]):
-                self.self_open(element)
+                self.self_open(element, not self.gained)   # round 28 (D2): your gains once per event
+                self.gained = True
         self.on(k, run)
 
     def advent(self, element):
         start = len(self.ops)
+        self.gained = False
         tree = TREE[element]
         label = _LABELED_ADVENT[tree]
         rank = self.rank(tree, label)
@@ -1437,9 +1439,10 @@ class World24(_n4.World23):
                 self.event_at(k, 'Hallucinate', 1, self.scaled(2.0), 1)
             elif element == ASTRAL and self.has('astral', '星臨強化'):
                 self.on(k, lambda: self.add_stars(2))
-        if element == WATER and self.has('water', '水臨強化'):
+        ring = self.around(-1, radius, CROWD_MAX)
+        if element == WATER and self.has('water', '水臨強化') and ring:   # round 28 (D3): a hostile in range; 25% × recovery
             self.op('event', 'Cleanse', 1.0)
-            self.op('magicka', max(0.0, self.magicka_max - self.magicka))
+            self.op('magicka', self.magicka_max * 0.25 * self.recovery)
         if element == BLOOD and self.has('blood', '血臨強化'):
             self.op('pay', self.hp_max * 0.15)
             self.op('event', 'Splash')
@@ -1453,10 +1456,13 @@ class World24(_n4.World23):
                     self.open_forced(k, element)
         self.run_bodies(start)
 
-    def surge_open(self, element, old):
-        if not self.has('common', '印潮') or not 1 <= old <= 11:
+    def surge_open(self, element):
+        # Round 28b (F5, the user's ruling 2026-09-28): the first hit after a switch opened its mark -- up to 2 other
+        # hostiles within 15 m of the target carrying no mark of ours at all get the new element's mark (nobody's is cut).
+        if not self.has('common', '印潮') or not 1 <= element <= 11:
             return
-        for k in self.around(0, NEAR, 2, lambda x: old in x.board.marks):
+        self.gained = False
+        for k in self.around(0, NEAR, 2, lambda x: not x.board.marks and x.body['health'] > 0):
             self.open_forced(k, element)
 
     def avatar(self, element):
@@ -1540,7 +1546,7 @@ def run_steps(w, steps):
             w.run_bodies(start)
         elif kind == 'surge':
             start = len(w.ops)
-            w.surge_open(step[1], step[2])
+            w.surge_open(step[1])
             w.run_bodies(start)
         elif kind == 'avatar':
             start = len(w.ops)
@@ -1895,9 +1901,13 @@ def scenario_specs():
               [['hitBodies', DARKNESS, False, 0]], ranks=_r('darkness', 詛咒每層抗性侵蝕=5), branches=_b('common', '萬象')))
     add(_spec('hit bodies: 封印 silences every hostile within 3 m of the target', _c(_m(100), _m(250), _m(500), _m(200, **ALLY)),
               [['hitBodies', 0, False, 4]], branches=_b('noform', '封印')))
-    add(_spec('印潮: the switch hit opens the new element on 2 others carrying the old mark',
-              _c(_m(100), _m(200, board=_mark(FIRE)), _m(300, board=_mark(FIRE)), _m(400, board=_mark(FIRE)), _m(250)),
-              [['surge', WATER, FIRE]], branches=_b('common', '印潮')))
+    # Round 28b (F5): the unmarked ones (250, 300; 400 is the third), never the marked (200) nor one past 15 m (1300).
+    add(_spec('印潮: the first hit after a switch marks the 2 nearest unmarked others with the new element',
+              _c(_m(100), _m(200, board=_mark(FIRE)), _m(300), _m(400), _m(250), _m(1300)),
+              [['surge', WATER]], branches=_b('common', '印潮')))
+    add(_spec('印潮: nobody unmarked in range -- no open',
+              _c(_m(100), _m(200, board=_mark(FIRE)), _m(300, board=_mark(WATER)), _m(1200)),
+              [['surge', WATER]], branches=_b('common', '印潮')))
     add(_spec('化身 lightning: 天雷 discharge of your charges', _c(_m(100, board=_mark(LIGHTNING)), _m(150, board=_mark(LIGHTNING))),
               [['avatar', LIGHTNING]], ranks=_r('lightning', 天雷=10), tuning=dict(syncStage=3), me=_k(Charge=(5, 0, 10))))
     add(_spec('化身 blood and divine: a surge, a judgment at your holy tier',

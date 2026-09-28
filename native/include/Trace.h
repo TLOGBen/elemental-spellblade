@@ -387,10 +387,13 @@ inline void EnvLine(Line& line, const EnvFlags& e, const EnvFacts& f, bool chang
 // switch: a hotkey or the Z power asked for a form.
 inline void SwitchLine(Line& line, const char* via, int wanted, const SwitchPlan& p, const SwitchFacts& f, const ActorFacts& you) noexcept
 {
-    constexpr const char* kinds[] = { "ignore", "refuse", "open", "switch", "close" };
+    constexpr const char* kinds[] = { "ignore", "refuse", "open", "switch", "close", "blocked" };
     line.F(" via=%s wanted=%s kind=%s element=%s active=%d current=%s dead=%d enabled=%d freePass=%d freeOpen=%d gate=%.2f", via,
         ElementName(wanted), kinds[static_cast<int>(p.kind)], ElementName(p.element), f.active ? 1 : 0, ElementName(f.current), f.dead ? 1 : 0,
         f.enabled ? 1 : 0, f.freePass ? 1 : 0, f.freeOpen ? 1 : 0, f.magickaMax * n6::kMagickaGate);
+    if (p.kind == SwitchKind::kBlocked) {   // round 28 (D4, D5)
+        line.F(" reason=%s", p.block == SwitchBlock::kDebounce ? "debounce" : "burnout-lockout");
+    }
     line.Actor("you", you);
 }
 
