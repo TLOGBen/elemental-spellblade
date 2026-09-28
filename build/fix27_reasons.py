@@ -206,3 +206,13 @@ _28C = {
 }
 for _file, _why in _28C.items():
     NATIVE[_file] = NATIVE.get(_file, R.rstrip('：')) + '；' + _C + _why
+
+# Round 28d (DLL 0.28.1, no DLL change): the user's ruling 2026-09-28 -- the document's 「自有」 build notes leave the player
+# text (不移、定神、不動、御風、地基), and 御風 gets the comma its sentence was missing.
+_D = '28d（0.28.1）：'
+_28D = {
+    'build/fix27_text.py': '標記多了「自有」（「（自有）」「（自有，可調）」「（自有效果…）」整段拿掉）；御風的覆寫（「（含武器傷害），只要點了此節點即生效」補逗號）',
+    'build/fix27_verify.py': '「自有」的注入錯誤：標記樣本、三種括號註記的清除樣本、括號外的「自有」、寫出的 ESP 裡 perk 說明帶「（自有）」要被抓到',
+}
+for _file, _why in _28D.items():
+    NATIVE[_file] = NATIVE.get(_file, R.rstrip('：')) + '；' + _D + _why

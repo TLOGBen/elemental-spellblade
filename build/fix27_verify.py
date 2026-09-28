@@ -234,7 +234,7 @@ def check_player_text(b, records):
     return errors
 
 
-def player_text_faults():
+def player_text_faults(b=None, records=None):
     """The stripper and the check each catch their fault."""
     import fix27_text as txt
     caught = []
@@ -243,7 +243,8 @@ def player_text_faults():
         raise AssertionError(('player_text kept the note or cut the gameplay text', txt.player_text(sample)))
     caught.append('a dated note stripped, the gameplay parenthesis kept')
     for leak in ('見 實作紀錄.md', 'Round 27 起', 'v0.4 本文', '待決', '指揮官裁定',
-                 '**另有冷卻**', '`ESSB_Wet`', '原「回滿魔力」', '見 2.4'):   # round 28c: markdown and change notes
+                 '**另有冷卻**', '`ESSB_Wet`', '原「回滿魔力」', '見 2.4',   # round 28c: markdown and change notes
+                 '（自有）', '自有效果'):   # round 28d: the document's 「our own effect」 build note
         if not txt.markers('順風：命中回復耐力 ' + leak):
             raise AssertionError(('a design marker not caught', leak))
         caught.append(f'marker: {leak}')
@@ -252,6 +253,22 @@ def player_text_faults():
     if txt.player_text(sample) != '三重奏：第三次 ×3；觸發後有 10 秒冷卻':
         raise AssertionError(('markdown bold or a change note left', txt.player_text(sample)))
     caught.append('markdown bold and a change note stripped')
+    # Round 28d: every 「自有」 note goes whole (bare, with a comment, or a sentence), the rule stays.
+    for sample, want in (('不移：同調二段以上時免疫硬直與擊倒（自有，可調）', '不移：同調二段以上時免疫硬直與擊倒'),
+                         ('地基：開印目標 3 秒內耐力不回復（自有效果把耐力回復設 0）', '地基：開印目標 3 秒內耐力不回復'),
+                         ('定神：同調三段時免疫減速（自有）；另有加成', '定神：同調三段時免疫減速；另有加成')):
+        if txt.player_text(sample) != want:
+            raise AssertionError(('a 自有 note left or the rule cut', txt.player_text(sample)))
+    caught.append('自有 notes stripped')
+    # Round 28d: a 自有 left outside a parenthesis fails the perk-text check (check_player_text reads markers()).
+    if not txt.markers('不動：岩甲 ≥5 時以自有效果免疫擊退'):
+        raise AssertionError('a bare 自有 in the player text was not caught')
+    caught.append('a bare 自有 in the player text')
+    if b is not None:   # and a perk description of the written ESP that carries one fails the build
+        bad = _replace(records, 'ESSB_P_earth_0_3_B1', 'DESC', lambda v: v.rstrip(b'\0') + '（自有）'.encode('utf-8') + b'\0')
+        if not any('ESSB_P_earth_0_3_B1 DESC' in e for e in check_player_text(b, bad)):
+            raise AssertionError('a 自有 note in a written perk description was not caught')
+        caught.append('a 自有 note in a written perk description')
     # Round 28c: an override is keyed by its node and pinned to the v0.4 text it was written for.
     source = '水臨強化：舊的說明'
     table = {'ESSB_P_water_1_2_B1': ('水臨強化', txt.digest(source), '水臨強化：玩家文字')}
@@ -497,7 +514,7 @@ def run(b):
     errors += judge_errors + mutant_errors
     assert not errors, '\n  '.join(['FIX27 failed:'] + errors)
     caught = source_faults(cpp, sources, sinks_h)
-    text_faults = player_text_faults()
+    text_faults = player_text_faults(b, records)
     import fix27_history
     history = fix27_history.self_check()
     import fix27_native_history

@@ -1,7 +1,7 @@
 """Round 27e (0.27.4): player-facing text without the design document's annotations.
 
 The tree generator copies 元素魔戰士規劃-v0.4.md's cells verbatim, and the document carries notes for its readers
-(「（2026-09-27 依實作：…）」, 待決, 指揮官裁定, v0.3 / v0.4, round numbers, file names, 探針, 實作紀錄). player_text() drops
+(「（2026-09-27 依實作：…）」, 待決, 指揮官裁定, v0.3 / v0.4, round numbers, file names, 探針, 實作紀錄, 自有). player_text() drops
 every parenthetical group that holds such a marker and keeps the gameplay text; markers() finds any left, and
 build/fix27_verify.py fails the build when a perk name / description, a Custom Skills file or the MCM config still has one.
 """
@@ -13,7 +13,10 @@ MARKER = re.compile(
     r'20\d\d-\d\d-\d\d|依實作|待決|指揮官|裁定|已決|[vV]0\.\d|[Rr]ound\s?\d|探針|實作紀錄|規劃文件|native-verification|'
     r'[A-Za-z0-9_]+\.(?:md|py|h|cpp|psc|json|esp|esm|log)\b|HitMath|Status\.h|Reactions\.h|Plugin\.cpp|'
     # round 28c: the document's markdown and its change notes -- 「**粗體**」, `code`, 「原「…」」, section references 「見 2.4」
-    r'\*|`|原「|見\s?\d+\.\d+')
+    r'\*|`|原「|見\s?\d+\.\d+|'
+    # round 28d: 「（自有）」「（自有，可調）」「（自有效果把耐力回復設 0）」 tell the document's readers how a node is built
+    # (our own effect, not a vanilla one); the player only needs the rule
+    r'自有')
 
 _OPEN = '（('
 _CLOSE = '）)'
@@ -43,6 +46,10 @@ OVERRIDES = {
     'ESSB_P_wind_2_4_B2': ('連殺', 'e84dee317de349f8',
                            '連殺：帶風印記的目標被你的潛行攻擊殺死後 5 秒內不解除潛行，下一次潛行攻擊附傷 ×2 並重置奇襲；'
                            '風形態下潛行攻擊一擊直接殺死的目標也算帶印'),
+    # Round 28d: the document's sentence runs 「（含武器傷害）只要點了此節點即生效」 together; the player text adds the comma
+    # (the 「（自有）」 note and the markdown go as they would through player_text).
+    'ESSB_P_wind_0_4_B1': ('御風', '91c74e15eaadc238',
+                           '御風：同調三段時免疫減速；失衡目標受你所有傷害 +30%（含武器傷害），只要點了此節點即生效，不需同調三段'),
 }
 
 
