@@ -61,7 +61,7 @@ CHANGED = {
     ('ESSBElem3.psc', 'PoisonFormTick'): ('Round 27h（0.28.0，Papyrus 層審查） 6：百毒不侵的附近中毒敵人改讀 ESSBNative.PoisonedNearby（DLL 每秒數好），不再每秒掃全部角色', '6b55134fbceb6ee0', '6a0c43c3e1484e35'),
     ('ESSBMCM.psc', 'ShowNativeStatus'): ('Round 27（G12：新遊戲時 DLL 被 SKSE 拒絕）：版本空白時說明去看 skse64.log 的 incompatible、確認上一個 SkyrimSE.exe 已結束；Round 27h（0.28.0，整體審查）（驗證）：顯示兩個 task 同時執行而放棄的次數（ESSBNative.OverlapCount）', 'f63d245fbea115db', 'b0685913fc2966b7'),
     ('ESSBSettingsEffect.psc', 'CycleDebugLevel'): ('Round 27（G15：除錯等級快捷鍵繞到 4＝探針 log；原本 % 4 永遠到不了 4）', '798fdcd08fa8908e', '4263555eb2baca22'),
-    ('ESSBState.psc', 'RestoreTunableDefaults'): ('Round 27g（0.27.6，使用者決定整體傷害降 20%）：MCM「還原預設」的傷害倍率改成 0.8（由 build_v03.py 從 settings.json 產生）', '6e29b73e5aed63b2', 'a8d14eb037e6791b'),
+    ('ESSBState.psc', 'RestoreTunableDefaults'): ('Round 27g（0.27.6，使用者決定整體傷害降 20%）：MCM「還原預設」的傷害倍率改成 0.8（由 build_v03.py 從 settings.json 產生）；Round 29（0.29.0，灌注）：MCM「回復預設設定」一併重設平衡頁新的「灌注成本」10、「灌注下限」30（由 build_v03.py 從 settings.json 產生）', '6e29b73e5aed63b2', '294731bded147b30'),
     ('ESSBTrees.psc', 'OnCustomSkillIncrease'): ('Round 27h（0.28.0，Papyrus 層審查） 4：點數用 GlobalVariable.Mod(1)（跟 DLL 的結算同時也不會丟點）', '908df24c1e23247f', 'ead980c7ce61a30d'),
     ('ESSBTrees.psc', 'OnMenuClose'): ('Round 27e（0.27.4，MCM 與技能樹選單卡頓）：不是從 OpenTree 開的選單關閉時補扣分支點數（ReconcileGained）；不再取消 StatsMenu 的登記；Round 27h（0.28.0，Papyrus 層審查） 1／3：只清旗標（結算是 DLL 的）', '06b2f93a6bc0260f', '4d77f4eccb115576'),
     ('ESSBTrees.psc', 'OnPlayerLoadGame'): ('Round 27h（0.28.0，Papyrus 層審查） 3：PendingTree 清成 -1', '8d922e3590532632', '8442f8994302555a'),

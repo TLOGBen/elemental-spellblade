@@ -755,6 +755,67 @@ int FakeEngineChecks()
     return n;
 }
 
+// Round 29 (灌注): its cost is a price, not an upkeep. (1) The second after an infusion at the floor's edge (160 of 400 -> 120)
+// neither closes the form nor starts the zero-magicka clock, and it is the same second as without the infusion's column;
+// (2) 長流 refunds 80% of the upkeep this second paid, never the infusion (a water second with and without 40 infused).
+int InfuseTimerChecks(const essb::Config& config)
+{
+    int n = 0;
+    essb::Tuning t;
+    t.level.fill(100.0f);
+    t.syncStage = 3;
+    essb::TimerTuning tt;
+    essb::StatusInputs in;
+    in.config = &config;
+    in.tuning = &t;
+    in.n4 = true;
+    MapNodes nodes;
+    const auto& infuse = essb::node::kCommonInfuse;
+    nodes.branches.insert({ infuse.tree, infuse.route, infuse.tier, infuse.index });
+    std::array<essb::Ally, 5> allies{};
+    const auto second = [&](int form, float magicka, float infused, essb::Board& me, essb::StatusPlan& plan) {
+        essb::SecondFacts f;
+        f.form = form;
+        f.magicka = magicka;
+        f.magickaMax = 400.0f;
+        f.health = f.healthMax = f.healthPermanent = 300.0f;
+        f.stamina = f.staminaMax = 200.0f;
+        f.infused = infused;
+        return essb::PlanFormSecond(plan, me, f, in, tt, nodes, allies, 0);
+    };
+    const essb::Infuse edge = essb::DecideInfuse(nodes.Has(infuse), essb::kFire, true, false, 160.0f, 400.0f, t);
+    Check(edge.on && Near(edge.cost, 40.0), "29-T1 the floor's edge infuses (160 of 400)");
+    const float left = 160.0f - essb::InfuseSpend(edge.cost, 160.0f);
+    Check(Near(left, 120.0), "29-T1 120 left");
+    for (const int form : { essb::kFire, essb::kWater }) {
+        essb::Board me0;
+        essb::Board me1;
+        auto p0 = std::make_unique<essb::StatusPlan>();
+        auto p1 = std::make_unique<essb::StatusPlan>();
+        const essb::FormSecond s0 = second(form, left, 0.0f, me0, *p0);
+        const essb::FormSecond s1 = second(form, left, edge.cost, me1, *p1);
+        const float fee = essb::MagickaUpkeep(form, 400.0f, t, tt);
+        Check(Near(s1.spent, fee) && Near(s1.spent, s0.spent) && Near(s1.infused, 40.0), "29-T spent is the upkeep alone (" +
+                                                                                             std::to_string(s1.spent) + ")");
+        Check(!s1.closing && !me1.Has(StatusKind::kManaEmpty), "29-T1 no burn-out after an infusion");
+        Check(p0->count == p1->count, "29-T the infusion's column adds no op");
+        for (int i = 0; i < p0->count && i < p1->count; ++i) {
+            Check(p0->ops[i].op == p1->ops[i].op && Near(p0->ops[i].magnitude, p1->ops[i].magnitude), "29-T op " + std::to_string(i) + " unchanged");
+        }
+        if (form == essb::kWater) {
+            float refund = -1.0f;
+            for (int i = 0; i < p1->count; ++i) {
+                if (p1->ops[i].op == essb::Op::kRestoreMagicka) {
+                    refund = p1->ops[i].magnitude;
+                }
+            }
+            Check(Near(refund, fee * essb::n6::kFlowMagickaShare), "29-T2 長流 refunds the upkeep x 0.8 only: " + std::to_string(refund));
+        }
+        n += 4;
+    }
+    return n;
+}
+
 }  // namespace
 
 int main(int argc, char** argv)
@@ -785,6 +846,8 @@ int main(int argc, char** argv)
         const int fake = FakeEngineChecks();
         std::cout << "NATIVE TIMER X ok: " << fake << " fake-engine checks (fusion domain casts, silence drain, 潮池 wash limit, "
                   << "a fake timer with a pause and a load, fake input events, the domain scan's node gate)\n";
+        const int infused = InfuseTimerChecks(config);   // round 29
+        std::cout << "NATIVE TIMER I ok: " << infused << " 灌注 checks (no burn-out after an infusion, 長流 refunds the upkeep only)\n";
         std::cout << "checks=" << checks << "\n";
         return 0;
     } catch (const std::exception& e) {

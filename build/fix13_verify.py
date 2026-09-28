@@ -379,7 +379,7 @@ def casting(folder):
 def mcm(folder):
     config=json.loads((ROOT/'package/Elements Spellblade/MCM/Config/Elements Spellblade/config.json').read_text(encoding='utf8'))
     sliders=[r for p in config['pages'] for r in p['content'] if r.get('type')=='slider']
-    assert len(sliders)==10
+    assert len(sliders)==12   # round 29: + 灌注成本、灌注下限
     values={int(r['valueOptions']['sourceForm'].split('|')[1],16):Glob(-99) for r in sliders}
     events=[];accept=[False];operational=[True];samequest=[True]
     ctl=NS(**{name:(lambda name=name:events.append(name)) for name in
@@ -398,6 +398,10 @@ def mcm(folder):
         fid=int(row['valueOptions']['sourceForm'].split('|')[1],16)
         # round 27g: this runs the legacy (pre-round-22) ESSBState, whose 傷害倍率 default is still 1.0; the current
         # config says 0.8 (build_v03.py validate_status_arrays pins that change)
+        # round 29: the legacy helper predates 灌注's two sliders (it leaves them alone); the current generated
+        # RestoreTunableDefaults writes every slider row (build_v03.write_mcm), checked in build/fix29_verify.py
+        if row['id'] in ('ESSB_InfuseCostPct','ESSB_InfuseFloorPct'):
+            assert values[fid].v==-99,row['id'];continue
         expected={'ESSB_BaseDamageMult':1.0}.get(row['id'],row['valueOptions']['defaultValue'])
         assert values[fid].v==expected,row['id']
     assert events==['confirm','RefreshRuntimeValues','RefreshTrees','RefreshAbilities','RefreshRecovery','reset-page','notice']
@@ -446,7 +450,7 @@ def boundaries():
             old_settings=json.loads((ROOT/'.codex/pre-fix14-snapshot/settings.json').read_text(encoding='utf8'))
             current=json.loads((ROOT/'settings.json').read_text(encoding='utf8'))
             current.pop('kill_attribution_seconds')
-            for key in ('lightning_roll_mode','form_notify','form_sound','hotkeys_enabled','address_library_bin'):current.pop(key,None)  # later rounds' keys; address_library_bin = round 19b DLL build input
+            for key in ('lightning_roll_mode','form_notify','form_sound','hotkeys_enabled','address_library_bin','infuse_cost_pct','infuse_floor_pct'):current.pop(key,None)  # later rounds' keys; address_library_bin = round 19b DLL build input
             current['state_schema_version'] = old_settings['state_schema_version']
             # round 27g (0.27.6): the user's balance decisions -- 傷害倍率 0.8, upkeep 2.5% (暗 3.5%); build_v03.py pins them
             for key, (was, now) in {'base_damage_mult': (1.0, 0.8), 'upkeep_base_pct': (1.0, 5.0), 'upkeep_dark_pct': (2.0, 7.5)}.items():

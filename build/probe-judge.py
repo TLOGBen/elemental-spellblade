@@ -129,12 +129,19 @@ STATIONS = [
     (91, ['E-13'], 'FPS'),
     (92, ['F-01'], '故障演練'),          # round 27h (review: verification)
     (93, ['F-02'], 'HDT-SMP 壓力站'),    # round 27h (the 0.27.5 freeze: an A/B around HDT-SMP)
+    (94, ['I-01'], '灌注：火重擊'),      # round 29 (灌注, .codex/design-infuse-2026-09-28.md station A)
+    (95, ['I-02'], '灌注：低於下限'),    # B
+    (96, ['I-03'], '灌注：雷必暴與滿格放電'),   # C
+    (97, ['I-04'], '灌注：倒地普攻'),    # D
+    (98, ['I-05'], '灌注：血形態'),      # E
+    (99, ['I-06'], '灌注：水形態長流'),  # F
 ]
 
 ALL_IDS = (['SETUP-1'] + [f'A-{i:02d}' for i in range(1, 19)] + [f'B-{i:02d}' for i in range(1, 38)] +
            [f'C-{i:02d}' for i in range(1, 10)] + [f'D-{i:02d}' for i in range(1, 25)] + [f'E-{i:02d}' for i in range(1, 14)] +
-           ['F-01', 'F-02'])   # round 27h
-assert len(ALL_IDS) == 104
+           ['F-01', 'F-02'] +   # round 27h
+           [f'I-{i:02d}' for i in range(1, 7)])   # round 29 (灌注)
+assert len(ALL_IDS) == 110
 
 PLAYER_ID = 0x14
 GAMEPAD_BASE = 266   # SKSE key codes: keyboard 0-255, mouse 256-265, gamepad from 266
@@ -519,7 +526,7 @@ def x2_verdicts(log):
 
 
 # The DLL version this sheet judges (round 28b: 0.28.1). build/fix26_verify.py and build/fix27_verify.py build their samples with it.
-VERSION = '0.28.1'
+VERSION = '0.29.0'
 
 
 @rule('SETUP-1')
@@ -2822,6 +2829,159 @@ def r_f02(seg, ctx):
         return NODATA('不夠：' + text + '（白熱 3 次、切換 20 次）', *(applied[:1] + switches[:1]))
     return EYES(text + '；有沒有凍結只能看畫面（有的話請附 HDT-SMP 版本，另用 MCM「白熱全身特效」關掉再做一次）',
                 *(applied[:2] + switches[:2] + ring[:1]))
+
+
+# ================================================================ round 29 (0.29.0): 灌注 (stations 94-99, .codex/design-infuse-2026-09-28.md)
+# The DLL's lines: [ESSB][hit][L2] ... infuse=<0|1> cost=<magicka>; [ESSB][infuse][L4] <target> spent= max= before= after= floor= k=
+# crit= hit= c= (an infusion) or skip=<noform|nopower|knockdown|repeat|floor|mcm|corpse> magicka= need=; [ESSB][second][L2] ...
+# spent= (the upkeep alone) ... infused= (灌注's cost that second).
+
+def kv(text):
+    """key=value tokens of a raw DLL line."""
+    return {k: v for k, _, v in (t.partition('=') for t in text.split() if '=' in t)}
+
+
+def fnum(d, key, default=None):
+    y = num(d.get(key))
+    return default if y is None else y
+
+
+def infuse_spends(seg):
+    return [(x, kv(x.text)) for x in raw_with(seg, '[ESSB][infuse][L4]', ' spent=')]
+
+
+def infuse_skips(seg, reason=None):
+    rows = [(x, kv(x.text)) for x in raw_with(seg, '[ESSB][infuse][L4]', ' skip=')]
+    return [r for r in rows if reason is None or r[1].get('skip') == reason]
+
+
+def hit_lines(seg, **where):
+    rows = [(x, kv(x.text)) for x in raw_with(seg, '[ESSB][hit][L2]')]
+    return [r for r in rows if all(r[1].get(k) == str(v) for k, v in where.items())]
+
+
+def spend_ok(d, share=0.10):
+    """One infusion's own numbers: cost = share x max, after = before - spent, never below 1 (or below the floor)."""
+    mx, spent, before, after, floor = (fnum(d, k, -1.0) for k in ('max', 'spent', 'before', 'after', 'floor'))
+    return (mx > 0 and near(spent, mx * share, max(0.6, mx * 0.005)) and near(after, before - spent, 0.6) and after >= 1.0
+            and fnum(d, 'hit', 0.0) >= spent + floor - 0.6)
+
+
+@rule('I-01')
+def r_i01(seg, ctx):
+    """火重擊灌注：three power hits, each spends 10% of max magicka (400 -> 40) and its hit line says infuse=1 cost=40; the
+    spend line's k is 2 (no crit)."""
+    spends = infuse_spends(seg)
+    hits = hit_lines(seg, element=1, power=1)
+    if len(spends) < 3 or len(hits) < 3:
+        return NODATA(f'灌注花費 {len(spends)} 行、火重擊 {len(hits)} 行（要 3 刀重擊；加 XX0022E1、魔力 400）',
+                      *[x for x, _ in (spends + hits)[:3]])
+    bad = [x for x, d in spends if not spend_ok(d) or fnum(d, 'k') != 2.0 or d.get('crit') != '0']
+    unpaid = [x for x, d in hits if d.get('infuse') != '1' or not near(fnum(d, 'cost', 0.0), fnum(spends[0][1], 'max', 0.0) * 0.1, 0.6)]
+    if bad or unpaid:
+        return FAIL(f'花費不是最大魔力 10%／k 不是 2／扣完魔力對不上的 {len(bad)} 行；重擊沒灌注或 cost 不對的 {len(unpaid)} 行',
+                    *(bad[:3] + unpaid[:3]))
+    d = spends[0][1]
+    return PASS(f'{len(spends)} 次灌注，每次扣 {fnum(d, "spent"):.1f}（最大魔力 {fnum(d, "max"):.0f} 的 10%）、k=2；重擊行 infuse=1 cost 相同',
+                *[x for x, _ in spends[:3]], *[x for x, _ in hits[:3]])
+
+
+@rule('I-02')
+def r_i02(seg, ctx):
+    """低於下限：a power hit with magicka under cost + floor logs skip=floor, pays nothing (no spend line whose magicka at hit
+    time was under the need) and its hit line says infuse=0."""
+    skips = infuse_skips(seg, 'floor')
+    spends = infuse_spends(seg)
+    paid_low = [x for x, d in spends if fnum(d, 'hit', 0.0) < fnum(d, 'max', 0.0) * 0.4 - 0.6]
+    if paid_low and not skips:
+        return FAIL('魔力低於成本＋下限（預設 40％ 的最大魔力）卻灌注了', *paid_low[:3])
+    if not skips:
+        return NODATA('沒有 skip=floor（先 player.damageav magicka 250，再重擊）', *[x for x, _ in spends[:2]])
+    wrong = [x for x, d in skips if not fnum(d, 'magicka', 0.0) < fnum(d, 'need', 0.0)]
+    infused = [x for x, d in hit_lines(seg, power=1) if d.get('infuse') == '1' and fnum(d, 'cost', 0.0) > 0]
+    if wrong or paid_low:
+        return FAIL(f'skip=floor 但魔力其實夠的 {len(wrong)} 行；魔力低於成本＋下限卻灌注的 {len(paid_low)} 行', *(wrong[:2] + paid_low[:2]))
+    d = skips[0][1]
+    note = f'魔力 {fnum(d, "magicka"):.1f} < 需要 {fnum(d, "need"):.1f}：skip=floor、不扣'
+    return PASS(note + (f'（之後回到下限以上的 {len(infused)} 刀照常灌注）' if infused else ''), *[x for x, _ in skips[:3]])
+
+
+@rule('I-03')
+def r_i03(seg, ctx):
+    """雷：an infused lightning power hit crits for sure at 2.5 (the spend line k=1 crit=1 c=2.5, the hit line crit=1); at full
+    charges the discharge still happens (its op is the same as without)."""
+    spends = [(x, d) for x, d in infuse_spends(seg) if d.get('crit') == '1']
+    hits = hit_lines(seg, element=3, power=1, infuse=1)
+    if not spends or not hits:
+        return NODATA(f'雷的灌注花費 {len(spends)} 行、灌注的雷重擊 {len(hits)} 行', *[x for x, _ in (spends + hits)[:2]])
+    bad = [x for x, d in spends if fnum(d, 'k') != 1.0 or fnum(d, 'c') != 2.5]
+    nocrit = [x for x, d in hits if d.get('crit') != '1']
+    if bad or nocrit:
+        return FAIL(f'雷的灌注 k 不是 1 或 c 不是 2.5 的 {len(bad)} 行；灌注的雷重擊沒暴擊的 {len(nocrit)} 行（應該必暴）', *(bad[:2] + nocrit[:2]))
+    discharge = seg.ops(ev='Discharge')
+    if not discharge:
+        return EYES('灌注的雷重擊都必暴 ×2.5；沒看到滿格重擊的放電（ev=Discharge）——滿格那一刀做了嗎？', *[x for x, _ in (spends + hits)[:3]])
+    return PASS(f'{len(hits)} 刀灌注的雷重擊都必暴（k=1、c=2.5）；滿格重擊照樣放電 {len(discharge)} 次',
+                *[x for x, _ in (spends + hits)[:3]], *discharge[:1])
+
+
+@rule('I-04')
+def r_i04(seg, ctx):
+    """倒地普攻：a normal hit on a downed target (counts as a power attack) logs skip=knockdown and pays nothing."""
+    skips = infuse_skips(seg, 'knockdown')
+    spends = infuse_spends(seg)
+    if not skips:
+        return NODATA('沒有 skip=knockdown（把目標打倒地後用普攻打它）', *[x for x, _ in spends[:2]])
+    if spends:
+        return FAIL(f'倒地普攻這站有 {len(spends)} 次灌注花費（倒地推導的重擊不該灌注；站裡不要用真正的重擊）', *[x for x, _ in spends[:3]])
+    return PASS(f'{len(skips)} 次倒地普攻都是 skip=knockdown、沒有扣魔', *[x for x, _ in skips[:3]])
+
+
+@rule('I-05')
+def r_i05(seg, ctx):
+    """血形態重擊：the infusion spends magicka (10% of max) and the power hit still pays its health (PayHealth ctx=hit), no more
+    than the cost curve's 8% of max health."""
+    spends = infuse_spends(seg)
+    hits = hit_lines(seg, element=6, power=1, infuse=1)
+    pays = [x for x in seg.ops(op='PayHealth', ctx='hit')]
+    if not spends or not hits:
+        return NODATA(f'灌注花費 {len(spends)} 行、灌注的血重擊 {len(hits)} 行（血形態，重擊）', *[x for x, _ in (spends + hits)[:2]])
+    bad = [x for x, d in spends if not spend_ok(d)]
+    if bad:
+        return FAIL('血形態的灌注沒有照最大魔力 10% 扣魔', *bad[:3])
+    if not pays:
+        return EYES('灌注照扣魔力；沒看到重擊扣血（PayHealth ctx=hit）——回湧期間那一刀不扣血，換一刀再看', *[x for x, _ in spends[:2]])
+    over = [x for x in pays if x.a.get('on') and x.v('mag', 0.0) > 0.08 * x.a['on'].hmax + 0.5]
+    if over:
+        return FAIL('重擊扣血超過最大生命 8%（灌注不該改變血的扣量）', *over[:3])
+    return PASS(f'{len(spends)} 次灌注各扣魔 {fnum(spends[0][1], "spent"):.1f}；重擊扣血 {fmt_nums([x.v("mag") for x in pays])}（照血位曲線，沒變）',
+                *[x for x, _ in spends[:2]], *pays[:2])
+
+
+@rule('I-06')
+def r_i06(seg, ctx):
+    """水形態長流：a second with an infusion (infused > 0) refunds 80% of the upkeep it paid (RestoreMagicka ctx=form-second =
+    0.8 × spent), never the infusion."""
+    seconds = [(x, d) for x, d in ((x, kv(x.text)) for x in raw_with(seg, '[ESSB][second][L2]'))
+               if d.get('form') == '9' and fnum(d, 'infused', 0.0) > 0]
+    refunds = seg.ops(op='RestoreMagicka', ctx='form-second')
+    if not seconds:
+        return NODATA('沒有帶 infused>0 的水形態 second 行（除錯等級 2 以上；水形態重擊灌注後等 1 秒）', *refunds[:1])
+    bad, matched = [], []
+    for x, d in seconds:
+        near_ops = sorted((r for r in refunds if abs(r.n - x.n) <= 40), key=lambda r: abs(r.n - x.n))
+        if not near_ops:
+            continue
+        mag = near_ops[0].v('mag', 0.0)
+        spent, infused = fnum(d, 'spent', 0.0), fnum(d, 'infused', 0.0)
+        (matched if near(mag, 0.8 * spent, max(0.05, 0.02 * spent)) else bad).append((x, near_ops[0], infused))
+    if bad:
+        x, r, infused = bad[0]
+        return FAIL(f'長流退回 {r.v("mag", 0.0):.2f} 不是維持費 ×0.8（這一秒灌注 {infused:.1f}，不該算進去）', x, r)
+    if not matched:
+        return NODATA('找不到帶灌注那一秒的長流退回（RestoreMagicka ctx=form-second）', *[x for x, _ in seconds[:2]])
+    x, r, infused = matched[0]
+    return PASS(f'{len(matched)} 秒帶灌注（例：灌注 {infused:.1f}）的長流都只退維持費 ×0.8（{r.v("mag", 0.0):.2f}）', x, r)
 
 
 def rate_summary(lines):

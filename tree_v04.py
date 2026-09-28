@@ -69,6 +69,7 @@ NEW_SLOTS = {
     ('noform', 2, 4, '萬寂'): 1,
     ('common', 1, 0, '跳印'): 1,
     ('common', 1, 3, '印潮'): 2,
+    ('common', 0, 4, '灌注'): 1,   # round 29：v0.3 在持續傳奇只用過格 0（永續）
 }
 
 # round 21 新增的 47 個分支 perk EditorID（審過的明列清單；build_v03.new_perk_edids 會跟身分表推出來的集合比對）。
@@ -121,4 +122,5 @@ NEW_PERK_EDIDS = (
     'ESSB_P_noform_2_4_B2',  # 萬寂
     'ESSB_P_common_1_0_B2',  # 跳印
     'ESSB_P_common_1_3_B3',  # 印潮
+    'ESSB_P_common_0_4_B2',  # 灌注（round 29，2026-09-28 新增；不是 round 21 的 47 個之一）
 )

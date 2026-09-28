@@ -971,6 +971,8 @@ NODES = {
         'round 24（N5）照 v0.4 在 DLL：化身，同調三段時 30 秒冷卻（-1 秒／點）完成後的下一次命中，自動觸發當前元素的持續傳奇效果；若該效果屬於被動數值（如絕對零度、深淵），化身改為讓你在接下來 10 秒內視同已取得該效果（讀法見 round 24 決策 12）'),  # 0,4 v0.4 負責：DLL N4
     ('common', '永續'): ('DONE', 'ESSBNodes.HasPerpetual → ESSBController.OnFormClosed → SwitchForm → ESSBNative.SetSync',
         '三段時融斷後保留一段同調（保留量 Papyrus 決定，同調是 DLL 的效果）'),  # 0,4,0 v0.4 負責：Papyrus＋DLL N4
+    ('common', '灌注'): ('DONE', 'DLL native/include/HitMath.h DecideInfuse／RollProc（node::kCommonInfuse，K_infuse）← Plugin.cpp Handle（命中當下的魔力在 hit sink 讀；扣魔在同一個 hit task，走 DrainAllMagicka 同路徑）',
+        'round 29 照 v0.4 §5.2／§2.7：形態開啟時真正的重擊（弓弩潛行射擊）扣最大魔力「灌注成本」%，這一刀的元素附傷法術 ×2，雷改為必定暴擊 2.5；魔力低於成本＋下限不發動；倒地推導的重擊與無形態不算'),  # 0,4,1 v0.4 負責：DLL N2
     ('common', '所有元素附傷'): ('DONE', 'DLL native/include/HitMath.h NodeSum（node::kCommonAll1）＋ESSBNodes.CommonHitMult 鏡像',
         '所有元素附傷 +1%／點'),  # 1,0 v0.4 負責：DLL N2
     ('common', '跳印'): ('DONE', 'DLL native/include/Status.h（node::kCommonJump）',

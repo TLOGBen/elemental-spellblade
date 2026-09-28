@@ -120,6 +120,8 @@ inline constexpr std::uint32_t kEnvThunder = 0x5907;  // ESSB_EnvThunder
 inline constexpr std::uint32_t kProbeStep = 0x5c00;  // ESSB_ProbeStep
 inline constexpr std::uint32_t kPapyrusReady = 0x5e00;  // ESSB_PapyrusReady
 inline constexpr std::uint32_t kHeatBodyFx = 0x5e01;  // ESSB_HeatBodyFx
+inline constexpr std::uint32_t kInfuseCostPct = 0x5f00;  // ESSB_InfuseCostPct
+inline constexpr std::uint32_t kInfuseFloorPct = 0x5f01;  // ESSB_InfuseFloorPct
 inline constexpr std::uint32_t kTrueHudBars = 0x5c01;  // ESSB_TrueHudBars
 inline constexpr std::uint32_t kWeaponGlow = 0x5d00;  // ESSB_WeaponGlow
 inline constexpr std::uint32_t kFreeOpen = 0x5011;  // ESSB_FreeOpen
@@ -518,6 +520,7 @@ inline constexpr BranchId kCommonCarry{12, 0, 0, 0};  // v0.4 common 承接
 inline constexpr BranchId kCommonPerpetual{12, 0, 4, 0};  // v0.4 common 永續
 inline constexpr BranchId kNoFormChainBurst{11, 2, 2, 0};  // v0.4 noform 連斷
 inline constexpr BranchId kNoFormFreeGate{11, 2, 0, 0};  // v0.4 noform 免門檻
+inline constexpr BranchId kCommonInfuse{12, 0, 4, 1};  // v0.4 common 灌注
 inline constexpr NodeId kProcAdept[12] = {kNoNode, {0, 0, 1}, {1, 0, 1}, {2, 0, 1}, {3, 0, 1}, {4, 0, 1}, {5, 0, 1}, {6, 0, 1}, {7, 0, 1}, kNoNode, {9, 0, 1}, {10, 0, 1}};  // [element]; water has none
 inline constexpr NodeId kProcMaster[12] = {kNoNode, {0, 0, 3}, {1, 0, 3}, {2, 0, 3}, {3, 0, 3}, {4, 0, 3}, {5, 0, 3}, {6, 0, 3}, {7, 0, 3}, kNoNode, {9, 0, 3}, {10, 0, 3}};  // [element]; water has none
 inline constexpr NodeId kOpenProc[12] = {kNoNode, {0, 1, 1}, {1, 1, 1}, {2, 1, 1}, {3, 1, 1}, kNoNode, {5, 1, 1}, {6, 1, 1}, {7, 1, 1}, {8, 1, 1}, {9, 1, 1}, {10, 1, 1}};  // [element]; round 22, checked by v0.4 label
@@ -900,6 +903,6 @@ inline constexpr float kUpkeepBasePct = 5.0f;
 inline constexpr float kUpkeepDarkPct = 7.5f;
 inline constexpr float kUpkeepLevelRelief = 0.7f;
 inline constexpr std::string_view elementNames[12] = {"無元素", "火焰", "冰霜", "雷電", "大地", "風", "鮮血", "神聖", "毒素", "水", "黑暗", "星界"};
-inline constexpr char nativeVersion[] = "0.28.1";
+inline constexpr char nativeVersion[] = "0.29.0";
 inline constexpr char addressHash[] = "1d7530d001139ca58f462ea0210a8055868159057ba8b5ebc624fc5e9c4f5e9a";
 }  // namespace essb

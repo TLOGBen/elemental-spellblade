@@ -283,7 +283,7 @@ def run():
     assert set(ids)-set(oldids)==(set(state_schema.stub_ids(json.loads((ROOT/'settings.json').read_text(encoding='utf8'))['state_schema_version']))-set(state_schema.stub_ids(3))) | __import__('build_v03').GUARD_WINDOW_EDIDS | (__import__('build_v03').hit18.new_edids(__import__('build_v03')) | __import__('build_v03').hit19.NEW_EDIDS | set(__import__('build_v03').tree_v04.NEW_PERK_EDIDS))
     config=json.loads((ROOT/'package/Elements Spellblade/MCM/Config/Elements Spellblade/config.json').read_text(encoding='utf8'))
     sliders=[r for p in config['pages'] for r in p['content'] if r.get('type')=='slider']
-    assert len(sliders)==10 and all('預設' in r['text'] for r in sliders)
+    assert len(sliders)==12 and all('預設' in r['text'] for r in sliders)   # round 29: + 灌注成本、灌注下限
     assert any(r.get('action', {}).get('function') == 'RestoreDefaults' for r in config['pages'][1]['content'])
     import build_v03 as b
     records,_=b.read_plugin(b.OUT/b.PLUGIN);by={r.edid:r for r in records}

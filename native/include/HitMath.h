@@ -9,8 +9,9 @@
 //
 // Round 21 (v0.4 trees): the no-form 吸魔量 / 滅法倍率 / 燒魔倍數 lines, 寂滅 and 反擊 (their N2 halves, ruling R5)
 // and the soaked slow's duration node (fixed-duration spells, ruling R6); every node is looked up by v0.4 name.
-// Formula (v0.4 2.7):  D_hit = B x R x G(L) x BaseDamageMult x M_mod x T x C   (M_ext and Res: engine)
+// Formula (v0.4 2.7):  D_hit = B x R x G(L) x BaseDamageMult x M_mod x T x C x K_infuse   (M_ext and Res: engine)
 //   M_mod = (1 + sum of node percentages) x blood curve x blood rage x environment x undead x exorcism x wind sneak
+// Round 29: K_infuse (灌注, v0.4 5.2 common sustain legend branch) -- DecideInfuse below; RollProc applies it.
 // Round 22 (N3): the target-side and status terms (heat, open boost, frozen, holy vulnerability, pressure, ...) come
 // from Status.h ProcTerms as StatusTerms; the Papyrus difference patch (ESSBController.ApplyProc) is gone.
 #include "ManifestData.h"
@@ -91,6 +92,8 @@ struct Tuning {
     std::array<int, 3> syncT{ 5, 15, 30 };  // ESSB_SyncT1..3 (round 23 review: the DLL's sync thresholds read them)
     float frostOpenSlowPct = 25.0f;  // ESSB_FrostOpenSlowPct (round 24: 霜結's slow, the open body is the DLL's)
     float waterOpenStamina = 80.0f;  // ESSB_WaterOpenStamina (round 24: 湧泉)
+    float infuseCostPct = 10.0f;     // ESSB_InfuseCostPct (round 29: 灌注成本, MCM 5..25 % of max magicka)
+    float infuseFloorPct = 30.0f;    // ESSB_InfuseFloorPct (round 29: 灌注下限, MCM 0..60 % of max magicka)
 };
 
 // Round 22 (N3): what the statuses on the target and the player do to each element's proc this hit (Status.h
@@ -107,6 +110,7 @@ struct StatusTerms {
     float critBonus = 0.0f;
     std::array<float, kElementCount + 1> flat{};
     bool breakForm = false;
+    bool infuse = false;   // round 29: 灌注 is on for this hit event (DecideInfuse): K_infuse on every element proc it rolls
 };
 
 struct Attack {
@@ -199,6 +203,7 @@ inline constexpr int kSoakSpellCount = 30;    // soaked slow of 1..30 s (fixed d
 struct Plan {
     std::array<CastStep, kMaxCasts> steps{};
     int count = 0;
+    float infuseK = 1.0f;      // round 29: the K_infuse the main proc took (2, or 1 for lightning's forced crit / no infusion)
     bool consumeEcho = false;  // dispel the player's ESSB_EchoPending effect
     bool consumeRiposte = false;  // dispel the player's ESSB_RiposteWindow effect (反擊 used on this hit)
     // For the log and the debug notice.
@@ -372,6 +377,85 @@ struct Proc {
     bool crit = false;
 };
 
+// ---------------------------------------------------------------- 灌注 (round 29; v0.4 5.2, 2.7 K_infuse)
+// .codex/design-infuse-2026-09-28.md (the user's ruling 1A-7A): with a form open, a true power attack (the melee power flag,
+// a bow / crossbow sneak shot -- never the power a downed target lends) spends 灌注成本 % of your max magicka and doubles
+// this hit's element proc spells; lightning instead crits for sure at the power-attack crit 2.5 (not ×2 on top). The magicka
+// is the hit's (the sink's snapshot); below cost + 灌注下限 % of max nothing happens (no half price); it never leaves you
+// at 0. A cost, not an upkeep: no 維持費 multiplier, no 長流 refund, not in the second's upkeep, no damage multiplier.
+inline constexpr float kInfuseK = 2.0f;        // K_infuse
+inline constexpr float kInfuseCrit = 2.5f;     // lightning: C forced to the power-attack crit, K_infuse back to 1
+inline constexpr float kInfuseKeep = 1.0f;     // 下限 0: an infusion still leaves this much magicka
+
+enum class InfuseSkip : std::uint8_t
+{
+    kNone,       // infused
+    kNoNode,     // no 灌注 node (nothing is logged)
+    kNoForm,     // no form open (the no-form power attack is 滅法)
+    kNoPower,    // not a power attack / not a sneak shot
+    kKnockdown,  // the power came from the downed target only (v0.4 2.1: not an infusion)
+    kRepeat,     // a wind repeat of the same event (shares the event's one charge)
+    kFloor,      // current magicka < cost + floor (or it would leave less than 1 point)
+    kMcm,        // the two MCM globals make no cost (not a number, cost <= 0 or cost + floor > 100 %)
+};
+
+constexpr const char* InfuseSkipName(InfuseSkip skip) noexcept
+{
+    constexpr const char* names[] = { "none", "nonode", "noform", "nopower", "knockdown", "repeat", "floor", "mcm" };
+    return names[static_cast<int>(skip)];
+}
+
+struct Infuse {
+    bool on = false;
+    InfuseSkip skip = InfuseSkip::kNoNode;
+    float cost = 0.0f;   // magicka to spend (max magicka x 灌注成本 %)
+    float floor = 0.0f;  // max magicka x 灌注下限 %
+    float k = 1.0f;      // the K_infuse this event's element procs take (2; lightning 1, its C is forced instead)
+    bool crit = false;   // lightning: the forced crit
+};
+
+// One decision per hit event. `realPower`: the hit's own power flag (bows: the sneak shot); `downed`: the target carries the
+// downed mark (its "counts as a power attack" is not an infusion). `magicka` / `magickaMax`: yours at hit time.
+constexpr Infuse DecideInfuse(bool hasNode, int element, bool realPower, bool downed, float magicka, float magickaMax, const Tuning& t) noexcept
+{
+    Infuse out;
+    if (!hasNode) {
+        return out;
+    }
+    if (!IsElement(element)) {
+        out.skip = InfuseSkip::kNoForm;
+        return out;
+    }
+    if (!realPower) {
+        out.skip = downed ? InfuseSkip::kKnockdown : InfuseSkip::kNoPower;
+        return out;
+    }
+    const float costPct = t.infuseCostPct;
+    const float floorPct = t.infuseFloorPct;
+    if (!(costPct > 0.0f) || !(floorPct >= 0.0f) || !(costPct + floorPct <= 100.0f) || !(magickaMax > 0.0f)) {
+        out.skip = InfuseSkip::kMcm;   // NaN fails every comparison, so it lands here too
+        return out;
+    }
+    out.cost = magickaMax * costPct * 0.01f;
+    out.floor = magickaMax * floorPct * 0.01f;
+    if (magicka < out.cost + out.floor || magicka - out.cost < kInfuseKeep) {
+        out.skip = InfuseSkip::kFloor;
+        return out;
+    }
+    out.on = true;
+    out.skip = InfuseSkip::kNone;
+    out.crit = element == kLightning;
+    out.k = out.crit ? 1.0f : kInfuseK;
+    return out;
+}
+
+// What the hit task takes from your live magicka for a decided infusion: the cost, but never your last point (the live
+// value may have moved since the hit's snapshot -- the magicka is never taken to 0, so no burn-out comes from it).
+constexpr float InfuseSpend(float cost, float current) noexcept
+{
+    return std::clamp(current - kInfuseKeep, 0.0f, std::max(0.0f, cost));
+}
+
 // One element proc: rolls B (and the crit for lightning) and returns D_hit before M_ext / Res.
 template <NodeReader Nodes, RandomSource Rng>
 constexpr Proc RollProc(int element, const Attack& a, const Config& c, const Tuning& t, const PlayerFacts& p,
@@ -388,9 +472,14 @@ constexpr Proc RollProc(int element, const Attack& a, const Config& c, const Tun
     Proc proc;
     proc.magnitude = b * r * TreeG(t, TreeOf(element)) * t.baseDamageMult * (NodeSum(element, a.power, t, nodes) + terms.add[element]) *
                      ElementMultiplier(element, a, t, p, target, nodes, terms);
-    if (element == kLightning && rng.Chance(LightningCritChance(terms.charges) + terms.critBonus)) {
+    if (element == kLightning && terms.infuse) {
+        proc.crit = true;                 // round 29 (灌注): lightning's K_infuse is its forced power-attack crit, not ×2 on top
+        proc.magnitude *= kInfuseCrit;
+    } else if (element == kLightning && rng.Chance(LightningCritChance(terms.charges) + terms.critBonus)) {
         proc.crit = true;
         proc.magnitude *= CritMultiplier(a.power);
+    } else if (terms.infuse) {
+        proc.magnitude *= kInfuseK;       // round 29 (灌注): K_infuse, the element proc spell only
     }
     // Round 27g (0.27.6): the flat part (血刃) is our damage too -- ×ESSB_BaseDamageMult like the rest (no G, no nodes).
     proc.magnitude += terms.flat[element] * t.baseDamageMult;
@@ -498,6 +587,7 @@ constexpr void PlanElementHit(Plan& plan, const Attack& a, const Config& c, cons
     plan.element = element;
     plan.magnitude = proc.magnitude;
     plan.crit = proc.crit;
+    plan.infuseK = terms.infuse && element != kLightning ? kInfuseK : 1.0f;   // round 29: 回聲 reads the proc without it
     plan.Add({ Cast::kProc, proc.magnitude, element, a.power });
     if (element == kLightning) {
         // v0.4 2.1: drain = 50% of the damage override, as its own single-effect spell.

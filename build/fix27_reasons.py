@@ -216,3 +216,43 @@ _28D = {
 }
 for _file, _why in _28D.items():
     NATIVE[_file] = NATIVE.get(_file, R.rstrip('：')) + '；' + _D + _why
+
+# Round 29 (DLL 0.29.0): 灌注 (v0.4 5.2 common sustain legend branch, 2.7 K_infuse; .codex/design-infuse-2026-09-28.md, the
+# user's ruling 1A-7A).
+_29 = '29（0.29.0，灌注）：'
+_R29 = {
+    'native/include/HitMath.h': 'Tuning 的灌注成本／下限；StatusTerms.infuse；Plan.infuseK；DecideInfuse（形態、真重擊、倒地、MCM、成本＋下限、不扣到 0）、'
+                                'InfuseSpend、InfuseSkipName；RollProc 的 K_infuse（只乘附傷法術；雷改強制暴擊 2.5；血刃 flat 不乘）',
+    'native/include/EngineFacts.h': 'ReadTuning 讀 ESSB_InfuseCostPct／ESSB_InfuseFloorPct',
+    'native/include/SelfLayer.h': 'RepeatInfuse（重複段不再判定、不再付）與 RepeatTerms（×0.5、沒有 flat、帶事件的灌注）',
+    'native/include/Timer.h': 'SecondFacts／FormSecond 的 infused 欄（灌注成本另列，維持費、長流、歸零判定都不讀）',
+    'native/include/ManifestData.h': '由 build/fix19_native.py 產生：版本 0.29.0、node::kCommonInfuse、glob::kInfuseCostPct／kInfuseFloorPct',
+    'native/src/Plugin.cpp': 'hit sink 讀命中當下的魔力；Handle 判定一次、屍體模式不付、在同一個 hit task 用 RestoreActorValue kDamage kMagicka 扣魔；'
+                             '重複段用 RepeatInfuse／RepeatTerms；回聲讀未灌注的附傷；[ESSB][hit][L2] 加 infuse／cost、[ESSB][infuse][L4] 花費與 skip 行、'
+                             '[ESSB][second][L2] 加 infused 欄',
+    'native/tests/anchor_test.cpp': 'InfuseAnchors：規格錨點 1～11',
+    'native/tests/timer_test.cpp': 'InfuseTimerChecks：灌注後的那一秒不燃盡、長流只退維持費 ×0.8',
+    'native/tests/hit_pipeline_test.cpp': 'B4 多比對 infuseCostPct／infuseFloorPct 兩個欄位',
+    'native/CMakeLists.txt': '版本 0.29.0',
+    'native/build.py': '灌注的 5 個突變（K_infuse、雷的例外、下限、一次付費、長流不退）',
+    'build/fix19_native.py': 'NATIVE_VERSION 0.29.0；ROUND29_NODES（kCommonInfuse＝common 灌注）；兩個 GLOB 進 globals_ 與 TUNING_GLOBALS；fix29 紀錄',
+    'build/fix29_records.py': '新檔：ESSB_InfuseCostPct（0x5F00，預設 10）、ESSB_InfuseFloorPct（0x5F01，預設 30）',
+    'build/fix29_verify.py': '新檔：節點、ESP 的 perk 與 CSF、兩個 GLOB 與 MCM、回復預設、DLL 的讀取與 log 格式，各帶注入錯誤',
+    'build/fix27_verify.py': '版本 0.29.0',
+    'build/fix27_history_gen.py': 'ESSBState.RestoreTunableDefaults 的 round 29 理由（多重設兩支灌注滑桿）',
+    'build/fix27_history.py': '重新產生（RestoreTunableDefaults 的新 digest 與理由）',
+    'build/fix8_verify.py': '規劃覆蓋節點數 494（多了灌注）',
+    'build/fix12_verify.py': 'MCM 滑桿 12 支',
+    'build/fix13_verify.py': 'MCM 滑桿 12 支；舊版 ESSBState 不碰兩支灌注滑桿；settings 比對略過 infuse_cost_pct／infuse_floor_pct',
+    'build/probe-judge.py': 'VERSION 0.29.0；站 94～99（I-01～I-06）灌注的判讀',
+    'build/probes-all.md': 'G 段：灌注的六站（94～99）',
+    'build_v03.py': 'fix29 紀錄、平衡頁兩支滑桿（5～25%、0～60%）、MCM 檢查 59 個 GLOB／12 支滑桿、fix29_verify 接進建置',
+    'plan_coverage.py': '灌注的覆蓋列（DONE，DLL N2）',
+    'tree_v04.py': '灌注：NEW_SLOTS 格 1、NEW_PERK_EDIDS 加 ESSB_P_common_0_4_B2',
+    'settings.json': 'infuse_cost_pct 10、infuse_floor_pct 30',
+    'build/fix27_native_history_gen.py': '封印涵蓋 build/fix29_records.py 與 build/fix29_verify.py',
+    'build/fix27_reasons.py': 'round 29 的理由表',
+    'build/fix26_verify.py': '站 94～99（I-01～I-06）的手寫樣本，各帶一個會讓判讀 FAIL 的錯誤',
+}
+for _file, _why in _R29.items():
+    NATIVE[_file] = NATIVE.get(_file, R.rstrip('：')) + '；' + _29 + _why

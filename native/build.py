@@ -399,6 +399,18 @@ MUTANTS = [
      'inline constexpr int kMaxStatusOps = 8192;', 'inline constexpr int kMaxStatusOps = 512;'),
     ('B-small: the death curse kills without 冥召\'s marker', 'Status.h', 'anchor',
      '    Writer{ plan, target, Who::kTarget }.Set(StatusKind::kCurseKill, 1.0f, 1.0f);', '    (void)0;'),
+    # Round 29 (灌注, .codex/design-infuse-2026-09-28.md): anchor_test InfuseAnchors / timer_test InfuseTimerChecks.
+    ('29: K_infuse left out of the element proc', 'HitMath.h', 'anchor',
+     'proc.magnitude *= kInfuseK;       // round 29', '(void)0;       // round 29'),
+    ('29: lightning doubled on top of its forced crit (x5)', 'HitMath.h', 'anchor',
+     'proc.magnitude *= kInfuseCrit;', 'proc.magnitude *= kInfuseCrit * kInfuseK;'),
+    ('29: the floor ignored (cost alone is enough)', 'HitMath.h', 'anchor',
+     'if (magicka < out.cost + out.floor || magicka - out.cost < kInfuseKeep) {', 'if (magicka < out.cost || magicka - out.cost < kInfuseKeep) {'),
+    ('29: a wind repeat pays again (not one charge per event)', 'SelfLayer.h', 'anchor',
+     '    again.cost = 0.0f;', '    (void)again.cost;'),
+    ('29: 長流 refunds the infusion as upkeep', 'Timer.h', 'timer',
+     'plan.Push(Amount(Op::kRestoreMagicka, out.spent * n6::kFlowMagickaShare));',
+     'plan.Push(Amount(Op::kRestoreMagicka, (out.spent + f.infused) * n6::kFlowMagickaShare));'),
 ]
 LOAD_DEFERRED = 'load'   # the mutants of this test run in build/fix25_verify.py (check_load), on the written ESP
 

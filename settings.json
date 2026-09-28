@@ -108,6 +108,8 @@
   "mult_drain": 1.0,
   "mult_duration": 1.0,
   "mult_upkeep": 1.0,
+  "infuse_cost_pct": 10.0,
+  "infuse_floor_pct": 30.0,
   "upkeep_base_pct": 5.0,
   "upkeep_dark_pct": 7.5,
   "upkeep_level_relief": 0.7,

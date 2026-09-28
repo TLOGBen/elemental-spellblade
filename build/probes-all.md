@@ -480,6 +480,36 @@
 
 ---
 
+## G 段：round 29（0.29.0）灌注的六站（約 15 分）
+
+共同準備：除錯等級 4；`player.addperk XX0022E1`（灌注）；MCM「平衡」頁「灌注成本」10%、「灌注下限」30%（預設）。卸下加魔力的裝備，`player.setav magicka 400`、`player.restoreav magicka 400`（最大魔力 400：成本 40、下限 120，魔力至少 160 才灌注）。每站之間把魔力回滿。
+
+### 站 94：I-01（灌注：火重擊）
+- **操作**：開火焰，對同一名 NPC 重擊 3 刀（每刀之間讓魔力回到 160 以上，必要時 `player.restoreav magicka 400`）。
+- **log 判定**：三行 `[ESSB][infuse][L4] … spent=40.0 max=400.0`，每行 `after` ＝ `before` − 40、`k=2.0 crit=0`；對應的 `[ESSB][hit][L2] … element=1 … power=1 … infuse=1 cost=40.0`；那一秒的 `second` 行 `dM` 多掉約 40。
+
+### 站 95：I-02（灌注：低於下限）
+- **操作**：火焰形態，`player.damageav magicka 250`（剩 150，低於 40＋120），重擊一刀；然後 `player.restoreav magicka 400`，再重擊一刀。
+- **log 判定**：第一刀 `[ESSB][infuse][L4] … skip=floor magicka=150.0 need=160.0`、沒有 `spent=` 行、那刀的 `[ESSB][hit][L2]` 是 `infuse=0 cost=0.0`；回滿後那刀照常 `spent=40.0`。
+
+### 站 96：I-03（灌注：雷必暴與滿格放電）
+- **操作**：開雷電，普攻到 6 格電荷後重擊一刀；再普攻到滿格（電荷上限）後重擊一刀。
+- **log 判定**：兩刀的 `[ESSB][infuse][L4]` 都是 `k=1.0 crit=1 c=2.5`（雷不再另外 ×2）；`[ESSB][hit][L2] element=3 … power=1 … crit=1 … infuse=1`；滿格那刀照樣有 `ev=Discharge` 的 op（放電與沒灌注時一樣）。
+
+### 站 97：I-04（灌注：倒地普攻）
+- **操作**：讓 NPC 帶上土的「倒地」標記（log 出現 `Apply kind=N3_Downed`，例如大地印記被終焉結算），3 秒內用**普攻**（不要重擊）打它兩刀。
+- **log 判定**：每刀 `[ESSB][infuse][L4] … skip=knockdown`，這一站沒有任何 `spent=` 行（倒地「視為重擊」不灌注、不扣魔）。
+
+### 站 98：I-05（灌注：血形態）
+- **操作**：生命與魔力都回滿，開鮮血，重擊 2 刀。
+- **log 判定**：兩行 `[ESSB][infuse][L4] … spent=40.0`（血形態照扣魔力）；`[ESSB][hit][L2] element=6 … infuse=1`；每刀的 `op=PayHealth ctx=hit` 照血位曲線（滿血時最大生命 8%），不因灌注變多。
+
+### 站 99：I-06（灌注：水形態長流）
+- **操作**：魔力回滿，開流水，重擊一刀後站著等 2 秒；再做一次。
+- **log 判定**：灌注那一秒的 `[ESSB][second][L2] form=9 spent=… infused=40.00`；同一秒 `op=RestoreMagicka ctx=form-second` 的 `mag` ＝ `spent` × 0.8（長流只退維持費，不含灌注的 40）。
+
+---
+
 ## 結果表（判定器產生，這裡只列目視題）
 
 跑完後你只需要回答這些「目視」題（是／否，必要時一句話）：

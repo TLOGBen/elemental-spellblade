@@ -209,6 +209,31 @@ constexpr int MultiTriggerRepeats(const HitStatus& st, const Nodes& nodes)
     return std::min(n4::kMultiMax, n4::kMultiBase + nodes.Rank(node::kWindMulti) / 5) - 1;
 }
 
+// Round 29 (灌注, the design's 5A): a 多段觸發 repetition belongs to the same hit event -- it carries the event's infusion as
+// it is and never decides or pays again (one charge per hit event; every repeat's proc still ×2). skip=repeat in the log.
+constexpr Infuse RepeatInfuse(const Infuse& event) noexcept
+{
+    Infuse again = event;
+    again.cost = 0.0f;
+    if (again.skip != InfuseSkip::kNoNode) {
+        again.skip = InfuseSkip::kRepeat;
+    }
+    return again;
+}
+
+// The terms a 多段觸發 repetition plans with: every damage-type proc ×0.5 (2.6), no flat part (血刃 is the event's), and the
+// event's infusion -- on only when the event itself was infused and paid.
+constexpr StatusTerms RepeatTerms(const StatusTerms& event, const Infuse& again) noexcept
+{
+    StatusTerms out = event;
+    for (float& m : out.mult) {
+        m *= n4::kMultiRepeat;
+    }
+    out.flat = {};
+    out.infuse = event.infuse && again.on;
+    return out;
+}
+
 // One accepted element hit (after PlanHit and PlanStatusHit, on the boards they left). `repeat` = a 多段觸發 repetition:
 // the resource +1s and the dark-star strike happen again, the one-off parts (sync, 極致, 化身, the open) do not.
 template <NodeReader Nodes, RandomSource Rng>

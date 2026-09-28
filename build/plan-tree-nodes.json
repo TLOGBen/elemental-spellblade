@@ -25,8 +25,8 @@
     "tiers": 195,
     "main_nodes": 195,
     "main_rank_perks": 2925,
-    "branch_nodes": 298,
-    "new_branches": 47,
+    "branch_nodes": 299,
+    "new_branches": 48,
     "retired_branches": 49,
     "asserted": "13 trees x 3 routes x 5 tiers"
   },
@@ -7336,6 +7336,16 @@
                     "description": "永續：Z 關閉時若同調三段，融斷後保留一段同調到下一次開形態"
                   },
                   "description_original": "永續：Z 關閉時若同調三段，融斷後保留一段同調到下一次開形態"
+                },
+                {
+                  "order": 1,
+                  "name": "灌注",
+                  "description": "灌注：形態開啟時，每一次重擊（弓弩為潛行射擊）自動消耗最大魔力 10%，這一擊的元素附傷 ×2；雷改為必定暴擊。魔力低於下限時不會發動。倒地目標的攻擊與無形態的重擊不算",
+                  "trigger": "命中",
+                  "owner": "DLL N2",
+                  "slot": 1,
+                  "v03": null,
+                  "description_original": "灌注：形態開啟時，每一次重擊（弓弩為潛行射擊）自動消耗最大魔力 10%，這一擊的元素附傷 ×2；雷改為必定暴擊。魔力低於下限時不會發動。倒地目標的攻擊與無形態的重擊不算"
                 }
               ],
               "retired": [],

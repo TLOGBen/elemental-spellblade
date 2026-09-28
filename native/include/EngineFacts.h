@@ -134,6 +134,8 @@ constexpr Tuning ReadTuning(Global&& global)
     t.syncT = { static_cast<int>(global(glob::kSyncT1)), static_cast<int>(global(glob::kSyncT2)), static_cast<int>(global(glob::kSyncT3)) };
     t.frostOpenSlowPct = global(glob::kFrostOpenSlowPct);   // round 24 (N5)
     t.waterOpenStamina = global(glob::kWaterOpenStamina);
+    t.infuseCostPct = global(glob::kInfuseCostPct);     // round 29 (灌注)
+    t.infuseFloorPct = global(glob::kInfuseFloorPct);
     return t;
 }
 

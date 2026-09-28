@@ -56,4 +56,8 @@ Function RestoreTunableDefaults() Global
 	knob.SetValue(1.0)
 	knob = Game.GetFormFromFile(0x00516D, "Elements Spellblade.esp") as GlobalVariable
 	knob.SetValue(1.0)
+	knob = Game.GetFormFromFile(0x005F00, "Elements Spellblade.esp") as GlobalVariable
+	knob.SetValue(10.0)
+	knob = Game.GetFormFromFile(0x005F01, "Elements Spellblade.esp") as GlobalVariable
+	knob.SetValue(30.0)
 EndFunction

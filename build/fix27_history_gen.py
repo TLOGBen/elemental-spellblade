@@ -118,6 +118,10 @@ _27H = {
     },
     'ESSBMCM.psc': {'ShowNativeStatus': H + '（驗證）：顯示兩個 task 同時執行而放棄的次數（ESSBNative.OverlapCount）'},
 }
+# ---------------------------------------------------------------- round 29 (0.29.0): appended to the reasons above
+_27H['ESSBState.psc'] = {
+    'RestoreTunableDefaults': 'Round 29（0.29.0，灌注）：MCM「回復預設設定」一併重設平衡頁新的「灌注成本」10、「灌注下限」30（由 build_v03.py 從 settings.json 產生）',
+}
 for _script, _rows in _27H.items():
     for _fn, _why in _rows.items():
         _old = REASONS.setdefault(_script, {}).get(_fn)

@@ -1462,6 +1462,7 @@ import fix25_records as hit25
 import fix26_records as hit26
 import fix27_records as hit27
 import fix28_records as hit28
+import fix29_records as hit29   # round 29: 灌注's two MCM globals
 import fix27_text as hit27text   # round 27e: player text without the design notes
 import tree_v04
 
@@ -1585,6 +1586,7 @@ def build_esp(plan):
     hit27.add_records(sys.modules[__name__], add, fx_ph)          # round 27 (G13): the weapon glow's ENCH, the open flash, 武器光
     hit28.add_records(sys.modules[__name__], add, ref('Skyrim.esm', hit22.HEAT_BODY_SHADER),
                       ref('Skyrim.esm', hit22.HEAT_BODY_ART))       # round 27h / 28: Papyrus ready, the body fire's switch, 三重奏's cooldown
+    hit29.add_records(sys.modules[__name__], add, settings)       # round 29: 灌注成本／灌注下限
 
     # -------------------------------------------------------------- KYWD
     add('KYWD', ID_KW_PROC, 'ESSB_Proc', [])
@@ -3250,6 +3252,17 @@ def write_mcm(manifest):
                      formatString='{1} 倍', defaultValue=settings['mult_upkeep'])
     upkeep['help'] = '形態魔力維持費與血形態維持扣血；0 為免費。血重擊費不變，魔力耗盡仍有 2 秒寬限後關閉。'
     balance.append(upkeep)
+    # round 29 (v0.4 6.2): 灌注 -- its cost and its floor, in % of your max magicka (never the upkeep multiplier)
+    low, high, step = hit29.COST_RANGE
+    infuse_cost = control(hit29.COST_GLOBAL, '灌注成本', 'slider', min=low, max=high, step=step,
+                          formatString='{0}%', defaultValue=settings[hit29.COST_KEY])
+    infuse_cost['help'] = '「灌注」節點：每次灌注重擊扣最大魔力的百分比。不隨等級或點數折減，不吃維持費倍率。'
+    balance.append(infuse_cost)
+    low, high, step = hit29.FLOOR_RANGE
+    infuse_floor = control(hit29.FLOOR_GLOBAL, '灌注下限', 'slider', min=low, max=high, step=step,
+                           formatString='{0}%', defaultValue=settings[hit29.FLOOR_KEY])
+    infuse_floor['help'] = '魔力低於「灌注成本＋這個百分比的最大魔力」時不灌注（不扣、不半價）。0 時扣完至少留 1 點。'
+    balance.append(infuse_floor)
     trees = [
         {'type': 'hiddenToggle', 'groupControl': 1,
          'valueOptions': {'sourceType': 'PropertyValueBool', 'propertyName': 'AllowTreeEditing', 'defaultValue': False}},
@@ -3383,7 +3396,8 @@ def validate_mcm(records, written):
     expected_globals |= {'ESSB_TrueHudBars'}   # round 26c (T2)
     expected_globals |= {'ESSB_WeaponGlow'}    # round 27 (G13)
     expected_globals |= {hit28.HEAT_BODY_FX_GLOBAL}   # round 27h (review 1-3)
-    assert glob_edids == expected_globals and len(glob_edids) == 57
+    expected_globals |= hit29.new_edids()             # round 29: 灌注成本／灌注下限
+    assert glob_edids == expected_globals and len(glob_edids) == 59
     assert functions == {'RespecCurrent', 'RespecAll', 'DumpRegistry', 'RestoreDefaults', 'ReleaseDivineProtection', 'ApplyNativeSetting', 'ShowNativeStatus'}
     rows = config['pages'][2]['content']
     tree_rows = [r for r in rows if r.get('id') in expected_globals]
@@ -3393,12 +3407,14 @@ def validate_mcm(records, written):
     assert rows[0]['type'] == 'hiddenToggle' and rows[0]['valueOptions']['propertyName'] == 'AllowTreeEditing'
     general = {r['id']: r for page in config['pages'][:2] for r in page['content']}
     assert [p['pageDisplayName'] for p in config['pages']] == ['一般', '平衡', '技能樹', '熱鍵']
-    assert [r['text'].split('（')[0] for r in config['pages'][1]['content'] if r.get('type') == 'slider'] == ['傷害倍率', '節點倍率', '持續傷害', '冷卻', '回復', '削減', '持續時間', '維持費']
+    assert [r['text'].split('（')[0] for r in config['pages'][1]['content'] if r.get('type') == 'slider'] == ['傷害倍率', '節點倍率', '持續傷害', '冷卻', '回復', '削減', '持續時間', '維持費', '灌注成本', '灌注下限']
     for row in config['pages'][1]['content']:
         if row.get('type') != 'slider':
             continue
         v = row['valueOptions']
         bounds = (0.0, 3.0, 0.1) if row['id'] == 'ESSB_MultUpkeep' else \
+            hit29.COST_RANGE if row['id'] == hit29.COST_GLOBAL else \
+            hit29.FLOOR_RANGE if row['id'] == hit29.FLOOR_GLOBAL else \
             (*NODE_SCALE_RANGE, 0.05) if row['id'] == 'ESSB_NodeScale' else \
             (0.25, 3.0, 0.05)   # round 27 (G15): the cooldown slider reaches 3.0 as the others (v0.4 6.2)
         assert (v['min'], v['max'], v['step']) == bounds
@@ -3419,8 +3435,8 @@ def validate_mcm(records, written):
             actual = struct.unpack('<f', by_edid[row['id']].d['FLTV'])[0]
             assert actual == expected, ('MCM/GLOB defaults mismatch', row['id'], actual, expected)
             defaults_checked += 1
-    assert defaults_checked == 10
-    print('MCM DEFAULTS ok: all 10 tunable sliders equal ESP GLOB float32 defaults from settings.json')
+    assert defaults_checked == 12   # round 29: + 灌注成本、灌注下限
+    print('MCM DEFAULTS ok: all 12 tunable sliders equal ESP GLOB float32 defaults from settings.json')
     quest = by_edid['ESSB_MCMQuest']
     expected_vmad = vmad('ESSBMCM', {'Controller': (1, own(ID_QUEST)), 'ModName': (2, 'Elements Spellblade')}) + b'\x02' + struct.pack('<3H', 0, 0, 1) + obj(own(ID_MCM_QUEST), 0) + struct.pack('<3H', 5, 2, 1) + script('SKI_PlayerLoadGameAlias', {})
     assert quest.d['ALFR'] == I(ref('Skyrim.esm', 0x14))
@@ -3559,6 +3575,7 @@ def main():
     runpy.run_path(str(WORK / 'build/fix26_verify.py'))['run'](sys.modules[__name__])   # round 26: the probe log, the judge and the sheet, samples, seals
     runpy.run_path(str(WORK / 'build/fix27_verify.py'))['run'](sys.modules[__name__])   # round 27: visuals, sources, version, judge, mutants, seals
     runpy.run_path(str(WORK / 'build/fix28_verify.py'))['run'](sys.modules[__name__])   # round 27h / 28: the reviews' rules, budgets, hazards
+    runpy.run_path(str(WORK / 'build/fix29_verify.py'))['run'](sys.modules[__name__])   # round 29: 灌注 (node, perk, MCM, DLL)
     runpy.run_path(str(WORK / 'build/fix18_probes.py'))['run'](sys.modules[__name__])
     perks = sum(1 for r in check if r.sig == 'PERK')
     print(f'READBACK ok: masters={meta["masters"]} records={len(check)} manifest={written["record_count"]} '

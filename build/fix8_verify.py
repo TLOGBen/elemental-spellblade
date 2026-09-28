@@ -220,7 +220,7 @@ def run():
     coverage=json.loads(text('build/plan-coverage.json'))
     addition=[r for r in coverage['rows'] if r['section']=='fix8 addition']
     assert len(addition)==1 and addition[0]['kind']=='mechanism' and addition[0]['edid']=='-'
-    assert coverage['totals']['unmapped']==0 and coverage['totals']['nodes']==493   # v0.4: 195 main lines + 298 branches (round 21)
+    assert coverage['totals']['unmapped']==0 and coverage['totals']['nodes']==494   # v0.4: 195 main lines + 299 branches (round 21's 298 + round 29's 灌注)
 
     # Immutable files and original encodings; only exact authorized source paths may differ.
     hashes=json.loads(text('build/fix8-scope-before.json')); changed=[]

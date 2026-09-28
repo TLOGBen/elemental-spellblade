@@ -515,7 +515,7 @@ int GroupB(const json& wiring)
             { "slowCapPct", t.slowCapPct }, { "wetSlowPct", t.wetSlowPct }, { "waterClearStamina", t.waterClearStamina },
             { "seizeMaxPct", t.seizeMaxPct }, { "syncStage", float(t.syncStage) }, { "prevElement", float(t.prevElement) },
             { "twinElement", float(t.twinElement) }, { "syncT1", float(t.syncT[0]) }, { "syncT2", float(t.syncT[1]) },
-            { "syncT3", float(t.syncT[2]) } };
+            { "syncT3", float(t.syncT[2]) }, { "infuseCostPct", t.infuseCostPct }, { "infuseFloorPct", t.infuseFloorPct } };   // round 29
         for (const auto& [field, value] : fields) {
             Check(value == at(field), std::string("B4: ") + field);
             ++cases;

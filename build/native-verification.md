@@ -598,3 +598,12 @@ TrueHUD 資源條的稽核（T1）找到的具體問題：
 - **F7 水臨強化冷卻**：`Reactions.h AdventCooldown`（10 秒，執行時鐘），`FormEnterWork` 把是否可用交給 `PlanAdvent`（`BodyInputs.waterAdventReady`），發動才開始冷卻；冷卻中整個水臨強化（淨化、回魔、浸濕）都不做，除錯等級 4 記 `[ESSB][advent][L4] water-plus cooldown left=<秒>`；讀檔／新遊戲歸零。錨點 WaterAdventCooldownAnchors（0 秒發動、5 秒不發動且剩 5 秒、10.5 秒再發動；冰臨強化沒有冷卻），4 個突變。
 - **F6**：兩個檔沒有刪掉（刪檔被權限擋下）；見實作紀錄。
 - 建置：native/build.py exit 0（ctest 9/9、突變 132/132、LIFETIME NET ok、PDB ok：build/pdb/ElementsSpellblade-0.28.1.pdb，DLL sha256 c15d6c73…）；build_v03.py exit 0（FIX25 LOAD ok、FIX27 ok、FIX28 ok，fix28 注入錯誤 27/27）。
+
+## Round 29（DLL 0.29.0）：灌注
+
+- **扣魔的路**：灌注的成本在 hit task 裡用 `ActorValueOwner::RestoreActorValue(ACTOR_VALUE_MODIFIER::kDamage, ActorValue::kMagicka, -cost)`，跟 round 25 的 `DrainAllMagicka`（沉默鎖零）同一個呼叫、同一個執行緒，不另外施放法術；扣之前讀即時魔力，最多扣到剩 1 點（`HitMath.h InfuseSpend`），所以灌注不會讓魔力歸零、不會啟動魔力歸零 2 秒關形態。
+- **命中當下的魔力**：hit sink 讀你的 `GetActorValue(kMagicka)` 與最大魔力（永久值＋暫時修正，`MaxOf`），跟 round 27（G10）在 sink 讀目標生命同一種讀法（只讀 actor value，不走效果清單、不讀裝備）；下限判定用這個值，扣魔用 task 當下的值。
+- **一刀一次**：判定（`DecideInfuse`）只在 `Handle` 呼叫一次；風的多段觸發用 `RepeatInfuse`／`RepeatTerms` 帶事件的結果，不再判定、不再扣；雙生、餘響、極致都是同一個 StatusTerms。
+- **倍率只進附傷法術**：K_infuse 只乘 `RollProc` 的強度覆寫值（在血刃 flat 段之前）；雷改成強制暴擊 ×2.5、K 回 1。開印／終焉／融斷／放電／百分比傷害與層數的計畫（Status.h、Reactions.h、SelfLayer.h）不讀這個旗標。
+- **不是維持費**：每秒的 `PlanFormSecond` 的維持費、長流退回、魔力歸零判定都不讀灌注；灌注的量只當 log 欄 `infused=` 另列（task 間用 atomic 累加，每秒取走歸零）。
+- 版本 0.29.0；PDB build/pdb/ElementsSpellblade-0.29.0.pdb。未實測（探針卷站 94～99）。

@@ -26,6 +26,7 @@ import fix25_records as hit25
 import fix26_records as hit26
 import fix27_records as hit27
 import fix28_records as hit28
+import fix29_records as hit29
 import fix20_fixture
 import fix22_fixture
 import fix23_fixture
@@ -37,13 +38,13 @@ import fix23_reference as _ref23
 import fix24_reference as _ref24
 import fix25_reference as _ref25
 NATIVE = ROOT / 'native'
-NATIVE_VERSION = '0.28.1'
+NATIVE_VERSION = '0.29.0'
 NATIVE_HIT = 0x52d1
 NATIVE_WANTED = 0x52d2
 NATIVE_GLOBALS = {'ESSB_NativeHit', 'ESSB_NativeWanted'}      # round 19: the MCM shows both
 NEW_EDIDS = (NATIVE_GLOBALS | hit20.new_edids() | hit21.new_edids() | hit22.new_edids() | hit23.new_edids() |
              hit24.new_edids() | hit25.new_edids() | hit26.new_edids() | hit27.new_edids() |
-             hit28.new_edids())   # every record the native slices added
+             hit28.new_edids() | hit29.new_edids())   # every record the native slices added
 DEPS = {
     'CommonLibSSE-NG': ('https://github.com/CharmedBaryon/CommonLibSSE-NG', 'b93280e832f263dbef44e44cbe2936622a02f91a'),
     'spdlog': ('https://github.com/gabime/spdlog', '27cb4c76708608465c413f6d0e6b8d99a4d84302'),
@@ -73,11 +74,13 @@ ROUND27_NODES = {'kCommonTwin': ('common', '雙生'),
                  # OnFormClosed and ESSBNoForm.OnBurst): 承接, 永續, 連斷, 免門檻.
                  'kCommonCarry': ('common', '承接'), 'kCommonPerpetual': ('common', '永續'),
                  'kNoFormChainBurst': ('noform', '連斷'), 'kNoFormFreeGate': ('noform', '免門檻')}
+# Round 29: 灌注 (v0.4 5.2 common sustain legend branch) -- HitMath.h DecideInfuse / RollProc's K_infuse.
+ROUND29_NODES = {'kCommonInfuse': ('common', '灌注')}
 NODE_IDENTITY = (dict(_ref.NODE_NAMES) | dict(_ref22.NODE_NAMES) | dict(_ref23.NODE_NAMES) |   # round 23 (N4): the self layer's
                  dict(_ref24.NODE_NAMES) |                                                         # round 24 (N5): the bodies'
-                 dict(_ref25.NODE_NAMES) | ROUND27_NODES)                                          # round 25 (N6): the timer's
+                 dict(_ref25.NODE_NAMES) | ROUND27_NODES | ROUND29_NODES)                          # round 25 (N6): the timer's
 assert len(NODE_IDENTITY) == (len(_ref.NODE_NAMES) + len(_ref22.NODE_NAMES) + len(_ref23.NODE_NAMES) + len(_ref24.NODE_NAMES) +
-                              len(_ref25.NODE_NAMES) + len(ROUND27_NODES)), \
+                              len(_ref25.NODE_NAMES) + len(ROUND27_NODES) + len(ROUND29_NODES)), \
     'a node constant is named twice'
 ELEMENT_SHORT = ['火', '冰', '雷', '土', '風', '血', '聖', '毒', '水', '暗', '星']
 TREE_IDS = ['fire', 'frost', 'lightning', 'earth', 'wind', 'blood', 'divine', 'poison', 'water', 'darkness', 'astral']
@@ -267,6 +270,8 @@ def globals_(b):
     # Round 27h: the Papyrus half's readiness (the DLL holds switches until 1) and the body fire's switch (logged at L3).
     ids[hit28.PAPYRUS_READY_GLOBAL] = hit28.papyrus_ready_id()
     ids[hit28.HEAT_BODY_FX_GLOBAL] = hit28.heat_body_fx_id()
+    for name in (hit29.COST_GLOBAL, hit29.FLOOR_GLOBAL):   # round 29: 灌注成本／灌注下限 (Tuning, read at hit time)
+        ids[name] = hit29.global_id(name)
     ids[hit26.TRUEHUD_GLOBAL] = hit26.truehud_id()          # round 26c: the TrueHUD bars switch
     ids[hit27.WEAPON_GLOW_GLOBAL] = hit27.glow_id()          # round 27d: 形態光圈 (the ring watch logs it)
     ids['ESSB_FreeOpen'] = b.ID_MECH_GLOB + mech.index('ESSB_FreeOpen')
@@ -288,6 +293,7 @@ TUNING_GLOBALS = {
     'multDot': 'ESSB_MultDot', 'poisonDotK': 'ESSB_PoisonDotK', 'bleedDotK': 'ESSB_BleedDotK',
     'syncT1': 'ESSB_SyncT1', 'syncT2': 'ESSB_SyncT2', 'syncT3': 'ESSB_SyncT3',
     'frostOpenSlowPct': 'ESSB_FrostOpenSlowPct', 'waterOpenStamina': 'ESSB_WaterOpenStamina',   # round 24 (N5)
+    'infuseCostPct': 'ESSB_InfuseCostPct', 'infuseFloorPct': 'ESSB_InfuseFloorPct',            # round 29 (灌注)
 }
 
 

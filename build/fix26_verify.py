@@ -312,8 +312,93 @@ def s_e01(fault):
     return L
 
 
+# Round 29 (灌注): stations 94-99 -- the DLL's raw lines ([ESSB][infuse][L4], [ESSB][hit][L2], [ESSB][second][L2]) and T ops.
+def infuse_spend(before, spent=40.0, k=2.0, crit=0, c=1.0, hit=None):
+    return (f'[ESSB][infuse][L4] FF000D8A spent={spent:.1f} max=400.0 before={before:.1f} after={before - spent:.1f} floor=120.0 '
+            f'k={k:.1f} crit={crit} hit={before if hit is None else hit:.1f} c={c:.1f}')
+
+
+def hit_l2(element, infuse, cost, crit=0, power=1):
+    return (f'[ESSB][hit][L2] FF000D8A element={element} weapon=1 power={power} sneak=0 magnitude=40.00 crit={crit} siphon=0.00 '
+            f'burned=0.00 casts=1 opened=0 cut=0 infuse={infuse} cost={cost:.1f}')
+
+
+def s_i01(fault):
+    L = Log()
+    L.step(94)
+    for i in range(3):
+        L.raw(infuse_spend(400.0, spent=40.0 if not (fault and i == 1) else 20.0))
+        L.raw(hit_l2(1, 1, 40.0 if not (fault and i == 1) else 20.0))
+        L.wait(2000)
+    return L
+
+
+def s_i02(fault):
+    L = Log()
+    L.step(95)
+    if fault:
+        L.raw(infuse_spend(150.0))   # paid below cost + floor
+    else:
+        L.raw('[ESSB][infuse][L4] FF000D8A skip=floor magicka=150.0 need=160.0')
+    L.raw(hit_l2(1, 1 if fault else 0, 40.0 if fault else 0.0))
+    L.wait(2000)
+    L.raw(infuse_spend(400.0))
+    L.raw(hit_l2(1, 1, 40.0))
+    return L
+
+
+def s_i03(fault):
+    L = Log()
+    L.step(96)
+    for full in (False, True):
+        L.raw(infuse_spend(400.0, k=2.0 if fault else 1.0, crit=1, c=2.5))
+        L.raw(hit_l2(3, 1, 40.0, crit=1))
+        if full:
+            L.t('op', op('hit', 'Noop', 'target').replace(' on=', ' ev=Discharge args=11|1|1.5|2.5|0|0|0|0 on='))
+        L.wait(2000)
+    return L
+
+
+def s_i04(fault):
+    L = Log()
+    L.step(97)
+    L.t('op', op('settle', 'Apply', 'target', 'N3_Downed', mag=1, sec=3))
+    for _ in range(2):
+        L.raw('[ESSB][infuse][L4] FF000D8A skip=knockdown magicka=400.0 need=0.0')
+        if fault:
+            L.raw(infuse_spend(400.0))
+        L.raw(hit_l2(4, 0, 0.0, power=1))
+        L.wait(1000)
+    return L
+
+
+def s_i05(fault):
+    L = Log()
+    L.step(98)
+    for h in (1000.0, 920.0):
+        L.raw(infuse_spend(400.0))
+        L.raw(hit_l2(6, 1, 40.0))
+        L.t('op', op('hit', 'PayHealth', 'you', mag=(80.0 if not fault else 120.0) * h / 1000.0, on=A('Prisoner', YOU, h=h)))
+        L.wait(2000)
+    return L
+
+
+def s_i06(fault):
+    L = Log()
+    L.step(99)
+    for _ in range(2):
+        L.raw(infuse_spend(400.0))
+        L.raw(hit_l2(9, 1, 40.0))
+        L.wait(1000)
+        L.raw('[ESSB][second][L2] form=9 spent=6.00 bled=0.00 flow=0.0460 allies=0 close=0 storm=0 infused=40.00')
+        L.t('op', op('form-second', 'RestoreMagicka', 'you', mag=(4.8 if not fault else 36.8), on=A('Prisoner', YOU, m=354.0)))
+        L.wait(2000)
+    return L
+
+
 HAND = {'SETUP-1': s_setup, 'A-01': s_a01, 'A-06': s_a06, 'A-10': s_a10, 'A-11': s_a11, 'A-12': s_a12, 'B-08': s_b08, 'B-13': s_b13,
-        'C-01': s_c01, 'D-01': s_d01, 'D-24': s_d24, 'E-01': s_e01}
+        'C-01': s_c01, 'D-01': s_d01, 'D-24': s_d24, 'E-01': s_e01,
+        'I-01': s_i01, 'I-02': s_i02, 'I-03': s_i03, 'I-04': s_i04, 'I-05': s_i05, 'I-06': s_i06}   # round 29 (灌注)
 
 # One mutation of the native sample per step (the renumbered text): (step, old, new, count) -- each must turn PASS into FAIL.
 NATIVE_FAULTS = {

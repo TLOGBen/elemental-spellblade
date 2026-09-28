@@ -185,6 +185,7 @@ struct SecondFacts {
     float stamina = 0.0f;
     float staminaMax = 0.0f;
     bool thunder = false;        // ESSB_EnvThunder (2.10 雷雨), as the last environment check wrote it
+    float infused = 0.0f;        // round 29: magicka 灌注 took since the last second -- a cost, never this second's upkeep
 };
 
 // An ally 長河 reaches (op member `at`, 1..).
@@ -200,6 +201,7 @@ struct FormSecond {
     float flow = 0.0f;       // 長流's fraction this second (0 outside the water form)
     bool closing = false;    // 魔力歸零 2 秒: the form closes (ESSB_Close -> Papyrus CloseForm)
     bool charged = false;    // 雷雨 gave a charge
+    float infused = 0.0f;    // round 29: 灌注's cost since the last second, reported beside the upkeep (never in `spent`)
 };
 
 template <NodeReader Nodes, std::size_t N>
@@ -208,6 +210,7 @@ constexpr FormSecond PlanFormSecond(StatusPlan& plan, Board& me, const SecondFac
 {
     using K = StatusKind;
     FormSecond out;
+    out.infused = std::max(0.0f, f.infused);   // round 29: its own column; the upkeep, 長流 and the zero check never read it
     const Tuning& t = *in.tuning;
     const Writer pw{ plan, me, Who::kPlayer };
     if (!IsElement(f.form)) {
@@ -253,6 +256,7 @@ constexpr FormSecond PlanFormSecond(StatusPlan& plan, Board& me, const SecondFac
                 plan.Push(Amount(Op::kRestoreStamina, f.staminaMax * out.flow * t.multRecovery));
             }
             // Round 28 (F11): 80% of the magicka actually spent this second (a nearly empty pool no longer refunds the full fee).
+            // Round 29: the upkeep only -- 灌注's cost (f.infused) is a price, not an upkeep: 長流 never refunds it.
             if (out.spent > 0.0f) {
                 plan.Push(Amount(Op::kRestoreMagicka, out.spent * n6::kFlowMagickaShare));
             }

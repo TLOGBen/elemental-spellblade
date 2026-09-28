@@ -4,7 +4,7 @@
     "Skyrim.esm"
   ],
   "esl_flagged": false,
-  "record_count": 5340,
+  "record_count": 5343,
   "next_object_id": "00601A",
   "allocation": [
     {
@@ -7489,6 +7489,16 @@
       "id": "005E04",
       "formid": "01005E04",
       "type": "SPEL"
+    },
+    "ESSB_InfuseCostPct": {
+      "id": "005F00",
+      "formid": "01005F00",
+      "type": "GLOB"
+    },
+    "ESSB_InfuseFloorPct": {
+      "id": "005F01",
+      "formid": "01005F01",
+      "type": "GLOB"
     },
     "ESSB_Proc": {
       "id": "000830",
@@ -25438,6 +25448,11 @@
     "ESSB_P_common_0_4_B1": {
       "id": "0022E0",
       "formid": "010022E0",
+      "type": "PERK"
+    },
+    "ESSB_P_common_0_4_B2": {
+      "id": "0022E1",
+      "formid": "010022E1",
       "type": "PERK"
     },
     "ESSB_P_common_1_0_M1": {

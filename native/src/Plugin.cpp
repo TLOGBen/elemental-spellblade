@@ -283,6 +283,7 @@ struct State {
     float stepSeen = -1.0f;                                          // ESSB_ProbeStep as last seen (-1: not yet)
     bool secondRead = false;
     std::array<float, 3> secondSeen{};                               // your health / magicka / stamina at the last second
+    std::atomic<float> infusedSince{ 0.0f };                         // round 29: magicka 灌注 took since the last second (the log)
     bool traceWasOn = false;
 };
 
@@ -2344,14 +2345,16 @@ std::string_view ProcName(int element, bool power)
     return row ? row->name : std::string_view("?");
 }
 
-void Report(const essb::Plan& plan, const essb::Attack& attack, int weaponType, const RE::Actor& target, const essb::HitStatus& status)
+void Report(const essb::Plan& plan, const essb::Attack& attack, int weaponType, const RE::Actor& target, const essb::HitStatus& status,
+    bool infused, float infuseCost)
 {
     if (state.forms.debug->value < 2.0f) {
         return;
     }
-    Logf("[ESSB][hit][L2] %08X element=%d weapon=%d power=%d sneak=%d magnitude=%.2f crit=%d siphon=%.2f burned=%.2f casts=%d opened=%d cut=%d",
+    // Round 29: infuse=1 when 灌注 fired on this hit event, cost = the magicka it took (0 otherwise).
+    Logf("[ESSB][hit][L2] %08X element=%d weapon=%d power=%d sneak=%d magnitude=%.2f crit=%d siphon=%.2f burned=%.2f casts=%d opened=%d cut=%d infuse=%d cost=%.1f",
         target.GetFormID(), plan.element, weaponType, int(attack.power), int(attack.sneakAttack), plan.magnitude,
-        int(plan.crit), plan.siphon, plan.burned, plan.count, int(status.opened), status.cutFrom);
+        int(plan.crit), plan.siphon, plan.burned, plan.count, int(status.opened), status.cutFrom, int(infused), infuseCost);
     if (!ProcNoticeDue()) {
         return;
     }
@@ -2454,7 +2457,32 @@ struct HitSeen {
     bool targetCasting = false;
     float targetHealth = 0.0f;
     essb::Board board{};
+    // Round 29 (灌注): your magicka at hit time (G10's way) -- the infusion's floor is judged on it.
+    float magicka = 0.0f;
+    float magickaMax = 0.0f;
 };
+
+// Round 29 (灌注): one infusion's cost, on the DrainAllMagicka path (RestoreActorValue kDamage kMagicka -cost) in the hit
+// task that casts the doubled procs. Never your last point (HitMath.h InfuseSpend). Not an upkeep: nothing here touches the
+// per-second work, its 維持費 multiplier or 長流. Returns what was taken; `before` / `after` are the live values.
+float SpendInfuse(RE::PlayerCharacter& player, float cost, float& before, float& after)
+{
+    auto* values = player.AsActorValueOwner();
+    before = values->GetActorValue(RE::ActorValue::kMagicka);
+    const float spend = essb::InfuseSpend(cost, before);
+    if (spend > 0.0f) {
+        values->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kMagicka, -spend);
+    }
+    after = values->GetActorValue(RE::ActorValue::kMagicka);
+    return spend;
+}
+
+void LogInfuseSkip(const RE::Actor& target, essb::InfuseSkip skip, float magicka, float need) noexcept
+{
+    if (state.forms.debug->value >= 4.0f && skip != essb::InfuseSkip::kNoNode) {
+        Logf("[ESSB][infuse][L4] %08X skip=%s magicka=%.1f need=%.1f", target.GetFormID(), essb::InfuseSkipName(skip), magicka, need);
+    }
+}
 
 // Round 27 (G6): the corpse mode's scope on the task's thread.
 struct CorpseScope {
@@ -2511,6 +2539,29 @@ void Handle(const HitSeen& seen, RE::PlayerCharacter& playerRef, RE::Actor& targ
     bool consumeStreak = false;
     if (attack.element == essb::kWind) {
         terms.windSneak = essb::WindSneakExtra(attack.sneakAttack, selfBoard, nodes, consumeStreak);
+    }
+    // Round 29 (灌注): one decision per hit event, on the sink's magicka; the cost is paid here, before the doubled casts.
+    // A killing blow's proc lands on nothing (corpse mode, G6): nothing to double, so nothing is paid (skip=corpse).
+    const essb::Infuse infuse = essb::DecideInfuse(nodes.Has(essb::node::kCommonInfuse), attack.element, realPower,
+        targetBoard.Has(K::kDowned), seen.magicka, seen.magickaMax, c.tuning);
+    float infuseSpent = 0.0f;
+    if (infuse.on && corpse) {
+        if (state.forms.debug->value >= 4.0f) {
+            Logf("[ESSB][infuse][L4] %08X skip=corpse magicka=%.1f need=%.1f", target->GetFormID(), seen.magicka, infuse.cost + infuse.floor);
+        }
+    } else if (infuse.on) {
+        float before = 0.0f;
+        float after = 0.0f;
+        infuseSpent = SpendInfuse(*player, infuse.cost, before, after);
+        state.infusedSince.fetch_add(infuseSpent);
+        terms.infuse = true;
+        if (state.forms.debug->value >= 4.0f) {
+            Logf("[ESSB][infuse][L4] %08X spent=%.1f max=%.1f before=%.1f after=%.1f floor=%.1f k=%.1f crit=%d hit=%.1f c=%.1f",
+                target->GetFormID(), infuseSpent, seen.magickaMax, before, after, infuse.floor, infuse.k, int(infuse.crit), seen.magicka,
+                infuse.crit ? essb::kInfuseCrit : 1.0f);
+        }
+    } else {
+        LogInfuseSkip(*target, infuse.skip, seen.magicka, infuse.cost + infuse.floor);
     }
     // 雙生: a left-hand hit inside the twin window marks with the previous form's element (Papyrus did the same).
     int markElement = attack.element;
@@ -2582,7 +2633,7 @@ void Handle(const HitSeen& seen, RE::PlayerCharacter& playerRef, RE::Actor& targ
             essb::Crowd& cw = *crowd.crowd;
             essb::PlanHitBodies(statusPlan, cw, selfBoard, bin, markElement, attack.power, 0, nodes, Rng());
             if (echo) {
-                essb::PlanEcho(statusPlan, cw, 0, plan.magnitude, c.in, nodes);
+                essb::PlanEcho(statusPlan, cw, 0, plan.magnitude / plan.infuseK, c.in, nodes);   // round 29: 回聲 is not infused
             }
             if (surge) {
                 essb::PlanSurge(statusPlan, cw, selfBoard, bin, markElement, nodes, Rng());   // 印潮
@@ -2597,16 +2648,24 @@ void Handle(const HitSeen& seen, RE::PlayerCharacter& playerRef, RE::Actor& targ
         Executor(*player, target, c.tuning, &crowd.actors).Run(statusPlan);
         // 風的多段觸發 (2.6): the takeover element's hit effects repeat; damage-type procs ×0.5 each, rolled again.
         for (int i = 0; i < result.repeats && !target->IsDead(); ++i) {
-            essb::StatusTerms again = terms;
-            for (float& m : again.mult) {
-                m *= essb::n4::kMultiRepeat;
+            // Round 29 (灌注): a repeat shares the event's one charge (SelfLayer.h RepeatInfuse: nothing left to pay) and
+            // carries its K_infuse (RepeatTerms, with the ×0.5 and no flat part as before).
+            const essb::Infuse againInfuse = essb::RepeatInfuse(infuse);
+            if (againInfuse.on && againInfuse.cost > 0.0f && terms.infuse) {
+                float before = 0.0f;
+                float after = 0.0f;
+                infuseSpent += SpendInfuse(*player, againInfuse.cost, before, after);   // never: RepeatInfuse leaves no cost
             }
-            again.flat = {};
+            const essb::StatusTerms again = essb::RepeatTerms(terms, againInfuse);
             essb::PlayerFacts once = c.player;
             once.echoPending = false;
             once.twinWindow = false;
             once.riposteWindow = false;
             TraceCtx repeatCtx("repeat");   // round 26
+            if (againInfuse.skip != essb::InfuseSkip::kNoNode && state.forms.debug->value >= 4.0f) {
+                Logf("[ESSB][infuse][L4] %08X skip=%s k=%.1f", target->GetFormID(), essb::InfuseSkipName(againInfuse.skip),
+                    again.infuse ? againInfuse.k : 1.0f);
+            }
             const essb::Plan repeatHit = essb::PlanHit(attack, kConfig, c.tuning, once, judged, nodes, Rng(), again);
             if (tracing) {
                 TraceProc("repeat", repeatHit, attack, verdict.weaponType, target, again.charges, again.critBonus);
@@ -2648,7 +2707,7 @@ void Handle(const HitSeen& seen, RE::PlayerCharacter& playerRef, RE::Actor& targ
         essb::trace::HitEndLine(end, FactsOf(target), FactsOf(player), statusPlan.count);
         Emit(end);
     }
-    Report(plan, attack, verdict.weaponType, *target, status);
+    Report(plan, attack, verdict.weaponType, *target, status, terms.infuse, infuseSpent);
 }
 
 void HitTaskCpp(const HitSeen& seen) noexcept
@@ -2768,6 +2827,8 @@ void HitSinkCpp(const RE::TESHitEvent& ev) noexcept
         seen.targetCasting = IsCasting(*target);
         seen.targetHealth = target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kHealth);
         seen.board = RegistryBoard(*target);
+        seen.magicka = player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kMagicka);   // round 29 (灌注): at hit time
+        seen.magickaMax = MaxOf(*player, RE::ActorValue::kMagicka);
         {
             // 連殺 (G6): a death before the hit task reads this hit's sneak flag (the form's element; 12 = no form).
             // Round 27b (review B N7): every accepted hit replaces the target's row -- a non-sneak one clears it.
@@ -4229,6 +4290,7 @@ essb::FormSecond FormSecondWork(RE::PlayerCharacter& player, essb::Board& selfBo
     f.stamina = v->GetActorValue(RE::ActorValue::kStamina);
     f.staminaMax = MaxOf(player, RE::ActorValue::kStamina);
     f.thunder = state.forms.envThunder && state.forms.envThunder->value == 1.0f;   // 審查修正: 雷雨, not any rain or snow
+    f.infused = state.infusedSince.exchange(0.0f);   // round 29: 灌注's cost this second -- its own column, never the upkeep
     const essb::TimerTuning tt = essb::ReadTimerTuning(Global);
     std::vector<RE::Actor*> members;
     std::vector<RE::NiPointer<RE::Actor>> keep;
@@ -4262,8 +4324,9 @@ essb::FormSecond FormSecondWork(RE::PlayerCharacter& player, essb::Board& selfBo
         }
     }
     if (state.forms.debug->value >= 2.0f && (out.spent > 0.0f || out.bled > 0.0f || out.flow > 0.0f || out.closing || out.charged)) {
-        Logf("[ESSB][second][L2] form=%d spent=%.2f bled=%.2f flow=%.4f allies=%d close=%d storm=%d", f.form, out.spent, out.bled, out.flow,
-            allyCount, out.closing ? 1 : 0, out.charged ? 1 : 0);
+        // Round 29: spent is the upkeep alone; infused (灌注's cost since the last second) is its own column.
+        Logf("[ESSB][second][L2] form=%d spent=%.2f bled=%.2f flow=%.4f allies=%d close=%d storm=%d infused=%.2f", f.form, out.spent, out.bled,
+            out.flow, allyCount, out.closing ? 1 : 0, out.charged ? 1 : 0, out.infused);
     }
     return out;
 }

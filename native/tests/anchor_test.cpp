@@ -782,6 +782,272 @@ void WaterAdventCooldownAnchors()
     }
 }
 
+// ---------------------------------------------------------------- round 29: 灌注 (v0.4 5.2 / 2.7 K_infuse)
+// .codex/design-infuse-2026-09-28.md anchors 1-11 (tree level 100, 節點倍率 5, every main line maxed, 同調三段). Max magicka
+// 400 and the MCM defaults (cost 10% = 40, floor 30% = 120) unless a case says otherwise.
+float ProcOf(const essb::Plan& p, int element, int nth = 0)
+{
+    for (int i = 0; i < p.count; ++i) {
+        if (p.steps[i].cast == essb::Cast::kProc && p.steps[i].element == element && nth-- == 0) {
+            return p.steps[i].magnitude;
+        }
+    }
+    return -1.0f;
+}
+
+int ProcCount(const essb::Plan& p)
+{
+    int n = 0;
+    for (int i = 0; i < p.count; ++i) {
+        n += p.steps[i].cast == essb::Cast::kProc ? 1 : 0;
+    }
+    return n;
+}
+
+float StepOf(const essb::Plan& p, essb::Cast cast)
+{
+    for (int i = 0; i < p.count; ++i) {
+        if (p.steps[i].cast == cast) {
+            return p.steps[i].magnitude;
+        }
+    }
+    return -1.0f;
+}
+
+essb::Plan Hit(World& w, const essb::Attack& a, const essb::PlayerFacts& p, const essb::StatusTerms& terms)
+{
+    MaxNodes nodes;
+    return essb::PlanHit(a, w.config, w.tuning, p, essb::TargetFacts{}, nodes, w.rng, terms);
+}
+
+essb::Attack PowerOf(int element)
+{
+    essb::Attack a;
+    a.element = element;
+    a.power = true;
+    return a;
+}
+
+essb::Infuse Decide(const World& w, int element, bool realPower, bool downed, float magicka, float max = 400.0f)
+{
+    return essb::DecideInfuse(true, element, realPower, downed, magicka, max, w.tuning);
+}
+
+void InfuseAnchors()
+{
+    // 1. 火重擊灌注：the proc ×2; 血刃's flat part (40 here) is not doubled -- infused blood = 2 × plain(no flat) + 40 × 0.8.
+    {
+        World w;
+        const essb::Infuse on = Decide(w, essb::kFire, true, false, 400.0f);
+        Check(on.on && Near(on.cost, 40.0f) && Near(on.k, 2.0f) && !on.crit, "29-1 fire: a full pool infuses, cost 40 of 400");
+        essb::StatusTerms plain;
+        essb::StatusTerms infused;
+        infused.infuse = true;
+        const float m0 = ProcOf(Hit(w, PowerOf(essb::kFire), essb::PlayerFacts{}, plain), essb::kFire);
+        const float m1 = ProcOf(Hit(w, PowerOf(essb::kFire), essb::PlayerFacts{}, infused), essb::kFire);
+        Check(m0 > 0.0f && Near(m1, 2.0f * m0), "29-1 fire power proc x2: " + std::to_string(m1) + " vs " + std::to_string(m0));
+        w.tuning.baseDamageMult = 0.8f;
+        const float b0 = ProcOf(Hit(w, PowerOf(essb::kBlood), essb::PlayerFacts{}, plain), essb::kBlood);
+        essb::StatusTerms blade = infused;
+        blade.flat[essb::kBlood] = 40.0f;
+        const float b1 = ProcOf(Hit(w, PowerOf(essb::kBlood), essb::PlayerFacts{}, blade), essb::kBlood);
+        Check(Near(b1, 2.0f * b0 + 40.0f * 0.8f), "29-1 blood blade's flat part not doubled: " + std::to_string(b1) + " vs 2 x " +
+                                                       std::to_string(b0) + " + 32");
+    }
+    // 2. 雷 6 格重擊灌注：forced crit at 2.5 (not 2 × 2.5 = 5); 削魔 = the damage × 0.5 (削減 1).
+    {
+        World w;
+        const essb::Infuse on = Decide(w, essb::kLightning, true, false, 400.0f);
+        Check(on.on && on.crit && Near(on.k, 1.0f), "29-2 lightning: K_infuse 1, the crit forced");
+        essb::StatusTerms plain;
+        plain.charges = 6;
+        essb::StatusTerms infused = plain;
+        infused.infuse = true;
+        const essb::Plan p0 = Hit(w, PowerOf(essb::kLightning), essb::PlayerFacts{}, plain);   // MidRng: never a crit on its own
+        const essb::Plan p1 = Hit(w, PowerOf(essb::kLightning), essb::PlayerFacts{}, infused);
+        const float m0 = ProcOf(p0, essb::kLightning);
+        const float m1 = ProcOf(p1, essb::kLightning);
+        Check(!p0.crit && p1.crit && Near(m1, 2.5f * m0), "29-2 lightning 6 charges infused: crit x2.5 = " + std::to_string(m1) + " (plain " +
+                                                             std::to_string(m0) + ", not x5)");
+        Check(Near(StepOf(p1, essb::Cast::kDrainMagicka), m1 * 0.5f), "29-2 lightning's drain = the infused damage x 0.5");
+        Check(Near(p1.infuseK, 1.0f), "29-2 lightning's plan carries K_infuse 1");
+    }
+    // 3. 雷滿格重擊灌注：the full-charge discharge is the same op list as without (the proc's forced crit changes nothing
+    //    there); the proc itself ×2.5.
+    {
+        World w;
+        MaxNodes nodes;
+        const int cap = essb::res::ChargeCap(nodes);
+        std::vector<std::tuple<int, float, int, int>> lists[2];
+        for (const bool crit : { false, true }) {
+            World v;
+            essb::Board target;
+            target.mark[essb::kLightning] = essb::Slot{ true, 0.0f, 1.0f, 8.0f };
+            essb::Board me;
+            me[StatusKind::kCharge] = essb::Slot{ true, static_cast<float>(cap), 1.0f, 10.0f };
+            essb::SelfHit hit;
+            hit.element = essb::kLightning;
+            hit.formElement = essb::kLightning;
+            hit.power = true;
+            hit.crit = crit;   // an infused lightning proc always crits
+            auto plan = std::make_unique<essb::StatusPlan>();
+            essb::PlanSelfHit(*plan, hit, essb::HitStatus{}, target, me, v.in, nodes, v.rng);
+            for (int i = 0; i < plan->count; ++i) {
+                const essb::StatusOp& op = plan->ops[i];
+                lists[crit ? 1 : 0].emplace_back(static_cast<int>(op.op), op.magnitude, static_cast<int>(op.event), op.at);
+            }
+        }
+        Check(!lists[0].empty() && lists[0] == lists[1], "29-3 the full-charge discharge's ops do not change with the infused crit");
+        essb::StatusTerms plain;
+        plain.charges = cap;
+        essb::StatusTerms infused = plain;
+        infused.infuse = true;
+        const float m0 = ProcOf(Hit(w, PowerOf(essb::kLightning), essb::PlayerFacts{}, plain), essb::kLightning);
+        const float m1 = ProcOf(Hit(w, PowerOf(essb::kLightning), essb::PlayerFacts{}, infused), essb::kLightning);
+        Check(Near(m1, 2.5f * m0), "29-3 full charges: the proc x2.5");
+    }
+    // 4. 倒地推導的重擊：infuse=0, nothing paid, nothing doubled.
+    {
+        World w;
+        const essb::Infuse off = Decide(w, essb::kFire, false, true, 400.0f);
+        Check(!off.on && off.skip == essb::InfuseSkip::kKnockdown && std::string(essb::InfuseSkipName(off.skip)) == "knockdown",
+            "29-4 a downed target's power: skip=knockdown");
+        const essb::Infuse normal = Decide(w, essb::kFire, false, false, 400.0f);
+        Check(!normal.on && normal.skip == essb::InfuseSkip::kNoPower, "29-4 a normal hit: skip=nopower");
+        const essb::Infuse real = Decide(w, essb::kFire, true, true, 400.0f);
+        Check(real.on, "29-4 a real power attack on a downed target still infuses");
+    }
+    // 5. 魔力＝成本＋下限−1 不發動；＝成本＋下限 發動 (40 + 120 = 160).
+    {
+        World w;
+        const essb::Infuse below = Decide(w, essb::kFrost, true, false, 159.0f);
+        const essb::Infuse at = Decide(w, essb::kFrost, true, false, 160.0f);
+        Check(!below.on && below.skip == essb::InfuseSkip::kFloor, "29-5 159 < 160: skip=floor (no half price)");
+        Check(at.on && Near(at.cost, 40.0f) && Near(at.floor, 120.0f), "29-5 160: infused");
+        w.tuning.infuseCostPct = 0.0f;
+        Check(Decide(w, essb::kFrost, true, false, 400.0f).skip == essb::InfuseSkip::kMcm, "29-5 a zero cost global: skip=mcm");
+        World none;
+        Check(essb::DecideInfuse(false, essb::kFrost, true, false, 400.0f, 400.0f, none.tuning).skip == essb::InfuseSkip::kNoNode,
+            "29-5 without the node nothing is decided");
+    }
+    // 6. 風被切接管 N＝5：one payment for the event; the five procs (the hit and its 4 repeats, each ×0.5) are all ×2.
+    {
+        World w;
+        const essb::Infuse event = Decide(w, essb::kWind, true, false, 400.0f);
+        essb::StatusTerms plain;
+        essb::StatusTerms infused;
+        infused.infuse = event.on;
+        float paid = essb::InfuseSpend(event.cost, 400.0f);
+        const float first0 = ProcOf(Hit(w, PowerOf(essb::kWind), essb::PlayerFacts{}, plain), essb::kWind);
+        const float first1 = ProcOf(Hit(w, PowerOf(essb::kWind), essb::PlayerFacts{}, infused), essb::kWind);
+        Check(Near(first1, 2.0f * first0), "29-6 the hit's own proc x2");
+        for (int i = 0; i < 4; ++i) {
+            const essb::Infuse again = essb::RepeatInfuse(event);
+            Check(again.skip == essb::InfuseSkip::kRepeat && again.on, "29-6 a repeat: skip=repeat, the event's K kept");
+            paid += again.cost > 0.0f ? essb::InfuseSpend(again.cost, 400.0f - paid) : 0.0f;
+            const essb::StatusTerms r0 = essb::RepeatTerms(plain, essb::RepeatInfuse(essb::Infuse{}));
+            const essb::StatusTerms r1 = essb::RepeatTerms(infused, again);
+            const float m0 = ProcOf(Hit(w, PowerOf(essb::kWind), essb::PlayerFacts{}, r0), essb::kWind);
+            const float m1 = ProcOf(Hit(w, PowerOf(essb::kWind), essb::PlayerFacts{}, r1), essb::kWind);
+            Check(Near(m0, 0.5f * first0) && Near(m1, 2.0f * m0), "29-6 repeat " + std::to_string(i + 1) + ": x0.5 then x2");
+        }
+        Check(Near(paid, 40.0f), "29-6 the event paid once: " + std::to_string(paid));
+    }
+    // 7. 血形態重擊：the magicka cost is 10% of max; the health cost is BloodPowerTerms' alone (it never reads the infusion);
+    //    回湧's hit ×1.5 × 2 = ×3.
+    {
+        World w;
+        const essb::Infuse on = Decide(w, essb::kBlood, true, false, 400.0f);
+        Check(on.on && Near(on.cost, 40.0f), "29-7 blood: 10% of your magicka");
+        MaxNodes nodes;
+        const essb::Self self{ 500.0f, 500.0f, 500.0f };
+        essb::Board me;
+        bool surge = false;
+        essb::StatusTerms t0;
+        essb::StatusTerms t1;
+        t1.infuse = true;
+        const float c0 = essb::BloodPowerTerms(essb::kBlood, true, true, self, me, nodes, t0, surge);
+        const float c1 = essb::BloodPowerTerms(essb::kBlood, true, true, self, me, nodes, t1, surge);
+        Check(c0 > 0.0f && c0 == c1, "29-7 the blood power hit's health cost is unchanged: " + std::to_string(c1));
+        essb::StatusTerms plain;
+        const float m0 = ProcOf(Hit(w, PowerOf(essb::kBlood), essb::PlayerFacts{}, plain), essb::kBlood);
+        me[StatusKind::kSurgeUp] = essb::Slot{ true, 1.0f, 0.0f, 8.0f };
+        essb::StatusTerms surged;
+        surged.infuse = true;
+        essb::BloodPowerTerms(essb::kBlood, true, true, self, me, nodes, surged, surge);
+        const float m1 = ProcOf(Hit(w, PowerOf(essb::kBlood), essb::PlayerFacts{}, surged), essb::kBlood);
+        Check(surge && Near(m1, 3.0f * m0), "29-7 surge x infusion = x3: " + std::to_string(m1) + " vs " + std::to_string(m0));
+    }
+    // 8. 切換首刀：the main proc and 餘響's share ×2 (the old mark's end and the open reaction are PlanStatusHit's, which takes
+    //    no infusion at all).
+    {
+        World w;
+        w.tuning.prevElement = essb::kFire;
+        essb::PlayerFacts p;
+        p.echoPending = true;
+        essb::StatusTerms plain;
+        essb::StatusTerms infused;
+        infused.infuse = true;
+        const essb::Plan p0 = Hit(w, PowerOf(essb::kFrost), p, plain);
+        const essb::Plan p1 = Hit(w, PowerOf(essb::kFrost), p, infused);
+        Check(ProcCount(p0) == 2 && ProcCount(p1) == 2, "29-8 the first hit after a switch carries the echo");
+        Check(Near(ProcOf(p1, essb::kFrost), 2.0f * ProcOf(p0, essb::kFrost)) && Near(ProcOf(p1, essb::kFire), 2.0f * ProcOf(p0, essb::kFire)),
+            "29-8 main proc and the echo x2");
+        Check(Near(p1.magnitude / p1.infuseK, p0.magnitude), "29-8 the star echo reads the proc without K_infuse");
+    }
+    // 9. 雙生：both procs ×2, one decision (one cost).
+    {
+        World w;
+        w.tuning.twinElement = essb::kFire;
+        essb::PlayerFacts p;
+        p.twinWindow = true;
+        essb::Attack a = PowerOf(essb::kFrost);
+        a.leftHand = true;
+        essb::StatusTerms plain;
+        essb::StatusTerms infused;
+        infused.infuse = true;
+        const essb::Plan p0 = Hit(w, a, p, plain);
+        const essb::Plan p1 = Hit(w, a, p, infused);
+        Check(ProcCount(p1) == 2 && Near(ProcOf(p1, essb::kFrost), 2.0f * ProcOf(p0, essb::kFrost)) &&
+                  Near(ProcOf(p1, essb::kFire), 2.0f * ProcOf(p0, essb::kFire)),
+            "29-9 twin: both procs x2");
+        const essb::Infuse on = Decide(w, essb::kFrost, true, false, 400.0f);
+        Check(Near(essb::InfuseSpend(on.cost, 400.0f), 40.0f), "29-9 the event pays 40 once");
+    }
+    // 10. 無形態重擊：滅法, infuse=0 (skip=noform); the no-form planner never reads the flag.
+    {
+        World w;
+        const essb::Infuse off = Decide(w, essb::kNoElement, true, false, 400.0f);
+        Check(!off.on && off.skip == essb::InfuseSkip::kNoForm, "29-10 no form: skip=noform");
+        essb::Attack a;
+        a.power = true;
+        essb::PlayerFacts p;
+        p.magicka = 400.0f;
+        p.magickaMax = 400.0f;
+        essb::TargetFacts target;
+        target.magicka = 200.0f;
+        target.magickaMax = 200.0f;
+        MaxNodes nodes;
+        essb::StatusTerms flagged;
+        flagged.infuse = true;
+        essb::Plan d0;
+        essb::Plan d1;
+        essb::PlanNoFormHit(d0, a, w.config, w.tuning, p, target, nodes);
+        essb::PlanNoFormHit(d1, a, w.config, w.tuning, p, target, nodes, flagged);
+        Check(d0.dispel && Near(TrueDamageOf(d0), TrueDamageOf(d1)), "29-10 the dispel unchanged");
+    }
+    // 11. 下限 0、魔力＝成本＋1：infused, 1 point left; 魔力＝成本 with 下限 0: not (never to 0).
+    {
+        World w;
+        w.tuning.infuseFloorPct = 0.0f;
+        const essb::Infuse on = Decide(w, essb::kFire, true, false, 41.0f);
+        Check(on.on && Near(41.0f - essb::InfuseSpend(on.cost, 41.0f), 1.0f), "29-11 floor 0, 41 of 400: 1 left");
+        const essb::Infuse edge = Decide(w, essb::kFire, true, false, 40.0f);
+        Check(!edge.on && edge.skip == essb::InfuseSkip::kFloor, "29-11 floor 0, exactly the cost: never taken to 0");
+        Check(Near(essb::InfuseSpend(40.0f, 30.0f), 29.0f), "29-11 a live pool below the cost keeps its last point");
+    }
+}
+
 int main()
 {
     try {
@@ -801,8 +1067,9 @@ int main()
         FixAnchors();
         SurgeAnchors();
         WaterAdventCooldownAnchors();
+        InfuseAnchors();   // round 29
         std::printf("NATIVE ANCHORS ok: %d checks (G1 sums and percentage effects at level 100 / 節點倍率 5 / every line, G3 counts, "
-                    "G4 the formless fuse, the 24-target burst)\n",
+                    "G4 the formless fuse, the 24-target burst, 灌注 anchors 1-11)\n",
             checks);
         return 0;
     } catch (const std::exception& e) {

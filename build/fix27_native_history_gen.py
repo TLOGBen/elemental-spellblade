@@ -33,7 +33,8 @@ VERIFIERS = ('fix6_verify.py', 'fix11_verify.py', 'fix16_verify.py', 'fix21_veri
              'fix25_native_history_gen.py', 'fix25_native_history_template.py',
              'fix26_history.py', 'fix26_history_gen.py', 'fix26_history_template.py', 'fix26_native_history.py', 'fix26_native_history_gen.py',
              'fix26_native_history_template.py', 'fix27_verify.py', 'fix27_reasons.py', 'fix27_history.py', 'fix27_history_gen.py',
-             'fix27_history_template.py', 'fix27_native_history_gen.py', 'fix27_native_history_template.py', 'fix28_verify.py')
+             'fix27_history_template.py', 'fix27_native_history_gen.py', 'fix27_native_history_template.py', 'fix28_verify.py',
+             'fix29_verify.py')   # round 29
 
 
 def covered():
@@ -47,7 +48,8 @@ def covered():
                                              'fix24_records.py', 'fix24_reference.py', 'fix24_fixture.py',
                                              'fix25_records.py', 'fix25_reference.py', 'fix25_fixture.py',
                                              'fix26_records.py', 'fix26_format.py', 'probe-judge.py', 'fix27_visuals.py',
-                                             'fix27_records.py', 'fix28_records.py', 'papyrus_budget.py')]
+                                             'fix27_records.py', 'fix28_records.py', 'papyrus_budget.py',
+                                             'fix29_records.py')]   # round 29
     # The verifiers too (a weakened check would otherwise pass unseen). This seal cannot hold itself;
     # build/fix26_native_history.py is regenerated last.
     files += [NOW / f'build/{n}' for n in VERIFIERS]
